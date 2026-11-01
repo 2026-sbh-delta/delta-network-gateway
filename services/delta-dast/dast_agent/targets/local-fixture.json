@@ -1,0 +1,41 @@
+{
+  "id": "local-fixture",
+  "label": "로컬 저장형 XSS 실습 게시판",
+  "origin": "http://127.0.0.1:{target_port}",
+  "scenarios": [
+    "vulnerable",
+    "fixed",
+    "csp"
+  ],
+  "entry_path": "/{scenario}/board",
+  "allowed_path_prefixes": [
+    "/{scenario}/",
+    "/demo/"
+  ],
+  "routes": [
+    {
+      "id": "board-post",
+      "kind": "stored_xss",
+      "board_path": "/{scenario}/board",
+      "create_path": "/{scenario}/new",
+      "create_link_selector": "a[href=\"/{scenario}/new\"]",
+      "field": "body",
+      "input_selector": "[name=body]",
+      "title_selector": "[name=title]",
+      "title_value": "DAST 검증 게시글",
+      "submit_selector": "button[type=submit]",
+      "submit_path": "/{scenario}/posts",
+      "saved_detail_link_selector": "#saved-post",
+      "detail_path_regex": "^/{scenario}/posts/[a-f0-9]{32}$",
+      "output_selector": "#post-body",
+      "asset_paths": [
+        "/demo/style.css"
+      ]
+    }
+  ],
+  "repo": {
+    "path": "sample-target",
+    "remote": "",
+    "base_branch": "main"
+  }
+}

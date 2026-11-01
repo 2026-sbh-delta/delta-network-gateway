@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>DAST 작업실</title>
+  <link rel="stylesheet" href="/static/app.css">
+  <link rel="stylesheet" href="/static/theme-soc.css">
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <header class="top"><span class="brand">◈ DAST 작업실</span><nav class="tabs"><button type="button" id="tab-dashboard" class="on">대시보드</button><button type="button" id="tab-project">프로젝트</button></nav><a id="board-link" target="_blank" rel="noopener noreferrer">실습 게시판 열기 ↗</a></header>
+  <main>
+    <section id="dashboard-view" class="dash">
+      <div class="dash-kpis">
+        <div class="dk"><span>전체 프로젝트</span><strong id="dk-projects">0</strong></div>
+        <div class="dk"><span>총 점검 회차</span><strong id="dk-scans">0</strong></div>
+        <div class="dk"><span>탐지 취약점</span><strong id="dk-findings">0</strong></div>
+        <div class="dk vuln"><span>미조치</span><strong id="dk-open">0</strong></div>
+        <div class="dk ring-tile"><span>조치율</span><div class="ring-kpi" id="dk-ring"><b id="dk-rate">0%</b></div></div>
+      </div>
+      <div class="dash-grid">
+        <div class="dash-panel"><h2>프로젝트 점검 현황 <small>최근 회차</small></h2><div id="dash-scan" class="hbars"></div>
+          <p class="legend-row"><i class="c-vuln"></i>취약<i class="c-safe"></i>안전<i class="c-na"></i>판정 불가</p></div>
+        <div class="dash-panel"><h2>조치 현황</h2><div id="dash-fix" class="hbars"></div>
+          <p class="legend-row"><i class="c-vuln"></i>미조치<i class="c-fixed"></i>조치 완료<i class="c-safe"></i>양호<i class="c-warn"></i>주의<i class="c-na"></i>확인 필요</p></div>
+      </div>
+      <div class="dash-panel"><h2>최근 점검</h2><table class="recent"><tbody id="dash-recent"></tbody></table></div>
+    </section>
+    <div id="project-view" hidden>
+    <div class="heading"><div><h1>AI 취약점 점검</h1></div><button id="run" disabled>검사 시작</button></div>
+    <section class="project-bar" aria-label="프로젝트">
+      <label>프로젝트<select id="project"></select></label>
+      <div id="project-meta" class="project-meta"></div>
+      <button type="button" id="project-new">+ 새 프로젝트</button>
+    </section>
+    <form id="project-form" class="project-form" hidden>
+      <div class="pf-grid">
+        <label>프로젝트 이름<input id="pf-name" required maxlength="80" placeholder="예: 고객 게시판 서비스"></label>
+        <label>Git 저장소 주소<input id="pf-repo" maxlength="300" placeholder="https://github.com/org/repo (비워도 됨)"></label>
+        <label>운영 서버 주소<input id="pf-prod" maxlength="300" placeholder="https://service.example.com"></label>
+        <label>점검 대상(스테이징)<select id="pf-target"></select></label>
+        <label class="wide">설명<input id="pf-desc" maxlength="300"></label>
+      </div>
+      <p class="pf-note">운영 서버 주소는 기록용이며, 점검은 등록된 스테이징 대상에서만 실행합니다.</p>
+      <div class="pf-actions"><button type="submit" id="pf-save">프로젝트 만들기</button><button type="button" id="pf-cancel">취소</button><span id="pf-msg"></span></div>
+    </form>
+    <section class="scans" aria-label="점검 회차">
+      <div class="scans-head"><b>점검 회차</b><span id="scan-trend"></span></div>
+      <div id="scan-strip" class="scan-strip"><span class="scan-empty">아직 점검이 없습니다.</span></div>
+    </section>
+    <div class="settings">
+      <label>테스트 대상<select id="scenario"><option value="vulnerable">취약 게시판</option><option value="fixed">수정 게시판</option><option value="csp">CSP 적용 게시판</option></select></label>
+      <label>DAST 계획<select id="planner"><option value="agent">AI 에이전트 · Agent SDK (로그인 인증)</option><option value="computer_use">AI 에이전트 · 공식 Computer Use (API 키 필요)</option><option value="claude">Claude 매핑 · 등록 경로 실행</option><option value="reviewed">수동 검토 계획 · 모델 호출 없음</option></select></label>
+      <label>동시 점검<select id="concurrency"><option value="1">1개씩</option><option value="2" selected>2개 동시</option><option value="3">3개 동시</option><option value="4">4개 동시</option></select></label>
+      <label class="toggle"><input type="checkbox" id="impact" checked> 영향 시연</label>
+      <div class="target" hidden><span>등록된 대상</span><code id="target-origin">연결 확인 중</code></div>
+    </div>
+    <div class="notice" id="source-label" hidden>SAST 입력을 불러오고 있습니다.</div>
+    <div class="steps" aria-label="검사 흐름"><span data-step="planning">계획 검토</span><span data-step="control">정상 동작 확인</span><span data-step="saving">입력·저장</span><span data-step="revisiting">재방문</span><span data-step="observing">실행 관찰</span><span data-step="done">결과</span></div>
+    <div class="kpis" aria-label="점검 요약">
+      <div class="kpi" data-k="total"><span>점검 대상</span><strong id="kpi-total">0</strong></div>
+      <div class="kpi" data-k="running"><span>점검 중</span><strong id="kpi-running">0</strong></div>
+      <div class="kpi" data-k="vuln"><span>취약</span><strong id="kpi-vuln">0</strong></div>
+      <div class="kpi" data-k="safe"><span>안전</span><strong id="kpi-safe">0</strong></div>
+      <div class="kpi" data-k="unknown"><span>판정 불가</span><strong id="kpi-unknown">0</strong></div>
+    </div>
+    <div class="workspace">
+      <section class="browser-section">
+        <div class="section-head"><h2>실제 브라우저 화면</h2><span class="pill" id="session-status">대기</span></div>
+        <div class="browser"><div class="browser-bar"><span class="dots">● ● ●</span><code id="url-label">허용된 스테이징만 접근</code></div>
+          <div id="screen-host">
+            <img id="screen" alt="검사 브라우저에서 수집한 실제 화면" hidden>
+            <div id="empty"><strong>준비된 스테이징에서 검사를 시작합니다</strong><span>화면은 Playwright가 실제로 촬영한 이미지입니다.</span></div>
+            <div id="cursor" hidden><svg viewBox="0 0 24 30" aria-hidden="true"><path d="M2 2v23l6-7 5 10 4-2-5-10h10Z"/></svg><small>실행</small></div>
+            <div id="execution-alert" hidden role="alert"><span class="alert-icon">⚠</span><strong>XSS 취약점 확인</strong><span id="alert-detail">저장된 스크립트가 실제 브라우저에서 실행됐습니다</span><button id="dismiss-alert" type="button">화면 보기</button></div>
+          </div>
+        </div>
+        <div class="activity" role="status"><span class="dot"></span><span id="activity">설정을 불러오는 중입니다.</span></div>
+        <section class="logs"><div class="section-head"><h2>실행 로그</h2><span id="elapsed">—</span></div><ol id="logs"></ol></section>
+      </section>
+      <aside>
+        <div class="queue-head"><h2>취약점</h2><span class="pill" id="plan-mode">계획 대기</span><strong id="queue-progress">0 / 0</strong></div>
+        <div class="queue-bar"><span id="queue-bar-fill"></span></div>
+        <ol id="findings" class="queue" aria-label="점검할 취약점 목록"></ol>
+        <p class="queue-legend"><span data-s="PENDING">대기</span><span data-s="RUNNING">점검</span><span data-s="REPRODUCED">취약</span><span data-s="NOT_REPRODUCED">안전</span><span data-s="INCONCLUSIVE">불가</span></p>
+        <details class="more"><summary>판정 근거</summary>
+          <section class="evidence"><div id="evidence">아직 실행 증거가 없습니다.</div></section>
+          <section class="check"><ul id="checks"></ul></section>
+        </details>
+        <span id="finding-count" hidden></span>
+      </aside>
+    </div>
+    <section id="fix-panel" class="fix-panel" hidden>
+      <div class="fix-head"><h2>취약점 상세 · <span id="fix-title"></span></h2></div>
+      <div class="dast-strip"><h3>실측 흐름 <small>DAST · 실제 브라우저</small></h3><div id="flow-dast" class="flow row"></div></div>
+      <h3 class="fix-sub">코드 확인 <small>오른쪽 흐름 상자를 누르면 해당 코드로 이동합니다</small></h3>
+      <div class="code-check">
+        <div class="code-view"><div class="cv-head"><code id="cv-file">—</code><span id="cv-role"></span></div><div id="cv-body" class="cv-body"><p class="flow-empty">흐름 상자를 선택하세요.</p></div></div>
+        <div class="code-flow"><h3>코드 흐름 <small>원인 → 연관 → 탐지</small></h3><div id="flow-code" class="flow"></div></div>
+      </div>
+      <div class="patch">
+        <div class="patch-head"><h3>취약점 패치 <small>취약한 코드 → AI 제안 코드</small></h3><span id="fix-result"></span><button type="button" id="fix-pr" hidden>PR 생성</button></div>
+        <p id="fix-state"></p>
+        <ul id="fix-summary"></ul>
+        <div id="fix-split" class="fix-split"></div>
+        <button type="button" id="fix-make" hidden>AI 수정안 만들기</button>
+        <button type="button" id="fix-close" hidden>닫기</button>
+      </div>
+    </section>
+    <section id="chat-panel" class="chat-panel" hidden>
+      <div class="fix-head"><h2>개발자 대화 · <span id="chat-title"></span></h2><small class="chat-note">점검 기록과 원본 코드를 근거로 답합니다 · 코드 수정·재점검은 하지 않습니다</small></div>
+      <div id="chat-log" class="chat-log" aria-live="polite"></div>
+      <div id="chat-suggest" class="chat-suggest"><button type="button">왜 취약한가요?</button><button type="button">어떻게 고쳐야 하나요?</button><button type="button">AI 수정안이 왜 안전한지 설명해 주세요</button><button type="button">같은 패턴이 다른 곳에도 있나요?</button></div>
+      <form id="chat-form" class="chat-form"><textarea id="chat-input" rows="2" maxlength="2000" placeholder="이 취약점에 대해 물어보세요 · Enter 전송, Shift+Enter 줄바꿈"></textarea><button type="submit" id="chat-send">보내기</button></form>
+    </section>
+    <div class="result" id="result" data-tone="idle" aria-live="polite"><div><strong id="result-title">검사 대기</strong><p id="result-description">음성은 이번 입력에서 재현되지 않았다는 뜻이며 사이트 전체의 안전성을 보장하지 않습니다.</p></div><div class="report-actions"><span id="report-status"></span><button type="button" id="report-make" hidden>보고서 만들기</button><a id="report-html" class="report-btn" hidden target="_blank" rel="noopener noreferrer">보고서 HTML</a><a id="report-pdf" class="report-btn pdf" hidden target="_blank" rel="noopener noreferrer">보고서 PDF</a><a id="report-link" hidden target="_blank" rel="noopener noreferrer">결과 JSON ↗</a></div></div>
+    <details class="vulns fold" open>
+      <summary>취약점 현황 <span class="pill" id="vulns-count">—</span></summary>
+      
+      <div class="sessions-scroll"><table><thead><tr><th>취약점</th><th>상태</th><th>최근 결과</th><th>점검</th><th>최근 점검</th><th>수정·PR</th></tr></thead><tbody id="vuln-rows"><tr><td colspan="6">점검 기록이 없습니다.</td></tr></tbody></table></div>
+    </details>
+    <details class="sessions fold">
+      <summary>점검 기록 <span class="pill" id="viewing-label">—</span></summary>
+      <div class="fold-head"><button id="rerun" type="button" disabled>같은 입력으로 다시 실행</button></div>
+      <div class="sessions-scroll"><table><thead><tr><th>세션 ID</th><th>시작</th><th>모드</th><th>대상</th><th>결과</th><th>상태</th></tr></thead><tbody id="session-rows"><tr><td colspan="6">점검 기록이 없습니다.</td></tr></tbody></table></div>
+    </details>
+    <details class="model-status-panel fold">
+      <summary>모델 연결 상태</summary>
+      <div class="fold-head"><button id="refresh-models" type="button">새로고침</button></div>
+      <div id="model-status-grid"><p>인증과 모델 상태를 확인하고 있습니다.</p></div>
+      <p class="model-note">키 값은 표시하지 않습니다. 인증 확인과 실제 모델 호출 성공은 별도 상태입니다.</p>
+    </details>
+    <details class="input-panel"><summary>SAST JSON 입력 · 예제 또는 내보낸 결과</summary><p>이 MVP는 등록된 저장형 XSS 경로와 제공된 무해한 페이로드 템플릿을 검사합니다. 임의 스크립트·URL은 실행하지 않습니다.</p><div class="import-row"><input type="file" id="import-file" accept=".json,application/json"><button type="button" id="load-sample">예제 불러오기</button><button type="button" id="load-multi">2건 예제</button></div><label for="report-input">검사 입력</label><textarea id="report-input" spellcheck="false"></textarea></details>
+    <footer>AI 에이전트 모드에서는 Claude가 스크린샷을 보고 클릭·입력을 결정하고, 실행부는 허용 범위 검사와 증거 수집·판정만 맡습니다. 화면 경고·체크리스트는 실행부가 보낸 결과로 갱신됩니다.</footer>
+      </div>
+</main>
+</body>
+</html>
