@@ -1,0 +1,3 @@
+# Create and inspect the bucket first. No automatic state migration.
+bucket = "sbh-delta-gcp-tf-120643807854"
+prefix = "delta/lab/gcp-server"
