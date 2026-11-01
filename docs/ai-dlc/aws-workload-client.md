@@ -9,7 +9,7 @@
 - U1~U3 구현/Test/Review 완료. fmt/격리 init/validate, Workload mock Plan **26개**, 중앙 회귀 mock Plan **33개**, state bootstrap 보호 테스트 **3개** 통과.
 - 배포 완료: 별도 S3 state bucket, Workload 기반 20개와 Attachment 1개, 중앙 RAM principal 2개와 연결 리소스 9개 생성 및 HOME_NET 관련 2개 갱신. 삭제 없음.
 - 실제 검증: 공인 주소/IGW/NAT/인터넷 경로 부재, EIC 사설 SSH 성공, Attachment available와 명시적 검사/반환 경로, Firewall/두 Primary Endpoint READY 및 IN_SYNC 확인. 두 root의 최종 Plan 모두 **No changes, 종료 코드 0**.
-- GCP/VPN 및 서비스의 ANF 통과/허용/차단/로그 유입 검증은 미실행. 코드/검증 도구는 아래 3개 커밋으로 기록했고 배포/진행 문서는 이번 커밋에 포함한다. 후속 푸시는 아직 미실행이다.
+- GCP/VPN 및 서비스의 ANF 통과/허용/차단/로그 유입 검증은 미실행. 코드/검증/배포 문서를 아래 4개 커밋으로 나눠 origin/main에 푸시했고 원격 체크포인트 `9a4ecb0` 일치를 확인했다. 이 문서 갱신은 해당 푸시 완료 결과를 기록한다.
 
 ## Ideation
 
@@ -132,6 +132,7 @@ Client와 관리 Endpoint는 우선 `apne2-az1`에 배치한다. 두 AZ의 네�
 | 2026-11-01 16:20~16:21 KST | 중앙 Describe/Get/Search TGW 및 RT/Firewall, 업무 DescribeInstances/InstanceConnectEndpoints와 Python 대조 | Attachment available, Spoke/Inspected 명시 Association, TGW Propagation 0개, 등록한 Workload 경로 active/같은 AZ Endpoint 대상, Firewall READY/IN_SYNC 및 Primary Endpoint 2개 READY, EC2 공인 IPv4/IPv6 없음, EIC create-complete. 최초 대조 스크립트의 Endpoint Route API 필드 오인(VpcEndpointId 대신 GatewayId 반환)을 보완해 최종 통과. `.validation/final-topology.json` 보관 |
 | 2026-11-01 16:21~16:22 KST | `terraform fmt -check -recursive`, `git diff --check`, 문서 링크/금지 문자/입출력 표 검사 및 `git ls-files --cached --others --exclude-standard` 대상 자격 증명 패턴 검사 | 통과. Workload 입력 15개/출력 11개, 중앙 입력 20개/출력 16개 문서화 확인. Git-visible 파일에 일반 개인 키/액세스 토큰 패턴 없음. 실제 tfvars/backend/state/Plan/검증 산출물 제외 유지 |
 | 2026-11-01 16:24~16:25 KST | `git ls-remote origin refs/heads/main`, `terraform fmt -check -recursive`, `git diff --check`, `bash -n`, Python compile/문서 표/자격 증명 패턴 검사, `git check-ignore` | 원격 main의 `d6b9545`와 기존 로컬 기준 일치. 형식/구문/문서/제외 검사 통과. 기존 이벤트에서 Workload 26개/중앙 33개 mock Plan 성공 결과를 재확인했으며 Terraform 테스트/실계정 Plan/Apply는 이번 커밋 작업에서 재실행하지 않음 |
+| 2026-11-01 16:25~16:26 KST | 단위별 `git add`, `git diff --cached --check`, `git commit -m <unit>`, `git push origin main`, `git ls-remote origin refs/heads/main` | 서명된 분할 커밋 4개 생성 및 staged 공백 검사 통과. `d6b9545..9a4ecb0 main -> main` 푸시 종료 코드 0. 원격 main은 `9a4ecb011c0e2f12190c73000f1095559db5c024`로 검증 체크포인트와 일치. 실제 설정/state/Plan/검증 로그는 제외 |
 
 최종 mock 이벤트는 Workload `.validation/test-events.jsonl`과 `.validation/central-test-events.jsonl`에 보관한다. 이 디렉터리 및 실제 tfvars/backend/Plan은 Git에서 제외한다. 코드의 public 노출 제약 검증은 실제 배포 후 AWS 리소스 조회 및 SSH 검증과 구분한다.
 
@@ -160,9 +161,9 @@ Client와 관리 Endpoint는 우선 `apne2-az1`에 배치한다. 두 AZ의 네�
 | 중앙 Client 연결 계약 | `6a20961` | `feat: support client spokes in central inspection contracts` |
 | 사설 Workload 구현 | `ad1b13a` | `feat: add private AWS workload client infrastructure` |
 | 검증 도구와 보호 테스트 | `6921a02` | `test: cover private workload plans and state bootstrap guards` |
-| 배포 및 검증 기록 | 이 문서를 포함하는 docs 커밋 | `docs: record private workload deployment and verification` |
+| 배포 및 검증 기록 | `9a4ecb0` | `docs: record private workload deployment and verification` |
 
-앞의 3개 커밋은 생성됐고 문서 커밋을 준비 중이다. 후속 푸시는 아직 실행하지 않았다. 실제 tfvars/backend/state/Plan/검증 로그/Provider 캐시는 포함하지 않는다.
+위 4개 커밋은 생성 및 origin/main 푸시를 완료했다. 원격 조회로 확인한 체크포인트는 `9a4ecb0`이며 이 문서 갱신은 해당 완료 결과를 기록한다. 실제 tfvars/backend/state/Plan/검증 로그/Provider 캐시는 포함하지 않는다.
 
 ## 공식 근거
 

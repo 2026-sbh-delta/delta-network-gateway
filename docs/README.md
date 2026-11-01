@@ -13,7 +13,7 @@
 - RAM: 두 Share와 Resource Association에 이어 업무 계정 `616723161368`의 두 principal 연결을 추가했다. 업무 계정에서 중앙 TGW available을 조회했다. 조직 외 공유는 비활성화다.
 - 로그: FLOW/ALERT CloudWatch Logs 목적지 설정 확인. 실제 로그 유입 및 통신 검증은 미완료다.
 - 실계정 Plan: Workload 20 add 및 Attachment 1 add, 중앙 공유 2 add와 등록 9 add/2 change를 검토 후 적용했다. 배포 후 두 root의 최종 Plan은 모두 No changes, 상세 종료 코드 0이다.
-- Git/푸시: 사용자의 후속 지시로 중앙 Client 계약 `6a20961`, Workload 구현 `ad1b13a`, 검증 도구 `6921a02`를 분할 커밋했다. 배포/진행 기록은 이번 문서 커밋에 포함한다. 현재 푸시는 미실행이며 원격 main의 기존 `d6b9545`를 조회 확인했다. 실제 tfvars/backend/state/Plan은 제외한다.
+- Git/푸시: 중앙 Client 계약 `6a20961`, Workload 구현 `ad1b13a`, 검증 도구 `6921a02`, 배포 문서 `9a4ecb0`를 분할 커밋하고 origin/main에 푸시했다. 2026-11-01 16:25~16:26 KST 원격 main의 검증 체크포인트 `9a4ecb0` 일치를 확인했다. 이 문서 갱신은 해당 완료 결과를 기록한다. 실제 tfvars/backend/state/Plan은 제외한다.
 - Destroy: 미실행. GCP/VPN과 실제 ANF 허용/차단 통신 및 로그 유입은 미검증.
 - 실행 프로필: `AWS_PROFILE=sbh-delta-security`. 이번 DryRun에서 STS로 중앙 계정 `482840608926`을 재확인했다. 코드에서는 계정 ID를 필수 입력으로 받아 검증한다.
 - AWS Workload: 사용자 `이렇게 만들고, public 노출없이 해` 지시로 Inception과 U1~U3 승인 및 구현/Review 완료. Workload mock Plan 26개 및 state bootstrap 보호 테스트 3개 통과. 별도 S3 state와 VPC `10.10.0.0/16`, `/24` Subnet 4개, 사설 EC2 `10.10.1.143` 및 EIC Endpoint 생성 완료. 공인 IP/IPv6, IGW/NAT/인터넷 Route 부재와 EIC 사설 SSH 성공을 실제 확인했다.
