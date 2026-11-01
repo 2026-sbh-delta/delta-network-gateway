@@ -1,0 +1,33 @@
+flowchart LR
+  inputs["입력 제공<br/>담당 미정<br/><br/>인벤토리<br/>공격 결과<br/>SARIF<br/>보고서"]:::planned
+  agent["점검 에이전트 · 플랫폼<br/>호출과 적용 담당"]:::planned
+  sandbox["샌드박스<br/>패치 적용 · 재시험"]:::planned
+  ui["진행 그래프<br/>대시보드"]:::planned
+  human["승인자"]:::planned
+
+  subgraph delta["delta-ai · 구현됨"]
+    direction TB
+    api["FastAPI · 토큰 인증"]:::built
+    core["판단 흐름<br/>규칙 → 근거 → LLM → 판정"]:::built
+    docs[("근거 문서 10개")]:::store
+    store[("규칙 후보 JSON")]:::store
+    api --> core
+    core --> docs
+    core --> store
+  end
+  llm["Claude API<br/><br/>받음: 마스킹한 입력<br/>줌: 설명 · 분류 · 패치"]:::ext
+
+  inputs --> agent
+  agent <-- "요청 / 판정 · 수정안" --> delta
+  delta <--> llm
+  agent <--> sandbox
+  agent --> ui
+  human -- "규칙 승인" --> delta
+
+  classDef built fill:#E3EEFA,stroke:#2F6DB5,stroke-width:1.5px,color:#14304F
+  classDef planned fill:#F4F5F7,stroke:#7C8794,stroke-width:1.5px,stroke-dasharray:6 4,color:#39424D
+  classDef ext fill:#FFF1DC,stroke:#C77700,stroke-width:1.5px,color:#5A3600
+  classDef store fill:#E8F5EE,stroke:#3C8A63,stroke-width:1.5px,color:#1D4532
+  classDef ok fill:#DDF3E5,stroke:#1F8A4C,stroke-width:2px,color:#114A2A
+  classDef warn fill:#FCEFC9,stroke:#B57F00,stroke-width:2px,color:#5A3F00
+  classDef bad fill:#FBE1DF,stroke:#BF3B36,stroke-width:2px,color:#6C1E1A

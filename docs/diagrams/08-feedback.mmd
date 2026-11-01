@@ -1,0 +1,17 @@
+sequenceDiagram
+  autonumber
+  participant R as 리뷰·모의해킹
+  participant A as 호출자
+  participant D as delta-ai
+  participant L as Claude API
+  participant H as 승인자
+  R-->>A: 보고서
+  A->>D: report
+  D->>L: 항목 + 근거 (마스킹)
+  L-->>D: 설명 + 탐지기 후보
+  Note over D: 취약·안전 예시로 회귀 시험 후 저장
+  D-->>A: verdict=needs_human, rule_candidates
+  H->>D: POST /v1/rule-candidates/{id}/decision
+  D-->>H: status=approved
+  A->>D: 다음 code_security
+  D-->>A: 승인 규칙이 잡은 finding 포함
