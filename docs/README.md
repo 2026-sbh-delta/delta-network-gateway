@@ -13,8 +13,8 @@
 - RAM: 두 Share ACTIVE, 두 Resource Association ASSOCIATED. 조직 외 공유는 계속 비활성화다. 이전 Organizations 온보딩 관련 오류는 해소됐다.
 - 로그: FLOW/ALERT CloudWatch Logs 목적지 설정 확인. 실제 로그 유입 및 통신 검증은 미완료다.
 - 실계정 Plan: 사용자 Apply 로그에서 2 to add, 0 to change, 0 to destroy 확인. 에이전트가 직접 init/Plan/Apply를 실행하지 않았다.
-- Git: 초기 분할 커밋 4개와 backend/RAM 운영 안내 커밋 `f7b6244` 완료. 후속 배포 검증 및 AWS/GCP 연결 제안은 이번 문서 커밋에 포함한다.
-- 푸시: 2026-11-01 원격 `main`이 기존 `a1d32ec`까지 반영된 것을 확인했다. 사용자의 후속 커밋/푸시 지시에 따라 현재 문서 변경을 같은 원격으로 전송한다. 후속 커밋의 푸시는 아직 미실행이다.
+- Git: 초기 분할 커밋 4개와 후속 문서 커밋 `f7b6244`, `9252a76` 완료. backend/RAM 운영 안내, 배포 검증 및 AWS/GCP 연결 제안을 기록했다.
+- 푸시: 2026-11-01 15:53~15:54 KST `git push origin main` 성공 후 원격 `main`이 검증 체크포인트 `9252a76`과 일치함을 확인했다. 이 문서 갱신은 해당 푸시 완료 결과를 기록한다.
 - Destroy: 이 작업에서 미실행. 로그 전달, 계정 간 연결 및 실제 통신은 미검증.
 - 실행 프로필: `AWS_PROFILE=sbh-delta-security`. 이번 DryRun에서 STS로 중앙 계정 `482840608926`을 재확인했다. 코드에서는 계정 ID를 필수 입력으로 받아 검증한다.
 

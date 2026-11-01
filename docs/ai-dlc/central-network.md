@@ -96,6 +96,7 @@
 | 2026-11-01 15:36 KST | `sbh-delta-security`의 STS 확인 후 EC2 DescribeTransitGatewayVpcAttachments, DescribeSubnets, DescribeRouteTables, GetTransitGatewayRouteTableAssociations, SearchTransitGatewayRoutes 읽기 전용 조회 | Inspection Attachment 하나가 TGW 전용 Subnet `10.250.0.0/24`, `10.250.2.0/24`를 사용하고 Inspected RT에 associated. Firewall Subnet은 각각 `10.250.1.0/24`, `10.250.3.0/24`. 명시적으로 연결한 VPC RT 4개는 local 경로만 있고 두 TGW RT의 active/blackhole Route는 비어 있음. 업무/VPN 입력이 비어 있는 중앙 단독 기반 상태와 일치 |
 | 2026-11-01 15:51~15:53 KST | `git ls-remote origin refs/heads/main`, `git diff --check`, 변경 문서의 로컬 링크/금지 문자/일반 자격 증명 패턴 검사, `git check-ignore` | 원격 main은 `a1d32ec7090d94f83bb64cfc147b3beaf785f288`로 기존 로컬 4개 커밋과 일치. 문서 검사 통과. 실제 tfvars/backend 및 검증 산출물 제외 확인. 이번 변경은 문서뿐이므로 Terraform 검증은 재실행하지 않음 |
 | 2026-11-01 15:53 KST | `git add -- terraform/network-security/README.md terraform/network-security/RUNBOOK.md`, `git diff --cached --check`, `git commit -m 'docs: clarify backend initialization and RAM troubleshooting'` | staged 공백 검사 통과. backend/RAM 안내 문서 2개를 서명된 커밋 `f7b6244`로 기록 |
+| 2026-11-01 15:53~15:54 KST | `git diff --check`, `git diff --cached --check`, `git commit -m 'docs: record deployment verification and AWS GCP test proposal'`, `git push origin main`, `git ls-remote origin refs/heads/main` | 문서 검사와 커밋 성공. `a1d32ec..9252a76 main -> main` 푸시 종료 코드 0. 원격 main은 `9252a766a1bc4763d248659cf36df7a13fe969e3`로 로컬 검증 체크포인트와 일치. Terraform/AWS 리소스 변경은 실행하지 않음 |
 
 검증 로그는 로컬의 `terraform/network-security/.validation/test-events.jsonl`에 보관하며 커밋 대상에서 제외했다. 재시도는 격리 디렉터리 `delta-network-validation.vEh4aL`의 해당 이벤트 파일을 사용했고, 위 명령은 보관한 동일 파일 경로로 표기했다. AWS DryRun의 실제 실행 명령과 결과는 같은 디렉터리의 `aws-rule-group-dry-run.txt`에 보관했다. 검증 스크립트로 재생성할 수 있다. 초기 mock fixture의 Plan 시점 override와 ARN 형식을 수정한 뒤 전체 검사를 재실행했다. Attachment 소유 계정 검사는 TGW 생성 의존성과 분리해 Plan에서 오류를 거부하도록 보완했다.
 
@@ -120,9 +121,9 @@ RAM 오류 진단과 당시 실제 리소스 상태는 `.validation/ram-sharing-
 | 검증 도구와 mock Plan | `e735170` | `test: add mock plans and AWS rule dry-run validation` |
 | 연결/운영/진행 문서 | `a1d32ec` | `docs: add integration runbooks and implementation records` |
 | backend/RAM 운영 안내 | `f7b6244` | `docs: clarify backend initialization and RAM troubleshooting` |
-| 배포 검증 및 멀티클라우드 제안 | 이 문서를 포함하는 docs 커밋 | `docs: record deployment verification and AWS GCP test proposal` |
+| 배포 검증 및 멀티클라우드 제안 | `9252a76` | `docs: record deployment verification and AWS GCP test proposal` |
 
-실제 tfvars/backend 설정, state/Plan, `.validation`, `.terraform`는 포함하지 않는다. 에이전트의 초기 푸시 요청은 자동 승인 검토에서 실행 전 차단됐다. 후속 읽기 전용 조회에서 원격 main이 기존 `a1d32ec`까지 반영된 것을 확인했다. 사용자의 후속 지시에 따라 새 문서 커밋을 같은 원격으로 푸시할 예정이며 현재 후속 푸시는 미실행이다. 차단된 푸시를 다른 경로로 전송하지 않았다.
+실제 tfvars/backend 설정, state/Plan, `.validation`, `.terraform`는 포함하지 않는다. 에이전트의 초기 푸시 요청은 자동 승인 검토에서 실행 전 차단됐다. 이후 원격 main의 기존 `a1d32ec` 반영을 확인했고 사용자의 후속 지시에 따라 같은 origin/main에 문서 커밋 두 개를 정상 푸시했다. 2026-11-01 15:53~15:54 KST 읽기 전용 원격 조회에서 검증 체크포인트 `9252a76` 일치를 확인했다. 이 문서 갱신은 해당 완료 결과를 기록한다. 차단된 푸시를 다른 경로로 전송하지 않았다.
 
 ## 정적 Review 결과
 
@@ -139,5 +140,5 @@ RAM 오류 진단과 당시 실제 리소스 상태는 `.validation/ram-sharing-
 - 에이전트는 실제 S3 backend init 및 실계정 Plan/Apply를 실행하지 않았다. 사용자 제공 마지막 Plan/Apply 성공 로그와 초기화 backend 메타데이터, 실제 AWS 리소스 상태로 중앙 단독 기반 배포 완료를 확인했다.
 - 공유 계정, 업무 VPC Attachment, VPN Gateway/ASN/Inside CIDR, 실제 허용 목록은 아직 연결되지 않았다. 기본 입력은 빈 상태다.
 - AWS DryRun은 SCP 수정 후 두 규칙 집합 모두 통과했다. 이는 AWS 규칙 요청 검증 결과이며, 전체 배포 권한 또는 실제 Suricata 패킷 처리의 증거로 취급하지 않는다. 이 작업에서 Organizations/SCP는 변경하지 않았다.
-- 초기 구현은 분할 커밋 4개로 원격 반영을 확인했다. 후속 backend/RAM 안내는 `f7b6244`로 커밋했고 배포 검증 및 멀티클라우드 제안은 이번 문서 커밋에 포함한다. 후속 푸시는 아직 미실행이다.
+- 초기 구현 4개와 후속 문서 커밋 `f7b6244`, `9252a76`의 원격 반영을 확인했다. 이 기록은 원격 조회로 확인한 검증 체크포인트 `9252a76`을 기준으로 한다.
 - 사용자 Apply로 중앙 단독 기반과 RAM Resource Association 두 개가 완료됐다. 실제 상태는 읽기 전용으로 확인했다. 에이전트의 Apply/Destroy 및 실제 통신 검증은 수행하지 않았다.
