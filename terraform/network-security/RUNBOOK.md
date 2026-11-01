@@ -31,6 +31,30 @@ python3 scripts/check_rules_dry_run.py \
 
 이 스크립트는 identity 확인 뒤 `CreateRuleGroup`에 `DryRun=true`와 `--dry-run`을 함께 고정한다. 실제 Rule Group 생성 경로는 없다. 이것도 실제 Endpoint에서 처리한 패킷 검증으로 기록하지 않는다.
 
+## RAM Resource Association이 실패할 때
+
+`AssociateResourceShare`가 조직 내부 공유 또는 Organizations 온보딩 관련 `OperationNotPermittedException`을 반환하면 조직 관리 계정에서 RAM 사전 설정을 확인한다. 현재 기본값 `allow_external_principals=false`는 조직 내부 공유를 사용하며, 공유 대상 계정이 비어 있어도 TGW/Firewall Resource Association은 생성한다.
+
+1. 조직 관리 계정으로 AWS RAM Settings에 접속해 Enable sharing with AWS Organizations를 켜고 저장한다. CLI를 쓰는 관리자는 해당 관리 계정의 자격 증명으로 `aws ram enable-sharing-with-aws-organization`을 실행한다. 이 작업은 중앙 Terraform 밖에서 수행한다.
+2. `AWSServiceRoleForResourceAccessManager` 서비스 연결 역할과 활성화 반영 상태를 확인한다. Organizations 화면에서 trusted access만 활성화하면 이 역할이 생성되지 않을 수 있다. RAM 화면 또는 RAM CLI를 통해 활성화해야 한다.
+3. 중앙 프로필과 기존 backend/state로 새 `terraform plan`을 실행해 남은 Association 변경을 검토한 뒤 승인된 Apply를 재시도한다. 이미 생성된 리소스와 부분 Apply 결과를 기존 state에서 계속 관리한다.
+
+관리 계정의 활성화에는 `ram:EnableSharingWithAwsOrganization`, `iam:CreateServiceLinkedRole`, `organizations:EnableAWSServiceAccess`, `organizations:DescribeOrganization` 권한이 필요하다. 중앙 프로필의 조직 조회가 거부되면 미활성화와 온보딩 진행 중을 구분하지 못한 상태로 기록한다. [AWS RAM 조직 공유 사전 설정](https://docs.aws.amazon.com/ram/latest/userguide/getting-started-sharing.html)
+
+관리 계정의 RAM Settings에서 이미 활성화했는데도 같은 오류가 반복되면 다음을 관리 계정의 인증된 세션에서 읽기 전용으로 확인한다. `DELTA_CENTRAL_ACCOUNT_ID`는 중앙 계정 ID로 지정한다.
+
+```bash
+aws iam get-role --role-name AWSServiceRoleForResourceAccessManager \
+  --query 'Role.{Arn:Arn,Trust:AssumeRolePolicyDocument}'
+aws organizations list-aws-service-access-for-organization \
+  --query "EnabledServicePrincipals[?ServicePrincipal=='ram.amazonaws.com']"
+aws organizations describe-organization --query 'Organization.{Id:Id,FeatureSet:FeatureSet}'
+aws organizations describe-account --account-id "$DELTA_CENTRAL_ACCOUNT_ID" \
+  --query 'Account.{Id:Id,State:State}'
+```
+
+정상 조건은 RAM 역할이 존재하고 `ram.amazonaws.com`을 신뢰하며, 조직 trusted access 목록에 RAM이 있고, 조직 FeatureSet이 ALL이며 중앙 계정이 그 조직의 ACTIVE 멤버인 것이다. 인증 오류나 권한 거부로 조회하지 못한 항목은 미확인으로 기록한다. 중앙 사용자의 `DescribeOrganization` 거부만으로 RAM 서비스의 실패 원인이 SCP라고 단정하지 않는다. 모든 조건을 확인해도 재현되면 실패 시각/Region/두 RequestID와 활성화 결과를 근거로 AWS 측 온보딩 상태를 조사한다.
+
 ## 배포 후 제어 영역 확인
 
 아래 읽기 전용 명령은 실제 배포 및 상대 환경 준비 후 실행한다. 명령에 쓰는 값은 Terraform 출력과 연결 계약에서 받는다.

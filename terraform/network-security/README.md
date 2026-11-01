@@ -11,7 +11,7 @@
 1. 중앙 계정에서 사용할 SSO/Profile 또는 임시 자격 증명. 셸에서 `export AWS_PROFILE=sbh-delta-security`를 지정한다. Provider에는 Profile이나 인증 키를 하드코딩하지 않는다.
 2. 검증할 중앙 Account ID, 실제 Inspection VPC CIDR, 선택한 물리적 AZ IDs와 AZ별 TGW/Firewall Subnet CIDR.
 3. 원격 backend용 기존 S3 bucket과 key. 처음 준비하는 경우 아래 절차를 별도로 수행한다.
-4. 공유 시 실제 소비자 Account IDs. 기본적으로 같은 Organization의 계정만 허용하며 RAM의 Organizations 통합이 사전 활성화돼 있어야 한다. 이 코드는 Organizations 설정을 변경하지 않는다.
+4. 공유 시 실제 소비자 Account IDs. 기본적으로 같은 Organization의 계정만 허용하며 RAM의 Organizations 통합이 사전 활성화돼 있어야 한다. 조직 관리 계정의 AWS RAM Settings에서 Enable sharing with AWS Organizations를 켜거나 RAM의 `enable-sharing-with-aws-organization`을 실행한다. 이 코드는 Organizations 설정을 변경하지 않는다.
 5. 연결 단계에서 업무 계정의 Attachment 계약, 원격 Gateway/BGP 정보, 실제 허용할 서비스 목록.
 
 ```bash
@@ -22,6 +22,8 @@ aws ec2 describe-availability-zones --region ap-northeast-2 \
 ```
 
 계정별 AZ 이름은 물리적 위치를 보장하지 않는다. 중앙과 소비자는 반드시 AZ ID를 교환한다. 실제 Account ID는 `central_account_id`로 입력하며 Provider의 `allowed_account_ids`와 별도 identity precondition으로 검사한다. 실제값을 추정하거나 예시 CIDR로 AWS 리소스를 생성하지 않는다.
+
+RAM 조직 공유 활성화는 조직 관리 계정에서 수행하며 `AWSServiceRoleForResourceAccessManager` 서비스 연결 역할을 생성한다. Organizations 화면에서 trusted access만 켠 경우 이 역할이 생성되지 않을 수 있으므로 AWS RAM 화면이나 RAM CLI를 사용한다. 현재 구성은 공유 대상 입력이 비어 있어도 TGW/Firewall을 Share에 연결하므로 첫 중앙 Apply 전 이 사전 설정이 필요하다. 관련 오류의 확인 및 재시도는 [Runbook](RUNBOOK.md#ram-resource-association이-실패할-때)을 따른다. [AWS 활성화 절차](https://docs.aws.amazon.com/ram/latest/userguide/getting-started-sharing.html)
 
 ## 입력 속성
 
@@ -159,6 +161,8 @@ aws s3api put-public-access-block --bucket "$DELTA_STATE_BUCKET" \
 
 `us-east-1`에서 bucket을 생성할 때는 create-bucket의 LocationConstraint 인수를 생략한다. 기존 bucket이면 생성 명령을 반복하지 말고 버전 관리, 암호화, Public Access Block, 소유 계정과 접근 권한을 확인한다. bucket에 state와 lockfile을 관리할 최소 권한을 부여한다. lockfile에는 GetObject/PutObject/DeleteObject가 필요하지만 state 파일 자체의 DeleteObject는 필수가 아니다. DynamoDB locking은 추가하지 않는다.
 
+이미 실제 `terraform.tfvars`와 `backend.hcl`을 작성했다면 아래 예시 복사 단계는 건너뛴다.
+
 ```bash
 cd terraform/network-security
 cp terraform.tfvars.example terraform.tfvars
@@ -170,6 +174,8 @@ terraform validate
 umask 077
 terraform plan -input=false -out=central.tfplan
 ```
+
+`backend.hcl`은 자동으로 읽는 파일이 아니다. 현재 root의 `backend "s3" {}`는 부분 설정이므로 `terraform init -backend-config=backend.hcl`로 파일을 명시해야 한다. 파일을 지정하지 않고 `terraform init`만 실행하면 bucket 등 필수 값을 대화형으로 다시 요구한다. `terraform.tfvars`는 리소스 입력용이며 backend 설정을 대신하지 않는다. [HashiCorp 부분 backend 설정](https://developer.hashicorp.com/terraform/language/backend#partial-configuration)
 
 backend는 부분 설정이며 `encrypt=true`, `use_lockfile=true`, 기대하는 계정을 설정한다. 인증정보는 backend 파일에 넣지 않는다. 기존 backend나 state가 발견되면 이 절차로 자동 migrate하지 않는다. Plan 파일과 state에는 민감값이 포함될 수 있어 커밋하지 않는다. Apply는 검토한 Plan과 별도 실행 지시가 있을 때만 수행한다.
 
