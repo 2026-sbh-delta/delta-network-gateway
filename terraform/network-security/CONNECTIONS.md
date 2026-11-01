@@ -118,6 +118,16 @@ GCP의 사설 클라이언트가 Account B Backend의 사설 IP로 연결하는 
 
 ALB→Backend와 Account A→Account B도 출발/응답 VPC의 구체적인 원격 CIDR Route→TGW Spoke→Inspection→TGW Inspected→목적지 Attachment 순서다. 각 VPC의 반환 Route가 없으면 중앙 설정만으로 왕복 통신을 완성할 수 없다. AZ/터널 장애 시 기존 연결 보존이나 무손실 전환은 별도 검증 대상이다.
 
+## AWS 클라이언트에서 GCP 서버로 검증하기
+
+업무 VPC의 EC2를 클라이언트로 두고 GCP VM의 사설 IP에 연결한다. 두 클라우드의 주소 대역과 중앙 Inspection CIDR이 겹치지 않아야 한다. Cloud Router는 BGP 제어 평면이며 실제 패킷은 HA VPN 터널로 이동한다.
+
+요청 경로는 AWS 업무 Subnet RT→TGW VPC Attachment→Spoke RT→Inspection Attachment→Inspection TGW Subnet RT→같은 AZ의 Primary Endpoint→Firewall Subnet RT→TGW Inspected RT→BGP로 학습한 GCP CIDR의 VPN Attachment→GCP HA VPN→서버다. 응답은 GCP의 AWS 업무 CIDR 경로→VPN Attachment의 Spoke RT→같은 중앙 검사 단계→Inspected RT의 AWS 업무 Attachment로 돌아와야 한다.
+
+구성 순서는 AWS 업무 계정/VPC와 GCP 프로젝트/리전/서버 Subnet 선택, GCP HA VPN Gateway 및 Cloud Router 준비, 두 Gateway IP와 ASN으로 AWS VPN 구성, AWS 터널 공인 IP 4개와 각 터널 PSK/Inside CIDR의 GCP 대응, BGP 광고/학습과 중앙 Route/허용 정책 등록, 실제 통신/로그 검증이다. GCP 리소스는 현재 중앙 root에서 생성하지 않는다.
+
+최초 대조군은 TCP 8080 허용과 8081 미허용을 예로 사용할 수 있다. 서버는 양쪽 포트를 수신하고 AWS SG와 GCP 방화벽은 테스트에 필요한 방향/포트를 허용해야 한다. 허용 연결의 실제 응답/FLOW와 미허용 연결의 SID 9000000 및 차단 처리 결과를 대조한다. 필요하면 허용 포트에 테스트 HTTP 서명을 추가해 경보와 차단의 차이도 확인한다. 실제 포트와 IP는 테스트 환경 준비 후 확정한다.
+
 ## GCP HA VPN과 온프레미스
 
 GCP HA VPN은 interface 0과 1의 공인 IP, 같은 Cloud Router ASN을 중앙에 전달한다. 중앙은 Customer Gateway 2개와 각각 2터널을 갖는 AWS VPN 2개를 생성한다. GCP에는 AWS outside IP 4개를 `FOUR_IPS_REDUNDANCY` 외부 Gateway로 등록하고 interface 0에 AWS 첫 연결의 두 터널, interface 1에 둘째 연결의 두 터널을 구성한다.
