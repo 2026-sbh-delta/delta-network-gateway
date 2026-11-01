@@ -37,7 +37,7 @@
 
 ## Operation
 
-에이전트의 배포는 별도 지시 대상이다. 사용자의 초기 Apply는 RAM Resource Association 두 개에서 실패했으나 후속 Apply가 2 added, 0 changed, 0 destroyed로 완료됐다. 2026-11-01 15:27~15:28 KST 읽기 전용 조회에서 두 Association ASSOCIATED, 두 Share ACTIVE/조직 외 공유 비활성, Firewall/두 AZ Endpoint READY, Firewall IN_SYNC, TGW와 Inspection Attachment available 및 appliance mode enable을 확인했다. FLOW/ALERT 목적지는 CloudWatch Logs로 설정돼 있다. 중앙 단독 기반 배포 완료이며 업무/VPN 연결 입력은 비어 있다. 로그와 state는 기본 보존한다. 실제 로그 유입, Tunnel/BGP, 패킷 처리 및 장애 전환은 미검증이다.
+에이전트의 배포는 별도 지시 대상이다. 사용자의 초기 Apply는 RAM Resource Association 두 개에서 실패했으나 후속 Apply가 2 added, 0 changed, 0 destroyed로 완료됐다. 2026-11-01 15:27~15:28 KST 읽기 전용 조회에서 두 Association ASSOCIATED, 두 Share ACTIVE/조직 외 공유 비활성, Firewall/두 AZ Endpoint READY, Firewall IN_SYNC, TGW와 Inspection Attachment available 및 appliance mode enable을 확인했다. FLOW/ALERT 목적지는 CloudWatch Logs로 설정돼 있다. 이 시점의 중앙 단독 기반 배포는 완료됐고 당시 업무/VPN 연결 입력은 비어 있었다. 후속 AWS Workload 연결은 아래 별도 기록을 따른다. 로그와 state는 기본 보존한다. 실제 로그 유입, Tunnel/BGP, 패킷 처리 및 장애 전환은 미검증이다.
 
 ## 후속 멀티클라우드 검증 제안
 
@@ -47,6 +47,7 @@
 - 새 AWS 클라이언트와 GCP 리소스 생성은 이번 중앙 기반 구현 범위에 포함하지 않았으며 이 후속 제안에서도 아직 실행하지 않았다. 업무 계정/GCP 프로젝트/리전, 기존 VPC 및 VM, 비중복 주소 대역, Gateway IP/ASN은 미확정이다.
 - 수용 기준 후보: Tunnel/BGP 정상과 양방향 경로 확인, 허용 포트 성공 및 FLOW 로그, 미허용 포트의 통신 실패와 SID 9000000 차단 결과, 별도 테스트 서명 경보. SG/GCP 방화벽과 서버 리스너는 대조군 트래픽을 수용하도록 준비해 ANF 차단과 구분한다.
 - 현재는 연결 방식 제안이며 추가 리소스 구현/Plan/Apply 또는 통신 검증 완료를 뜻하지 않는다.
+- 후속 상태: 2026-11-01 사용자가 AWS Workload부터 준비하도록 지시한 뒤 `이렇게 만들고, public 노출없이 해`로 Inception/U1~U3를 승인했다. 업무 계정 `616723161368`의 별도 root/state에 사설 클라이언트를 실제 생성하고 EIC 사설 SSH를 확인했다. 중앙은 Client 역할과 공유 principal, 수락/검사/반환 경로 및 HOME_NET 등록을 적용 완료했다. 최신 중앙 회귀 mock Plan 33개 통과, 양쪽 최종 실계정 Plan No changes, 실제 Firewall/두 Endpoint READY/IN_SYNC와 Attachment/Route 정상 확인. 상세 상태와 실제 명령은 별도 [AWS Workload AI-DLC](aws-workload-client.md)를 따른다. GCP/VPN/실제 ANF 통신은 미실행이다.
 
 ## 중앙 실행 입력 확정
 
@@ -125,6 +126,8 @@ RAM 오류 진단과 당시 실제 리소스 상태는 `.validation/ram-sharing-
 
 실제 tfvars/backend 설정, state/Plan, `.validation`, `.terraform`는 포함하지 않는다. 에이전트의 초기 푸시 요청은 자동 승인 검토에서 실행 전 차단됐다. 이후 원격 main의 기존 `a1d32ec` 반영을 확인했고 사용자의 후속 지시에 따라 같은 origin/main에 문서 커밋 두 개를 정상 푸시했다. 2026-11-01 15:53~15:54 KST 읽기 전용 원격 조회에서 검증 체크포인트 `9252a76` 일치를 확인했다. 이 문서 갱신은 해당 완료 결과를 기록한다. 차단된 푸시를 다른 경로로 전송하지 않았다.
 
+2026-11-01 후속 AWS Workload 작업의 분할 커밋/푸시 기록은 [Workload 버전 관리](aws-workload-client.md#버전-관리)를 따른다. 중앙 Client 계약 변경은 `6a20961`로 분리했다.
+
 ## 정적 Review 결과
 
 - 중앙 단독 mock Plan에서 TGW 1개, Firewall 1개, VPC 1개, Subnet 4개, Subnet RT/명시적 Association 각 4개를 확인했다. NAT/IGW/Public ALB/GWLB 및 기본 인터넷 Route를 선언하지 않았다.
@@ -137,8 +140,8 @@ RAM 오류 진단과 당시 실제 리소스 상태는 `.validation/ram-sharing-
 ## 실행 준비 및 미실행 상태
 
 - 실제 `terraform.tfvars`는 작성하고 입력 검사를 완료했다. 사용자 수정 backend 설정의 계정 ID도 실행 계정과 일치한다.
-- 에이전트는 실제 S3 backend init 및 실계정 Plan/Apply를 실행하지 않았다. 사용자 제공 마지막 Plan/Apply 성공 로그와 초기화 backend 메타데이터, 실제 AWS 리소스 상태로 중앙 단독 기반 배포 완료를 확인했다.
-- 공유 계정, 업무 VPC Attachment, VPN Gateway/ASN/Inside CIDR, 실제 허용 목록은 아직 연결되지 않았다. 기본 입력은 빈 상태다.
+- 중앙 초기 기반은 사용자 Apply와 초기화 메타데이터/실제 AWS 조회로 확인했다. 후속 Workload 승인에서 에이전트가 별도 S3 backend init, Workload 실제 Plan/Apply 및 중앙 공유/연결 Plan/Apply를 실행했다. 해당 후속 기록은 AWS Workload AI-DLC에 구분해 보관한다.
+- 업무 계정 `616723161368`과 `aws_client` Attachment 계약은 후속 승인으로 등록했다. VPN Gateway/ASN/Inside CIDR 및 실제 허용 목록은 비어 있다.
 - AWS DryRun은 SCP 수정 후 두 규칙 집합 모두 통과했다. 이는 AWS 규칙 요청 검증 결과이며, 전체 배포 권한 또는 실제 Suricata 패킷 처리의 증거로 취급하지 않는다. 이 작업에서 Organizations/SCP는 변경하지 않았다.
 - 초기 구현 4개와 후속 문서 커밋 `f7b6244`, `9252a76`의 원격 반영을 확인했다. 이 기록은 원격 조회로 확인한 검증 체크포인트 `9252a76`을 기준으로 한다.
-- 사용자 Apply로 중앙 단독 기반과 RAM Resource Association 두 개가 완료됐다. 실제 상태는 읽기 전용으로 확인했다. 에이전트의 Apply/Destroy 및 실제 통신 검증은 수행하지 않았다.
+- 사용자 Apply로 초기 중앙 단독 기반과 RAM Resource Association 두 개가 완료됐다. 후속 Workload 및 중앙 연결은 에이전트가 승인된 Plan으로 적용하며 별도 문서에 기록한다. Destroy 및 실제 멀티클라우드 통신 검증은 수행하지 않았다.
