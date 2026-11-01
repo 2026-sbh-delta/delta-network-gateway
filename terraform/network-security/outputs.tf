@@ -1,0 +1,116 @@
+output "central_account_id" {
+  description = "Verified central AWS account ID."
+  value       = data.aws_caller_identity.current.account_id
+}
+
+output "region" {
+  description = "Region of the central deployment."
+  value       = var.region
+}
+
+output "az_ids" {
+  description = "Physical AZ IDs available to primary and cross-account secondary endpoints."
+  value       = sort(keys(var.inspection_azs))
+}
+
+output "tgw_id" {
+  description = "Shared central Transit Gateway ID."
+  value       = aws_ec2_transit_gateway.central.id
+}
+
+output "tgw_arn" {
+  description = "Shared central Transit Gateway ARN."
+  value       = aws_ec2_transit_gateway.central.arn
+}
+
+output "spoke_route_table_id" {
+  description = "Before-inspection TGW route table for workload VPC and VPN attachment associations."
+  value       = aws_ec2_transit_gateway_route_table.spoke.id
+}
+
+output "inspected_route_table_id" {
+  description = "After-inspection TGW route table; only the Inspection VPC is associated."
+  value       = aws_ec2_transit_gateway_route_table.inspected.id
+}
+
+output "inspection_attachment_id" {
+  description = "Appliance-mode Inspection VPC attachment."
+  value       = aws_ec2_transit_gateway_vpc_attachment.inspection.id
+}
+
+output "firewall_arn" {
+  description = "Firewall ARN shared through RAM, not merely the policy ARN."
+  value       = aws_networkfirewall_firewall.central.arn
+}
+
+output "primary_endpoint_ids_by_az_id" {
+  description = "Inspection VPC primary endpoint IDs by physical AZ ID; never use these as consumer VPC route targets."
+  value       = local.primary_endpoint_ids
+  precondition {
+    condition     = alltrue([for endpoint_id in values(local.primary_endpoint_ids) : endpoint_id != null]) && length(distinct(values(local.primary_endpoint_ids))) == length(var.inspection_azs)
+    error_message = "Each configured physical AZ requires exactly one primary Firewall endpoint."
+  }
+}
+
+output "tgw_ram_share_arn" {
+  description = "TGW RAM resource share ARN."
+  value       = aws_ram_resource_share.central["tgw"].arn
+}
+
+output "firewall_ram_share_arn" {
+  description = "Firewall RAM resource share ARN."
+  value       = aws_ram_resource_share.central["firewall"].arn
+}
+
+output "log_groups" {
+  description = "Central FLOW/ALERT CloudWatch Logs group names."
+  value       = { for type, group in aws_cloudwatch_log_group.firewall : type => group.name }
+}
+
+output "inspection_route_table_ids" {
+  description = "Inspection VPC subnet route tables by physical AZ ID for route auditing."
+  value = { for az_id in keys(var.inspection_azs) : az_id => {
+    tgw      = aws_route_table.tgw[az_id].id
+    firewall = aws_route_table.firewall[az_id].id
+  } }
+}
+
+output "vpn_handoff" {
+  description = "Nonsecret remote configuration contract. Excludes PSKs and customer_gateway_configuration."
+  value = { for key, vpn in aws_vpn_connection.peer : key => {
+    network_key            = var.vpn_peers[key].network_key
+    remote_cidrs           = sort(tolist(var.vpn_networks[var.vpn_peers[key].network_key].cidrs))
+    aws_cidrs_to_advertise = sort(flatten([for spoke in values(var.spoke_attachments) : tolist(spoke.vpc_cidrs)]))
+    gcp_interface          = var.vpn_peers[key].gcp_interface
+    customer_gateway_id    = aws_customer_gateway.peer[key].id
+    vpn_connection_id      = vpn.id
+    attachment_id          = vpn.transit_gateway_attachment_id
+    customer_gateway_ip    = var.vpn_peers[key].public_ip
+    customer_bgp_asn       = var.vpn_peers[key].bgp_asn
+    ike_version            = "ikev2"
+    encryption             = "AES256"
+    integrity              = "SHA2-256"
+    dh_group               = 14
+    tunnels = {
+      tunnel1 = {
+        outside_ip     = vpn.tunnel1_address
+        aws_inside_ip  = vpn.tunnel1_vgw_inside_address
+        peer_inside_ip = vpn.tunnel1_cgw_inside_address
+        aws_bgp_asn    = vpn.tunnel1_bgp_asn
+        inside_cidr    = var.vpn_peers[key].tunnel1_inside_cidr
+      }
+      tunnel2 = {
+        outside_ip     = vpn.tunnel2_address
+        aws_inside_ip  = vpn.tunnel2_vgw_inside_address
+        peer_inside_ip = vpn.tunnel2_cgw_inside_address
+        aws_bgp_asn    = vpn.tunnel2_bgp_asn
+        inside_cidr    = var.vpn_peers[key].tunnel2_inside_cidr
+      }
+    }
+  } }
+}
+
+output "cidr_service_map" {
+  description = "Metadata contract for later CSP/service_id enrichment; not raw Firewall log fields."
+  value       = var.cidr_service_map
+}

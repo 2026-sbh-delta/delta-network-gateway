@@ -1,0 +1,7 @@
+# Replace placeholders locally in ignored backend.hcl. No credentials here.
+bucket               = "REPLACE_WITH_EXISTING_STATE_BUCKET"
+key                  = "delta/lab/network-security/terraform.tfstate"
+region               = "ap-northeast-2"
+encrypt              = true
+use_lockfile         = true
+allowed_account_ids  = ["REPLACE_WITH_CENTRAL_ACCOUNT_ID"]

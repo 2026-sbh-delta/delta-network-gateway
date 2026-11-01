@@ -1,0 +1,72 @@
+# Illustrative values ONLY. Copy to ignored terraform.tfvars and replace them.
+# Use AWS_PROFILE=sbh-delta-security in the shell, not a hardcoded provider profile.
+central_account_id  = "111122223333"
+inspection_vpc_cidr = "10.250.0.0/24"
+inspection_azs = {
+  apne2-az1 = {
+    tgw_subnet_cidr      = "10.250.0.0/28"
+    firewall_subnet_cidr = "10.250.0.16/28"
+  }
+  apne2-az2 = {
+    tgw_subnet_cidr      = "10.250.0.32/28"
+    firewall_subnet_cidr = "10.250.0.48/28"
+  }
+}
+
+shared_account_ids = []
+spoke_attachments = {}
+vpn_networks      = {}
+vpn_peers         = {}
+allowed_flows    = {}
+
+# Optional onboarding examples. Do NOT uncomment unverified attachment IDs/IPs.
+# shared_account_ids = ["444455556666"]
+# spoke_attachments = {
+#   b_backend = {
+#     account_id      = "444455556666"
+#     role            = "Backend"
+#     vpc_cidrs       = ["10.20.0.0/16"]
+#     attachment_id   = "tgw-attach-0123456789abcdef0"
+#     acceptance_mode = "accept" # Keep this mode after acceptance.
+#     reported_state  = "pendingAcceptance"
+#     az_ids          = ["apne2-az1", "apne2-az2"]
+#   }
+# }
+# vpn_networks = { gcp = { cidrs = ["10.30.0.0/16"], kind = "gcp" } }
+# vpn_peers = {
+#   gcp_if0 = {
+#     network_key = "gcp", public_ip = "203.0.113.10", bgp_asn = 65001
+#     tunnel1_inside_cidr = "169.254.10.0/30", tunnel2_inside_cidr = "169.254.10.4/30"
+#     gcp_interface = 0
+#   }
+#   gcp_if1 = {
+#     network_key = "gcp", public_ip = "203.0.113.11", bgp_asn = 65001
+#     tunnel1_inside_cidr = "169.254.10.8/30", tunnel2_inside_cidr = "169.254.10.12/30"
+#     gcp_interface = 1
+#   }
+# }
+# TEST-NET public_ip values above deliberately FAIL public-IP validation.
+# Replace with actual HA VPN gateway public IPs before creating VPN resources.
+# allowed_flows = {
+#   gcp_to_backend = {
+#     source_cidrs = ["10.30.0.0/16"], destination_cidrs = ["10.20.0.0/16"]
+#     protocol = "tcp", destination_ports = [443], sid = 1000001
+#   }
+#   alb_health = {
+#     source_cidrs = ["10.10.0.0/16"], destination_cidrs = ["10.20.0.0/16"]
+#     protocol = "tcp", destination_ports = [8080], sid = 1000002
+#   }
+#   ping = {
+#     source_cidrs = ["10.30.0.0/16"], destination_cidrs = ["10.20.0.0/16"]
+#     protocol = "icmp", icmp_type = 8, sid = 1000003
+#   }
+# }
+# suricata_rules = {
+#   test_signature = {
+#     sid = 2000001
+#     rule = "alert http $HOME_NET any -> $EXTERNAL_NET any (msg:\"Delta test marker\"; flow:established,to_server; http.uri; content:\"/delta-test-marker\"; sid:2000001; rev:1;)"
+#   }
+# }
+# cidr_service_map = {
+#   backend = { cidr = "10.20.0.0/16", csp = "aws", service_id = "b-backend" }
+# }
