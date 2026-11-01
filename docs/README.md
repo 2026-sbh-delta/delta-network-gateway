@@ -2,7 +2,8 @@
 
 ## 현재 상태
 
-- 기준일: 2026-11-01 (Asia/Seoul)
+- 기준일: 2026-11-02 (Asia/Seoul)
+- Jenkins 배포·AI 판단: `deploy/jenkins-local/`에서 카나리 승격·자동 롤백·사람 확인을 로컬 시나리오로 확인했다. 2026-11-02 delta-ai `.venv/bin/pytest -q` 117개, 파이프라인 스크립트 24개 통과. 커밋·푸시·AWS 배포 안 함, 팀 합의 전. 기록은 [AI-DLC 문서](ai-dlc/jenkins-local.md).
 - AI 판단 서비스: `services/delta-ai/`에 `2026-sbh-delta/delta-ai` `007d1c6`을 subtree로 추가했다. 2026-11-01 `.venv/bin/pytest -q` 98개 통과, `scripts/demo.py fake` 실행 완료. Terraform 변경은 없고, Dockerfile/배포/다른 서비스와의 실제 연동은 미구현이다. [실행 안내](../services/delta-ai/README.md)를 따른다.
 - CloudFront ANF 웹: 사용자 지시로 private S3/OAC의 두 버튼 페이지와 Client VPC internal ALB/ALB VPC Origin을 배포했다. URL은 https://d228fpdue5s0by.cloudfront.net/ 이다. API는 ALB→TGW→중앙 ANF→기존 사설 Server로 연결한다. 웹200/허용8080 HTTP200/차단8081 HTTP504와 SID9000000 blocked/drop, 허용 마커 SID2000001 및 양방향 FLOW를 실제 대조했다. 새 경로 mock21개/중앙 회귀35개 통과. 직접 Origin/Server IGW/임시 ingress 정리와 검증 JSON 게시, 네 root No changes까지 확인했다. 브라우저 차단 버튼 완료 화면 재확인은 도구 오류로 미검증이며 사용자 지시로 이번 변경을 분할 커밋하고 origin/main 게시 성공을 확인했다. [승인/실제 결과](ai-dlc/cloudfront-anf-demo.md)를 따른다.
 - CloudFront Git/푸시: 구현 `5c807f58`, 회귀 검증 `1801463e`, 운영 문서 `12587b42`로 분할 서명 커밋했다. 2026-11-01 21:00 KST `git push origin main` 성공과 `git ls-remote --heads origin main`의 `12587b42600ba05fe3aa6564e427cd52edd4f6c6` 일치를 확인했다. 당시 작업 트리는 깨끗했으며 이번 문서 갱신은 해당 게시 결과를 기록한다. 실제 입력/backend/state/Plan/원본 증거는 제외했다.
@@ -26,6 +27,7 @@
 
 ## 문서
 
+- [Jenkins 배포와 AI 판단 로컬 검증](ai-dlc/jenkins-local.md)
 - [CloudFront 웹의 중앙 ANF 허용/차단 시험](ai-dlc/cloudfront-anf-demo.md)
 - [CloudFront 직접 EC2 VPC Origin](ai-dlc/cloudfront-server.md)
 - [CloudFront 실행 및 전체 입력/출력](../terraform/cloudfront-server/README.md)
