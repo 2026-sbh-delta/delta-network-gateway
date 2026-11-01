@@ -926,3 +926,46 @@ run "client_spoke" {
     error_message = "Client spokes must receive central acceptance, return routing and inspection without a bypass."
   }
 }
+
+run "internal_alb_two_port_demo" {
+  command = plan
+  variables {
+    shared_account_ids = ["444455556666"]
+    spoke_attachments = {
+      aws_client = {
+        account_id    = "444455556666", role = "Client", vpc_cidrs = ["10.10.0.0/16"]
+        attachment_id = "tgw-attach-00000000000000011", acceptance_mode = "accept", reported_state = "available"
+        az_ids        = ["apne2-az1", "apne2-az2"]
+      }
+      aws_server = {
+        account_id    = "444455556666", role = "Backend", vpc_cidrs = ["10.20.0.0/16"]
+        attachment_id = "tgw-attach-00000000000000012", acceptance_mode = "accept", reported_state = "pendingAcceptance"
+        az_ids        = ["apne2-az1", "apne2-az2"]
+      }
+    }
+    allowed_flows = {
+      aws_client_to_server = {
+        source_cidrs = ["10.10.4.0/24", "10.10.5.0/24"], destination_cidrs = ["10.20.1.10/32"]
+        protocol     = "tcp", destination_ports = [8080], sid = 1000002
+      }
+    }
+    suricata_rules = {
+      http_test_marker = {
+        sid  = 2000001
+        rule = "alert http $HOME_NET any -> $EXTERNAL_NET any (msg:\"Delta HTTP test marker\"; flow:established,to_server; http.uri; content:\"/delta-test-marker\"; sid:2000001; rev:1;)"
+      }
+    }
+  }
+  assert {
+    condition     = length(aws_ec2_transit_gateway_route.before_inspection) == 2 && alltrue([for route in aws_ec2_transit_gateway_route.before_inspection : route.transit_gateway_attachment_id == aws_ec2_transit_gateway_vpc_attachment.inspection.id]) && length(aws_ec2_transit_gateway_route.to_spoke) == 2 && length(aws_route.to_firewall) == 4 && length(aws_route.to_tgw) == 4 && length(aws_vpn_connection.peer) == 0
+    error_message = "Both same-account VPCs must traverse inspection with explicit return routes and no VPN."
+  }
+  assert {
+    condition     = alltrue([for association in aws_ec2_transit_gateway_route_table_association.spoke : association.transit_gateway_route_table_id == aws_ec2_transit_gateway_route_table.spoke.id]) && length(aws_ec2_transit_gateway_route_table_association.spoke) == 2 && length(aws_ec2_transit_gateway_route_table_propagation.vpn) == 0
+    error_message = "Both source VPCs must associate with Spoke without direct propagation."
+  }
+  assert {
+    condition     = contains(local.home_net, "10.10.0.0/16") && contains(local.home_net, "10.20.0.0/16") && strcontains(local.rules_string, "[10.20.1.10/32] [8080]") && !strcontains(local.rules_string, "8081") && strcontains(local.rules_string, "sid:2000001;") && endswith(local.rules_string, "sid:9000000; rev:1;)")
+    error_message = "Allow only the 8080 control, keep the observation alert and final deny, and inspect both VPC CIDRs."
+  }
+}
