@@ -8,6 +8,7 @@ AWS Network / Security 계정의 Inspection VPC, Transit Gateway, 공유 Network
 - [검증, 장애 대응, 해체 Runbook](terraform/network-security/RUNBOOK.md)
 - [프로젝트 상태와 AI-DLC](docs/README.md)
 - [AI 판단 서비스](services/delta-ai/README.md)
+- [AI DAST 점검 서비스](services/delta-dast/README.md)
 
 중앙 실행 프로필은 `AWS_PROFILE=sbh-delta-security`, Workload는 `AWS_PROFILE=sbh-delta-workload`다. 실제 계정과 CIDR/AZ는 필수 입력으로 검증한다. Workload는 별도 root/state의 사설 EC2와 VPC를 사용하며 공인 IP나 인터넷 출구를 생성하지 않는다.
 
