@@ -7,10 +7,12 @@
 
 | 구분 | 내용 |
 |---|---|
-| 동작함 | 판단 API 3종, 규칙 후보 승인 API, 환경 차이 규칙 7개, SARIF 보안 판단, 서버 재생성 패치 |
-| 검증함 | 테스트 98개 통과(2026-11-01), 실제 Claude 평가 13건 통과와 패치 `git apply`·Semgrep 재검사(2026-10-31) |
-| 아직 없음 | 샌드박스 적용 주체, 스캐너 실행, 컨테이너 이미지, 진행 그래프 화면, 공유 레포 연동 |
-| 예시로만 있음 | 인벤토리, 공격 결과, 보고서 입력. 손으로 쓴 값이고 팀 실제 형식이 아니다. Semgrep SARIF만 실제 실행 결과다 |
+| 동작함 | 판단 API 2종, 규칙 후보 승인 API, 환경 차이 규칙 7개 |
+| 검증함 | 테스트 66개 통과(2026-11-02, 코드 보안 경로 제거 후) |
+| 아직 없음 | 샌드박스 적용 주체, 컨테이너 이미지, 진행 그래프 화면, 승인 규칙을 적용할 코드 검사 |
+| 예시로만 있음 | 인벤토리, 공격 결과, 보고서 입력. 손으로 쓴 값이고 팀 실제 형식이 아니다 |
+
+코드 보안 판단(`code_security`, SARIF 입력, 코드 패치)은 2026-11-02에 뺐다. SAST는 별도 서비스가 SARIF와 코드 흐름으로 다시 설계한다.
 
 ## 1. 전체 구조
 
@@ -18,7 +20,7 @@
 
 ```mermaid
 flowchart LR
-  inputs["입력 제공<br/>담당 미정<br/><br/>인벤토리<br/>공격 결과<br/>SARIF<br/>보고서"]:::planned
+  inputs["입력 제공<br/>담당 미정<br/><br/>인벤토리<br/>공격 결과<br/>보고서"]:::planned
   agent["점검 에이전트 · 플랫폼<br/>호출과 적용 담당"]:::planned
   sandbox["샌드박스<br/>패치 적용 · 재시험"]:::planned
   ui["진행 그래프<br/>대시보드"]:::planned
@@ -34,7 +36,7 @@ flowchart LR
     core --> docs
     core --> store
   end
-  llm["Claude API<br/><br/>받음: 마스킹한 입력<br/>줌: 설명 · 분류 · 패치"]:::ext
+  llm["Claude API<br/><br/>받음: 마스킹한 입력<br/>줌: 설명 · 탐지기"]:::ext
 
   inputs --> agent
   agent <-- "요청 / 판정 · 수정안" --> delta
@@ -63,16 +65,14 @@ flowchart TB
     direction TB
     parity["parity.py<br/>환경 차이 규칙 7개"]:::built
     waf["waf_mapping.py<br/>AWS WAF → Cloud Armor"]:::built
-    security["security.py<br/>SARIF 변환 · 승인 규칙"]:::built
     feedback["feedback.py<br/>보고서 → 규칙 후보"]:::built
     parity --> waf
-    waf ~~~ security
-    security ~~~ feedback
+    waf ~~~ feedback
   end
   subgraph ai["② 근거와 LLM"]
     direction TB
     knowledge["knowledge.py<br/>규칙 ID로 근거 조회"]:::built
-    judge["judge.py<br/>출력 검증 · 패치 재생성"]:::built
+    judge["judge.py<br/>출력 검증"]:::built
     secrets["secrets_pattern.py<br/>비밀 값 마스킹"]:::built
     llm["llm.py<br/>Claude · 가짜 LLM"]:::ext
     knowledge ~~~ judge
@@ -100,7 +100,7 @@ flowchart TB
 
 ## 3. 판단 한 번의 처리 순서
 
-세 `kind`가 같은 순서를 따른다. LLM은 판정을 정하지 않으며, 출력이 틀리면 전체를 버린다.
+두 `kind`가 같은 순서를 따른다. LLM은 판정을 정하지 않으며, 출력이 틀리면 전체를 버린다.
 
 ```mermaid
 flowchart TD
@@ -113,7 +113,7 @@ flowchart TD
   llmcall -- "키 없음 · 거절" --> fb["근거 문서 문장으로 대체"]:::warn
   llmcall -- "응답 받음" --> check{"출력 검증"}
   check -- "없는 근거 · 형식 오류" --> invalid["출력 폐기<br/>LLM_OUTPUT_INVALID"]:::warn
-  check -- "통과" --> apply["설명 · 분류 반영<br/>패치를 원본 기준으로 재생성"]:::built
+  check -- "통과" --> apply["설명 · 인용 반영"]:::built
   fb --> decide["코드가 최종 판정"]:::ok
   invalid --> decide
   apply --> decide
@@ -128,11 +128,11 @@ flowchart TD
   classDef bad fill:#FBE1DF,stroke:#BF3B36,stroke-width:2px,color:#6C1E1A
 ```
 
-키가 없거나 모델이 거절하면 `kind`별로 결과가 다르다. `migration_parity`는 규칙만으로 판정을 계속하고, `code_security`는 분류와 패치를 할 수 없어 `LLM_UNAVAILABLE`로 사람에게 넘긴다.
+키가 없거나 모델이 거절하면 규칙만으로 판정을 계속한다. 설명은 근거 문서 문장으로 대신한다.
 
 ## 4. 판정 규칙
 
-`verdict.py`의 `decide()`가 정한다. `severity: low`와 오탐 처리된 항목은 막지 않는다. 오탐 의견이 `high`를 없애지도 못한다.
+`verdict.py`의 `decide()`가 정한다. `severity: low` 항목은 막지 않는다.
 
 ```mermaid
 flowchart LR
@@ -159,20 +159,10 @@ flowchart LR
 
 ## 5. 시연 워크플로(제안)
 
-10/31 회의의 "정적 검사 후 AI 수정"과 "이전 후 WAF 비교"를 한 흐름으로 묶었다. 각 단계의 담당은 미정이다. 예시 데이터로 판단 부분만 확인했고, 샌드박스·이전·공격 시험과 이어서 돌린 적은 없다.
+10/31 회의의 "이전 후 WAF 비교"와 피드백 수집을 한 흐름으로 묶었다. 정적 검사 단계는 SAST 서비스로 옮겼다. 각 단계의 담당은 미정이다. 예시 데이터로 판단 부분만 확인했고, 샌드박스·이전·공격 시험과 이어서 돌린 적은 없다.
 
 ```mermaid
 flowchart LR
-  subgraph p1["1단계 · 코드 보안"]
-    direction TB
-    a["① 데모 앱 정적 검사"]:::planned --> b["② code_security 판단"]:::built
-    b --> c{"판정"}
-    c -- "fix" --> d["③ 샌드박스 패치 후 재검사"]:::planned
-    d --> b
-    c -- "needs_human" --> h["사람 확인"]:::planned
-    c -- "pass" --> o1["코드 통과"]:::ok
-    h --> o1
-  end
   subgraph p2["2단계 · 이전 검증"]
     direction TB
     e["④ 대상 환경 구성·공격 시험"]:::planned --> f["⑤ migration_parity 판단"]:::built
@@ -187,9 +177,8 @@ flowchart LR
     direction TB
     k["⑧ 긴 리뷰·모의해킹 보고서"]:::planned --> l["⑨ feedback_ingest 판단"]:::built
     l --> m["⑩ 규칙 후보 사람 승인"]:::built
-    m --> n["다음 코드 검사부터 적용"]:::ok
+    m --> n["활성 규칙<br/>적용 지점은 SAST 쪽에서 정함"]:::planned
   end
-  p1 --> p2
   p2 --> p3
 
   classDef built fill:#E3EEFA,stroke:#2F6DB5,stroke-width:1.5px,color:#14304F
@@ -204,30 +193,6 @@ flowchart LR
 재시도 횟수와 `needs_human` 뒤의 진행 방식은 정하지 않았다. 이 그래프는 발표용 진행 화면의 뼈대로 쓸 수 있다([ADR-AI-24](adr/ADR-AI-24-progress-graph.md)).
 
 ## 6. 호출별 주고받기
-
-### 코드 보안 `code_security`
-
-```mermaid
-sequenceDiagram
-  autonumber
-  participant S as Semgrep
-  participant A as 점검 에이전트
-  participant D as delta-ai
-  participant L as Claude API
-  participant B as 샌드박스
-  A->>S: 데모 앱 스캔
-  S-->>A: SARIF
-  A->>D: sarif + code_files
-  Note over D: finding 변환, 승인 규칙 적용
-  D->>L: finding + 근거 + 코드 (마스킹)
-  L-->>D: 분류 + 설명 + 패치
-  Note over D: 패치를 원본 기준으로 재생성
-  D-->>A: verdict=fix, code_diffs
-  A->>B: git apply 후 재스캔
-  B-->>A: 새 SARIF
-  A->>D: 새 sarif + 수정된 code_files
-  D-->>A: verdict=pass
-```
 
 ### 환경 차이 `migration_parity`
 
@@ -269,8 +234,6 @@ sequenceDiagram
   D-->>A: verdict=needs_human, rule_candidates
   H->>D: POST /v1/rule-candidates/{id}/decision
   D-->>H: status=approved
-  A->>D: 다음 code_security
-  D-->>A: 승인 규칙이 잡은 finding 포함
 ```
 
 회귀 시험을 통과하지 못한 후보를 승인하면 409로 막는다. 현재는 호출자와 승인자가 같은 토큰을 쓴다([ADR-AI-20](adr/ADR-AI-20-service-auth.md)).
@@ -285,7 +248,6 @@ sequenceDiagram
 |---|---|---|---|
 | `migration_parity` | `source_env`, `target_env` | 출발·대상 환경의 WAF, 권한, 시크릿, 로그, TLS, 네트워크 | 미정 |
 | | `evidence.attack_results` | 필수는 아니다. 없으면 차단 여부를 모르는 것으로 판정한다 | 미정 |
-| `code_security` | `evidence.sarif` 또는 `evidence.code_files` | Semgrep 결과와 원본 코드. 패치를 받으려면 원본 코드가 필요하다 | 미정 |
 | `feedback_ingest` | `evidence.report` | 항목별 CWE, 위치, 설명, 취약·안전 예시 | 미정 |
 
 ### 요청 예시
@@ -349,11 +311,10 @@ sequenceDiagram
     "waf_rules": [
       { "priority": 1020, "action": "deny(403)", "capability": "sqli",
         "expression": "evaluatePreconfiguredWaf('sqli-v422-stable', {'sensitivity': 1})" }
-    ],
-    "code_diffs": []
+    ]
   },
   "rule_candidates": [],
-  "meta": { "llm_used": true, "model": "fake-llm", "prompt_version": "delta-judge-v3", "duration_ms": 5 }
+  "meta": { "llm_used": true, "model": "fake-llm", "prompt_version": "delta-judge-v4", "duration_ms": 5 }
 }
 ```
 
@@ -366,26 +327,8 @@ sequenceDiagram
 | `checks` | 대시보드 신호등. `green`·`red`·`unknown` |
 | `remediation.spec_ops` | `target_env` 기준 JSON Patch. 호출자가 실제 설정으로 번역한다 |
 | `remediation.waf_rules` | Cloud Armor 규칙. 지금은 AWS → GCP 방향만 만든다 |
-| `remediation.code_diffs` | `git apply`로 적용하는 diff |
 | `rule_candidates` | 승인 대기 규칙과 회귀 시험 결과 |
 | `meta` | LLM 사용 여부, 모델, 입력 해시, 토큰 사용량, 처리 시간 |
-
-### 패치 예시
-
-`code_security` 응답의 `remediation.code_diffs`이다. 가짜 LLM의 고정 패치를 서버가 원본 기준으로 재생성했다.
-
-```diff
---- a/server.js
-+++ b/server.js
-@@ -6,7 +6,7 @@
- const pool = new Pool();
- 
- app.get("/users", async (req, res) => {
--  const result = await pool.query("SELECT id, name FROM users WHERE name = '" + req.query.name + "'");
-+  const result = await pool.query("SELECT id, name FROM users WHERE name = $1", [req.query.name]);
-   res.json(result.rows);
- });
-```
 
 ### LLM과 주고받는 데이터
 
@@ -393,11 +336,11 @@ sequenceDiagram
 
 | 방향 | 내용 |
 |---|---|
-| 보내는 것 | `kind`, finding의 ID·규칙·심각도·제목·위치·근거·코드 조각, 근거 문서, 작은 파일부터 2만 자까지의 코드 |
+| 보내는 것 | `kind`, finding의 ID·규칙·심각도·제목·위치·근거·코드 조각, 근거 문서 |
 | 보내기 전 처리 | 비밀 값 패턴 마스킹, 전체를 `<untrusted_data>`로 감싸기 |
 | 보내지 않는 것 | 인벤토리 원본, API 토큰. `feedback_ingest`를 뺀 호출의 `severity: low` 항목 |
-| 받는 것 | 항목별 설명, 인용한 규칙, 분류, 탐지기 문자열, 파일별 패치 |
-| 받은 뒤 처리 | 스키마 검증, 인용 검증, 패치 게이트, 원본 기준 재생성 |
+| 받는 것 | 항목별 설명, 인용한 규칙, 탐지기 문자열 |
+| 받은 뒤 처리 | 스키마 검증, 인용 검증 |
 
 마스킹은 패턴 기반이라 형식이 다른 비밀 값은 놓칠 수 있다([ADR-AI-11](adr/ADR-AI-11-llm-data-protection.md)).
 
@@ -418,7 +361,6 @@ sequenceDiagram
 
 | 문제 | 영향 | ADR |
 |---|---|---|
-| 스캔 실패, 빈 SARIF, SARIF 없는 요청이 `pass` | 검사가 돌지 않아도 초록불이 들어온다. 재현 완료, 수정 전이다 | [14](adr/ADR-AI-14-security-detection-input.md) |
 | LLM 시간 제한을 설정하지 않음 | SDK 기본값이면 최악의 경우 응답까지 약 30분이 걸린다 | [03](adr/ADR-AI-03-sync-vs-async.md) |
 | 크기 제한이 `Content-Length`만 확인 | 헤더 없는 11MB 요청이 검증 단계까지 도달했다 | [20](adr/ADR-AI-20-service-auth.md) |
 | 판단과 승인 토큰이 같음 | 호출자가 자기 규칙을 승인할 수 있다 | [20](adr/ADR-AI-20-service-auth.md) |

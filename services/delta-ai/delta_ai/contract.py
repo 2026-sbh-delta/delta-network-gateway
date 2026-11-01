@@ -7,18 +7,15 @@ from __future__ import annotations
 
 from typing import Any, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-Kind = Literal["migration_parity", "code_security", "feedback_ingest"]
+Kind = Literal["migration_parity", "feedback_ingest"]
 Provider = Literal["aws", "gcp", "onprem"]
 Verdict = Literal["pass", "fix", "needs_human"]
 Severity = Literal["high", "medium", "low"]
 FindingStatus = Literal["fail", "unknown", "dismissed"]
 CheckState = Literal["green", "red", "unknown"]
 CandidateStatus = Literal["proposed", "needs_detector", "approved", "rejected"]
-
-MAX_CODE_FILES = 50
-MAX_CODE_FILE_CHARS = 256_000
 
 
 class _Model(BaseModel):
@@ -99,18 +96,7 @@ class Report(_Model):
 
 class Evidence(_Model):
     attack_results: tuple[AttackResult, ...] = ()
-    sarif: dict[str, Any] | None = None
-    code_files: dict[str, str] = Field(default_factory=dict)
     report: Report | None = None
-
-    @field_validator("code_files")
-    @classmethod
-    def _limit_code_files(cls, files: dict[str, str]) -> dict[str, str]:
-        if len(files) > MAX_CODE_FILES:
-            raise ValueError(f"code_files 는 {MAX_CODE_FILES}개까지다")
-        if any(len(text) > MAX_CODE_FILE_CHARS for text in files.values()):
-            raise ValueError(f"code_files 파일 하나는 {MAX_CODE_FILE_CHARS}자까지다")
-        return files
 
 
 class AssessmentRequest(_Model):
@@ -125,8 +111,6 @@ class AssessmentRequest(_Model):
     def _require_inputs_for_kind(self) -> Self:
         if self.kind == "migration_parity" and (self.source_env is None or self.target_env is None):
             raise ValueError("migration_parity 는 source_env 와 target_env 가 필요하다")
-        if self.kind == "code_security" and self.evidence.sarif is None and not self.evidence.code_files:
-            raise ValueError("code_security 는 evidence.sarif 나 evidence.code_files 가 필요하다")
         if self.kind == "feedback_ingest" and self.evidence.report is None:
             raise ValueError("feedback_ingest 는 evidence.report 가 필요하다")
         return self
@@ -147,11 +131,6 @@ class WafRule(_Model):
     capability: str
 
 
-class CodeDiff(_Model):
-    path: str
-    diff: str
-
-
 class Finding(_Model):
     finding_id: str
     rule_id: str
@@ -168,7 +147,6 @@ class Finding(_Model):
     citations: tuple[str, ...] = ()
     ops: tuple[SpecOp, ...] = ()
     waf_rules: tuple[WafRule, ...] = ()
-    code_diff: CodeDiff | None = None
 
 
 class Check(_Model):
@@ -180,7 +158,6 @@ class Check(_Model):
 class Remediation(_Model):
     spec_ops: tuple[SpecOp, ...] = ()
     waf_rules: tuple[WafRule, ...] = ()
-    code_diffs: tuple[CodeDiff, ...] = ()
 
 
 class Regression(_Model):

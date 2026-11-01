@@ -6,16 +6,14 @@ flowchart TB
     direction TB
     parity["parity.py<br/>환경 차이 규칙 7개"]:::built
     waf["waf_mapping.py<br/>AWS WAF → Cloud Armor"]:::built
-    security["security.py<br/>SARIF 변환 · 승인 규칙"]:::built
     feedback["feedback.py<br/>보고서 → 규칙 후보"]:::built
     parity --> waf
-    waf ~~~ security
-    security ~~~ feedback
+    waf ~~~ feedback
   end
   subgraph ai["② 근거와 LLM"]
     direction TB
     knowledge["knowledge.py<br/>규칙 ID로 근거 조회"]:::built
-    judge["judge.py<br/>출력 검증 · 패치 재생성"]:::built
+    judge["judge.py<br/>출력 검증"]:::built
     secrets["secrets_pattern.py<br/>비밀 값 마스킹"]:::built
     llm["llm.py<br/>Claude · 가짜 LLM"]:::ext
     knowledge ~~~ judge

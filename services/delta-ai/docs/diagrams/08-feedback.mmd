@@ -13,5 +13,3 @@ sequenceDiagram
   D-->>A: verdict=needs_human, rule_candidates
   H->>D: POST /v1/rule-candidates/{id}/decision
   D-->>H: status=approved
-  A->>D: 다음 code_security
-  D-->>A: 승인 규칙이 잡은 finding 포함

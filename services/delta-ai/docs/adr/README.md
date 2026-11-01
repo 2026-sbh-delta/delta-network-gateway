@@ -6,18 +6,19 @@
 
 ```text
 호출자(플랫폼·CI·에이전트 — 미정)
-  │ POST /v1/assessments {kind, 인벤토리·SARIF·보고서}
+  │ POST /v1/assessments {kind, 인벤토리·보고서}
   ▼
 FastAPI ─ Bearer 토큰 인증
   ▼
-규칙 검사 → 근거 문서 → LLM 1회(설명·분류·패치·탐지기) → 코드 판정(pass·fix·needs_human)
+규칙 검사 → 근거 문서 → LLM 1회(설명·탐지기) → 코드 판정(pass·fix·needs_human)
   │                      └ 없어도 환경 차이 판단은 동작
   ▼
 응답: verdict · reasons · findings · checks · remediation · rule_candidates · meta
 ```
 
-- **있는 것:** API 3종, 환경 차이 규칙 7개, SARIF 보안 판단, 서버 재생성 패치, 규칙 후보와 승인 API, 테스트 98개, 실제 Claude 평가 13건 통과(2026-10-31).
-- **없는 것:** 샌드박스 적용, 스캐너 실행, 컨테이너 이미지, 공유 레포 연동, 팀 실제 입력 형식.
+- **있는 것:** 판단 API 2종(`migration_parity`, `feedback_ingest`), 환경 차이 규칙 7개, 규칙 후보와 승인 API, 테스트 66개(2026-11-02).
+- **없는 것:** 샌드박스 적용, 컨테이너 이미지, 팀 실제 입력 형식, 승인 규칙을 적용할 코드 검사.
+- **뺀 것:** 코드 보안 판단(`code_security`, SARIF 입력, 코드 패치). 2026-11-02 SAST 담당이 별도 서비스로 다시 설계하기로 해 delta-ai에서 뺐다(ADR 14, 15 폐기).
 
 ## 결정 목록
 
@@ -36,8 +37,8 @@ FastAPI ─ Bearer 토큰 인증
 | [11](ADR-AI-11-llm-data-protection.md) | 데이터 보호 | 패턴 마스킹·비신뢰 경계 | 유지 |
 | [12](ADR-AI-12-input-model.md) | 환경 입력 | 제품 중립 인벤토리 | **팀 결정: 제공 담당** |
 | [13](ADR-AI-13-evidence-retrieval.md) | 근거 검색 | 규칙 ID 정확 매칭 | 유지, 문서 추가 |
-| [14](ADR-AI-14-security-detection-input.md) | 취약점 탐지 | Semgrep SARIF 입력 | **팀 결정: 스캔 실행 위치** |
-| [15](ADR-AI-15-patch-format.md) | 패치 형식 | 서버 재생성 diff | 유지 |
+| [14](ADR-AI-14-security-detection-input.md) | 취약점 탐지 | ~~Semgrep SARIF 입력~~ | 폐기: SAST 서비스로 이동 |
+| [15](ADR-AI-15-patch-format.md) | 패치 형식 | ~~서버 재생성 diff~~ | 폐기: 코드 패치 경로 제거 |
 | [16](ADR-AI-16-waf-parity.md) | WAF 동등성 | 범주 매핑·공격 시험 | **게이트웨이 결정 후 재검토** |
 | [17](ADR-AI-17-feedback-activation.md) | 규칙 활성화 | 회귀 시험·사람 승인 | 유지 |
 | [18](ADR-AI-18-detector-format.md) | 탐지기 형식 | 문자열 조합 | **변경 권고: Semgrep 규칙** |
@@ -53,6 +54,6 @@ FastAPI ─ Bearer 토큰 인증
 1. 누가 언제 호출하는가 (01, 03, 05)
 2. 점검 에이전트와 어떻게 나누는가 (05, 06)
 3. 인벤토리, 공격 결과, 보고서는 누가 어떤 형식으로 주는가 (12, 16, 17)
-4. Semgrep은 어디서 도는가, 데모 앱 언어는 무엇인가 (13, 14, 18)
+4. 승인된 탐지 규칙을 SAST 쪽 어디에 적용하는가 (17, 18)
 5. 게이트웨이와 LLM 비용을 어떻게 처리하는가 (09, 16)
 6. 진행 그래프 화면을 누가 어떻게 만드는가 (24)

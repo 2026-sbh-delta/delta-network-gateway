@@ -52,10 +52,8 @@ def test_parity_without_envs_returns_422(client):
     assert client.post("/v1/assessments", json=raw, headers=AUTH).status_code == 422
 
 
-def test_oversized_code_file_returns_422(client, security_request):
-    security_request["evidence"]["code_files"]["big.js"] = "x" * 300_000
-
-    assert client.post("/v1/assessments", json=security_request, headers=AUTH).status_code == 422
+def test_removed_code_security_kind_returns_422(client, parity_ok):
+    assert client.post("/v1/assessments", json={**parity_ok, "kind": "code_security"}, headers=AUTH).status_code == 422
 
 
 def test_candidate_approval_flow(client, feedback_request):

@@ -16,7 +16,7 @@ class _Messages:
         self.kwargs = kwargs
         return SimpleNamespace(
             stop_reason="end_turn", model="stub",
-            content=[SimpleNamespace(type="text", text='{"items": [], "patches": []}')],
+            content=[SimpleNamespace(type="text", text='{"items": []}')],
             usage=SimpleNamespace(model_dump=lambda exclude_none: {"input_tokens": 1}),
         )
 
@@ -28,7 +28,7 @@ async def test_claude_client_sends_schema_and_cached_system_prompt():
 
     response = await llm.complete(request)
 
-    assert response.text == '{"items": [], "patches": []}'
+    assert response.text == '{"items": []}'
     assert messages.kwargs["system"][0]["cache_control"] == {"type": "ephemeral"}
     assert messages.kwargs["output_config"]["format"]["type"] == "json_schema"
 
