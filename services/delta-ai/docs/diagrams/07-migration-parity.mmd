@@ -1,0 +1,17 @@
+sequenceDiagram
+  autonumber
+  participant A as 점검 에이전트
+  participant T as 대상 환경 샌드박스
+  participant D as delta-ai
+  participant L as Claude API
+  A->>T: 공격 시험
+  T-->>A: 시나리오별 차단 여부
+  A->>D: source_env + target_env + attack_results
+  Note over D: 규칙 7개 검사
+  D->>L: finding + 근거 (마스킹)
+  L-->>D: 설명 + 인용
+  D-->>A: verdict=fix, spec_ops + waf_rules + checks
+  A->>T: WAF와 설정 적용 후 재시험
+  T-->>A: blocked (403)
+  A->>D: 갱신된 target_env + attack_results
+  D-->>A: verdict=pass, 신호등 7개 green

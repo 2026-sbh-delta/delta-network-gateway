@@ -1,0 +1,41 @@
+flowchart TB
+  http["api.py<br/>인증 · 크기 제한 · 오류 변환"]:::built --> contract["contract.py<br/>요청 · 응답 스키마"]:::built
+  contract --> service["service.py · assess()<br/>전체 순서 제어"]:::built
+
+  subgraph checks["① 규칙 검사"]
+    direction TB
+    parity["parity.py<br/>환경 차이 규칙 7개"]:::built
+    waf["waf_mapping.py<br/>AWS WAF → Cloud Armor"]:::built
+    security["security.py<br/>SARIF 변환 · 승인 규칙"]:::built
+    feedback["feedback.py<br/>보고서 → 규칙 후보"]:::built
+    parity --> waf
+    waf ~~~ security
+    security ~~~ feedback
+  end
+  subgraph ai["② 근거와 LLM"]
+    direction TB
+    knowledge["knowledge.py<br/>규칙 ID로 근거 조회"]:::built
+    judge["judge.py<br/>출력 검증 · 패치 재생성"]:::built
+    secrets["secrets_pattern.py<br/>비밀 값 마스킹"]:::built
+    llm["llm.py<br/>Claude · 가짜 LLM"]:::ext
+    knowledge ~~~ judge
+    judge --> secrets
+    secrets ~~~ llm
+  end
+  subgraph result["③ 판정과 저장"]
+    direction TB
+    verdict["verdict.py<br/>최종 판정"]:::built
+    store["store.py<br/>규칙 후보 저장"]:::store
+    verdict ~~~ store
+  end
+  service --> checks
+  service --> ai
+  service --> result
+
+  classDef built fill:#E3EEFA,stroke:#2F6DB5,stroke-width:1.5px,color:#14304F
+  classDef planned fill:#F4F5F7,stroke:#7C8794,stroke-width:1.5px,stroke-dasharray:6 4,color:#39424D
+  classDef ext fill:#FFF1DC,stroke:#C77700,stroke-width:1.5px,color:#5A3600
+  classDef store fill:#E8F5EE,stroke:#3C8A63,stroke-width:1.5px,color:#1D4532
+  classDef ok fill:#DDF3E5,stroke:#1F8A4C,stroke-width:2px,color:#114A2A
+  classDef warn fill:#FCEFC9,stroke:#B57F00,stroke-width:2px,color:#5A3F00
+  classDef bad fill:#FBE1DF,stroke:#BF3B36,stroke-width:2px,color:#6C1E1A

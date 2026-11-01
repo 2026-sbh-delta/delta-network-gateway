@@ -1,0 +1,37 @@
+flowchart LR
+  subgraph p1["1단계 · 코드 보안"]
+    direction TB
+    a["① 데모 앱 정적 검사"]:::planned --> b["② code_security 판단"]:::built
+    b --> c{"판정"}
+    c -- "fix" --> d["③ 샌드박스 패치 후 재검사"]:::planned
+    d --> b
+    c -- "needs_human" --> h["사람 확인"]:::planned
+    c -- "pass" --> o1["코드 통과"]:::ok
+    h --> o1
+  end
+  subgraph p2["2단계 · 이전 검증"]
+    direction TB
+    e["④ 대상 환경 구성·공격 시험"]:::planned --> f["⑤ migration_parity 판단"]:::built
+    f --> g{"판정"}
+    g -- "fix" --> i["⑥ WAF·설정 수정 후 재시험"]:::planned
+    i --> f
+    g -- "needs_human" --> h2["사람 확인"]:::planned
+    g -- "pass" --> j["⑦ 무중단 전환"]:::planned
+    h2 --> j
+  end
+  subgraph p3["3단계 · 피드백"]
+    direction TB
+    k["⑧ 긴 리뷰·모의해킹 보고서"]:::planned --> l["⑨ feedback_ingest 판단"]:::built
+    l --> m["⑩ 규칙 후보 사람 승인"]:::built
+    m --> n["다음 코드 검사부터 적용"]:::ok
+  end
+  p1 --> p2
+  p2 --> p3
+
+  classDef built fill:#E3EEFA,stroke:#2F6DB5,stroke-width:1.5px,color:#14304F
+  classDef planned fill:#F4F5F7,stroke:#7C8794,stroke-width:1.5px,stroke-dasharray:6 4,color:#39424D
+  classDef ext fill:#FFF1DC,stroke:#C77700,stroke-width:1.5px,color:#5A3600
+  classDef store fill:#E8F5EE,stroke:#3C8A63,stroke-width:1.5px,color:#1D4532
+  classDef ok fill:#DDF3E5,stroke:#1F8A4C,stroke-width:2px,color:#114A2A
+  classDef warn fill:#FCEFC9,stroke:#B57F00,stroke-width:2px,color:#5A3F00
+  classDef bad fill:#FBE1DF,stroke:#BF3B36,stroke-width:2px,color:#6C1E1A

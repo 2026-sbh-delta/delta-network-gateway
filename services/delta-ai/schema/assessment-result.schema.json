@@ -1,0 +1,505 @@
+{
+  "$defs": {
+    "Check": {
+      "additionalProperties": false,
+      "properties": {
+        "rule_id": {
+          "title": "Rule Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "state": {
+          "enum": [
+            "green",
+            "red",
+            "unknown"
+          ],
+          "title": "State",
+          "type": "string"
+        }
+      },
+      "required": [
+        "rule_id",
+        "name",
+        "state"
+      ],
+      "title": "Check",
+      "type": "object"
+    },
+    "CodeDiff": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "diff": {
+          "title": "Diff",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "diff"
+      ],
+      "title": "CodeDiff",
+      "type": "object"
+    },
+    "Finding": {
+      "additionalProperties": false,
+      "properties": {
+        "finding_id": {
+          "title": "Finding Id",
+          "type": "string"
+        },
+        "rule_id": {
+          "title": "Rule Id",
+          "type": "string"
+        },
+        "category": {
+          "title": "Category",
+          "type": "string"
+        },
+        "severity": {
+          "enum": [
+            "high",
+            "medium",
+            "low"
+          ],
+          "title": "Severity",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "fail",
+            "unknown",
+            "dismissed"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "autofix": {
+          "enum": [
+            "allowed",
+            "forbidden"
+          ],
+          "title": "Autofix",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "location": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Location",
+          "type": "object"
+        },
+        "evidence": {
+          "default": "",
+          "title": "Evidence",
+          "type": "string"
+        },
+        "snippet": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Snippet"
+        },
+        "has_doc": {
+          "default": false,
+          "title": "Has Doc",
+          "type": "boolean"
+        },
+        "why": {
+          "default": "",
+          "title": "Why",
+          "type": "string"
+        },
+        "citations": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Citations",
+          "type": "array"
+        },
+        "ops": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/SpecOp"
+          },
+          "title": "Ops",
+          "type": "array"
+        },
+        "waf_rules": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/WafRule"
+          },
+          "title": "Waf Rules",
+          "type": "array"
+        },
+        "code_diff": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CodeDiff"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "finding_id",
+        "rule_id",
+        "category",
+        "severity",
+        "status",
+        "autofix",
+        "title"
+      ],
+      "title": "Finding",
+      "type": "object"
+    },
+    "Meta": {
+      "additionalProperties": false,
+      "properties": {
+        "llm_used": {
+          "default": false,
+          "title": "Llm Used",
+          "type": "boolean"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model"
+        },
+        "prompt_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Prompt Version"
+        },
+        "input_hash": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Input Hash"
+        },
+        "usage": {
+          "additionalProperties": true,
+          "title": "Usage",
+          "type": "object"
+        },
+        "duration_ms": {
+          "default": 0,
+          "title": "Duration Ms",
+          "type": "integer"
+        }
+      },
+      "title": "Meta",
+      "type": "object"
+    },
+    "Regression": {
+      "additionalProperties": false,
+      "properties": {
+        "vulnerable_hit": {
+          "title": "Vulnerable Hit",
+          "type": "boolean"
+        },
+        "safe_hit": {
+          "title": "Safe Hit",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "vulnerable_hit",
+        "safe_hit"
+      ],
+      "title": "Regression",
+      "type": "object"
+    },
+    "Remediation": {
+      "additionalProperties": false,
+      "properties": {
+        "spec_ops": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/SpecOp"
+          },
+          "title": "Spec Ops",
+          "type": "array"
+        },
+        "waf_rules": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/WafRule"
+          },
+          "title": "Waf Rules",
+          "type": "array"
+        },
+        "code_diffs": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/CodeDiff"
+          },
+          "title": "Code Diffs",
+          "type": "array"
+        }
+      },
+      "title": "Remediation",
+      "type": "object"
+    },
+    "RuleCandidate": {
+      "additionalProperties": false,
+      "properties": {
+        "candidate_id": {
+          "title": "Candidate Id",
+          "type": "string"
+        },
+        "rule_id": {
+          "title": "Rule Id",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "source": {
+          "title": "Source",
+          "type": "string"
+        },
+        "severity": {
+          "default": "high",
+          "enum": [
+            "high",
+            "medium",
+            "low"
+          ],
+          "title": "Severity",
+          "type": "string"
+        },
+        "detector_contains": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Detector Contains",
+          "type": "array"
+        },
+        "status": {
+          "enum": [
+            "proposed",
+            "needs_detector",
+            "approved",
+            "rejected"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "regression": {
+          "$ref": "#/$defs/Regression",
+          "default": {
+            "vulnerable_hit": false,
+            "safe_hit": false
+          }
+        },
+        "approver": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Approver"
+        }
+      },
+      "required": [
+        "candidate_id",
+        "rule_id",
+        "title",
+        "source",
+        "status"
+      ],
+      "title": "RuleCandidate",
+      "type": "object"
+    },
+    "SpecOp": {
+      "additionalProperties": false,
+      "description": "target_env 인벤토리 기준 JSON Patch 한 줄. 플랫폼이 원하는 상태로 번역한다.",
+      "properties": {
+        "op": {
+          "enum": [
+            "replace",
+            "add",
+            "remove"
+          ],
+          "title": "Op",
+          "type": "string"
+        },
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "value": {
+          "default": null,
+          "title": "Value"
+        }
+      },
+      "required": [
+        "op",
+        "path"
+      ],
+      "title": "SpecOp",
+      "type": "object"
+    },
+    "WafRule": {
+      "additionalProperties": false,
+      "properties": {
+        "priority": {
+          "title": "Priority",
+          "type": "integer"
+        },
+        "action": {
+          "title": "Action",
+          "type": "string"
+        },
+        "expression": {
+          "title": "Expression",
+          "type": "string"
+        },
+        "capability": {
+          "title": "Capability",
+          "type": "string"
+        }
+      },
+      "required": [
+        "priority",
+        "action",
+        "expression",
+        "capability"
+      ],
+      "title": "WafRule",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "assessment_id": {
+      "title": "Assessment Id",
+      "type": "string"
+    },
+    "kind": {
+      "enum": [
+        "migration_parity",
+        "code_security",
+        "feedback_ingest"
+      ],
+      "title": "Kind",
+      "type": "string"
+    },
+    "verdict": {
+      "enum": [
+        "pass",
+        "fix",
+        "needs_human"
+      ],
+      "title": "Verdict",
+      "type": "string"
+    },
+    "reasons": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Reasons",
+      "type": "array"
+    },
+    "findings": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/Finding"
+      },
+      "title": "Findings",
+      "type": "array"
+    },
+    "checks": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/Check"
+      },
+      "title": "Checks",
+      "type": "array"
+    },
+    "remediation": {
+      "$ref": "#/$defs/Remediation",
+      "default": {
+        "spec_ops": [],
+        "waf_rules": [],
+        "code_diffs": []
+      }
+    },
+    "rule_candidates": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/RuleCandidate"
+      },
+      "title": "Rule Candidates",
+      "type": "array"
+    },
+    "meta": {
+      "$ref": "#/$defs/Meta",
+      "default": {
+        "llm_used": false,
+        "model": null,
+        "prompt_version": null,
+        "input_hash": null,
+        "usage": {},
+        "duration_ms": 0
+      }
+    }
+  },
+  "required": [
+    "assessment_id",
+    "kind",
+    "verdict"
+  ],
+  "title": "AssessmentResult",
+  "type": "object"
+}

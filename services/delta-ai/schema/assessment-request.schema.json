@@ -1,0 +1,589 @@
+{
+  "$defs": {
+    "AttackResult": {
+      "additionalProperties": false,
+      "properties": {
+        "scenario": {
+          "title": "Scenario",
+          "type": "string"
+        },
+        "environment": {
+          "enum": [
+            "aws",
+            "gcp",
+            "onprem"
+          ],
+          "title": "Environment",
+          "type": "string"
+        },
+        "observed": {
+          "enum": [
+            "blocked",
+            "allowed",
+            "alert_only",
+            "unknown"
+          ],
+          "title": "Observed",
+          "type": "string"
+        },
+        "http_status": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Http Status"
+        }
+      },
+      "required": [
+        "scenario",
+        "environment",
+        "observed"
+      ],
+      "title": "AttackResult",
+      "type": "object"
+    },
+    "EnvInventory": {
+      "additionalProperties": false,
+      "properties": {
+        "provider": {
+          "enum": [
+            "aws",
+            "gcp",
+            "onprem"
+          ],
+          "title": "Provider",
+          "type": "string"
+        },
+        "waf": {
+          "$ref": "#/$defs/WafInventory",
+          "default": {
+            "enabled": null,
+            "product": null,
+            "mode": null,
+            "rule_groups": null
+          }
+        },
+        "identity": {
+          "$ref": "#/$defs/IdentityInventory",
+          "default": {
+            "mechanism": null,
+            "cloud_apis": [],
+            "cross_cloud_access": null
+          }
+        },
+        "secrets": {
+          "$ref": "#/$defs/SecretsInventory",
+          "default": {
+            "source": null,
+            "plaintext_env": []
+          }
+        },
+        "logging": {
+          "$ref": "#/$defs/LoggingInventory",
+          "default": {
+            "central": null,
+            "destination": null
+          }
+        },
+        "ingress": {
+          "$ref": "#/$defs/IngressInventory",
+          "default": {
+            "tls": null
+          }
+        },
+        "network": {
+          "$ref": "#/$defs/NetworkInventory",
+          "default": {
+            "gateway": null,
+            "inspected": null,
+            "l7_visible": null
+          }
+        }
+      },
+      "required": [
+        "provider"
+      ],
+      "title": "EnvInventory",
+      "type": "object"
+    },
+    "Evidence": {
+      "additionalProperties": false,
+      "properties": {
+        "attack_results": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/AttackResult"
+          },
+          "title": "Attack Results",
+          "type": "array"
+        },
+        "sarif": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sarif"
+        },
+        "code_files": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Code Files",
+          "type": "object"
+        },
+        "report": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Report"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "title": "Evidence",
+      "type": "object"
+    },
+    "IdentityInventory": {
+      "additionalProperties": false,
+      "properties": {
+        "mechanism": {
+          "anyOf": [
+            {
+              "enum": [
+                "irsa",
+                "pod_identity",
+                "workload_identity",
+                "static_key",
+                "none"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mechanism"
+        },
+        "cloud_apis": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Cloud Apis",
+          "type": "array"
+        },
+        "cross_cloud_access": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cross Cloud Access"
+        }
+      },
+      "title": "IdentityInventory",
+      "type": "object"
+    },
+    "IngressInventory": {
+      "additionalProperties": false,
+      "properties": {
+        "tls": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tls"
+        }
+      },
+      "title": "IngressInventory",
+      "type": "object"
+    },
+    "LoggingInventory": {
+      "additionalProperties": false,
+      "properties": {
+        "central": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Central"
+        },
+        "destination": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Destination"
+        }
+      },
+      "title": "LoggingInventory",
+      "type": "object"
+    },
+    "NetworkInventory": {
+      "additionalProperties": false,
+      "properties": {
+        "gateway": {
+          "anyOf": [
+            {
+              "enum": [
+                "anf",
+                "haproxy",
+                "none"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Gateway"
+        },
+        "inspected": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Inspected"
+        },
+        "l7_visible": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "L7 Visible"
+        }
+      },
+      "title": "NetworkInventory",
+      "type": "object"
+    },
+    "Report": {
+      "additionalProperties": false,
+      "properties": {
+        "source": {
+          "title": "Source",
+          "type": "string"
+        },
+        "findings": {
+          "items": {
+            "$ref": "#/$defs/ReportFinding"
+          },
+          "title": "Findings",
+          "type": "array"
+        }
+      },
+      "required": [
+        "source",
+        "findings"
+      ],
+      "title": "Report",
+      "type": "object"
+    },
+    "ReportFinding": {
+      "additionalProperties": false,
+      "properties": {
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "cwe": {
+          "pattern": "^CWE-\\d+$",
+          "title": "Cwe",
+          "type": "string"
+        },
+        "severity": {
+          "default": "high",
+          "enum": [
+            "high",
+            "medium",
+            "low"
+          ],
+          "title": "Severity",
+          "type": "string"
+        },
+        "path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Path"
+        },
+        "line": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Line"
+        },
+        "description": {
+          "default": "",
+          "title": "Description",
+          "type": "string"
+        },
+        "vulnerable_snippet": {
+          "default": "",
+          "title": "Vulnerable Snippet",
+          "type": "string"
+        },
+        "safe_snippet": {
+          "default": "",
+          "title": "Safe Snippet",
+          "type": "string"
+        }
+      },
+      "required": [
+        "title",
+        "cwe"
+      ],
+      "title": "ReportFinding",
+      "type": "object"
+    },
+    "SecretsInventory": {
+      "additionalProperties": false,
+      "properties": {
+        "source": {
+          "anyOf": [
+            {
+              "enum": [
+                "aws_secrets_manager",
+                "gcp_secret_manager",
+                "k8s_secret",
+                "vault",
+                "env_plaintext"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source"
+        },
+        "plaintext_env": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Plaintext Env",
+          "type": "array"
+        }
+      },
+      "title": "SecretsInventory",
+      "type": "object"
+    },
+    "ServiceRef": {
+      "additionalProperties": false,
+      "properties": {
+        "service_id": {
+          "minLength": 1,
+          "title": "Service Id",
+          "type": "string"
+        },
+        "repo": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Repo"
+        },
+        "commit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Commit"
+        }
+      },
+      "required": [
+        "service_id"
+      ],
+      "title": "ServiceRef",
+      "type": "object"
+    },
+    "WafInventory": {
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Enabled"
+        },
+        "product": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Product"
+        },
+        "mode": {
+          "anyOf": [
+            {
+              "enum": [
+                "block",
+                "count"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mode"
+        },
+        "rule_groups": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rule Groups"
+        }
+      },
+      "title": "WafInventory",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "assessment_id": {
+      "minLength": 1,
+      "title": "Assessment Id",
+      "type": "string"
+    },
+    "kind": {
+      "enum": [
+        "migration_parity",
+        "code_security",
+        "feedback_ingest"
+      ],
+      "title": "Kind",
+      "type": "string"
+    },
+    "service": {
+      "$ref": "#/$defs/ServiceRef"
+    },
+    "source_env": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/EnvInventory"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "target_env": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/EnvInventory"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "evidence": {
+      "$ref": "#/$defs/Evidence",
+      "default": {
+        "attack_results": [],
+        "sarif": null,
+        "code_files": {},
+        "report": null
+      }
+    }
+  },
+  "required": [
+    "assessment_id",
+    "kind",
+    "service"
+  ],
+  "title": "AssessmentRequest",
+  "type": "object"
+}
