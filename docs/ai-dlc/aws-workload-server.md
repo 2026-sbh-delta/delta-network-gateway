@@ -8,7 +8,7 @@
 - 현재 단계: U1~U3 구현/Test/Review와 실제 배포/관제 검증 완료. Server mock Plan 31개와 앱 두 리스너 로컬 시험 1개, 중앙 회귀 34개, Client 회귀 26개 및 기존 state bootstrap 보호 3개 통과. 실제 HTTP 허용/차단과 정확한 요청 tuple의 ALERT, 허용 연결의 양방향 FLOW를 확인했다.
 - 범위: Workload `616723161368`에 별도 Server VPC/사설 EC2/EIC Endpoint/TGW Attachment, 중앙 `482840608926`의 수락/경로/정책과 Client 원격 경로/시험 송신 규칙, 실제 ANF 왕복 통신과 로그.
 - 범위 밖: 새 계정, GCP/온프레미스/VPN 배포, 공개 IP/IGW/NAT/LB, 기존 Client 교체, 기존 state 이전, Destroy. 기존 GCP 코드 변경은 보존한다.
-- Git: 이번 작업의 커밋/푸시는 아직 실행하지 않았다.
+- Git: 기존 Server 작업은 아래 Git 게시 기록처럼 분할 커밋/푸시 완료했다. 후속 CloudFront ALB/ANF 웹 변경은 사용자 지시로 분할 커밋/푸시를 진행하며 [게시 기록](cloudfront-anf-demo.md#git-게시)을 따른다.
 
 ## Ideation
 
@@ -130,6 +130,8 @@
 
 ## Git 게시 기록
 
+후속 2026-11-01 20:15~20:16 KST: [CloudFront 직접 Origin](cloudfront-server.md)이 별도 state에서 이 VPC에 필수 IGW와 서비스 SG의 TCP 8080 ingress를 추가했다. 기존 Server EC2/앱/Route는 유지하고 공인 주소/인터넷 Route 부재 및 이 root의 No changes를 재확인했다. 직접 Origin 경로는 중앙 ANF를 거치지 않는다. 기존 두 VPC 관제 검증과 구분한다.
+
 2026-11-01 사용자의 `커밋 단위로 쪼개서 커밋 푸시` 지시로 현재 변경 전체의 분할 커밋과 origin/main 푸시를 승인받았다. 기존 SSH 서명 설정을 사용하며 실제 tfvars/backend/state/Plan, 검증 증거와 캐시는 제외한다.
 
 | 구분 | 커밋 | 내용 |
@@ -143,3 +145,5 @@
 | 2026-11-01 19:24 KST | `git ls-remote --heads origin main` | 원격 main이 작업 시작 기준 `9033794be07eccfb84ea8f74f222c9be08969b08`과 일치 |
 | 2026-11-01 19:24~19:25 KST | `git ls-files --cached --others --exclude-standard`, 자격 증명 패턴 검사, `terraform fmt -check -recursive`, `git diff --check`, 명시적 경로의 `git add`/`git commit` | 민감 입력/검증 캐시 후보와 자격 증명 패턴 검출 없음. fmt/공백 검사 통과. GCP와 AWS 기능/검증 4개 커밋 완료. 배포 명령이나 기존 테스트는 이번 게시 작업에서 재실행하지 않음. 문서 커밋과 푸시 대기 |
 | 2026-11-01 19:25 KST | 문서 커밋, `git push origin main`, `git ls-remote --heads origin main`, `git status --short` | 기능/검증/문서 5개 커밋 게시 성공. 원격 main은 `14ed879c37aa29b1b6582299a24a623b6f770ec2`와 일치하고 당시 작업 트리는 깨끗함. 이번 문서 갱신은 해당 검증 결과를 기록 |
+
+후속 2026-11-01 20:54 KST: [CloudFront ANF 웹](cloudfront-anf-demo.md)으로 전환 완료. 이전 직접 Origin/Server IGW/직접 서비스 SG ingress를 제거하고 Client VPC ALB source /24 두 개의8080/8081 ingress4개를 별도 state에서 관리한다. 중앙 ANF의8080 허용/8081 blocked-drop을 실제 검증했으며 서버 공인 주소/인터넷 Route 부재와 이 root No changes를 재확인했다. 기존 앱은 client/port/method만 journal에 기록하므로 고유 path/query는 HTTP 응답과 ANF 마커에서 대조했다.

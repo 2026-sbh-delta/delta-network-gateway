@@ -12,6 +12,8 @@
 
 2026-11-01 실제 배포: VPC `vpc-0dd4ef153e66803ab`, EC2 `i-03d824c2a456e71ad`/`10.20.1.10`, Attachment `tgw-attach-08255cc8fcac5df2c`, EIC `eice-008f5b3a537d716bd`. Client의 8080 HTTP 200과 양방향 FLOW, 8081 blocked/drop SID 9000000, 허용 마커 alert SID 2000001을 확인했다. 세 root 최종 Plan은 No changes다. 로컬 검증은 Server mock 31개/앱 1개, 중앙 회귀 34개, Client 회귀 26개 및 기존 bootstrap 보호 3개 통과다.
 
+후속 [CloudFront ANF 웹](../cloudfront-server/README.md)은 별도 state에서 Client VPC의 internal ALB를 추가했다. 이 Server SG에는 ALB 전용10.10.4/24와10.10.5/24의 TCP8080/8081 standalone ingress4개만 추가한다. 중앙 ANF가8080만 허용하고8081은 차단한다. 이전 직접 Origin/Server IGW/직접 서비스 SG rule은 제거했다. 서버 공인 주소/인터넷 Route는 없고 이 root의 최종 Plan은 No changes다.
+
 ## 준비와 단계별 실행
 
 Terraform `1.16.4`, AWS Provider `6.71.0`과 lock을 고정한다. `terraform.tfvars.example`의 계정/AMI는 mock fixture다. 실제 입력은 ignored `terraform.tfvars`/`backend.hcl`에 0600으로 저장한다. AMI/계정/AZ/TGW 조회로 실제값을 검증한다.

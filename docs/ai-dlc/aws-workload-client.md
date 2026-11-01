@@ -13,6 +13,8 @@
 
 - 2026-11-01 후속 사용자 지시로 같은 계정의 Server VPC `10.20.0.0/16`을 연결했다. Client는 기존 EC2를 유지하고 Server TGW Route 2개/8080과 8081 egress 2개만 추가했다. 실제 HTTP 200/양방향 FLOW, 8081 blocked/drop SID 9000000과 허용 마커 SID 2000001을 확인했다. Client 회귀 26개 및 최종 Plan No changes. 상세는 [Server AI-DLC](aws-workload-server.md)를 따른다.
 
+- 2026-11-01 20:54 KST 후속 [CloudFront ANF 웹](cloudfront-anf-demo.md): 별도 root가 Client VPC에 internal ALB와10.10.4/24,10.10.5/24 Subnet/전용 TGW RT 및 CloudFront 필수 IGW attachment를 추가했다. 초기 IGW 부재 기록은 당시 상태다. 현재 공인 주소/인터넷 Route는 없고 기존 Client EC2와 이 root의 최종 Plan No changes를 확인했다.
+
 ## Ideation
 
 - 문제: 중앙 ANF 경유를 실트래픽으로 확인할 AWS 측 클라이언트가 필요하다.

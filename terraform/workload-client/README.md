@@ -6,6 +6,8 @@
 
 2026-11-01 같은 Workload 계정의 Server `10.20.1.10`에 중앙 ANF를 거쳐 HTTP 200으로 도달했고, 양방향 FLOW와 8081 blocked/drop SID를 확인했다. 기존 Client 인스턴스는 유지했으며 Client에 서버 앱을 설치하지 않았다. 실제 결과는 [Server AI-DLC](../../docs/ai-dlc/aws-workload-server.md)를 따른다.
 
+2026-11-01 후속 [CloudFront ANF 웹](../cloudfront-server/README.md)이 별도 state에서 이 VPC에 internal ALB/전용 /24 두 개/Server TGW Route와 필수 IGW attachment를 추가했다. 이 Client root 자체는 IGW를 생성하지 않으며 인터넷 기본 Route/공인 주소는 여전히 없다. 기존 Client EC2/Attachment를 유지하고 이 root의 최종 Plan No changes를 확인했다.
+
 ## 입력 속성
 
 | 속성명 | 타입 | 기본값 | 역할 |
