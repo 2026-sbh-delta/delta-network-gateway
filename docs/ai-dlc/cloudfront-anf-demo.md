@@ -5,7 +5,7 @@
 - 기준일: 2026-11-01 (Asia/Seoul).
 - 사용자 `그러면 internal ALB로 해줘. Cloudfront는 간단한 웹페이지 하나만 띄우고 버튼 하나 누르면 ANF allow돼서 정상 응답 받는거, 다른 버튼은 deny된 결과 보여주는 정도` 지시를 Ideation/Inception과 아래 Unit의 Design/Implementation Plan/실제 배포 및 검증 승인으로 기록한다.
 - 기존 직접 EC2 VPC Origin은 서버 연결만 확인했고 ANF를 경유하지 않았다. 이번 구성으로 교체하며 과거 결과는 [직접 Origin 기록](cloudfront-server.md)에 보존한다.
-- 현재: 코드/웹/운영 문서 구현, mock21개/중앙 회귀35개, AWS 규칙 DryRun, 실제 배포와 HTTP/ANF 로그/최종 보안 검증 완료. 이전 직접 Origin/Server IGW/직접 SG rule과 임시 ALB ingress4개 정리 완료. 실제 검증 JSON 게시와 네 root 최종 Plan No changes 확인. 브라우저 허용 버튼200은 확인했고 차단 버튼 화면 재확인은 UI 도구 오류로 미검증이다. 전체 `terraform destroy`는 미실행이며 후속 사용자 지시로 분할 커밋/푸시를 진행한다.
+- 현재: 코드/웹/운영 문서 구현, mock21개/중앙 회귀35개, AWS 규칙 DryRun, 실제 배포와 HTTP/ANF 로그/최종 보안 검증 완료. 이전 직접 Origin/Server IGW/직접 SG rule과 임시 ALB ingress4개 정리 완료. 실제 검증 JSON 게시와 네 root 최종 Plan No changes 확인. 브라우저 허용 버튼200은 확인했고 차단 버튼 화면 재확인은 UI 도구 오류로 미검증이다. 전체 `terraform destroy`는 미실행이다. 후속 사용자 지시로 구현/검증/운영 문서를 분할 커밋하고 origin/main 게시 성공을 확인했다.
 
 ## Ideation
 
@@ -94,15 +94,16 @@
 
 ## Git 게시
 
-2026-11-01 사용자 `커밋 단위 쪼개서 커밋 푸시 ㄱㄱ` 지시로 현재 변경의 분할 커밋과 origin/main 게시를 승인받았다. 구현(필수 웹 파일/입력/출력 문서 포함), 회귀 테스트, 운영/배포 기록 순서로 나눈다. 실제 입력/backend/state/Plan/원본 로그/자격 증명/캐시는 제외하며 기존 SSH 서명을 유지한다. 현재는 커밋/푸시 준비 중이며 실제 성공 결과는 검증 후 기록한다.
+2026-11-01 사용자 `커밋 단위 쪼개서 커밋 푸시 ㄱㄱ` 지시로 현재 변경의 분할 커밋과 origin/main 게시를 승인받았다. 구현(필수 웹 파일/입력/출력 문서 포함), 회귀 테스트, 운영/배포 기록 순서로 나눈다. 실제 입력/backend/state/Plan/원본 로그/자격 증명/캐시는 제외하며 기존 SSH 서명을 유지한다. 세 커밋의 게시와 원격 일치를 실제 확인했으며 이번 문서 갱신은 그 결과를 기록한다.
 
 | 구분 | 커밋 | 내용 |
 | --- | --- | --- |
 | 구현 | `5c807f58` | CloudFront/ALB/S3, 두 버튼 웹, 입력/출력 계약과 lock |
 | 검증 | `1801463e` | 격리 mock21개와 중앙 회귀35개, Route/SG/OAC/입력 오류 검사 |
-| 운영 문서 | 작성 중 | 실제 HTTP/ANF 로그/전환 정리와 기존 Client/Server 상태 갱신 |
+| 운영 문서 | `12587b42` | 실제 HTTP/ANF 로그/전환 정리와 기존 Client/Server 상태 갱신 |
 | 날짜 | 명령/확인 | 실제 결과 |
 | --- | --- | --- |
 | 2026-11-01 20:59 KST | `git ls-remote --heads origin main`, 변경 파일/ignore/자격 증명 패턴 검사, `terraform fmt -check -recursive terraform`, `git diff --check` | 원격 기준점 a452ad3a 확인. 변경26개에 자격 증명 패턴/민감 실행 파일 없음. 실제 tfvars/backend/state/Plan/원본 증거 제외. fmt/공백 검사 통과 |
 | 2026-11-01 20:59 KST | 두 root의 `scripts/validate.sh` | CloudFront 격리 init/validate/mock21개 및 중앙 회귀35개 모두 다시 통과. 실제 Plan/Apply/Destroy는 이번 게시 작업에서 재실행하지 않음 |
 | 2026-11-01 20:59 KST | 명시적 경로 `git add`, 기존 SSH 서명 `git commit` | 구현5c807f58/검증1801463e 커밋 완료. 운영 문서 커밋과 푸시는 대기 |
+| 2026-11-01 21:00 KST | `git cat-file -p`, `git status --porcelain`, `git push origin main`, `git ls-remote --heads origin main` | 세 커밋 모두 기존 SSH 서명 존재 확인. push 성공(a452ad3a→12587b42), 원격 main이 로컬 `12587b42600ba05fe3aa6564e427cd52edd4f6c6`와 일치. 당시 작업 트리 깨끗함. 이번 문서 갱신은 해당 게시 결과를 기록 |

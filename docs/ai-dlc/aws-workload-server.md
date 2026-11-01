@@ -8,7 +8,7 @@
 - 현재 단계: U1~U3 구현/Test/Review와 실제 배포/관제 검증 완료. Server mock Plan 31개와 앱 두 리스너 로컬 시험 1개, 중앙 회귀 34개, Client 회귀 26개 및 기존 state bootstrap 보호 3개 통과. 실제 HTTP 허용/차단과 정확한 요청 tuple의 ALERT, 허용 연결의 양방향 FLOW를 확인했다.
 - 범위: Workload `616723161368`에 별도 Server VPC/사설 EC2/EIC Endpoint/TGW Attachment, 중앙 `482840608926`의 수락/경로/정책과 Client 원격 경로/시험 송신 규칙, 실제 ANF 왕복 통신과 로그.
 - 범위 밖: 새 계정, GCP/온프레미스/VPN 배포, 공개 IP/IGW/NAT/LB, 기존 Client 교체, 기존 state 이전, Destroy. 기존 GCP 코드 변경은 보존한다.
-- Git: 기존 Server 작업은 아래 Git 게시 기록처럼 분할 커밋/푸시 완료했다. 후속 CloudFront ALB/ANF 웹 변경은 사용자 지시로 분할 커밋/푸시를 진행하며 [게시 기록](cloudfront-anf-demo.md#git-게시)을 따른다.
+- Git: 기존 Server 작업은 아래 Git 게시 기록처럼 분할 커밋/푸시 완료했다. 후속 CloudFront ALB/ANF 웹 변경도 사용자 지시로 분할 커밋/푸시를 완료했으며 [게시 기록](cloudfront-anf-demo.md#git-게시)을 따른다.
 
 ## Ideation
 

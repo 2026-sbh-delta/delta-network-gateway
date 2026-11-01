@@ -11,7 +11,7 @@ ALB는 Client VPC의 전용 /24 두 개에 배치한다. 두 Target Group 모두
 
 서버 공인 IP와 인터넷 기본 Route는 생성하지 않는다. CloudFront 요건인 IGW는 Client VPC에 연결만 한다. 서비스 SG가 생성되기 전에는 CloudFront prefix list의 ALB TCP 80 ingress만 임시 사용하고 이후 제거한다. S3는 암호화/소유권 강제/Public Access Block을 적용하며 OAC는 해당 Distribution SourceArn의 GetObject만 허용한다.
 
-2026-11-01 실제 배포: https://d228fpdue5s0by.cloudfront.net/ . 웹200/허용200/차단504(약10초), 허용 마커와 양방향 FLOW 및 차단 SID9000000 blocked/drop을 대조했다. 직접 Origin/Server IGW/임시 ingress 정리와 네 root No changes를 확인했다. 최종 관리 리소스는37개다. mock21개/중앙 회귀35개 통과. 브라우저 허용 버튼200은 확인했고 차단 버튼 완료 화면 재확인은 UI 도구 오류로 미검증이다. 사용자 지시로 분할 커밋/푸시를 진행한다. 게시 결과는 AI-DLC에 별도로 기록한다.
+2026-11-01 실제 배포: https://d228fpdue5s0by.cloudfront.net/ . 웹200/허용200/차단504(약10초), 허용 마커와 양방향 FLOW 및 차단 SID9000000 blocked/drop을 대조했다. 직접 Origin/Server IGW/임시 ingress 정리와 네 root No changes를 확인했다. 최종 관리 리소스는37개다. mock21개/중앙 회귀35개 통과. 브라우저 허용 버튼200은 확인했고 차단 버튼 완료 화면 재확인은 UI 도구 오류로 미검증이다. 구현/검증/운영 문서를 분할 서명 커밋하고 origin/main 게시를 확인했다. 게시 결과는 AI-DLC의 Git 게시 기록을 따른다.
 
 ## 준비와 실행
 
