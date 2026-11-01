@@ -1,0 +1,22 @@
+{
+  "assessment_id": "as-feedback-1",
+  "kind": "feedback_ingest",
+  "service": {"service_id": "demo-app", "commit": "abc123"},
+  "evidence": {
+    "report": {
+      "source": "hand-written-sample",
+      "findings": [
+        {
+          "title": "진단 API 의 OS 명령 주입",
+          "cwe": "CWE-78",
+          "severity": "high",
+          "path": "server.js",
+          "line": 14,
+          "description": "host 쿼리 값이 검증 없이 runDiag 를 거쳐 셸 명령에 들어간다.",
+          "vulnerable_snippet": "res.send(await runDiag(req.query.host));",
+          "safe_snippet": "res.send(await runDiag(validatedHost));"
+        }
+      ]
+    }
+  }
+}

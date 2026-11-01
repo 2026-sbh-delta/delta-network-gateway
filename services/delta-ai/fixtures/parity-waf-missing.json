@@ -1,0 +1,29 @@
+{
+  "assessment_id": "as-parity-waf-missing",
+  "kind": "migration_parity",
+  "service": {"service_id": "demo-app", "commit": "abc123"},
+  "source_env": {
+    "provider": "aws",
+    "waf": {"enabled": true, "product": "aws_waf", "mode": "block",
+            "rule_groups": ["AWSManagedRulesSQLiRuleSet", "AWSManagedRulesCommonRuleSet"]},
+    "identity": {"mechanism": "pod_identity", "cloud_apis": []},
+    "secrets": {"source": "aws_secrets_manager", "plaintext_env": []},
+    "logging": {"central": true, "destination": "cloudwatch"},
+    "ingress": {"tls": true},
+    "network": {"gateway": "anf", "inspected": true, "l7_visible": false}
+  },
+  "target_env": {
+    "provider": "gcp",
+    "waf": {"enabled": false},
+    "identity": {"mechanism": "workload_identity", "cloud_apis": []},
+    "secrets": {"source": "gcp_secret_manager", "plaintext_env": []},
+    "logging": {"central": true, "destination": "cloudwatch"},
+    "ingress": {"tls": true},
+    "network": {"gateway": "anf", "inspected": true, "l7_visible": false}
+  },
+  "evidence": {
+    "attack_results": [
+      {"scenario": "sqli-login-bypass", "environment": "gcp", "observed": "allowed", "http_status": 200}
+    ]
+  }
+}
