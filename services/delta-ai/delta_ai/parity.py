@@ -5,7 +5,18 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from delta_ai.contract import AttackResult, Check, EnvInventory, Finding, Severity, SpecOp, WafRule
+from delta_ai.contract import (
+    AttackResult,
+    Check,
+    EnvInventory,
+    Finding,
+    FirewallRule,
+    ReachabilityProbe,
+    Severity,
+    SpecOp,
+    VerifiedControl,
+    WafRule,
+)
 from delta_ai.findings import check_state, finding_id
 from delta_ai.waf_mapping import (
     AWS_GROUP_PARTIAL_NOTES,
@@ -24,7 +35,13 @@ RULES: dict[str, tuple[str, str]] = {  # rule_id → (category, 제목)
     "PAR-ING-001": ("ingress", "인그레스 TLS"),
     "PAR-NET-001": ("network", "중앙 검사 경로"),
 }
-NATIVE_IDENTITY = {"aws": {"irsa", "pod_identity"}, "gcp": {"workload_identity"}}
+OPTIONAL_RULES: dict[str, tuple[str, str]] = {  # 입력이 있을 때만 점검 항목에 나온다
+    "PAR-NET-002": ("network", "네트워크 격리 실측"),
+    "PAR-NET-003": ("network", "방화벽 관리 경로 노출"),
+}
+NATIVE_IDENTITY = {"aws": {"irsa", "pod_identity"}, "gcp": {"workload_identity"}, "onprem": {"none"}}
+SELF = "(self)"
+MANAGEMENT_PORTS = {"22", "ssh", "80", "http", "www", "443", "https", "8443"}
 NATIVE_SECRETS = {
     "aws": {"aws_secrets_manager", "k8s_secret", "vault"},
     "gcp": {"gcp_secret_manager", "k8s_secret", "vault"},
@@ -36,11 +53,12 @@ NATIVE_SECRETS = {
 class CheckOutcome:
     findings: tuple[Finding, ...]
     checks: tuple[Check, ...]
+    verified: tuple[VerifiedControl, ...] = ()
 
 
 def _finding(rule_id: str, *, status: str, severity: Severity, evidence: str, location: dict[str, str] | None = None,
              ops: Sequence[SpecOp] = (), waf_rules: Sequence[WafRule] = ()) -> Finding:
-    category, title = RULES[rule_id]
+    category, title = {**RULES, **OPTIONAL_RULES}[rule_id]
     where = location or {}
     return Finding(finding_id=finding_id(rule_id, where), rule_id=rule_id, category=category, severity=severity,
                    status=status, autofix="allowed" if ops or waf_rules else "forbidden", title=title,
@@ -192,7 +210,78 @@ def _check_network(source: EnvInventory, target: EnvInventory) -> list[Finding]:
     return []
 
 
-def check_parity(source: EnvInventory, target: EnvInventory, attacks: Sequence[AttackResult]) -> CheckOutcome:
+def _target_probes(target: EnvInventory, probes: Sequence[ReachabilityProbe]) -> list[ReachabilityProbe]:
+    return [p for p in probes if p.environment == target.provider]
+
+
+def _probe_subject(probe: ReachabilityProbe) -> str:
+    return f"{probe.source} → {probe.target}:{probe.port}"
+
+
+def _check_reachability(target: EnvInventory, probes: Sequence[ReachabilityProbe]) -> list[Finding]:
+    findings = []
+    for probe in _target_probes(target, probes):
+        if probe.observed == probe.expected:
+            continue
+        subject = _probe_subject(probe)
+        findings.append(_finding("PAR-NET-002", status="unknown" if probe.observed == "unknown" else "fail",
+                                 severity="high", location={"probe": subject},
+                                 evidence=f"{subject}: 기대 {probe.expected}, 실측 {probe.observed}"))
+    return findings
+
+
+def _is_firewall_address(destination: str, target: EnvInventory) -> bool:
+    return destination == SELF or destination in target.network.gateway_addresses
+
+
+def _exposes_firewall(rule: FirewallRule, target: EnvInventory) -> bool:
+    if rule.action != "pass":
+        return False
+    if _is_firewall_address(rule.destination, target):
+        return rule.port is None or rule.port in MANAGEMENT_PORTS or ":" in rule.port  # ":" 는 포트 범위다
+    return rule.destination == "any" or rule.destination.startswith("!")  # 허용 범위에 방화벽 WAN 주소가 들어간다
+
+
+def _check_firewall(target: EnvInventory) -> list[Finding]:
+    rules = target.network.firewall_rules
+    if rules is None:
+        return []
+    if not rules:
+        return [_finding("PAR-NET-003", status="unknown", severity="high", evidence="방화벽 룰을 수집하지 못했다",
+                         location={"field": "/network/firewall_rules"})]
+    findings = []
+    for index, rule in enumerate(rules):
+        if rule.action == "block" and rule.destination == SELF:
+            break  # 이 뒤의 허용은 방화벽 자신에 닿지 못한다
+        if _exposes_firewall(rule, target):
+            port = rule.port or "전 포트"
+            findings.append(_finding("PAR-NET-003", status="fail", severity="high",
+                                     location={"interface": rule.interface, "rule": str(index)},
+                                     evidence=f"{rule.interface} 에서 {rule.source} → {rule.destination} ({port}) 허용: "
+                                              "앞선 방화벽 차단이 없어 관리 포트까지 닿는다"))
+    return findings
+
+
+def _verified(target: EnvInventory, attacks: Sequence[AttackResult],
+              probes: Sequence[ReachabilityProbe]) -> tuple[VerifiedControl, ...]:
+    blocked_attacks = [VerifiedControl(rule_id="PAR-WAF-002", environment=a.environment, subject=a.scenario, observed="blocked")
+                       for a in attacks if a.environment == target.provider and a.observed == "blocked"]
+    closed_ports = [VerifiedControl(rule_id="PAR-NET-002", environment=p.environment, subject=_probe_subject(p), observed="closed")
+                    for p in _target_probes(target, probes) if p.expected == "closed" and p.observed == "closed"]
+    return (*blocked_attacks, *closed_ports)
+
+
+def evaluated_network_rules(target: EnvInventory, probes: Sequence[ReachabilityProbe]) -> frozenset[str]:
+    evaluated = set()
+    if _target_probes(target, probes):
+        evaluated.add("PAR-NET-002")
+    if target.network.firewall_rules is not None:
+        evaluated.add("PAR-NET-003")
+    return frozenset(evaluated)
+
+
+def check_parity(source: EnvInventory, target: EnvInventory, attacks: Sequence[AttackResult],
+                 probes: Sequence[ReachabilityProbe] = ()) -> CheckOutcome:
     findings = (
         *_check_waf(source, target),
         *_check_attacks(source, target, attacks),
@@ -201,12 +290,16 @@ def check_parity(source: EnvInventory, target: EnvInventory, attacks: Sequence[A
         *_check_flag("PAR-LOG-001", target.logging.central, "/logging/central", "중앙 로그", "medium"),
         *_check_flag("PAR-ING-001", target.ingress.tls, "/ingress/tls", "TLS", "medium"),
         *_check_network(source, target),
+        *_check_reachability(target, probes),
+        *_check_firewall(target),
     )
-    return CheckOutcome(findings=findings, checks=parity_checks(findings))
+    return CheckOutcome(findings=findings, checks=parity_checks(findings, evaluated_network_rules(target, probes)),
+                        verified=_verified(target, attacks, probes))
 
 
-def parity_checks(findings: Sequence[Finding]) -> tuple[Check, ...]:
+def parity_checks(findings: Sequence[Finding], evaluated: frozenset[str] = frozenset()) -> tuple[Check, ...]:
+    titles = {**RULES, **{rule_id: OPTIONAL_RULES[rule_id] for rule_id in OPTIONAL_RULES if rule_id in evaluated}}
     return tuple(
         Check(rule_id=rule_id, name=title, state=check_state(f for f in findings if f.rule_id == rule_id))
-        for rule_id, (_, title) in RULES.items()
+        for rule_id, (_, title) in titles.items()
     )

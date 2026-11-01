@@ -100,7 +100,7 @@ flowchart TB
 
 ## 3. 판단 한 번의 처리 순서
 
-세 `kind`가 같은 순서를 따른다. LLM은 판정을 정하지 않으며, 출력이 틀리면 전체를 버린다.
+네 `kind`가 같은 순서를 따른다. LLM은 판정을 정하지 않으며, 출력이 틀리면 전체를 버린다.
 
 ```mermaid
 flowchart TD
@@ -287,6 +287,7 @@ sequenceDiagram
 | | `evidence.attack_results` | 필수는 아니다. 없으면 차단 여부를 모르는 것으로 판정한다 | 미정 |
 | `code_security` | `evidence.sarif` 또는 `evidence.code_files` | Semgrep 결과와 원본 코드. 패치를 받으려면 원본 코드가 필요하다 | 미정 |
 | `feedback_ingest` | `evidence.report` | 항목별 CWE, 위치, 설명, 취약·안전 예시 | 미정 |
+| `runtime_security` | `evidence.image_vulnerabilities`, `cluster_checks`, `log_signals` 중 하나 이상 | 패키지별 취약점, 오탐 표시한 클러스터 점검, 집계한 로그 신호 | `scripts/collect_onprem.py` 또는 호출자 |
 
 ### 요청 예시
 

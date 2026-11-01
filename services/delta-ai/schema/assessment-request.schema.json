@@ -47,6 +47,47 @@
       "title": "AttackResult",
       "type": "object"
     },
+    "ClusterCheck": {
+      "additionalProperties": false,
+      "properties": {
+        "check_id": {
+          "minLength": 1,
+          "title": "Check Id",
+          "type": "string"
+        },
+        "title": {
+          "default": "",
+          "title": "Title",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "fail",
+            "false_positive"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "verification": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Verification"
+        }
+      },
+      "required": [
+        "check_id",
+        "status"
+      ],
+      "title": "ClusterCheck",
+      "type": "object"
+    },
     "EnvInventory": {
       "additionalProperties": false,
       "properties": {
@@ -101,7 +142,9 @@
           "default": {
             "gateway": null,
             "inspected": null,
-            "l7_visible": null
+            "l7_visible": null,
+            "gateway_addresses": [],
+            "firewall_rules": null
           }
         }
       },
@@ -120,6 +163,14 @@
             "$ref": "#/$defs/AttackResult"
           },
           "title": "Attack Results",
+          "type": "array"
+        },
+        "reachability": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ReachabilityProbe"
+          },
+          "title": "Reachability",
           "type": "array"
         },
         "sarif": {
@@ -152,9 +203,106 @@
             }
           ],
           "default": null
+        },
+        "image_vulnerabilities": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/PackageVulnerability"
+              },
+              "maxItems": 50,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Image Vulnerabilities"
+        },
+        "cluster_checks": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/ClusterCheck"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cluster Checks"
+        },
+        "log_signals": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/LogSignal"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Log Signals"
         }
       },
       "title": "Evidence",
+      "type": "object"
+    },
+    "FirewallRule": {
+      "additionalProperties": false,
+      "description": "위에서 아래로 평가되는 실효 룰 한 줄. 점검할 인터페이스의 룰만 보낸다.",
+      "properties": {
+        "interface": {
+          "title": "Interface",
+          "type": "string"
+        },
+        "action": {
+          "enum": [
+            "pass",
+            "block"
+          ],
+          "title": "Action",
+          "type": "string"
+        },
+        "protocol": {
+          "default": "any",
+          "title": "Protocol",
+          "type": "string"
+        },
+        "source": {
+          "default": "any",
+          "title": "Source",
+          "type": "string"
+        },
+        "destination": {
+          "title": "Destination",
+          "type": "string"
+        },
+        "port": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Port"
+        }
+      },
+      "required": [
+        "interface",
+        "action",
+        "destination"
+      ],
+      "title": "FirewallRule",
       "type": "object"
     },
     "IdentityInventory": {
@@ -220,6 +368,62 @@
         }
       },
       "title": "IngressInventory",
+      "type": "object"
+    },
+    "LogSignal": {
+      "additionalProperties": false,
+      "description": "원본 로그가 아니라 수집기가 센 신호다. samples 는 신뢰하지 않는 데이터로 다룬다.",
+      "properties": {
+        "source": {
+          "minLength": 1,
+          "title": "Source",
+          "type": "string"
+        },
+        "signal": {
+          "enum": [
+            "firewall_block",
+            "attack_request_allowed",
+            "attack_request_blocked",
+            "http_5xx"
+          ],
+          "title": "Signal",
+          "type": "string"
+        },
+        "count": {
+          "minimum": 0,
+          "title": "Count",
+          "type": "integer"
+        },
+        "total": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Total"
+        },
+        "samples": {
+          "default": [],
+          "items": {
+            "maxLength": 300,
+            "type": "string"
+          },
+          "maxItems": 5,
+          "title": "Samples",
+          "type": "array"
+        }
+      },
+      "required": [
+        "source",
+        "signal",
+        "count"
+      ],
+      "title": "LogSignal",
       "type": "object"
     },
     "LoggingInventory": {
@@ -296,9 +500,145 @@
           ],
           "default": null,
           "title": "L7 Visible"
+        },
+        "gateway_addresses": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Gateway Addresses",
+          "type": "array"
+        },
+        "firewall_rules": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/FirewallRule"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Firewall Rules"
         }
       },
       "title": "NetworkInventory",
+      "type": "object"
+    },
+    "PackageVulnerability": {
+      "additionalProperties": false,
+      "description": "이미지의 패키지 하나에 묶은 취약점. 호출자가 CVE 단위 결과를 묶어서 보낸다.",
+      "properties": {
+        "image": {
+          "minLength": 1,
+          "title": "Image",
+          "type": "string"
+        },
+        "package": {
+          "minLength": 1,
+          "title": "Package",
+          "type": "string"
+        },
+        "installed_version": {
+          "default": "",
+          "title": "Installed Version",
+          "type": "string"
+        },
+        "severity": {
+          "enum": [
+            "critical",
+            "high",
+            "medium",
+            "low",
+            "unknown"
+          ],
+          "title": "Severity",
+          "type": "string"
+        },
+        "fixed_versions": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Fixed Versions",
+          "type": "array"
+        },
+        "vulnerability_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Vulnerability Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "image",
+        "package",
+        "severity"
+      ],
+      "title": "PackageVulnerability",
+      "type": "object"
+    },
+    "ReachabilityProbe": {
+      "additionalProperties": false,
+      "description": "실제 연결 시험 결과. 설정이 아니라 실측이다.",
+      "properties": {
+        "environment": {
+          "enum": [
+            "aws",
+            "gcp",
+            "onprem"
+          ],
+          "title": "Environment",
+          "type": "string"
+        },
+        "source": {
+          "minLength": 1,
+          "title": "Source",
+          "type": "string"
+        },
+        "target": {
+          "minLength": 1,
+          "title": "Target",
+          "type": "string"
+        },
+        "port": {
+          "maximum": 65535,
+          "minimum": 1,
+          "title": "Port",
+          "type": "integer"
+        },
+        "expected": {
+          "enum": [
+            "open",
+            "closed"
+          ],
+          "title": "Expected",
+          "type": "string"
+        },
+        "observed": {
+          "enum": [
+            "open",
+            "closed",
+            "unknown"
+          ],
+          "title": "Observed",
+          "type": "string"
+        }
+      },
+      "required": [
+        "environment",
+        "source",
+        "target",
+        "port",
+        "expected",
+        "observed"
+      ],
+      "title": "ReachabilityProbe",
       "type": "object"
     },
     "Report": {
@@ -539,7 +879,8 @@
       "enum": [
         "migration_parity",
         "code_security",
-        "feedback_ingest"
+        "feedback_ingest",
+        "runtime_security"
       ],
       "title": "Kind",
       "type": "string"
@@ -573,9 +914,13 @@
       "$ref": "#/$defs/Evidence",
       "default": {
         "attack_results": [],
+        "reachability": [],
         "sarif": null,
         "code_files": {},
-        "report": null
+        "report": null,
+        "image_vulnerabilities": null,
+        "cluster_checks": null,
+        "log_signals": null
       }
     }
   },

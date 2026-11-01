@@ -37,6 +37,15 @@ curl -s -X POST localhost:8090/v1/assessments -H "Authorization: Bearer $DELTA_A
 | `migration_parity` | 이전 직전, 샌드박스 시험 후 | `source_env`, `target_env`, `evidence.attack_results` |
 | `code_security` | CI | `evidence.sarif`, `evidence.code_files` |
 | `feedback_ingest` | 긴 리뷰·모의해킹 완료 후 | `evidence.report` |
+| `runtime_security` | 배포 후 주기적으로 | `evidence.image_vulnerabilities`, `cluster_checks`, `log_signals` 중 하나 이상 |
+
+`migration_parity` 는 `evidence.reachability`(실제 연결 시험)와 `target_env.network.firewall_rules` 도 받는다. 보내면 `PAR-NET-002`, `PAR-NET-003` 을 점검한다. 응답의 `verified_controls` 는 막혔다고 실측된 통제다.
+
+온프레미스 노드에서 증거를 모아 보내려면 [수집기](scripts/collect_onprem.py)를 쓴다. 설정 형식은 [예시](scripts/collect_onprem.example.json)를 보고, 실제 주소가 든 설정은 저장소 밖에 둔다. 읽기 전용이지만 시험 공격 요청과 스캔용 파드는 만든다.
+
+```bash
+python scripts/collect_onprem.py --config <설정.json> --out <결과 폴더> --dry-run
+```
 
 ## 판정
 

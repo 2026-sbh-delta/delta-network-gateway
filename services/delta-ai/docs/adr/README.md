@@ -47,6 +47,7 @@ FastAPI ─ Bearer 토큰 인증
 | [22](ADR-AI-22-deployment.md) | 배포 | 미구현(로컬) | **컨테이너 1개 권고** |
 | [23](ADR-AI-23-prelim-reuse.md) | 예선 코드 재사용 | 범용 부품만 복사 | 유지, **규정 확인** |
 | [24](ADR-AI-24-progress-graph.md) | 진행 그래프 | 미구현 | **팀 결정: 단계 이벤트와 화면 담당** |
+| [26](ADR-AI-26-onprem-runtime.md) | 온프레미스 증거 연동 | `runtime_security`와 수집기 구현 | **팀 결정: 데모 범위 포함 여부** |
 
 ## 오늘 회의에서 정할 것
 

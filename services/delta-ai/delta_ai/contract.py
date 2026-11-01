@@ -5,11 +5,11 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal, Self
+from typing import Annotated, Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-Kind = Literal["migration_parity", "code_security", "feedback_ingest"]
+Kind = Literal["migration_parity", "code_security", "feedback_ingest", "runtime_security"]
 Provider = Literal["aws", "gcp", "onprem"]
 Verdict = Literal["pass", "fix", "needs_human"]
 Severity = Literal["high", "medium", "low"]
@@ -19,6 +19,9 @@ CandidateStatus = Literal["proposed", "needs_detector", "approved", "rejected"]
 
 MAX_CODE_FILES = 50
 MAX_CODE_FILE_CHARS = 256_000
+MAX_RUNTIME_PACKAGES = 50  # 패키지별로 묶은 뒤의 상한. LLM 입력이 커지지 않게 한다
+MAX_LOG_SAMPLES = 5
+MAX_LOG_SAMPLE_CHARS = 300
 
 
 class _Model(BaseModel):
@@ -58,10 +61,23 @@ class IngressInventory(_Model):
     tls: bool | None = None
 
 
+class FirewallRule(_Model):
+    """위에서 아래로 평가되는 실효 룰 한 줄. 점검할 인터페이스의 룰만 보낸다."""
+
+    interface: str
+    action: Literal["pass", "block"]
+    protocol: str = "any"
+    source: str = "any"
+    destination: str
+    port: str | None = None  # None 은 전 포트다
+
+
 class NetworkInventory(_Model):
     gateway: Literal["anf", "haproxy", "none"] | None = None
     inspected: bool | None = None  # 트래픽이 중앙 검사 경로를 지나는가
     l7_visible: bool | None = None  # 그 경로에서 복호화된 L7 을 볼 수 있는가
+    gateway_addresses: tuple[str, ...] = ()  # 방화벽 자신의 주소. 관리 포트 노출 판단에 쓴다
+    firewall_rules: tuple[FirewallRule, ...] | None = None  # None 은 점검 안 함, 빈 값은 수집 실패로 본다
 
 
 class EnvInventory(_Model):
@@ -97,11 +113,62 @@ class Report(_Model):
     findings: tuple[ReportFinding, ...]
 
 
+class ReachabilityProbe(_Model):
+    """실제 연결 시험 결과. 설정이 아니라 실측이다."""
+
+    environment: Provider
+    source: str = Field(min_length=1)
+    target: str = Field(min_length=1)
+    port: int = Field(ge=1, le=65535)
+    expected: Literal["open", "closed"]
+    observed: Literal["open", "closed", "unknown"]
+
+
+class PackageVulnerability(_Model):
+    """이미지의 패키지 하나에 묶은 취약점. 호출자가 CVE 단위 결과를 묶어서 보낸다."""
+
+    image: str = Field(min_length=1)
+    package: str = Field(min_length=1)
+    installed_version: str = ""
+    severity: Literal["critical", "high", "medium", "low", "unknown"]
+    fixed_versions: tuple[str, ...] = ()
+    vulnerability_ids: tuple[str, ...] = ()
+
+
+class ClusterCheck(_Model):
+    check_id: str = Field(min_length=1)
+    title: str = ""
+    status: Literal["fail", "false_positive"]
+    verification: str | None = None  # 오탐이라고 본 실측 근거
+
+    @model_validator(mode="after")
+    def _false_positive_needs_verification(self) -> Self:
+        if self.status == "false_positive" and not self.verification:
+            raise ValueError("false_positive 는 verification 이 필요하다")
+        return self
+
+
+class LogSignal(_Model):
+    """원본 로그가 아니라 수집기가 센 신호다. samples 는 신뢰하지 않는 데이터로 다룬다."""
+
+    source: str = Field(min_length=1)
+    signal: Literal["firewall_block", "attack_request_allowed", "attack_request_blocked", "http_5xx"]
+    count: int = Field(ge=0)
+    total: int | None = Field(default=None, ge=0)
+    samples: tuple[Annotated[str, Field(max_length=MAX_LOG_SAMPLE_CHARS)], ...] = Field(default=(),
+                                                                                       max_length=MAX_LOG_SAMPLES)
+
+
 class Evidence(_Model):
     attack_results: tuple[AttackResult, ...] = ()
+    reachability: tuple[ReachabilityProbe, ...] = ()
     sarif: dict[str, Any] | None = None
     code_files: dict[str, str] = Field(default_factory=dict)
     report: Report | None = None
+    # None 은 점검 안 함, 빈 값은 점검했고 나온 것이 없다는 뜻이다
+    image_vulnerabilities: tuple[PackageVulnerability, ...] | None = Field(default=None, max_length=MAX_RUNTIME_PACKAGES)
+    cluster_checks: tuple[ClusterCheck, ...] | None = None
+    log_signals: tuple[LogSignal, ...] | None = None
 
     @field_validator("code_files")
     @classmethod
@@ -129,6 +196,10 @@ class AssessmentRequest(_Model):
             raise ValueError("code_security 는 evidence.sarif 나 evidence.code_files 가 필요하다")
         if self.kind == "feedback_ingest" and self.evidence.report is None:
             raise ValueError("feedback_ingest 는 evidence.report 가 필요하다")
+        evidence = self.evidence
+        if self.kind == "runtime_security" and all(
+                value is None for value in (evidence.image_vulnerabilities, evidence.cluster_checks, evidence.log_signals)):
+            raise ValueError("runtime_security 는 image_vulnerabilities, cluster_checks, log_signals 중 하나가 필요하다")
         return self
 
 
@@ -213,6 +284,15 @@ class Meta(_Model):
     duration_ms: int = 0
 
 
+class VerifiedControl(_Model):
+    """막혔다고 실측된 통제. finding 은 문제만 담으므로 보호 근거는 따로 남긴다."""
+
+    rule_id: str
+    environment: Provider | None = None
+    subject: str
+    observed: str
+
+
 class AssessmentResult(_Model):
     assessment_id: str
     kind: Kind
@@ -220,6 +300,7 @@ class AssessmentResult(_Model):
     reasons: tuple[str, ...] = ()
     findings: tuple[Finding, ...] = ()
     checks: tuple[Check, ...] = ()
+    verified_controls: tuple[VerifiedControl, ...] = ()
     remediation: Remediation = Remediation()
     rule_candidates: tuple[RuleCandidate, ...] = ()
     meta: Meta = Meta()

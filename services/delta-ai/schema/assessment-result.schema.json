@@ -389,6 +389,48 @@
       "title": "SpecOp",
       "type": "object"
     },
+    "VerifiedControl": {
+      "additionalProperties": false,
+      "description": "막혔다고 실측된 통제. finding 은 문제만 담으므로 보호 근거는 따로 남긴다.",
+      "properties": {
+        "rule_id": {
+          "title": "Rule Id",
+          "type": "string"
+        },
+        "environment": {
+          "anyOf": [
+            {
+              "enum": [
+                "aws",
+                "gcp",
+                "onprem"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Environment"
+        },
+        "subject": {
+          "title": "Subject",
+          "type": "string"
+        },
+        "observed": {
+          "title": "Observed",
+          "type": "string"
+        }
+      },
+      "required": [
+        "rule_id",
+        "subject",
+        "observed"
+      ],
+      "title": "VerifiedControl",
+      "type": "object"
+    },
     "WafRule": {
       "additionalProperties": false,
       "properties": {
@@ -429,7 +471,8 @@
       "enum": [
         "migration_parity",
         "code_security",
-        "feedback_ingest"
+        "feedback_ingest",
+        "runtime_security"
       ],
       "title": "Kind",
       "type": "string"
@@ -465,6 +508,14 @@
         "$ref": "#/$defs/Check"
       },
       "title": "Checks",
+      "type": "array"
+    },
+    "verified_controls": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/VerifiedControl"
+      },
+      "title": "Verified Controls",
       "type": "array"
     },
     "remediation": {
