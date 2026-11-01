@@ -1,0 +1,22 @@
+{
+  "source": "fixture",
+  "source_label": "예제 SAST 결과 (실제 AI·AWS 스캔 아님)",
+  "findings": [
+    {
+      "id": "SAST-XSS-001",
+      "title": "게시글 본문 저장형 XSS 후보",
+      "cwe": "CWE-79",
+      "severity": "HIGH",
+      "description": "저장된 body를 HTML로 그대로 출력하는 코드 경로. 작성과 저장을 마친 후 새 브라우저에서 상세 페이지를 열어 실행 여부를 확인한다.",
+      "source_file": "app/board.py",
+      "line": 51,
+      "payload": "<svg width=\"0\" height=\"0\" onload=\"window.__dastProof='{{DAST_NONCE}}';console.info('DAST_PROOF:{{DAST_NONCE}}');var s=document.createElement('style');s.textContent='@keyframes dastShake{0%,100%{transform:translate(0,0) rotate(0)}20%{transform:translate(-7px,3px) rotate(-2deg)}40%{transform:translate(7px,-3px) rotate(2deg)}60%{transform:translate(-4px,-2px) rotate(-1deg)}80%{transform:translate(4px,2px) rotate(1deg)}}.dast-shake{animation:dastShake .3s infinite}';document.head.append(s);var m=!matchMedia('(prefers-reduced-motion: reduce)').matches,e=m?[].slice.call(document.body.querySelectorAll('*')).slice(0,300):[];e.forEach(function(x,i){x.classList.add('dast-shake');x.style.animationDelay=(i%6)*0.05+'s'});var b=document.createElement('div');b.id='dast-visual-proof';b.textContent='HACKED · 해킹됨';b.style.cssText='position:fixed;left:50%;top:42%;transform:translate(-50%,-50%);z-index:2147483647;padding:20px 40px;background:#0b0f14;color:#39ff6a;font:800 40px/1.2 ui-monospace,monospace;letter-spacing:3px;border:3px solid #39ff6a;border-radius:12px;box-shadow:0 0 40px rgba(57,255,106,.6);pointer-events:none';document.body.append(b);setTimeout(function(){e.forEach(function(x){x.classList.remove('dast-shake')});b.remove();s.remove()},4000);\"></svg>",
+      "trigger": {
+        "target_id": "local-fixture",
+        "route_id": "board-post",
+        "field": "body",
+        "payload_id": "visual_svg_v1"
+      }
+    }
+  ]
+}

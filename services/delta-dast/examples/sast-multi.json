@@ -1,0 +1,32 @@
+{
+  "source": "fixture",
+  "source_label": "SAST 결과 예제 · 2건 (실제 스캔 결과 아님)",
+  "findings": [
+    {
+      "id": "SAST-XSS-102",
+      "title": "댓글 저장형 XSS",
+      "cwe": "CWE-79",
+      "severity": "HIGH",
+      "description": "게시글 상세 페이지의 댓글 입력이 저장된 뒤 댓글 목록에 출력 인코딩 없이 삽입됩니다.",
+      "source_file": "app/comments.py",
+      "line": 12,
+      "trigger": {
+        "target_id": "local-fixture",
+        "payload_id": "bsod_v1"
+      }
+    },
+    {
+      "id": "SAST-XSS-101",
+      "title": "게시글 본문 저장형 XSS",
+      "cwe": "CWE-79",
+      "severity": "HIGH",
+      "description": "게시글 본문이 저장된 뒤 상세 페이지에 출력 인코딩 없이 삽입됩니다.",
+      "source_file": "app/board.py",
+      "line": 51,
+      "trigger": {
+        "target_id": "local-fixture",
+        "payload_id": "visual_svg_v1"
+      }
+    }
+  ]
+}
