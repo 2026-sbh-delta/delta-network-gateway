@@ -861,3 +861,25 @@ run "reject_duplicate_customer_gateway" {
   }
   expect_failures = [var.vpn_peers]
 }
+
+run "client_spoke" {
+  command = plan
+  variables {
+    shared_account_ids = ["444455556666"]
+    spoke_attachments = {
+      aws_client = {
+        account_id      = "444455556666"
+        role            = "Client"
+        vpc_cidrs       = ["10.10.0.0/16"]
+        attachment_id   = "tgw-attach-00000000000000011"
+        acceptance_mode = "accept"
+        reported_state  = "pendingAcceptance"
+        az_ids          = ["apne2-az1", "apne2-az2"]
+      }
+    }
+  }
+  assert {
+    condition     = contains(keys(aws_ec2_transit_gateway_vpc_attachment_accepter.spoke), "aws_client") && length(aws_ec2_transit_gateway_route.to_spoke) == 1 && contains(local.home_net, "10.10.0.0/16") && alltrue([for route in aws_ec2_transit_gateway_route.before_inspection : route.transit_gateway_attachment_id == aws_ec2_transit_gateway_vpc_attachment.inspection.id])
+    error_message = "Client spokes must receive central acceptance, return routing and inspection without a bypass."
+  }
+}

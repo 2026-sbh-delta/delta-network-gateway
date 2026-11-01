@@ -15,7 +15,7 @@ TGW RAM Share와 Firewall RAM Share는 별도다. Firewall Policy만 공유받�
 
 소비자가 돌려줄 값:
 
-- Account ID, VPC 역할(`ALB`/`Backend`), 실제 VPC CIDRs.
+- Account ID, VPC 역할(`ALB`/`Backend`/`Client`), 실제 VPC CIDRs.
 - TGW VPC Attachment ID와 현재 수락 상태.
 - 실제 Attachment 및 보조 Endpoint가 사용하는 AZ IDs.
 - ALB listener/Backend/Health Check의 실제 프로토콜과 포트.
@@ -74,6 +74,8 @@ locals {
 소비자의 Endpoint가 READY가 되면 그 VPC의 `local.secondary_endpoint_ids[az_id]`를 Route Target으로 사용한다. 중앙 Primary Endpoint ID를 대신 넣지 않는다.
 
 소비자의 TGW Attachment는 각 사용 AZ에서 전용 Attachment Subnet을 선택한다. 기본 Route Table Association/Propagation은 false로 설정하고 중앙 수락을 기다린다. 중앙은 수락 후 Spoke RT에 Association한다. 이미 수락된 연결은 `acceptance_mode=existing`, 중앙이 수락하고 계속 관리할 연결은 `acceptance_mode=accept`로 등록한다.
+
+공유 TGW에서 소비자 Provider는 기본 Association/Propagation을 직접 구성하거나 drift를 검사할 수 없다. 실제 비활성 상태는 중앙 TGW와 accepter 설정으로 관리하고 중앙 계정의 RT 조회로 확인한다. 소비자 선언의 false만으로 우회 경로 부재를 판정하지 않는다.
 
 `existing`은 수락 API를 다시 호출하지 않는다는 뜻이다. 이미 다른 Terraform state가 관리하는 Association/Route까지 자동 인수한다는 뜻은 아니다. 해당 객체가 이미 존재하면 소유자와 관리 이관을 조율하고 정확한 객체를 import한 뒤 Plan을 검토한다. 기존 Association을 자동으로 덮어쓰거나 상대 state와 중복 관리하지 않는다.
 

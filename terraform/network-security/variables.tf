@@ -116,14 +116,14 @@ variable "spoke_attachments" {
   validation {
     condition = alltrue([for spoke in values(var.spoke_attachments) :
       can(regex("^[0-9]{12}$", spoke.account_id)) && contains(var.shared_account_ids, spoke.account_id) &&
-      contains(["ALB", "Backend"], spoke.role) && can(regex("^tgw-attach-[0-9a-f]+$", spoke.attachment_id)) &&
+      contains(["ALB", "Backend", "Client"], spoke.role) && can(regex("^tgw-attach-[0-9a-f]+$", spoke.attachment_id)) &&
       contains(["accept", "existing"], spoke.acceptance_mode) &&
       contains(["pendingAcceptance", "available"], spoke.reported_state) &&
       (spoke.acceptance_mode != "existing" || spoke.reported_state == "available") &&
       length(spoke.vpc_cidrs) > 0 && length(spoke.az_ids) > 0 &&
       length(setsubtract(spoke.az_ids, toset(keys(var.inspection_azs)))) == 0
     ])
-    error_message = "Spokes require a shared account, ALB/Backend role, valid attachment, accept/existing mode, valid reported state and supported AZ IDs."
+    error_message = "Spokes require a shared account, ALB/Backend/Client role, valid attachment, accept/existing mode, valid reported state and supported AZ IDs."
   }
   validation {
     condition     = length(distinct([for spoke in values(var.spoke_attachments) : spoke.attachment_id])) == length(var.spoke_attachments)

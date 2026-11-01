@@ -68,7 +68,7 @@ RAM 조직 공유 활성화는 조직 관리 계정에서 수행하며 `AWSServi
 | 속성명 | 타입 | 기본값 | 역할 |
 | --- | --- | --- | --- |
 | `account_id` | `string` | 필수 | `shared_account_ids`에 있는 소비자 계정 |
-| `role` | `string` | 필수 | `ALB` 또는 `Backend` |
+| `role` | `string` | 필수 | `ALB`, `Backend` 또는 사설 시험 클라이언트 `Client` |
 | `vpc_cidrs` | `set(string)` | 필수 | 해당 VPC의 실제 CIDR 목록 |
 | `attachment_id` | `string` | 필수 | 소비자가 만든 TGW VPC Attachment ID |
 | `acceptance_mode` | `string` | 필수 | `accept`: 중앙 accepter 소유, `existing`: 이미 수락된 연결 참조 |
@@ -210,7 +210,7 @@ GCP에서 Account B Backend로 가는 실제 요청/응답의 단계별 설명�
 - 마지막 SID `9000000`은 해당 bit가 없는 트래픽을 명시적으로 drop하고 차단 ALERT를 남긴다. 허용 목록이 비어 있으면 전체 허용 규칙 없이 이 차단 규칙만 남는다.
 - 이 방식의 허용 표시는 종료형 pass가 아니다. 패킷은 이후에도 추가 시그니처 평가 대상이 된다. Policy에 `aws:drop_strict`를 추가하면 허용 표시된 패킷도 차단되므로 기본 전체 drop을 중복 설정하지 않는다. 마지막 차단 규칙을 제거하거나 비활성화해서도 안 된다.
 - TCP 연결 성립과 응답, UDP 응답, ICMP echo 요청/응답은 배포 후 실제 패킷으로 검증한다. ALB Health Check도 별도 TCP 허용 입력이 필요하다. ICMP 오류/PMTUD 등 추가 type을 필요로 하면 별도로 설계하고 검증한다.
-- HOME_NET은 Inspection, 등록된 ALB/Backend VPC, GCP/온프레미스 CIDR의 합집합이다. Rule Group의 EXTERNAL_NET을 전체 IPv4로 명시해 HOME_NET 간 통신이 음수 조건으로 빠지지 않게 한다.
+- HOME_NET은 Inspection, 등록된 ALB/Backend/Client VPC, GCP/온프레미스 CIDR의 합집합이다. Rule Group의 EXTERNAL_NET을 전체 IPv4로 명시해 HOME_NET 간 통신이 음수 조건으로 빠지지 않게 한다.
 - SID 범위를 분리하고 중복을 거부한다. 추가 규칙은 한 줄의 drop/alert/reject만 받으며 pass, flowbit 변경과 STRICT_ORDER의 priority keyword는 거부한다. 추가 규칙 내부와 허용 목록 내부는 각각 맵 키의 사전순으로 평가하므로 순서가 필요하면 키에 순서 접두사를 붙인다. reject는 TCP에만 사용한다. 기본 제공 IPS 서명 집합은 없고 포트 허용/차단을 완전한 IPS라고 부르지 않는다.
 - 계정 간 보조 Endpoint 공유 때문에 TLS 복호화를 활성화하지 않는다. 암호화된 HTTPS 본문 검사나 기존 연결의 허용 취소 즉시 적용을 보장하지 않는다. 정책을 바꾼 뒤 새 연결과 기존 연결을 구분해 확인한다.
 
