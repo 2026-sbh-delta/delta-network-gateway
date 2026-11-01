@@ -38,18 +38,7 @@ def _merge(base: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
     return merged
 
 
-def _security_request(code_replace: dict[str, list[str]]) -> dict[str, Any]:
-    code_files = {path.name: path.read_text(encoding="utf-8") for path in (FIXTURES / "demo-app").glob("*.js")}
-    for name, (old, new) in code_replace.items():
-        code_files[name] = code_files[name].replace(old, new)
-    sarif = json.loads((FIXTURES / "demo-app.sarif.json").read_text(encoding="utf-8"))
-    return {"assessment_id": "eval-security", "kind": "code_security", "service": {"service_id": "demo-app"},
-            "evidence": {"sarif": sarif, "code_files": code_files}}
-
-
 def build_request(case: dict[str, Any]) -> AssessmentRequest:
-    if case["base"] == "security":
-        return AssessmentRequest.model_validate(_security_request(case.get("code_replace", {})))
     base = json.loads((FIXTURES / case["base"]).read_text(encoding="utf-8"))
     return AssessmentRequest.model_validate(_merge(copy.deepcopy(base), case.get("patch", {})))
 

@@ -34,8 +34,6 @@ def _show(title: str, result: AssessmentResult) -> None:
             print(f"  · [{finding.status}] {finding.rule_id} {finding.evidence[:90]}")
     for rule in result.remediation.waf_rules:
         print(f"  → {rule.action} {rule.expression}")
-    for diff in result.remediation.code_diffs:
-        print(f"  → 패치 {diff.path}\n{diff.diff}")
     for candidate in result.rule_candidates:
         print(f"  → 규칙 후보 {candidate.candidate_id} {candidate.status} {candidate.detector_contains} {candidate.regression}")
 
@@ -46,15 +44,13 @@ async def main(mode: str) -> None:
         store = RuleStore(Path(tmp) / "rules.json")
         _show("① AWS→GCP: 대상에 WAF 없음, 공격 통과", await assess(build_request({"base": "parity-waf-missing.json"}), llm=llm, store=store))
         _show("② 수정 적용 뒤 재시험: 공격 차단", await assess(build_request({"base": "parity-ok.json"}), llm=llm, store=store))
-        code = build_request({"base": "security"})
-        _show("③ 코드 보안: Semgrep SARIF", await assess(code, llm=llm, store=store))
         report = AssessmentRequest.model_validate(json.loads((FIXTURES / "feedback-report.json").read_text(encoding="utf-8")))
         ingest = await assess(report, llm=llm, store=store)
-        _show("④ 긴 리뷰 보고서 수집: Semgrep 이 놓친 명령 주입", ingest)
+        _show("③ 긴 리뷰 보고서 수집: 규칙 후보", ingest)
         for candidate in ingest.rule_candidates:
             if candidate.status == "proposed" and candidate.regression.ready:
                 store.decide(candidate.candidate_id, decision="approved", approver="demo")
-        _show("⑤ 규칙 승인 뒤 재검사: 이제 잡힌다", await assess(code, llm=llm, store=store))
+        print(f"\n── ④ 규칙 승인: 활성 규칙 {[rule.candidate_id for rule in store.active_rules()]}")
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-"""assess() — 세 호출(환경 차이·코드 보안·피드백)이 같은 순서를 따른다: 규칙 → 근거 → LLM → 코드 판정."""
+"""assess() — 두 호출(환경 차이·피드백)이 같은 순서를 따른다: 규칙 → 근거 → LLM → 코드 판정."""
 
 from __future__ import annotations
 
@@ -22,7 +22,6 @@ from delta_ai.judge import PROMPT_VERSION, JudgeOutcome, judge
 from delta_ai.knowledge import Chunk, load_chunks
 from delta_ai.llm import LlmClient
 from delta_ai.parity import check_parity, parity_checks
-from delta_ai.security import check_security, security_checks
 from delta_ai.store import RuleStore
 from delta_ai.verdict import decide
 
@@ -45,8 +44,7 @@ def _remediation(findings: Sequence[Finding]) -> Remediation:
     for finding in active:
         ops.update({op.path: op for op in finding.ops})
         rules.update({rule.expression: rule for rule in finding.waf_rules})
-    diffs = tuple(dict.fromkeys(f.code_diff for f in active if f.code_diff))  # 한 패치가 여러 finding 을 고친다
-    return Remediation(spec_ops=tuple(ops.values()), waf_rules=tuple(rules.values()), code_diffs=diffs)
+    return Remediation(spec_ops=tuple(ops.values()), waf_rules=tuple(rules.values()))
 
 
 def _meta(outcome: JudgeOutcome, started: float) -> Meta:
@@ -55,19 +53,13 @@ def _meta(outcome: JudgeOutcome, started: float) -> Meta:
                 usage=outcome.usage, duration_ms=int((time.monotonic() - started) * 1000))
 
 
-async def _assess_checks(req: AssessmentRequest, llm: LlmClient | None, store: RuleStore,
-                         started: float) -> AssessmentResult:
-    if req.kind == "migration_parity":
-        outcome = check_parity(req.source_env, req.target_env, req.evidence.attack_results)
-        rebuild_checks = parity_checks
-    else:
-        outcome = check_security(req, active_rules=store.active_rules())
-        rebuild_checks = security_checks
+async def _assess_parity(req: AssessmentRequest, llm: LlmClient | None, started: float) -> AssessmentResult:
+    outcome = check_parity(req.source_env, req.target_env, req.evidence.attack_results)
     docs = _retrieve(outcome.findings)
-    judged = await judge(req.kind, _with_doc_flags(outcome.findings, docs), docs, llm, req.evidence.code_files)
+    judged = await judge(req.kind, _with_doc_flags(outcome.findings, docs), docs, llm)
     verdict, reasons = decide(judged.findings, judged.reasons)
     return AssessmentResult(assessment_id=req.assessment_id, kind=req.kind, verdict=verdict, reasons=reasons,
-                            findings=judged.findings, checks=rebuild_checks(judged.findings),
+                            findings=judged.findings, checks=parity_checks(judged.findings),
                             remediation=_remediation(judged.findings), meta=_meta(judged, started))
 
 
@@ -111,7 +103,7 @@ async def assess(req: AssessmentRequest, *, llm: LlmClient | None, store: RuleSt
     started = time.monotonic()
     if req.kind == "feedback_ingest":
         return await _assess_feedback(req, llm, store, started)
-    return await _assess_checks(req, llm, store, started)
+    return await _assess_parity(req, llm, started)
 
 
 def result_json(result: AssessmentResult) -> str:

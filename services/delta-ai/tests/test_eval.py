@@ -16,5 +16,5 @@ async def test_eval_case_with_fake_llm(case, tmp_path):
 def test_eval_set_has_required_coverage():
     cases = load_cases()
 
-    assert len(cases) >= 12
+    assert len(cases) >= 11
     assert {"pass", "fix", "needs_human"} <= {verdict for case in cases for verdict in case["expect"]}

@@ -11,13 +11,9 @@ from delta_ai.service import assess
 from delta_ai.store import CandidateNotReady, RuleStore
 
 
-async def test_feedback_loop_catches_missed_vulnerability_after_approval(feedback_request, security_request, tmp_path):
+async def test_feedback_candidate_becomes_active_only_after_approval(feedback_request, tmp_path):
     store = RuleStore(tmp_path / "rules.json")
     llm = FakeLLM()
-    code_req = AssessmentRequest.model_validate(security_request)
-
-    before = await assess(code_req, llm=llm, store=store)
-    assert "CWE-78" not in {f.rule_id for f in before.findings}
 
     ingest = await assess(AssessmentRequest.model_validate(feedback_request), llm=llm, store=store)
     assert ingest.verdict == "needs_human"
@@ -27,14 +23,11 @@ async def test_feedback_loop_catches_missed_vulnerability_after_approval(feedbac
     assert candidate.regression.vulnerable_hit is True
     assert candidate.regression.safe_hit is False
 
-    unapproved = await assess(code_req, llm=llm, store=store)
-    assert "CWE-78" not in {f.rule_id for f in unapproved.findings}
+    assert store.active_rules() == ()
 
     store.decide(candidate.candidate_id, decision="approved", approver="yeonjae")
 
-    after = await assess(code_req, llm=llm, store=store)
-    finding = next(f for f in after.findings if f.rule_id == "CWE-78")
-    assert finding.location == {"path": "server.js", "line": "14", "source": "feedback"}
+    assert [rule.candidate_id for rule in store.active_rules()] == [candidate.candidate_id]
 
 
 async def test_reingesting_same_report_does_not_duplicate_or_reset_approval(feedback_request, tmp_path):
@@ -75,15 +68,13 @@ async def test_candidate_failing_regression_cannot_be_approved(feedback_request,
         store.decide(candidate.candidate_id, decision="approved", approver="yeonjae")
 
 
-async def test_rejected_candidate_stays_inactive(feedback_request, security_request, tmp_path):
+async def test_rejected_candidate_stays_inactive(feedback_request, tmp_path):
     store = RuleStore(tmp_path / "rules.json")
     llm = FakeLLM()
     ingest = await assess(AssessmentRequest.model_validate(feedback_request), llm=llm, store=store)
     store.decide(ingest.rule_candidates[0].candidate_id, decision="rejected", approver="yeonjae")
 
-    after = await assess(AssessmentRequest.model_validate(security_request), llm=llm, store=store)
-
-    assert "CWE-78" not in {f.rule_id for f in after.findings}
+    assert store.active_rules() == ()
 
 
 def test_store_reloads_from_disk_after_restart(tmp_path):
