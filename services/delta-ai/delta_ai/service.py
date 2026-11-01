@@ -1,4 +1,4 @@
-"""assess() — 세 호출(환경 차이·코드 보안·피드백)이 같은 순서를 따른다: 규칙 → 근거 → LLM → 코드 판정."""
+"""assess() — 네 호출(환경 차이·코드 보안·피드백·배포 단계)이 같은 순서를 따른다: 규칙 → 근거 → LLM → 코드 판정."""
 
 from __future__ import annotations
 
@@ -17,6 +17,7 @@ from delta_ai.contract import (
     SpecOp,
     WafRule,
 )
+from delta_ai.deployment import check_deployment, deployment_checks
 from delta_ai.feedback import candidate_id, detector_error, regression_check, report_findings
 from delta_ai.judge import PROMPT_VERSION, JudgeOutcome, judge
 from delta_ai.knowledge import Chunk, load_chunks
@@ -60,6 +61,9 @@ async def _assess_checks(req: AssessmentRequest, llm: LlmClient | None, store: R
     if req.kind == "migration_parity":
         outcome = check_parity(req.source_env, req.target_env, req.evidence.attack_results)
         rebuild_checks = parity_checks
+    elif req.kind == "deployment_gate":
+        outcome = check_deployment(req.evidence.deployment)
+        rebuild_checks = deployment_checks
     else:
         outcome = check_security(req, active_rules=store.active_rules())
         rebuild_checks = security_checks

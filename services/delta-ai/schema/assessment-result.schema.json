@@ -429,7 +429,8 @@
       "enum": [
         "migration_parity",
         "code_security",
-        "feedback_ingest"
+        "feedback_ingest",
+        "deployment_gate"
       ],
       "title": "Kind",
       "type": "string"

@@ -9,7 +9,7 @@ from typing import Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-Kind = Literal["migration_parity", "code_security", "feedback_ingest"]
+Kind = Literal["migration_parity", "code_security", "feedback_ingest", "deployment_gate"]
 Provider = Literal["aws", "gcp", "onprem"]
 Verdict = Literal["pass", "fix", "needs_human"]
 Severity = Literal["high", "medium", "low"]
@@ -19,6 +19,7 @@ CandidateStatus = Literal["proposed", "needs_detector", "approved", "rejected"]
 
 MAX_CODE_FILES = 50
 MAX_CODE_FILE_CHARS = 256_000
+MAX_LOG_TAIL_CHARS = 100_000
 
 
 class _Model(BaseModel):
@@ -97,11 +98,31 @@ class Report(_Model):
     findings: tuple[ReportFinding, ...]
 
 
+class MetricObservation(_Model):
+    """값이 threshold 를 넘으면 실패다. 값·기준·표본 수 중 하나라도 모르면 통과로 보지 않는다."""
+
+    name: str = Field(min_length=1)
+    value: float | None = None
+    threshold: float | None = None
+    samples: int | None = Field(default=None, ge=0)
+
+
+class DeploymentEvidence(_Model):
+    stage: str = Field(min_length=1)
+    status: Literal["succeeded", "failed"]
+    target: Provider | None = None
+    traffic_percent: int | None = Field(default=None, ge=0, le=100)  # 값이 있으면 지표가 반드시 있어야 한다
+    exit_code: int | None = None
+    log_tail: str = Field(default="", max_length=MAX_LOG_TAIL_CHARS)
+    metrics: tuple[MetricObservation, ...] = ()
+
+
 class Evidence(_Model):
     attack_results: tuple[AttackResult, ...] = ()
     sarif: dict[str, Any] | None = None
     code_files: dict[str, str] = Field(default_factory=dict)
     report: Report | None = None
+    deployment: DeploymentEvidence | None = None
 
     @field_validator("code_files")
     @classmethod
@@ -129,6 +150,8 @@ class AssessmentRequest(_Model):
             raise ValueError("code_security 는 evidence.sarif 나 evidence.code_files 가 필요하다")
         if self.kind == "feedback_ingest" and self.evidence.report is None:
             raise ValueError("feedback_ingest 는 evidence.report 가 필요하다")
+        if self.kind == "deployment_gate" and self.evidence.deployment is None:
+            raise ValueError("deployment_gate 는 evidence.deployment 가 필요하다")
         return self
 
 

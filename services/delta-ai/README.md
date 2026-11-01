@@ -16,6 +16,10 @@ DELTA_API_TOKEN=<임의의 값> DELTA_LLM=fake .venv/bin/uvicorn delta_ai.api:ap
 
 `DELTA_LLM` 은 `none`(기본)·`fake`·`claude` 이다. `claude` 는 `ANTHROPIC_API_KEY` 가 필요하다. `fake` 는 분석을 하지 않는 고정 응답이라 연동 확인용이다.
 
+`DELTA_LLM_TIMEOUT_SECONDS`(기본 60)로 LLM 호출 시간 제한을 정한다. 재시도는 1회다.
+
+컨테이너 실행은 [Dockerfile](Dockerfile) 로 하며 8090 포트, 비루트 사용자로 돈다. Jenkins 연동 예시는 [deploy/jenkins-local](../../deploy/jenkins-local/README.md) 에 있다.
+
 ## API
 
 모든 요청에 `Authorization: Bearer <DELTA_API_TOKEN>` 이 필요하다(`/healthz` 제외).
@@ -37,6 +41,7 @@ curl -s -X POST localhost:8090/v1/assessments -H "Authorization: Bearer $DELTA_A
 | `migration_parity` | 이전 직전, 샌드박스 시험 후 | `source_env`, `target_env`, `evidence.attack_results` |
 | `code_security` | CI | `evidence.sarif`, `evidence.code_files` |
 | `feedback_ingest` | 긴 리뷰·모의해킹 완료 후 | `evidence.report` |
+| `deployment_gate` | 배포 단계·트래픽 단계 후 | `evidence.deployment` |
 
 ## 판정
 

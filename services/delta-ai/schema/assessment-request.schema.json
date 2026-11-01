@@ -47,6 +47,87 @@
       "title": "AttackResult",
       "type": "object"
     },
+    "DeploymentEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "stage": {
+          "minLength": 1,
+          "title": "Stage",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "succeeded",
+            "failed"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "target": {
+          "anyOf": [
+            {
+              "enum": [
+                "aws",
+                "gcp",
+                "onprem"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target"
+        },
+        "traffic_percent": {
+          "anyOf": [
+            {
+              "maximum": 100,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Traffic Percent"
+        },
+        "exit_code": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Exit Code"
+        },
+        "log_tail": {
+          "default": "",
+          "maxLength": 100000,
+          "title": "Log Tail",
+          "type": "string"
+        },
+        "metrics": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/MetricObservation"
+          },
+          "title": "Metrics",
+          "type": "array"
+        }
+      },
+      "required": [
+        "stage",
+        "status"
+      ],
+      "title": "DeploymentEvidence",
+      "type": "object"
+    },
     "EnvInventory": {
       "additionalProperties": false,
       "properties": {
@@ -152,6 +233,17 @@
             }
           ],
           "default": null
+        },
+        "deployment": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DeploymentEvidence"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         }
       },
       "title": "Evidence",
@@ -251,6 +343,59 @@
         }
       },
       "title": "LoggingInventory",
+      "type": "object"
+    },
+    "MetricObservation": {
+      "additionalProperties": false,
+      "description": "값이 threshold 를 넘으면 실패다. 값·기준·표본 수 중 하나라도 모르면 통과로 보지 않는다.",
+      "properties": {
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Value"
+        },
+        "threshold": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Threshold"
+        },
+        "samples": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Samples"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "MetricObservation",
       "type": "object"
     },
     "NetworkInventory": {
@@ -539,7 +684,8 @@
       "enum": [
         "migration_parity",
         "code_security",
-        "feedback_ingest"
+        "feedback_ingest",
+        "deployment_gate"
       ],
       "title": "Kind",
       "type": "string"
@@ -575,7 +721,8 @@
         "attack_results": [],
         "sarif": null,
         "code_files": {},
-        "report": null
+        "report": null,
+        "deployment": null
       }
     }
   },
