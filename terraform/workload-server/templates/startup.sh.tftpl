@@ -1,0 +1,30 @@
+#!/bin/bash
+set -euo pipefail
+test -x /usr/bin/python3
+install -d -m 0755 /opt/delta-test
+printf '%s' '${app_base64}' | base64 --decode > /opt/delta-test/server.py
+chmod 0644 /opt/delta-test/server.py
+cat > /etc/systemd/system/delta-test.service <<'UNIT'
+[Unit]
+Description=Delta private multi-cloud test server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=nobody
+Group=nobody
+ExecStart=/usr/bin/python3 /opt/delta-test/server.py --ports 8080 8081
+Restart=on-failure
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+Environment=PYTHONDONTWRITEBYTECODE=1
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+systemctl daemon-reload
+systemctl enable delta-test.service
+systemctl restart delta-test.service

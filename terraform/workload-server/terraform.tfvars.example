@@ -1,0 +1,13 @@
+# Mock fixture values. Actual values belong in ignored terraform.tfvars.
+workload_account_id = "444455556666"
+central_account_id  = "111122223333"
+vpc_cidr            = "10.20.0.0/16"
+central_az_ids      = ["apne2-az1", "apne2-az2"]
+inspection_cidrs    = ["10.250.0.0/16"]
+azs = {
+ apne2-az1 = { tgw_subnet_cidr = "10.20.0.0/24", server_subnet_cidr = "10.20.1.0/24" }
+ apne2-az2 = { tgw_subnet_cidr = "10.20.2.0/24", server_subnet_cidr = "10.20.3.0/24" }
+}
+server_az_id = "apne2-az1"
+server_private_ip = "10.20.1.10"
+ami_id = "ami-00000000000000001"

@@ -1,8 +1,10 @@
 # AWS 사설 Workload 클라이언트
 
-AWS→중앙 ANF→VPN→GCP 시험의 AWS 클라이언트를 만든다. 중앙 `network-security`와 별도 Provider/state를 사용한다. 기본값은 VPC 1개, 두 AZ의 TGW/Client Subnet 각 2개, 사설 AL2023 ARM64 `t4g.nano` 1대와 EC2 Instance Connect Endpoint 1개다.
+중앙 ANF를 경유하는 사설 서비스 시험의 AWS 클라이언트를 만든다. 같은 계정의 별도 Server VPC와 후속 GCP/VPN 연결을 지원한다. 중앙 `network-security`와 별도 Provider/state를 사용한다. 기본값은 VPC 1개, 두 AZ의 TGW/Client Subnet 각 2개, 사설 AL2023 ARM64 `t4g.nano` 1대와 EC2 Instance Connect Endpoint 1개다.
 
 공인 IPv4/IPv6, IGW, NAT, 인터넷 기본 Route, Public ALB 및 SSH의 CIDR 기반 ingress를 생성하지 않는다. 관리 SSH는 IAM 인증 후 같은 VPC의 EIC Endpoint SG에서만 받는다. 이것은 ANF Endpoint가 아니며 관리 접속 성공은 중앙 검사 통과 증거가 아니다. 원격 CIDR을 등록하기 전에는 시험용 SG 송신 규칙도 없다.
+
+2026-11-01 같은 Workload 계정의 Server `10.20.1.10`에 중앙 ANF를 거쳐 HTTP 200으로 도달했고, 양방향 FLOW와 8081 blocked/drop SID를 확인했다. 기존 Client 인스턴스는 유지했으며 Client에 서버 앱을 설치하지 않았다. 실제 결과는 [Server AI-DLC](../../docs/ai-dlc/aws-workload-server.md)를 따른다.
 
 ## 입력 속성
 
@@ -92,7 +94,7 @@ terraform apply workload.tfplan
 1. 첫 Workload Plan/Apply는 `transit_gateway_id=null`, `remote_cidrs=[]`로 수행할 수 있다.
 2. 중앙 실제 tfvars의 `shared_account_ids`에 업무 계정을 **기존 값과 함께** 등록한다. 중앙 Plan에서 두 RAM principal 추가를 검토하고 Apply한다. Organizations는 변경하지 않는다.
 3. 업무 프로필의 `aws ec2 describe-transit-gateways`에 중앙 TGW와 예상 소유 계정이 나타나는지 확인한다.
-4. 업무 tfvars의 `transit_gateway_id`를 지정하고 Plan/Apply한다. 공유 TGW Attachment의 기본 Association/Propagation은 false다. `remote_cidrs`는 GCP 주소와 VPN 준비 전까지 비워둔다.
+4. 업무 tfvars의 `transit_gateway_id`를 지정하고 Plan/Apply한다. 공유 TGW Attachment의 기본 Association/Propagation은 false다. `remote_cidrs`는 실제 목적지와 양방향 경로 준비 후 등록한다. 같은 계정의 Server VPC 시험은 `10.20.0.0/16`을 사용한다.
 5. `central_handoff`와 실제 Attachment 상태를 중앙 `spoke_attachments.aws_client`에 등록한다. 중앙은 `Client` 역할을 지원한다. `acceptance_mode=accept`는 수락 후에도 유지한다.
 6. 중앙 Plan/Apply에서 수락, Spoke Association과 검사/반환 Route를 검토한다. 중앙 `allowed_flows`는 자동 추가하지 않는다.
 
@@ -110,7 +112,7 @@ TGW Attachment 소유자는 Workload, accepter와 TGW RT Association/Route 소�
 | 중앙 Spoke RT | 등록한 Workload/원격 CIDR | Inspection Attachment |
 | 중앙 Inspected RT | Workload CIDR | Workload Attachment |
 
-관리 Endpoint와 EC2는 같은 AZ/Client Subnet을 사용한다. GCP CIDR은 RFC1918 전체 포함 여부와 중복을 검증하고, 인터넷 기본 Route와 공인 목적지를 거부한다. AWS와 GCP 전체 환경의 미등록 CIDR 충돌은 코드가 자동 발견하지 않는다.
+관리 Endpoint와 EC2는 같은 AZ/Client Subnet을 사용한다. 등록한 원격 CIDR은 RFC1918 전체 포함 여부와 중복을 검증하고, 인터넷 기본 Route와 공인 목적지를 거부한다. AWS와 GCP 전체 환경의 미등록 CIDR 충돌은 코드가 자동 발견하지 않는다.
 
 ## 검증과 운영
 
@@ -120,7 +122,7 @@ DELTA_KEEP_VALIDATION=1 scripts/validate.sh
 
 별도 임시 디렉터리에서 backend 없이 init/validate 및 AWS mock Plan 테스트만 실행한다. 실제 tfvars/backend를 복사하지 않고 예시/가짜 값만 사용한다. 실제 Plan/Apply나 AWS 리소스 생성은 이 스크립트에 없다.
 
-관리 접속, 실제 public 노출 점검 및 해체 순서는 [Runbook](RUNBOOK.md)을 따른다. EC2/EBS, 활성화한 TGW Attachment/트래픽, S3 저장/요청이 비용 항목이다. 인터넷 출구가 없으므로 외부 패키지 다운로드는 준비되지 않는다. GCP/VPN/실제 ANF 허용 및 차단 통신은 후속 단계다.
+관리 접속, 실제 public 노출 점검 및 해체 순서는 [Runbook](RUNBOOK.md)을 따른다. EC2/EBS, 활성화한 TGW Attachment/트래픽, S3 저장/요청이 비용 항목이다. 인터넷 출구가 없으므로 외부 패키지 다운로드는 준비되지 않는다. 같은 계정의 Server VPC 시험과 실제 상태는 [Server Runbook](../workload-server/RUNBOOK.md) 및 [AI-DLC](../../docs/ai-dlc/aws-workload-server.md)를 따른다. GCP/VPN은 별도 후속 단계다.
 
 ## 공식 근거
 

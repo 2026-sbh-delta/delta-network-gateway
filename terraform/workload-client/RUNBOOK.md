@@ -34,6 +34,8 @@ EC2에서 `uname -m`, `hostname -I`, `command -v curl`, `ip route`를 확인한�
 
 ## TGW/ANF 연결
 
+같은 Workload 계정의 별도 Server VPC `10.20.0.0/16`에 대한 실제 시험 절차는 [Server Runbook](../workload-server/RUNBOOK.md)을 따른다. 아래 GCP/VPN 절차는 후속 멀티클라우드 연결용이다.
+
 1. 중앙 RAM Share의 principal에 업무 계정이 존재하고 업무 프로필에서 TGW가 보이는지 확인한다.
 2. 업무 Attachment의 ID/소유 계정/두 TGW Subnet/상태를 조회한다. 중앙에 처음 전달할 `reported_state`는 `pendingAcceptance` 또는 `available`의 실제값을 사용한다.
 3. 중앙 accepter와 Spoke RT Association, Workload CIDR의 Inspection 경유 및 Inspected 반환 Route를 확인한다. Attachment available만으로 GCP 연결을 성공 처리하지 않는다.

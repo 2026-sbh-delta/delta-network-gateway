@@ -118,7 +118,7 @@ variable "transit_gateway_id" {
 }
 
 variable "remote_cidrs" {
-  description = "Registered private remote networks routed to TGW; empty until GCP addressing is confirmed."
+  description = "Registered private remote networks routed to TGW after the destination and return path are ready."
   type        = set(string)
   default     = []
   validation {

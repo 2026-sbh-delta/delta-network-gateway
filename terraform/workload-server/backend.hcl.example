@@ -1,0 +1,6 @@
+bucket = "REPLACE_WITH_WORKLOAD_STATE_BUCKET"
+key = "delta/lab/workload-server/terraform.tfstate"
+region = "ap-northeast-2"
+encrypt = true
+use_lockfile = true
+allowed_account_ids = ["REPLACE_WITH_WORKLOAD_ACCOUNT_ID"]
