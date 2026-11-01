@@ -1,0 +1,8 @@
+fields @timestamp, firewall_name, availability_zone, event.timestamp,
+       event.flow_id, event.src_ip, event.src_port,
+       event.dest_ip, event.dest_port, event.proto,
+       event.alert.signature_id as sid, event.alert.signature,
+       event.alert.action as alert_action, event.verdict.action as verdict_action
+| filter event.event_type = "alert"
+| sort @timestamp desc
+| limit 200
