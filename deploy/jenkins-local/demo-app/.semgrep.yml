@@ -1,0 +1,10 @@
+rules:
+  - id: python-shell-true-with-input
+    languages: [python]
+    severity: ERROR
+    message: 외부 입력이 셸 명령으로 들어간다
+    metadata:
+      cwe: "CWE-78: OS Command Injection"
+    pattern-either:
+      - pattern: subprocess.run(..., shell=True, ...)
+      - pattern: os.system(...)
