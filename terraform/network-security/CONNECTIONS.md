@@ -120,7 +120,15 @@ GCP의 사설 클라이언트가 Account B Backend의 사설 IP로 연결하는 
 
 ALB→Backend와 Account A→Account B도 출발/응답 VPC의 구체적인 원격 CIDR Route→TGW Spoke→Inspection→TGW Inspected→목적지 Attachment 순서다. 각 VPC의 반환 Route가 없으면 중앙 설정만으로 왕복 통신을 완성할 수 없다. AZ/터널 장애 시 기존 연결 보존이나 무손실 전환은 별도 검증 대상이다.
 
+## 같은 Workload 계정의 두 VPC 실제 검증
+
+2026-11-01 업무 계정 `616723161368`의 Client VPC `10.10.0.0/16`과 별도 Server VPC `10.20.0.0/16`을 중앙 ANF로 연결했다. 두 VPC Attachment는 Spoke RT, Inspection Attachment는 Inspected RT에 연결하고 검사 후 각 VPC Attachment로 반환한다. 직접 Peering/Propagation 우회는 없다.
+
+Client `10.10.1.143` → Server `10.20.1.10:8080`의 HTTP 200/양방향 FLOW, 미허용 8081의 SID 9000000 blocked/drop, HTTP 마커의 SID 2000001 allowed를 실제 검증했다. [Server Runbook](../workload-server/RUNBOOK.md)과 [실제 ID/명령/결과](../../docs/ai-dlc/aws-workload-server.md)를 따른다. 같은 계정 두 VPC 시험이며 GCP/온프레미스/VPN 검증과 구분한다.
+
 ## AWS 클라이언트에서 GCP 서버로 검증하기
+
+별도 GCP root의 코드/실행 입력과 로컬 검증은 준비됐다. 실제 배포와 AWS VPN 추가는 현재 GCP Billing 활성 상태 확인 후 진행한다. [GCP 실행 안내](../gcp-server/README.md)와 [실제 연결/관제 Runbook](../gcp-server/RUNBOOK.md)을 따른다.
 
 업무 VPC의 EC2를 클라이언트로 두고 GCP VM의 사설 IP에 연결한다. 두 클라우드의 주소 대역과 중앙 Inspection CIDR이 겹치지 않아야 한다. Cloud Router는 BGP 제어 평면이며 실제 패킷은 HA VPN 터널로 이동한다.
 

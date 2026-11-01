@@ -6,6 +6,8 @@
 
 업무 계정의 VPC/ALB/Backend/보조 Endpoint, GCP/온프레미스 내부 장비, NAT/IGW/중앙 인터넷 출구, Organizations/OU/SCP/Identity Center 변경은 생성하지 않는다. 동일 VPC 내부 통신과 원격 네트워크 내부 통신이 자동 검사되는 구성도 아니다.
 
+동일 Workload 계정의 별도 Client/Server VPC를 중앙 ANF로 연결한 실제 HTTP 허용/차단과 FLOW/ALERT 검증을 완료했다. 배포 상태와 명령/결과는 [Server AI-DLC](../../docs/ai-dlc/aws-workload-server.md), 소비자 실행은 [Server root](../workload-server/README.md)를 따른다.
+
 ## 준비할 값
 
 1. 중앙 계정에서 사용할 SSO/Profile 또는 임시 자격 증명. 셸에서 `export AWS_PROFILE=sbh-delta-security`를 지정한다. Provider에는 Profile이나 인증 키를 하드코딩하지 않는다.

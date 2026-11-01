@@ -9,7 +9,9 @@
 - U1~U3 구현/Test/Review 완료. fmt/격리 init/validate, Workload mock Plan **26개**, 중앙 회귀 mock Plan **33개**, state bootstrap 보호 테스트 **3개** 통과.
 - 배포 완료: 별도 S3 state bucket, Workload 기반 20개와 Attachment 1개, 중앙 RAM principal 2개와 연결 리소스 9개 생성 및 HOME_NET 관련 2개 갱신. 삭제 없음.
 - 실제 검증: 공인 주소/IGW/NAT/인터넷 경로 부재, EIC 사설 SSH 성공, Attachment available와 명시적 검사/반환 경로, Firewall/두 Primary Endpoint READY 및 IN_SYNC 확인. 두 root의 최종 Plan 모두 **No changes, 종료 코드 0**.
-- GCP/VPN 및 서비스의 ANF 통과/허용/차단/로그 유입 검증은 미실행. 코드/검증/배포 문서를 아래 4개 커밋으로 나눠 origin/main에 푸시했고 원격 체크포인트 `9a4ecb0` 일치를 확인했다. 이 문서 갱신은 해당 푸시 완료 결과를 기록한다.
+- GCP/VPN 연결 검증은 미실행. 같은 계정의 별도 Server VPC 후속 ANF 검증은 아래 별도 기록을 따른다. 코드/검증/배포 문서를 아래 4개 커밋으로 나눠 origin/main에 푸시했고 원격 체크포인트 `9a4ecb0` 일치를 확인했다. 이 문서 갱신은 해당 푸시 완료 결과를 기록한다.
+
+- 2026-11-01 후속 사용자 지시로 같은 계정의 Server VPC `10.20.0.0/16`을 연결했다. Client는 기존 EC2를 유지하고 Server TGW Route 2개/8080과 8081 egress 2개만 추가했다. 실제 HTTP 200/양방향 FLOW, 8081 blocked/drop SID 9000000과 허용 마커 SID 2000001을 확인했다. Client 회귀 26개 및 최종 Plan No changes. 상세는 [Server AI-DLC](aws-workload-server.md)를 따른다.
 
 ## Ideation
 

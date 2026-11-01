@@ -5,31 +5,41 @@
 - 기준일: 2026-11-01 (Asia/Seoul)
 - Ideation: 사용자 승인 완료.
 - Inception 및 U1~U5 Design / Implementation Plan: 사용자의 `PLEASE IMPLEMENT THIS PLAN` 지시로 승인 완료.
-- Construction: 중앙 U1~U5와 후속 Client 역할 구현/Review 완료. 중앙 mock Plan은 최신 회귀 실행에서 33개 통과했다.
-- AWS Rule Group DryRun: SCP 수정 후 재시도한 두 규칙 집합 모두 통과. 소비 용량은 기본 차단 1, TCP/UDP/ICMP 및 추가 서명 예제 5. 실제 패킷 검증은 미완료.
+- Construction: 중앙 U1~U5와 후속 Client 역할 구현/Review 완료. 중앙 mock Plan은 같은 계정 Client/Backend 사례를 포함한 최신 회귀 실행에서 34개 통과했다.
+- AWS Rule Group DryRun: SCP 수정 후 재시도한 두 규칙 집합 모두 통과. 초기 예제 소비 용량은 기본 차단 1, TCP/UDP/ICMP 및 추가 서명 5. 실제 Server 시험 규칙도 DryRun 소비 용량 3으로 수락됐고 두 VPC HTTP 허용/차단을 실제 검증했다.
 - 중앙 실행 입력: `terraform.tfvars` 작성 완료. VPC `10.250.0.0/16`, Subnet 4개는 `/24`, AZ IDs는 `apne2-az1`, `apne2-az2`. 실제 입력으로 격리된 중앙 기반 mock Plan 1개 통과.
 - Backend: S3 초기화 메타데이터 확인. Bucket `sbh-delta-central-tf`, encrypt/use_lockfile=true, 허용 계정 `482840608926`. 현재 `backend.hcl`과 초기화된 bucket/key/region이 일치한다.
-- 배포: 중앙 기반은 사용자 Apply로 완료했다. 후속 승인으로 에이전트가 사설 Workload 기반 20개와 Attachment 1개, 중앙 RAM principal 2개 및 수락/검사/반환 리소스 9개를 생성하고 HOME_NET 관련 2개를 갱신했다. 삭제는 없다. Attachment available, Firewall/두 Primary Endpoint READY 및 IN_SYNC, 검사/반환 Route active를 실제 확인했다.
+- 배포: 중앙 Inspection과 Workload 계정의 사설 Client/Server 두 VPC 배포 완료. 이번 Server 기반 23개와 반환 Route 2개, 중앙 연결 9개/정책 2개 갱신, Client 원격 Route/egress 4개를 검토 후 적용했다. 기존 Client 교체/리소스 삭제는 없다. Attachment available/Spoke associated, Firewall/두 Primary Endpoint READY 및 IN_SYNC, 검사/반환 Route active를 실제 확인했다.
 - RAM: 두 Share와 Resource Association에 이어 업무 계정 `616723161368`의 두 principal 연결을 추가했다. 업무 계정에서 중앙 TGW available을 조회했다. 조직 외 공유는 비활성화다.
-- 로그: FLOW/ALERT CloudWatch Logs 목적지 설정 확인. 실제 로그 유입 및 통신 검증은 미완료다.
-- 실계정 Plan: Workload 20 add 및 Attachment 1 add, 중앙 공유 2 add와 등록 9 add/2 change를 검토 후 적용했다. 배포 후 두 root의 최종 Plan은 모두 No changes, 상세 종료 코드 0이다.
-- Git/푸시: 중앙 Client 계약 `6a20961`, Workload 구현 `ad1b13a`, 검증 도구 `6921a02`, 배포 문서 `9a4ecb0`를 분할 커밋하고 origin/main에 푸시했다. 2026-11-01 16:25~16:26 KST 원격 main의 검증 체크포인트 `9a4ecb0` 일치를 확인했다. 이 문서 갱신은 해당 완료 결과를 기록한다. 실제 tfvars/backend/state/Plan은 제외한다.
-- Destroy: 미실행. GCP/VPN과 실제 ANF 허용/차단 통신 및 로그 유입은 미검증.
+- 로그/통신: Client `10.10.1.143` → Server `10.20.1.10:8080` HTTP 200 및 같은 flow_id/AZ의 양방향 FLOW 확인. 8081은 timeout과 SID 9000000 blocked/verdict=drop, 마커 SID 2000001은 HTTP 200과 allowed/verdict=alert를 실제 요청 source port와 대조했다. 같은 계정 두 VPC의 ANF 왕복 검증 완료다.
+- 실계정 Plan: 실제 저장 Plan의 계정/변경 목록/보안 속성을 검토한 뒤 적용했다. 배포 후 중앙/Client/Server 세 root의 최종 Plan 모두 No changes, 상세 종료 코드 0이다. Terraform SSO refresh 오류는 유효한 CLI 역할 자격 증명을 메모리에서만 전달해 재검증했다.
+- Git/푸시: 기존 Client 배포의 원격 체크포인트는 `9033794`다. 2026-11-01 후속 변경을 GCP 구현 `7c31c885`, GCP 검증 `fd9abcd1`, AWS Server 구현 `d62eaae8`, Server/중앙 회귀 검증 `86659848`로 분할 커밋했다. 실제 배포 기록은 별도 문서 커밋으로 정리 중이며 이번 분할 커밋의 푸시는 아직 실행하지 않았다. 실제 tfvars/backend/state/Plan은 제외한다.
+- Destroy: 미실행. 같은 계정 두 VPC HTTP 허용/차단/로그는 검증 완료. 다른 Workload 계정 간 통신과 GCP/온프레미스/VPN, 장애 전환/부하/TLS 복호화는 미검증이다.
 - 실행 프로필: `AWS_PROFILE=sbh-delta-security`. 이번 DryRun에서 STS로 중앙 계정 `482840608926`을 재확인했다. 코드에서는 계정 ID를 필수 입력으로 받아 검증한다.
 - AWS Workload: 사용자 `이렇게 만들고, public 노출없이 해` 지시로 Inception과 U1~U3 승인 및 구현/Review 완료. Workload mock Plan 26개 및 state bootstrap 보호 테스트 3개 통과. 별도 S3 state와 VPC `10.10.0.0/16`, `/24` Subnet 4개, 사설 EC2 `10.10.1.143` 및 EIC Endpoint 생성 완료. 공인 IP/IPv6, IGW/NAT/인터넷 Route 부재와 EIC 사설 SSH 성공을 실제 확인했다.
+- AWS Server: 같은 Workload 계정의 별도 root/state에 VPC `10.20.0.0/16`, `/24` Subnet 4개, 사설 EC2 `10.20.1.10`와 EIC Endpoint/TGW Attachment를 생성했다. Server mock 31개/로컬 앱 1개, 중앙 회귀 34개, Client 회귀 26개와 기존 bootstrap 보호 3개 통과. 세 root 최종 Plan No changes와 실제 ANF 통신/로그 검증 완료. 구현/검증 코드는 분할 커밋했고 푸시는 대기 중이다.
+- GCP: 현재 무료 크레딧 프로젝트 안의 사설 서버/HA VPN 코드와 운영 문서 구현/로컬 Review 완료. Google mock Plan 25개, 실제 입력 mock Plan 1개, 앱/전달 도구 7개 통과. Project `project-5bb650b3-9c21-4c8b-a16` / Number `120643807854`, ADC 접근 및 고정 Ubuntu 이미지 조회 확인. ignored tfvars/backend 작성 완료. 마지막 실제 조회에서 연결된 Billing 계정은 `open=false`, 프로젝트 `billingEnabled=false`, Compute/IAP/OS Login API DISABLED였다. GCS bucket/실제 Plan/Apply/VPN 통신은 미실행이다. 구현/검증 코드는 분할 커밋했고 푸시는 대기 중이다.
 
 ## 문서
 
 - [승인된 요구사항과 구현 단위](ai-dlc/central-network.md)
 - [AWS Workload 클라이언트 구성안과 승인 상태](ai-dlc/aws-workload-client.md)
+- [같은 Workload 계정의 Server VPC와 실제 ANF 검증](ai-dlc/aws-workload-server.md)
+- [GCP 사설 서버와 HA VPN 설계/실제 상태](ai-dlc/gcp-server-vpn.md)
 - [실행 및 연결 안내](../terraform/network-security/README.md)
 - [Workload 실행 및 전체 입력/출력](../terraform/workload-client/README.md)
+- [Server 실행 및 전체 입력/출력](../terraform/workload-server/README.md)
+- [두 VPC 실제 관제 Runbook](../terraform/workload-server/RUNBOOK.md)
+- [GCP 실행 및 전체 입력/출력](../terraform/gcp-server/README.md)
+- [GCP와 AWS VPN 연결/관제 검증](../terraform/gcp-server/RUNBOOK.md)
 
 ## 다음 작업
 
-AWS Workload와 중앙 수락/경로 연결 및 최종 검증은 완료했다. 중앙에는 업무 계정과 `aws_client` 계약을 등록했고 VPN/실제 허용 정책은 비어 있다. Workload의 원격 CIDR과 시험용 SG 송신 규칙도 아직 비어 있다.
+현재 요청의 **동일 Workload 계정 두 VPC 간 ANF 왕복 검사**는 완료했다. 기존 Client `10.10.1.143`에서 새 Server `10.20.1.10`에 HTTP 200으로 도달했고, 미허용 8081은 실제 blocked/drop SID로 확인했다. 양방향 FLOW와 허용 마커 ALERT를 요청 tuple/flow_id/AZ로 대조했다. 중앙/Client/Server 최종 Plan은 모두 No changes다.
 
-다음 멀티클라우드 단계는 GCP 프로젝트/리전과 비중복 서버 CIDR을 확정하고 HA VPN/서버를 준비하는 것이다. AWS 사설 클라이언트는 배포됐으며 AWS→중앙 ANF→VPN→GCP 사설 IP 및 응답 경로는 GCP/VPN과 양방향 Route/허용 정책을 등록한 후 검증한다. 현재 SSH 성공은 VPC local 관리 경로의 검증이다.
+다음 연결 대상을 GCP 또는 온프레미스로 확정하면 해당 환경과 비중복 CIDR/공인 Gateway/BGP 정보를 준비해 VPN을 추가한다. 이번 두 VPC 검증 결과를 멀티클라우드나 계정 간 통신 검증으로 확대하지 않는다. 코드/실제 결과와 남은 범위는 [Server AI-DLC](ai-dlc/aws-workload-server.md)를 따른다.
+
+GCP 연결은 후속 작업으로 남긴다. 공개 Ubuntu 이미지 이름은 조회/고정했고 GCP 기반 코드와 mock 검증은 완료했다. Billing 활성 상태와 기존 CIDR/쿼터 확인, 실제 GCP/VPN 배포와 양방향 Route/허용 정책은 미완료다. GCP 앱 로컬 성공은 GCP 연결의 ANF 통과 증거가 아니다.
 
 중앙 실행 CIDR/AZ 입력은 작성됐고, 입력 작성 시 조회한 중앙 계정 서울 리전의 기존 VPC와 CIDR이 겹치지 않았다. 다른 계정/GCP/온프레미스의 CIDR 중복 여부는 연결 등록 시 확인한다. 소비자/VPN 계약은 준비되면 추가한다.
 

@@ -37,7 +37,7 @@
 
 ## Operation
 
-에이전트의 배포는 별도 지시 대상이다. 사용자의 초기 Apply는 RAM Resource Association 두 개에서 실패했으나 후속 Apply가 2 added, 0 changed, 0 destroyed로 완료됐다. 2026-11-01 15:27~15:28 KST 읽기 전용 조회에서 두 Association ASSOCIATED, 두 Share ACTIVE/조직 외 공유 비활성, Firewall/두 AZ Endpoint READY, Firewall IN_SYNC, TGW와 Inspection Attachment available 및 appliance mode enable을 확인했다. FLOW/ALERT 목적지는 CloudWatch Logs로 설정돼 있다. 이 시점의 중앙 단독 기반 배포는 완료됐고 당시 업무/VPN 연결 입력은 비어 있었다. 후속 AWS Workload 연결은 아래 별도 기록을 따른다. 로그와 state는 기본 보존한다. 실제 로그 유입, Tunnel/BGP, 패킷 처리 및 장애 전환은 미검증이다.
+에이전트의 배포는 별도 지시 대상이다. 사용자의 초기 Apply는 RAM Resource Association 두 개에서 실패했으나 후속 Apply가 2 added, 0 changed, 0 destroyed로 완료됐다. 2026-11-01 15:27~15:28 KST 읽기 전용 조회에서 두 Association ASSOCIATED, 두 Share ACTIVE/조직 외 공유 비활성, Firewall/두 AZ Endpoint READY, Firewall IN_SYNC, TGW와 Inspection Attachment available 및 appliance mode enable을 확인했다. FLOW/ALERT 목적지는 CloudWatch Logs로 설정돼 있다. 이 시점의 중앙 단독 기반 배포는 완료됐고 당시 업무/VPN 연결 입력은 비어 있었다. 후속 AWS Workload 연결은 아래 별도 기록을 따른다. 로그와 state는 기본 보존한다. 당시 실제 로그 유입, Tunnel/BGP, 패킷 처리 및 장애 전환은 미검증으로 남겼으며, 같은 Workload 계정 두 VPC의 후속 실제 HTTP/로그 검증은 아래 별도 기록을 따른다.
 
 ## 후속 멀티클라우드 검증 제안
 
@@ -47,7 +47,14 @@
 - 새 AWS 클라이언트와 GCP 리소스 생성은 이번 중앙 기반 구현 범위에 포함하지 않았으며 이 후속 제안에서도 아직 실행하지 않았다. 업무 계정/GCP 프로젝트/리전, 기존 VPC 및 VM, 비중복 주소 대역, Gateway IP/ASN은 미확정이다.
 - 수용 기준 후보: Tunnel/BGP 정상과 양방향 경로 확인, 허용 포트 성공 및 FLOW 로그, 미허용 포트의 통신 실패와 SID 9000000 차단 결과, 별도 테스트 서명 경보. SG/GCP 방화벽과 서버 리스너는 대조군 트래픽을 수용하도록 준비해 ANF 차단과 구분한다.
 - 현재는 연결 방식 제안이며 추가 리소스 구현/Plan/Apply 또는 통신 검증 완료를 뜻하지 않는다.
-- 후속 상태: 2026-11-01 사용자가 AWS Workload부터 준비하도록 지시한 뒤 `이렇게 만들고, public 노출없이 해`로 Inception/U1~U3를 승인했다. 업무 계정 `616723161368`의 별도 root/state에 사설 클라이언트를 실제 생성하고 EIC 사설 SSH를 확인했다. 중앙은 Client 역할과 공유 principal, 수락/검사/반환 경로 및 HOME_NET 등록을 적용 완료했다. 최신 중앙 회귀 mock Plan 33개 통과, 양쪽 최종 실계정 Plan No changes, 실제 Firewall/두 Endpoint READY/IN_SYNC와 Attachment/Route 정상 확인. 상세 상태와 실제 명령은 별도 [AWS Workload AI-DLC](aws-workload-client.md)를 따른다. GCP/VPN/실제 ANF 통신은 미실행이다.
+- 후속 상태: 2026-11-01 사용자가 AWS Workload부터 준비하도록 지시한 뒤 `이렇게 만들고, public 노출없이 해`로 Inception/U1~U3를 승인했다. 업무 계정 `616723161368`의 별도 root/state에 사설 클라이언트를 실제 생성하고 EIC 사설 SSH를 확인했다. 중앙은 Client 역할과 공유 principal, 수락/검사/반환 경로 및 HOME_NET 등록을 적용 완료했다. 당시 중앙 회귀 mock Plan 33개 통과, 양쪽 최종 실계정 Plan No changes, 실제 Firewall/두 Endpoint READY/IN_SYNC와 Attachment/Route 정상 확인. 상세 상태와 실제 명령은 별도 [AWS Workload AI-DLC](aws-workload-client.md)를 따른다. GCP/VPN/실제 ANF 통신은 미실행이다.
+- GCP 후속 구현: 현재 프로젝트 `project-5bb650b3-9c21-4c8b-a16`에 대한 사용자 구현 지시로 별도 [GCP AI-DLC](gcp-server-vpn.md)와 root를 준비했다. 현재 Billing은 닫혀 있고 Compute API가 꺼져 있어 실제 배포와 중앙 VPN 추가는 미실행이다. 중앙 실제 입력/state는 이 GCP 코드 준비 작업에서 변경하지 않았다.
+
+## 동일 Workload 계정 두 VPC 실제 검증
+
+2026-11-01 사용자 지시에 따라 별도 Server root/state로 업무 계정 `616723161368`의 `10.20.0.0/16` VPC와 사설 서버를 생성했다. 중앙 `aws_server` Backend 계약/수락/Spoke 연결과 검사/반환 Route, HOME_NET 및 8080 허용/8081 차단/관측 마커 규칙을 적용했다. 이번 중앙 변경은 9 add/2 change/0 destroy다.
+
+중앙 mock 회귀는 **34 passed**다. Client `10.10.1.143` → Server `10.20.1.10:8080` 실제 HTTP 200 및 같은 flow_id/AZ의 양방향 FLOW, 8081 timeout과 SID 9000000 blocked/drop, SID 2000001의 허용 마커 alert를 확인했다. 세 root 최종 Plan은 No changes이며 실제 ID/명령/시각/증거는 [Server AI-DLC](aws-workload-server.md)를 따른다. GCP/온프레미스/VPN과 장애 전환/부하는 이번 검증에 포함하지 않는다. Server 구현 `d62eaae8`과 중앙/Server 검증 `86659848`을 분할 커밋했고 푸시는 아직 실행하지 않았다.
 
 ## 중앙 실행 입력 확정
 
