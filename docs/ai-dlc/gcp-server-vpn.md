@@ -123,10 +123,12 @@
 | --- | --- | --- |
 | 구현 | `7c31c885` | 사설 GCP 서버/HA VPN root, write-only PSK 전달, 읽기 전용 preflight와 실행 문서 |
 | 검증 | `fd9abcd1` | Google mock Plan, 로컬 앱/전달 보호 테스트와 격리 검증 스크립트 |
+| 준비/배포 기록 | `14ed879c` | GCP 로컬 준비와 AWS 실제 배포/ANF 검증 범위 구분 |
 
 | 날짜 | 명령/확인 | 실제 결과 |
 | --- | --- | --- |
 | 2026-11-01 19:24~19:25 KST | 후보 경로/자격 증명 검사, `terraform fmt -check -recursive`, `git diff --check`, 명시적 경로의 `git add`/`git commit` | 민감 입력/캐시 후보와 자격 증명 패턴 검출 없음. fmt/공백 검사 통과. 위 2개 커밋 완료, 문서 커밋/푸시 대기. 실제 GCP 조회/Plan/Apply와 기존 테스트는 이번 게시 작업에서 재실행하지 않음 |
+| 2026-11-01 19:25 KST | 문서 커밋, `git push origin main`, `git ls-remote --heads origin main`, `git status --short` | 기능/검증/문서 게시 성공. 원격 main은 `14ed879c37aa29b1b6582299a24a623b6f770ec2`와 일치하고 당시 작업 트리는 깨끗함. 이번 문서 갱신은 해당 게시 결과를 기록. GCP 배포는 계속 미실행 |
 
 ## 근거
 

@@ -126,7 +126,7 @@
 - 중앙 Route audit와 같은 flow_id/AZ의 양방향 FLOW, 실제 HTTP 응답, 정확한 source port의 blocked/drop ALERT로 ANF 왕복 검사와 차단을 검증했다. 마커 ALERT는 allowed이며 ALERT 발생 자체가 차단이라는 해석을 하지 않는다.
 - 별도 Server state의 최종 리소스는 25개이며, 이번 중앙 9개 생성/2개 갱신 및 Client 4개 생성 외 기존 리소스 삭제는 없다. 모든 실제 저장 Plan은 적용 전 JSON 목록/보안 속성을 검사했다.
 - 같은 계정의 두 VPC HTTP 시험 결과다. 별도 Workload 계정 간 통신, GCP/온프레미스/VPN, 장시간 부하/장애 전환/전체 IPS 서명/TLS 복호화는 미검증이다.
-- Server 구현과 검증을 아래 별도 커밋으로 나눴다. 푸시는 아직 실행하지 않았으며 Destroy도 실행하지 않았다.
+- Server 구현과 검증/배포 기록을 아래 별도 커밋으로 나눠 origin/main에 푸시했고 원격 체크포인트 `14ed879c` 일치를 확인했다. Destroy는 실행하지 않았다.
 
 ## Git 게시 기록
 
@@ -136,8 +136,10 @@
 | --- | --- | --- |
 | AWS 구현 | `d62eaae8` | 별도 Server VPC/사설 EC2/앱/EIC/TGW 계약, Client 원격 연결 안내 |
 | AWS 검증 | `86659848` | Server mock/로컬 앱 검증 및 같은 계정 두 VPC의 중앙 검사 경로 회귀 |
+| 배포 기록 | `14ed879c` | 실제 HTTP/FLOW/ALERT, 최종 Plan 및 GCP 준비 상태 구분 |
 
 | 날짜 | 명령/확인 | 실제 결과 |
 | --- | --- | --- |
 | 2026-11-01 19:24 KST | `git ls-remote --heads origin main` | 원격 main이 작업 시작 기준 `9033794be07eccfb84ea8f74f222c9be08969b08`과 일치 |
 | 2026-11-01 19:24~19:25 KST | `git ls-files --cached --others --exclude-standard`, 자격 증명 패턴 검사, `terraform fmt -check -recursive`, `git diff --check`, 명시적 경로의 `git add`/`git commit` | 민감 입력/검증 캐시 후보와 자격 증명 패턴 검출 없음. fmt/공백 검사 통과. GCP와 AWS 기능/검증 4개 커밋 완료. 배포 명령이나 기존 테스트는 이번 게시 작업에서 재실행하지 않음. 문서 커밋과 푸시 대기 |
+| 2026-11-01 19:25 KST | 문서 커밋, `git push origin main`, `git ls-remote --heads origin main`, `git status --short` | 기능/검증/문서 5개 커밋 게시 성공. 원격 main은 `14ed879c37aa29b1b6582299a24a623b6f770ec2`와 일치하고 당시 작업 트리는 깨끗함. 이번 문서 갱신은 해당 검증 결과를 기록 |

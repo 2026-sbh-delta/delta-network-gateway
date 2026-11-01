@@ -54,7 +54,7 @@
 
 2026-11-01 사용자 지시에 따라 별도 Server root/state로 업무 계정 `616723161368`의 `10.20.0.0/16` VPC와 사설 서버를 생성했다. 중앙 `aws_server` Backend 계약/수락/Spoke 연결과 검사/반환 Route, HOME_NET 및 8080 허용/8081 차단/관측 마커 규칙을 적용했다. 이번 중앙 변경은 9 add/2 change/0 destroy다.
 
-중앙 mock 회귀는 **34 passed**다. Client `10.10.1.143` → Server `10.20.1.10:8080` 실제 HTTP 200 및 같은 flow_id/AZ의 양방향 FLOW, 8081 timeout과 SID 9000000 blocked/drop, SID 2000001의 허용 마커 alert를 확인했다. 세 root 최종 Plan은 No changes이며 실제 ID/명령/시각/증거는 [Server AI-DLC](aws-workload-server.md)를 따른다. GCP/온프레미스/VPN과 장애 전환/부하는 이번 검증에 포함하지 않는다. Server 구현 `d62eaae8`과 중앙/Server 검증 `86659848`을 분할 커밋했고 푸시는 아직 실행하지 않았다.
+중앙 mock 회귀는 **34 passed**다. Client `10.10.1.143` → Server `10.20.1.10:8080` 실제 HTTP 200 및 같은 flow_id/AZ의 양방향 FLOW, 8081 timeout과 SID 9000000 blocked/drop, SID 2000001의 허용 마커 alert를 확인했다. 세 root 최종 Plan은 No changes이며 실제 ID/명령/시각/증거는 [Server AI-DLC](aws-workload-server.md)를 따른다. GCP/온프레미스/VPN과 장애 전환/부하는 이번 검증에 포함하지 않는다. Server 구현 `d62eaae8`과 중앙/Server 검증 `86659848`, 배포 기록 `14ed879c`를 분할 커밋했고 2026-11-01 19:25 KST origin/main의 `14ed879c` 일치를 확인했다.
 
 ## 중앙 실행 입력 확정
 
