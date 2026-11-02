@@ -29,25 +29,6 @@
       "title": "Check",
       "type": "object"
     },
-    "CodeDiff": {
-      "additionalProperties": false,
-      "properties": {
-        "path": {
-          "title": "Path",
-          "type": "string"
-        },
-        "diff": {
-          "title": "Diff",
-          "type": "string"
-        }
-      },
-      "required": [
-        "path",
-        "diff"
-      ],
-      "title": "CodeDiff",
-      "type": "object"
-    },
     "Finding": {
       "additionalProperties": false,
       "properties": {
@@ -150,17 +131,6 @@
           },
           "title": "Waf Rules",
           "type": "array"
-        },
-        "code_diff": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/CodeDiff"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null
         }
       },
       "required": [
@@ -269,14 +239,6 @@
             "$ref": "#/$defs/WafRule"
           },
           "title": "Waf Rules",
-          "type": "array"
-        },
-        "code_diffs": {
-          "default": [],
-          "items": {
-            "$ref": "#/$defs/CodeDiff"
-          },
-          "title": "Code Diffs",
           "type": "array"
         }
       },
@@ -428,7 +390,6 @@
     "kind": {
       "enum": [
         "migration_parity",
-        "code_security",
         "feedback_ingest",
         "deployment_gate"
       ],
@@ -472,8 +433,7 @@
       "$ref": "#/$defs/Remediation",
       "default": {
         "spec_ops": [],
-        "waf_rules": [],
-        "code_diffs": []
+        "waf_rules": []
       }
     },
     "rule_candidates": {

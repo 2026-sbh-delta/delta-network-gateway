@@ -8,7 +8,7 @@ flowchart TD
   llmcall -- "키 없음 · 거절" --> fb["근거 문서 문장으로 대체"]:::warn
   llmcall -- "응답 받음" --> check{"출력 검증"}
   check -- "없는 근거 · 형식 오류" --> invalid["출력 폐기<br/>LLM_OUTPUT_INVALID"]:::warn
-  check -- "통과" --> apply["설명 · 분류 반영<br/>패치를 원본 기준으로 재생성"]:::built
+  check -- "통과" --> apply["설명 · 인용 반영"]:::built
   fb --> decide["코드가 최종 판정"]:::ok
   invalid --> decide
   apply --> decide

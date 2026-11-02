@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "delta-ai"
 version = "0.1.0"
-description = "Delta 본선 AI 판단 서비스 — 환경 차이·보안 검사·피드백 루프"
+description = "Delta 본선 AI 판단 서비스 — 환경 차이·피드백 루프"
 requires-python = ">=3.12"
 dependencies = [
     "pydantic>=2.7,<3",

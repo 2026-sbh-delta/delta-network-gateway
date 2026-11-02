@@ -203,26 +203,6 @@
           "title": "Attack Results",
           "type": "array"
         },
-        "sarif": {
-          "anyOf": [
-            {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Sarif"
-        },
-        "code_files": {
-          "additionalProperties": {
-            "type": "string"
-          },
-          "title": "Code Files",
-          "type": "object"
-        },
         "report": {
           "anyOf": [
             {
@@ -683,7 +663,6 @@
     "kind": {
       "enum": [
         "migration_parity",
-        "code_security",
         "feedback_ingest",
         "deployment_gate"
       ],
@@ -719,8 +698,6 @@
       "$ref": "#/$defs/Evidence",
       "default": {
         "attack_results": [],
-        "sarif": null,
-        "code_files": {},
         "report": null,
         "deployment": null
       }

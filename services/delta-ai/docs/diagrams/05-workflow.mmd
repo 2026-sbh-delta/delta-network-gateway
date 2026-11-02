@@ -1,14 +1,4 @@
 flowchart LR
-  subgraph p1["1단계 · 코드 보안"]
-    direction TB
-    a["① 데모 앱 정적 검사"]:::planned --> b["② code_security 판단"]:::built
-    b --> c{"판정"}
-    c -- "fix" --> d["③ 샌드박스 패치 후 재검사"]:::planned
-    d --> b
-    c -- "needs_human" --> h["사람 확인"]:::planned
-    c -- "pass" --> o1["코드 통과"]:::ok
-    h --> o1
-  end
   subgraph p2["2단계 · 이전 검증"]
     direction TB
     e["④ 대상 환경 구성·공격 시험"]:::planned --> f["⑤ migration_parity 판단"]:::built
@@ -23,9 +13,8 @@ flowchart LR
     direction TB
     k["⑧ 긴 리뷰·모의해킹 보고서"]:::planned --> l["⑨ feedback_ingest 판단"]:::built
     l --> m["⑩ 규칙 후보 사람 승인"]:::built
-    m --> n["다음 코드 검사부터 적용"]:::ok
+    m --> n["활성 규칙<br/>적용 지점은 SAST 쪽에서 정함"]:::planned
   end
-  p1 --> p2
   p2 --> p3
 
   classDef built fill:#E3EEFA,stroke:#2F6DB5,stroke-width:1.5px,color:#14304F

@@ -17,7 +17,7 @@ def _blocking(findings: Sequence[Finding]) -> list[Finding]:
 
 
 def _has_remediation(finding: Finding) -> bool:
-    return bool(finding.ops or finding.waf_rules or finding.code_diff)
+    return bool(finding.ops or finding.waf_rules)
 
 
 def _reasons(blocking: Sequence[Finding]) -> list[str]:

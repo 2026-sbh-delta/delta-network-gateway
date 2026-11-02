@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from delta_ai.contract import CodeDiff, Finding
+from delta_ai.contract import Finding
 from delta_ai.verdict import decide
 
 
@@ -25,12 +25,6 @@ def test_dismissed_finding_does_not_block():
 
 def test_fixable_fail_returns_fix():
     assert decide((_finding(),), ()) == ("fix", ())
-
-
-def test_code_fix_counts_as_remediation():
-    finding = _finding(ops=(), code_diff=CodeDiff(path="a.js", diff="d"))
-
-    assert decide((finding,), ()) == ("fix", ())
 
 
 def test_unknown_requires_human():

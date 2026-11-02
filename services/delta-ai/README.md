@@ -39,7 +39,6 @@ curl -s -X POST localhost:8090/v1/assessments -H "Authorization: Bearer $DELTA_A
 | `kind` | 호출 시점 | 필요한 입력 |
 |---|---|---|
 | `migration_parity` | 이전 직전, 샌드박스 시험 후 | `source_env`, `target_env`, `evidence.attack_results` |
-| `code_security` | CI | `evidence.sarif`, `evidence.code_files` |
 | `feedback_ingest` | 긴 리뷰·모의해킹 완료 후 | `evidence.report` |
 | `deployment_gate` | 배포 단계·트래픽 단계 후 | `evidence.deployment` |
 
@@ -54,19 +53,19 @@ curl -s -X POST localhost:8090/v1/assessments -H "Authorization: Bearer $DELTA_A
 | `EVIDENCE_UNKNOWN` | 값이나 시험 결과를 모른다 |
 | `NO_EVIDENCE_DOC` | 판단 근거 문서가 없다 |
 | `AUTOFIX_FORBIDDEN` | 권한·시크릿·경로처럼 사람이 정할 변경이다 |
-| `PATCH_MISSING` / `PATCH_REJECTED` | 패치가 없거나 게이트에서 거절됐다 |
-| `LLM_UNAVAILABLE` / `LLM_OUTPUT_INVALID` | LLM 을 못 썼거나 없는 근거를 인용했다 |
+| `PATCH_MISSING` | 수정안이 없다 |
+| `LLM_OUTPUT_INVALID` | LLM 이 없는 근거를 인용했거나 형식이 틀렸다 |
 | `RULE_APPROVAL_REQUIRED` / `DETECTOR_MISSING` | 규칙 후보 승인이 필요하거나 탐지기를 못 만들었다 |
-
-코드 패치는 서버가 `evidence.code_files` 원본 기준으로 다시 만든 diff 이므로 `git apply` 로 적용한다. 원본 파일을 보내지 않으면 패치를 돌려주지 않는다.
 
 `checks` 는 대시보드 신호등용이다(`green`·`red`·`unknown`).
 
 ## 현재 한계
 
-- 픽스처 중 Semgrep SARIF(`demo-app.sarif.json`)만 실제 실행 결과다. 인벤토리·공격 결과·보고서는 손으로 쓴 예시이고 팀 실제 형식이 아니다.
+- 코드 보안 판단(`code_security`, SARIF 입력, 코드 패치)은 2026-11-02에 뺐다. SAST는 별도 서비스에서 다시 설계한다.
+- 승인된 규칙 후보(`/v1/rule-candidates`)를 적용할 코드 검사가 지금은 없다. 적용 지점은 SAST 쪽에서 정한다.
+- 인벤토리·공격 결과·보고서 픽스처는 손으로 쓴 예시이고 팀 실제 형식이 아니다.
 - WAF 수정안은 AWS → GCP 만 만든다. 다른 방향은 사람에게 넘긴다.
-- 샌드박스 수정 에이전트는 아직 없다. 지금은 패치를 제안만 한다.
+- 샌드박스 수정 에이전트는 아직 없다. 지금은 수정안을 제안만 한다.
 - 근거 검색은 규칙 ID 정확 매칭만 한다. 공식 문서 전체를 색인하지 않았다.
 - 규칙 저장소는 프로세스 1개 전제의 JSON 파일이다.
 

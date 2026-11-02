@@ -1,5 +1,5 @@
 flowchart LR
-  inputs["입력 제공<br/>담당 미정<br/><br/>인벤토리<br/>공격 결과<br/>SARIF<br/>보고서"]:::planned
+  inputs["입력 제공<br/>담당 미정<br/><br/>인벤토리<br/>공격 결과<br/>보고서"]:::planned
   agent["점검 에이전트 · 플랫폼<br/>호출과 적용 담당"]:::planned
   sandbox["샌드박스<br/>패치 적용 · 재시험"]:::planned
   ui["진행 그래프<br/>대시보드"]:::planned
@@ -15,7 +15,7 @@ flowchart LR
     core --> docs
     core --> store
   end
-  llm["Claude API<br/><br/>받음: 마스킹한 입력<br/>줌: 설명 · 분류 · 패치"]:::ext
+  llm["Claude API<br/><br/>받음: 마스킹한 입력<br/>줌: 설명 · 탐지기"]:::ext
 
   inputs --> agent
   agent <-- "요청 / 판정 · 수정안" --> delta
