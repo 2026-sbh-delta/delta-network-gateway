@@ -23,7 +23,7 @@ credentials:
 jobs:
   - script: >
       pipelineJob('delta-demo-deploy') {
-        description('스캔 → AI 판단 → 카나리 → 승격 또는 자동 롤백')
+        description('스캔 → 사람 확인 → 카나리 → 승격 또는 자동 롤백')
         definition {
           cps {
             script(new File('/pipelines/pipeline/Jenkinsfile').text)
