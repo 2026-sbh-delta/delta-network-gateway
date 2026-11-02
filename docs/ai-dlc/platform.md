@@ -2,19 +2,21 @@
 
 ## 단계와 승인 범위
 
-- 기준일: 2026-11-02 (Asia/Seoul).
+- 기준일: 2026-11-03 (Asia/Seoul).
 - 사용자 지시: `Okay, start the task by making branch for platform. Don't forget to create dir for platform and separate things.`
-- 위 지시에 따라 Ideation 방향을 승인된 범위로 기록하고 전용 브랜치·디렉터리 분리(U0)를 수행한다. U1 이후는 세부 설계·구현 계획 단계다.
+- 위 지시에 따라 Ideation 방향을 승인된 범위로 기록하고 전용 브랜치·디렉터리 분리(U0)를 수행했다. U1은 사용자 구현 승인 후 [구현·검증](platform-u1.md)과 [AWS 배포](platform-aws.md)를 완료했다.
 - 확정: 공개 GitHub 저장소 + Dockerfile, 운영 VM, 기존 ECS 샌드박스, Terraform과 플랫폼 CI 연동, AWS → GCP·온프레미스 DB 이전 준비.
+- 로그인은 사용자 정정에 따라 고정 ID·비밀번호 한 쌍과 공통 작업 공간으로 시작한다. U1에 회원가입·계정 관리·소셜 로그인·개인별 권한은 없다.
+- 문서는 한국어로 작성하고 코드 주석은 필요하면 영어로 작성한다.
 - 구현 전 작업 범위를 공유한다. 추가 지시 `Dont forget to tell me before you commit.`에 따라 커밋 전에 변경 내용·검증 결과를 알린다. 푸시는 별도 지시 범위다.
-- 기능 코드·패키지 설치·클라우드 변경은 아직 실행하지 않았다.
+- U1 기능·로컬 검증·AWS 최초 배포를 완료했다. GitHub CI 워크플로는 로컬 준비·검증 상태이며 OIDC 연결·푸시·원격 실행 전이다.
 
 ## Ideation
 
 - 문제: 개발자가 빌드, 검사, 인프라 준비, 배포, 관측과 이전 상태를 여러 도구에서 따로 확인해야 한다.
 - 사용자: 자신의 서비스를 배포하고 운영하는 개발자.
 - 성공 기준: 공개 저장소의 특정 커밋을 빌드하고 ECS에서 검사한 동일 이미지를 VM에 배포한다. 플랫폼에서 진행 상황·주소·실제 상태를 확인한다.
-- Scope: 서비스 등록·권한·작업 상태, 공개 소스 빌드, 기존 검사 도구/Terraform/VM 배포 연결, 관측 조회, 같은 엔진의 DB 이전 준비.
+- Scope: 고정 로그인·서비스 등록·작업 상태, 공개 소스 확인·빌드, 기존 검사 도구/Terraform/VM 배포 연결, 관측 조회, 같은 엔진의 DB 이전 준비.
 - Non-goals: 비공개 저장소/GitHub App, 모든 프레임워크 자동 감지, 운영 Kubernetes/serverless, DB 엔진 변환. 복제 엔진·관측 저장소 전체를 새로 만드는 것도 기본 범위가 아니다.
 
 ## Inception — 설계 방향
@@ -29,7 +31,7 @@
 
 ### 운영 품질 요구사항
 
-- 프로젝트별 권한, 서버 측 자격 증명 관리, 민감정보 로그 제외.
+- 고정 계정의 로그인 보호, 서버 측 자격 증명 관리, 민감정보 로그 제외. U1은 공통 작업 공간이며 개인별 권한·감사를 제공한다고 표현하지 않는다.
 - 실제 DB에 작업 상태·이벤트·외부 실행 ID 저장. 재시작 시 외부 상태와 대조해 재개.
 - 중복 요청 방지, 같은 서비스의 충돌하는 배포 직렬화.
 - 고객 코드 빌드와 인프라 관리의 권한·실행 환경 분리.
@@ -50,14 +52,14 @@
 
 웹은 API만 호출한다. API/Worker는 공통 Python 패키지 `delta_platform`을 공유하고 별도 프로세스로 실행한다. 기존 `terraform/`와 `services/`의 도구를 어댑터로 연결한다.
 
-제안 스택은 React + TypeScript, FastAPI + PostgreSQL, Ansible이다. 정확한 버전·인증 공급자·CI 인증·이미지 저장소는 각 구현 단위의 설계에서 확정한다.
+제안 스택은 React + TypeScript, FastAPI + PostgreSQL, Ansible이다. U1 로그인은 고정 ID·비밀번호와 서버 세션이다. 라이브러리 버전·CI 인증·이미지 저장소는 각 구현 단위에서 확정한다.
 
 ### Unit of Work / Acceptance Criteria
 
 | Unit | 내용 | 완료 기준 | 상태 |
 | --- | --- | --- | --- |
 | U0 | 브랜치·디렉터리·문서 | `feat/platform`, 역할별 경계, 설명 문서·진행 기록 | 준비 완료 |
-| U1 | 서비스 등록·권한·작업 상태 | API/Worker의 실제 DB 공유, 재시작 보존·권한 격리·중복 요청 검증 | 세부 설계 예정 |
+| U1 | 고정 로그인·서비스 등록·소스 사전 검사 | 실제 DB 공유, 인증 보호·재시작 보존·중복 요청·GitHub 확인 검증 | [구현·검증 완료](platform-u1.md), AWS 배포 완료 |
 | U2 | 공개 저장소·빌드 | 특정 커밋의 이미지·결과 저장, 관리 권한 없는 빌드 | 미착수 |
 | U3 | ECS 검사 연결 | 검사한 digest·증거 연결, 미통과/미연결 시 배포 차단 | 미착수 |
 | U4 | Terraform·VM 배포 | handoff 검증·준비 검사·배포·헬스 체크·실패 처리 | 미착수 |
@@ -80,9 +82,15 @@
 - 기존 VM의 외부 통신 제한에 맞춰 이미지·로그·비밀값 접근 경로와 권한을 준비해야 한다.
 - Terraform 출력 스키마, LB/주소/요청 전환, 관측 조회·보관, 실제 DB 유형은 미확정이다.
 
+## Construction — U1
+
+- 사용자의 `Proceed.`에 따라 API·DB·로그인·검증 계획을 구체화했다. 후속 정정으로 운영자 계정 생성 방식도 제외하고 고정 계정 한 쌍으로 확정했다.
+- [U1 설계와 순서](platform-u1.md), [HTTP 계약](../../platform/contracts/u1-http.md), [DB 구조](../../platform/contracts/u1-data.md)를 함께 검토한다.
+- 후속 `You can start implementation.`으로 구현 승인을 받았다. Python API·Worker·PostgreSQL·React를 구현하고 실제 DB 56개, 실제 GitHub 1개, 브라우저 3개 시험을 통과했다.
+
 ## Operation
 
-플랫폼 배포, Terraform Plan/Apply, 클라우드 변경은 미실행이다. 기능별 배포·관측·복구·Runbook과 실제 결과를 구분해 기록한다.
+사용자 지시로 AWS 사설 EC2·CloudFront 기반에 배포했다. 실제 HTTPS·재시작·백업 복원과 최종 No changes를 확인했다. [AWS 결과](platform-aws.md)와 [GitHub 전환 안내](../../platform/deploy/GITHUB.md)를 따른다. GitHub OIDC 역할·Environment 연결과 Actions 실행은 아직 하지 않았다. 고객 앱 배포 U4와 플랫폼 자체 배포를 구분한다.
 
 ## 검증 기록
 
@@ -95,11 +103,11 @@
 | 2026-11-02 | `git check-ignore --no-index --stdin` 기반 검사 | 로컬 설정·생성물 경로 6개 제외, 예제·lockfile·문서 경로 5개 유지 확인 |
 | 2026-11-02 | `git status --short --branch --untracked-files=all` 및 변경 검토 | `feat/platform`, 변경은 플랫폼 구조·문서와 루트 안내에 한정. 기존 Terraform·서비스 실행 코드 변경 없음 |
 
-애플리케이션 테스트는 미실행이다.
+위 표는 U0 당시 검증이다. 이후 애플리케이션 검증은 [U1 기록](platform-u1.md), 클라우드 검증은 [AWS 기록](platform-aws.md)을 따른다.
 
 ## Git 기록
 
-- 사용자에게 변경 내용·검증 결과와 Conventional Commit 메시지를 공유한 뒤 `Go ahead.`로 로컬 커밋 승인을 받았다.
-- 승인된 제목: `chore(platform): scaffold isolated platform workspace`.
-- 커밋 기록은 `git log -1 --format=fuller`를 기준으로 확인한다. 원격 푸시는 승인 범위에 포함되지 않으며 미실행이다.
+- U0 변경 내용·검증 결과와 Conventional Commit 메시지를 공유한 뒤 `Go ahead.`로 로컬 커밋 승인을 받았다.
+- U0 커밋: `0567762` — `chore(platform): scaffold isolated platform workspace`.
+- U1 구현·AWS 배포·GitHub 워크플로 변경은 아직 커밋하지 않았다. 원격 푸시는 미실행이다.
 - 후속 커밋 전에도 변경 내용과 검증 결과를 사용자에게 알린다.

@@ -60,7 +60,7 @@
     <section id="handoff" aria-labelledby="handoff-title">
       <div class="section-head"><span class="number">03</span><h2 id="handoff-title">팀 사이의 역할과 연결</h2><span class="badge proposed">추천</span></div>
       <div class="table-wrap"><table class="role-table"><thead><tr><th scope="col">담당</th><th scope="col">준비하는 것</th><th scope="col">완료 기준</th></tr></thead><tbody>
-        <tr><th scope="row">플랫폼</th><td>서비스 등록, 사용자 권한, 배포 요청·상태·이력</td><td>재시작 후에도 작업 상태를 확인하고 안전하게 이어감</td></tr>
+        <tr><th scope="row">플랫폼</th><td>고정 계정 로그인, 서비스 등록, 배포 요청·상태·이력</td><td>재시작 후에도 작업 상태를 확인하고 안전하게 이어감</td></tr>
         <tr><th scope="row">인프라팀</th><td>Terraform, 기본 VM 이미지, 관리 접속, 필요한 통신·권한</td><td>VM 접속·이미지 다운로드·Docker 실행이 가능</td></tr>
         <tr><th scope="row">빌드·검사</th><td>코드 빌드, 이미지 저장, ECS 샌드박스 검사</td><td>어떤 커밋·이미지를 검사했는지 결과와 함께 기록</td></tr>
         <tr><th scope="row">배포 Worker</th><td>Ansible로 이미지 실행·교체, 헬스 체크·복구</td><td>정상 확인 후 요청 전환, 실패 시 기존 버전 유지</td></tr>
@@ -98,7 +98,7 @@
           <div class="route-line">앱 → OTel 수집 경로 → 저장소 → 플랫폼 조회</div>
           <ul class="compact"><li><b>CSP 모니터링:</b> VM·LB·DB 지표, 방화벽·감사 로그</li><li><b>OTel:</b> 앱 요청 시간·오류·API와 DB 호출 추적</li><li><b>플랫폼:</b> 배포·이전 진행 상태, 승인·실행 이력</li></ul>
           <p class="note">OTel은 저장소나 화면이 아닙니다. Loki·Tempo·Prometheus를 모두 새로 운영할 필요는 없습니다. 로그 전송에는 별도 수집 설정이 필요하며, OTel 사용만으로 여러 클라우드 화면이 자동 통합되지는 않습니다.</p>
-          <div class="highlight"><strong>서비스·환경 ID를 공통으로 사용</strong><span>작업은 run_id, 요청 추적은 trace_id로 연결합니다. 조회 권한은 프로젝트별로 제한합니다.</span></div>
+          <div class="highlight"><strong>서비스·환경 ID를 공통으로 사용</strong><span>작업은 run_id, 요청 추적은 trace_id로 연결합니다. 첫 단계는 고정 계정과 공통 작업 공간으로 시작합니다.</span></div>
         </article>
         <article class="card">
           <div class="operation-head"><h3>AWS → GCP / 온프레미스</h3><span class="badge agreed">이전 방향 합의</span></div>
