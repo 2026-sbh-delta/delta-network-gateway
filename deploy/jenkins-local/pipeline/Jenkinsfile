@@ -124,6 +124,17 @@ pipeline {
                 }
             }
         }
+        stage('판단 서비스 확인') {
+            steps {
+                script {
+                    env.CURRENT_STAGE = 'gate-ready'
+                    if (sh(returnStatus: true, script: "python3 ${scripts()}/gate_ready.py") != 0) {
+                        env.GATE_ALREADY_REPORTED = 'true'  // 분석도 같은 서비스가 하므로 호출하지 않는다
+                        error('판단 서비스에 닿지 못했다: 트래픽을 주기 전에 중단한다')
+                    }
+                }
+            }
+        }
         stage('테스트') {
             steps {
                 script { logged('test', 'python3 -m unittest discover -s app -v') }

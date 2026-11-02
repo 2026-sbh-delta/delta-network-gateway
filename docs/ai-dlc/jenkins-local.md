@@ -135,7 +135,7 @@ Jenkins 2.580.2-lts-jdk21, 플러그인 7개는 `jenkins/plugins.txt` 에 버전
 | 명령 | 결과 |
 |---|---|
 | `services/delta-ai`: `.venv/bin/pytest -q` | 85 통과 |
-| `deploy/jenkins-local`: `python -m pytest -q tests` | 47 통과 |
+| `deploy/jenkins-local`: `python -m pytest -q tests` | 47 통과 (사전 확인 추가 전) |
 | 실제 서버(가짜 LLM)에 호출 | `code_security` 422, `deployment_gate`·`migration_parity` 정상 응답 |
 | 빌드 #45·47·48·49 의 실제 `sast.sarif` 로 `sast_findings.py` | 탐지 0건 3회 종료 코드 0, 1건 1회 20 |
 | Jenkins 선언형 문법 검사(`/pipeline-model-converter/validate`) | 통과 |
@@ -155,7 +155,20 @@ Jenkins 2.580.2-lts-jdk21, 플러그인 7개는 `jenkins/plugins.txt` 에 버전
 
 #60 뒤 서비스는 버전 55 로 응답했다.
 
-- **동작 변화:** `gate-down` 은 전에 SAST 판단에서 배포 전에 멈췄지만, 이제 SAST 가 판단 서비스를 부르지 않아 카나리 10% 까지 간 뒤 롤백된다. 통과로 처리되지는 않지만 그동안 사용자 트래픽 일부가 새 버전으로 간다.
+- **`gate-down` 동작 변화와 사전 확인:** #59 처럼 SAST 가 판단 서비스를 부르지 않게 되자 장애를 카나리 10% 에서야 알았다. 그래서 첫 단계에 `gate_ready.py` 를 넣었다. 토큰이 필요한 조회를 부르므로 주소와 토큰을 함께 확인하고, LLM 은 부르지 않는다. 확인 뒤에 서비스가 죽는 경우는 여전히 카나리 단계의 롤백이 막는다.
+
+사전 확인 추가 후 빌드(가짜 LLM):
+
+| 빌드 | 시나리오 | 결과 | 확인한 것 |
+|---|---|---|---|
+| #61 | `good` | SUCCESS | 첫 배포, 100% 만 거침 |
+| #62 | `good` | SUCCESS | 안정 슬롯이 있는 상태에서 10→50→100% 승격 |
+| #63 | `gate-down` | FAILURE | 사전 확인에서 중단, 트래픽 변경 0회, 서비스는 버전 62 유지 |
+| #64 | `failing-test` | FAILURE | 사전 확인 통과 뒤 테스트에서 중단, 실패 분석 응답 있음 |
+| #65 | `bad-canary` | FAILURE | 10% 자동 롤백, 서비스는 버전 62 유지 |
+
+잘못된 토큰으로 Jenkins 컨테이너에서 `gate_ready.py` 를 직접 실행해 종료 코드 30 을 확인했다. 스크립트 테스트는 51 통과.
+
 - **확인 못 한 것:** 실제 Claude 호출은 이번에 하지 않았다. 호스트 부하 평균은 12~16 이었고 이번에는 지연 오탐이 없었지만, 고정 기준의 위험은 위 기록과 같다.
 
 ## 아직 안 된 것
@@ -165,7 +178,6 @@ Jenkins 2.580.2-lts-jdk21, 플러그인 7개는 `jenkins/plugins.txt` 에 버전
 - 이벤트는 판단 호출 때만 남긴다. ADR-AI-24 진행 그래프에 쓰려면 단계 시작·종료도 내보내야 한다.
 - Dependency-Check, SonarQube, ZAP.
 - 사설망·ANF, Jenkins 외부 경로, 실제 서버 메모리, AWS→GCP 교차 배포, ARM/x86, 실제 HAProxy.
-- `gate-down` 은 실패 분석도 판단 서비스가 필요해 원인 설명 없이 끝난다.
 - Jenkins 자체의 보안 설정. 로컬 전용 구성이라 서버용으로 다시 만들어야 한다.
 
 ## Operation

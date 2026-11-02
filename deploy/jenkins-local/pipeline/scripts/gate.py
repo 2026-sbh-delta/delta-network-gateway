@@ -15,7 +15,9 @@ import urllib.error
 import urllib.request
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
+
+T = TypeVar("T")
 
 EXIT_PASS = 0
 EXIT_FIX = 10
@@ -61,17 +63,14 @@ def post_json(url: str, token: str, body: dict[str, Any], timeout: float) -> dic
         return json.load(response)
 
 
-def call_gate(url: str, token: str, body: dict[str, Any], *,
-              poster: Callable[..., dict[str, Any]] = post_json,
-              sleep: Callable[[float], None] = time.sleep,
-              timeout: float = REQUEST_TIMEOUT_SECONDS) -> dict[str, Any]:
+def retrying(call: Callable[[], T], *, sleep: Callable[[float], None] = time.sleep) -> T:
     """503·연결 실패만 재시도한다. 401·422 는 다시 해도 같으니 바로 실패한다."""
     last_error = "호출하지 않음"
     for attempt in range(MAX_ATTEMPTS):
         if attempt:
             sleep(RETRY_DELAY_SECONDS)
         try:
-            return poster(f"{url}/v1/assessments", token, body, timeout)
+            return call()
         except urllib.error.HTTPError as exc:
             last_error = f"HTTP {exc.code}"
             if exc.code != 503:
@@ -79,6 +78,13 @@ def call_gate(url: str, token: str, body: dict[str, Any], *,
         except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
             last_error = type(exc).__name__
     raise GateUnavailable(last_error)
+
+
+def call_gate(url: str, token: str, body: dict[str, Any], *,
+              poster: Callable[..., dict[str, Any]] = post_json,
+              sleep: Callable[[float], None] = time.sleep,
+              timeout: float = REQUEST_TIMEOUT_SECONDS) -> dict[str, Any]:
+    return retrying(lambda: poster(f"{url}/v1/assessments", token, body, timeout), sleep=sleep)
 
 
 def exit_code_for(result: Mapping[str, Any]) -> int:

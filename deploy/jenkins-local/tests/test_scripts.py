@@ -11,6 +11,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "pipeline" / "scripts"))
 
 import gate  # noqa: E402
+import gate_ready  # noqa: E402
 import haproxy_ctl  # noqa: E402
 import sast_findings  # noqa: E402
 import traffic  # noqa: E402
@@ -177,3 +178,48 @@ def test_unreadable_sarif_does_not_pass(tmp_path, content):
 
     with pytest.raises((ValueError, KeyError)):
         sast_findings.main([str(path)])
+
+
+def test_ready_uses_a_token_protected_endpoint():
+    calls = []
+
+    def getter(url, token, timeout):
+        calls.append((url, token))
+        return {"candidates": []}
+
+    gate_ready.check_ready("http://x", "t", getter=getter, sleep=lambda _: None)
+
+    assert calls == [("http://x/v1/rule-candidates", "t")]
+
+
+def test_ready_rejects_a_bad_token_without_retrying():
+    calls = []
+
+    def getter(*args):
+        calls.append(args)
+        raise _http_error(401)
+
+    with pytest.raises(gate.GateUnavailable, match="HTTP 401"):
+        gate_ready.check_ready("http://x", "t", getter=getter, sleep=lambda _: None)
+    assert len(calls) == 1
+
+
+def test_ready_retries_a_failed_connection_then_gives_up():
+    calls = []
+
+    def getter(*args):
+        calls.append(args)
+        raise urllib.error.URLError("refused")
+
+    with pytest.raises(gate.GateUnavailable, match="URLError"):
+        gate_ready.check_ready("http://x", "t", getter=getter, sleep=lambda _: None)
+    assert len(calls) == gate.MAX_ATTEMPTS
+
+
+def test_ready_main_returns_unavailable_exit_code(monkeypatch, capsys):
+    monkeypatch.setenv("DELTA_URL", "http://127.0.0.1:1")
+    monkeypatch.setenv("DELTA_API_TOKEN", "secret-token")
+    monkeypatch.setattr(gate_ready.time, "sleep", lambda _: None)
+
+    assert gate_ready.main() == gate.EXIT_UNAVAILABLE
+    assert "secret-token" not in capsys.readouterr().err
