@@ -6,6 +6,7 @@ import json
 import os
 import random
 import signal
+import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 VERSION = os.environ.get("APP_VERSION", "dev")
@@ -37,6 +38,7 @@ class Handler(BaseHTTPRequestHandler):
             self._reply(200, {"status": "ok"})
         elif self.path == "/api/hello":
             if should_fail(FAIL_RATE, random.random()):
+                print(f"ERROR GET /api/hello 500: injected failure FAIL_RATE={FAIL_RATE}", file=sys.stderr, flush=True)
                 self._reply(500, {"error": "injected failure"})
             else:
                 self._reply(200, {"message": "hello", "version": VERSION})
