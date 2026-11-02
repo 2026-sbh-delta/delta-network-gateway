@@ -6,7 +6,9 @@
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import time
+import urllib.request
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
@@ -20,6 +22,8 @@ _REGISTER_KEYS = ("family", "taskRoleArn", "executionRoleArn", "networkMode", "c
                   "ephemeralStorage")
 
 Report = Callable[[str, str], None]
+SCANNER_TAG = {"Key": "DeltaManaged", "Value": "scanner"}
+CHECKIP_URL = "https://checkip.amazonaws.com"
 
 
 class StagingError(Exception):
@@ -30,6 +34,17 @@ class StagingError(Exception):
 class Outcome:
     url: str
     revision: str
+    scanner_ip: str | None = None
+
+
+def current_public_ip() -> str:
+    """도구를 실행하는 곳의 현재 공인 IP. 실행 환경이 바뀌어도 매번 확인한다."""
+    with urllib.request.urlopen(CHECKIP_URL, timeout=5) as response:  # noqa: S310 고정 주소
+        value = response.read().decode().strip()
+    address = ipaddress.ip_address(value)
+    if address.version != 4 or not address.is_global:
+        raise StagingError(f"공인 IPv4 를 확인하지 못했다: {value}")
+    return value
 
 
 def _session(target: AwsTarget):
@@ -40,8 +55,10 @@ def _session(target: AwsTarget):
 
 class AwsEcsStaging:
     def __init__(self, target: AwsTarget, *, clients: dict[str, Any] | None = None, poll_seconds: float = 5,
-                 rollout_timeout: float = 600, health_timeout: float = 180) -> None:
+                 rollout_timeout: float = 600, health_timeout: float = 180,
+                 public_ip: Callable[[], str] = current_public_ip) -> None:
         self.target = target
+        self.public_ip = public_ip
         self._clients = clients
         self.poll_seconds = poll_seconds
         self.rollout_timeout = rollout_timeout
@@ -50,8 +67,13 @@ class AwsEcsStaging:
     def _client(self, name: str) -> Any:
         if self._clients is None:
             session = _session(self.target)
-            self._clients = {n: session.client(n) for n in ("ecs", "elbv2", "sts")}
+            self._clients = {n: session.client(n) for n in ("ecs", "elbv2", "sts", "ec2")}
         return self._clients[name]
+
+    def check_request(self, req: DeployRequest) -> None:
+        self.check_image(req.image)
+        if req.scanner_ip and not self.target.dynamic_scanner_access:
+            raise StagingError("이 스테이징은 내부 전용이라 scanner_ip 를 받지 않는다")
 
     def check_image(self, image: str) -> None:
         if not any(image.startswith(prefix) for prefix in self.target.allowed_image_prefixes):
@@ -65,6 +87,11 @@ class AwsEcsStaging:
         identity = await self._call("sts", "get_caller_identity")
         if identity.get("Account") != self.target.account_id:
             raise StagingError("자격 증명의 계정이 스테이징 계정과 다르다")
+        scanner_ip = None
+        if req.scanner_ip:
+            scanner_ip = await asyncio.to_thread(self.public_ip) if req.scanner_ip == "auto" else req.scanner_ip
+            await self._allow_scanner(scanner_ip, req.run_id)
+            report("scanner_allowed", f"{scanner_ip}/32")
         revision = await self._register(req)
         report("task_definition", revision)
         await self._call("ecs", "update_service", cluster=self.target.cluster, service=self.target.service,
@@ -74,7 +101,7 @@ class AwsEcsStaging:
         report("rollout_completed", revision)
         await self._wait_healthy()
         report("healthy", self.target.url)
-        return Outcome(url=self.target.url, revision=revision)
+        return Outcome(url=self.target.url, revision=revision, scanner_ip=scanner_ip)
 
     async def _register(self, req: DeployRequest) -> str:
         current = (await self._call("ecs", "describe_task_definition", taskDefinition=self.target.task_family))["taskDefinition"]
@@ -124,6 +151,34 @@ class AwsEcsStaging:
                 raise StagingError(f"헬스 체크가 {int(self.health_timeout)}초 안에 통과하지 않았다 ({states})")
             await asyncio.sleep(self.poll_seconds)
 
+    async def _scanner_rules(self) -> list[dict[str, Any]]:
+        rules = await self._call("ec2", "describe_security_group_rules", Filters=[
+            {"Name": "group-id", "Values": [self.target.alb_security_group_id]},
+            {"Name": f"tag:{SCANNER_TAG['Key']}", "Values": [SCANNER_TAG["Value"]]},
+        ])
+        return [rule for rule in rules["SecurityGroupRules"] if not rule.get("IsEgress")]
+
+    async def _allow_scanner(self, ip: str, run_id: str) -> None:
+        """공개 ALB 에는 지금 실행기 IP 하나만 열어 둔다. 이전 실행의 IP 는 지운다."""
+        cidr = f"{ip}/32"
+        rules = await self._scanner_rules()
+        stale = [rule["SecurityGroupRuleId"] for rule in rules if rule.get("CidrIpv4") != cidr]
+        if stale:
+            await self._call("ec2", "revoke_security_group_ingress", GroupId=self.target.alb_security_group_id,
+                             SecurityGroupRuleIds=stale)
+        if any(rule.get("CidrIpv4") == cidr for rule in rules):
+            return
+        await self._call("ec2", "authorize_security_group_ingress", GroupId=self.target.alb_security_group_id,
+                         IpPermissions=[{"IpProtocol": "tcp", "FromPort": 80, "ToPort": 80,
+                                         "IpRanges": [{"CidrIp": cidr, "Description": f"delta-staging {run_id}"}]}],
+                         TagSpecifications=[{"ResourceType": "security-group-rule",
+                                             "Tags": [SCANNER_TAG, {"Key": "DeltaRunId", "Value": run_id}]}])
+
     async def stop(self) -> None:
         await self._call("ecs", "update_service", cluster=self.target.cluster, service=self.target.service,
                          desiredCount=0)
+        if self.target.dynamic_scanner_access:  # 내린 뒤에는 공개 ALB 에 열린 IP 도 닫는다
+            rules = await self._scanner_rules()
+            if rules:
+                await self._call("ec2", "revoke_security_group_ingress", GroupId=self.target.alb_security_group_id,
+                                 SecurityGroupRuleIds=[rule["SecurityGroupRuleId"] for rule in rules])

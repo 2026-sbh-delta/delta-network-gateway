@@ -62,12 +62,41 @@ class FakeElb:
         return {"TargetHealthDescriptions": [{"TargetHealth": {"State": state}}]}
 
 
+class FakeEc2:
+    """보안 그룹 규칙 흉내. 도구가 단 태그가 붙은 규칙만 돌려준다."""
+
+    def __init__(self) -> None:
+        self.rules: list[dict[str, Any]] = []
+        self.calls: list[str] = []
+
+    def describe_security_group_rules(self, **kwargs: Any) -> dict[str, Any]:
+        return {"SecurityGroupRules": [dict(rule) for rule in self.rules]}
+
+    def authorize_security_group_ingress(self, **kwargs: Any) -> dict[str, Any]:
+        self.calls.append("authorize")
+        cidr = kwargs["IpPermissions"][0]["IpRanges"][0]["CidrIp"]
+        self.rules.append({"SecurityGroupRuleId": f"sgr-{len(self.calls)}", "CidrIpv4": cidr, "IsEgress": False})
+        return {}
+
+    def revoke_security_group_ingress(self, **kwargs: Any) -> dict[str, Any]:
+        self.calls.append("revoke")
+        gone = set(kwargs["SecurityGroupRuleIds"])
+        self.rules = [rule for rule in self.rules if rule["SecurityGroupRuleId"] not in gone]
+        return {}
+
+
 class FakeSts:
     def __init__(self, account: str = "444455556666") -> None:
         self.account = account
 
     def get_caller_identity(self) -> dict[str, Any]:
         return {"Account": self.account}
+
+
+@pytest.fixture
+def public_target(target: AwsTarget) -> AwsTarget:
+    return target.model_copy(update={"alb_security_group_id": "sg-00000000000000001", "dynamic_scanner_access": True,
+                                     "url": "http://delta-lab-staging-alb.ap-northeast-2.elb.amazonaws.com"})
 
 
 @pytest.fixture
@@ -79,6 +108,7 @@ def target() -> AwsTarget:
 
 
 def make_provider(target: AwsTarget, *, ecs: FakeEcs | None = None, elb: FakeElb | None = None,
-                  sts: FakeSts | None = None, **kwargs: Any) -> AwsEcsStaging:
-    clients = {"ecs": ecs or FakeEcs(), "elbv2": elb or FakeElb(), "sts": sts or FakeSts()}
-    return AwsEcsStaging(target, clients=clients, poll_seconds=0, **kwargs)
+                  sts: FakeSts | None = None, ec2: FakeEc2 | None = None, public_ip: str = "52.78.10.20",
+                  **kwargs: Any) -> AwsEcsStaging:
+    clients = {"ecs": ecs or FakeEcs(), "elbv2": elb or FakeElb(), "sts": sts or FakeSts(), "ec2": ec2 or FakeEc2()}
+    return AwsEcsStaging(target, clients=clients, poll_seconds=0, public_ip=lambda: public_ip, **kwargs)

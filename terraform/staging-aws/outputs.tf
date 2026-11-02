@@ -19,11 +19,15 @@ output "target_group_arn" {
   value       = aws_lb_target_group.app.arn
 }
 output "internal_url" {
-  description = "Private staging URL reachable only from scanner sources."
+  description = "Staging URL reachable only from scanner sources."
   value       = "http://${aws_lb.staging.dns_name}"
 }
+output "ecr_repository_url" {
+  description = "ECR repository for staging images, or null when not created."
+  value       = try(aws_ecr_repository.app[0].repository_url, null)
+}
 output "alb_security_group_id" {
-  description = "Internal ALB security group."
+  description = "Staging ALB security group."
   value       = aws_security_group.alb.id
 }
 output "log_group_name" {
@@ -41,6 +45,8 @@ output "tool_config" {
     task_family            = aws_ecs_task_definition.app.family
     container_name         = var.container_name
     target_group_arn       = aws_lb_target_group.app.arn
+    alb_security_group_id  = aws_security_group.alb.id
+    dynamic_scanner_access = var.alb_internet_facing
     url                    = "http://${aws_lb.staging.dns_name}"
     allowed_image_prefixes = local.allowed_image_prefixes
   }

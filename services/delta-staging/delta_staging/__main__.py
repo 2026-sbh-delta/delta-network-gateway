@@ -16,7 +16,7 @@ from pydantic import ValidationError
 
 from delta_staging.config import ConfigError
 from delta_staging.contract import DeployRequest
-from delta_staging.registry import Busy, Conflict, ImageRejected, NotFound, Unsupported
+from delta_staging.registry import Busy, Conflict, RequestRejected, NotFound, Unsupported
 from delta_staging.tools import tool_catalog
 
 
@@ -34,7 +34,7 @@ async def _deploy(args: argparse.Namespace) -> int:
     from delta_staging.api import registry_from_env
 
     req = DeployRequest(run_id=args.run_id, cloud=args.cloud, image=args.image, commit=args.commit,
-                        env=_env_pairs(args.env), replace=args.replace)
+                        env=_env_pairs(args.env), replace=args.replace, scanner_ip=args.scanner_ip)
     registry = registry_from_env()
     await registry.start(req)
     printed = 0
@@ -70,6 +70,7 @@ def main(argv: list[str] | None = None) -> int:
     deploy.add_argument("--commit")
     deploy.add_argument("--env", action="append", default=[])
     deploy.add_argument("--replace", action="store_true")
+    deploy.add_argument("--scanner-ip", help="공개 스테이징에 허용할 DAST 실행기 공인 IPv4. auto 면 지금 IP")
     stop = sub.add_parser("stop")
     stop.add_argument("--run-id", required=True)
     sub.add_parser("tools")
@@ -82,7 +83,7 @@ def main(argv: list[str] | None = None) -> int:
         return asyncio.run(_deploy(args) if args.command == "deploy" else _stop(args))
     except ValidationError as exc:
         print(f"입력 오류: {exc}", file=sys.stderr)
-    except (ConfigError, Unsupported, ImageRejected, Busy, Conflict, NotFound) as exc:
+    except (ConfigError, Unsupported, RequestRejected, Busy, Conflict, NotFound) as exc:
         print(f"{type(exc).__name__}: {exc}", file=sys.stderr)
     return 2
 

@@ -13,7 +13,7 @@ from fastapi import Depends, FastAPI, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from delta_staging.contract import Deployment, DeployRequest
-from delta_staging.registry import Busy, Conflict, ImageRejected, NotFound, StagingRegistry, Unsupported
+from delta_staging.registry import Busy, Conflict, RequestRejected, NotFound, StagingRegistry, Unsupported
 from delta_staging.tools import tool_catalog
 
 
@@ -42,7 +42,7 @@ def create_app(*, registry: StagingRegistry, token: str) -> FastAPI:
             return await registry.start(req)
         except Unsupported as exc:
             raise HTTPException(status_code=501, detail=str(exc)) from exc
-        except ImageRejected as exc:
+        except RequestRejected as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         except (Busy, Conflict) as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc

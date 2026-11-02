@@ -15,8 +15,8 @@ data "aws_subnet" "selected" {
   id       = each.value
   lifecycle {
     postcondition {
-      condition     = self.vpc_id == var.vpc_id && !self.map_public_ip_on_launch
-      error_message = "Every subnet must belong to vpc_id and must not map public IPs on launch."
+      condition     = self.vpc_id == var.vpc_id
+      error_message = "Every subnet must belong to vpc_id. Tasks never get public IPs regardless of the subnet default."
     }
   }
 }

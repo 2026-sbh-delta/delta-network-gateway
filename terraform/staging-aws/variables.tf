@@ -83,6 +83,26 @@ variable "scanner_cidrs" {
   }
 }
 
+variable "alb_internet_facing" {
+  description = "Expose the ALB to the internet. The security group still admits only scanner sources; the staging tool adds the runner's current public /32 at deploy time."
+  type        = bool
+  default     = false
+}
+
+variable "scanner_public_cidrs" {
+  description = "Fixed public egress CIDRs of the DAST runner (for example a NAT IP) for an internet-facing ALB."
+  type        = set(string)
+  default     = []
+  validation {
+    condition = alltrue([for cidr in var.scanner_public_cidrs : try(
+      cidrhost(cidr, 0) == split("/", cidr)[0] && tonumber(split("/", cidr)[1]) >= 24 &&
+      !startswith(cidr, "10.") && !startswith(cidr, "192.168.") && !can(regex("^172\\.(1[6-9]|2[0-9]|3[01])\\.", cidr)),
+      false
+    )])
+    error_message = "scanner_public_cidrs must be canonical public CIDRs of /24 or narrower; the ALB is never open to everyone."
+  }
+}
+
 variable "scanner_security_group_ids" {
   description = "Security groups of the DAST runner allowed to reach the internal ALB."
   type        = set(string)
@@ -157,6 +177,12 @@ variable "bootstrap_image" {
   description = "Placeholder image for the first task definition revision. The service starts at zero tasks, so it is never pulled."
   type        = string
   default     = "public.ecr.aws/docker/library/busybox:stable"
+}
+
+variable "create_ecr_repository" {
+  description = "Create an ECR repository the build step pushes staging images to."
+  type        = bool
+  default     = true
 }
 
 variable "allowed_image_prefixes" {

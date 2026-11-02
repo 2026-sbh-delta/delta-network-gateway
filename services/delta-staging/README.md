@@ -66,6 +66,7 @@ AWS 자격 증명은 boto3 기본 경로(`AWS_PROFILE` 등)를 쓴다. 이 도�
 | `commit` | 아니오 | 이미지를 만든 커밋. 컨테이너 env `DELTA_COMMIT`으로도 넣는다 |
 | `env` | 아니오 | 비밀이 아닌 env. `PASSWORD`·`TOKEN`·`SECRET`·`API_KEY` 등이 든 이름은 거부한다 |
 | `replace` | 아니오 | 다른 실행이 스테이징을 쓰는 중이면 교체한다. 배포 중인 실행은 교체하지 않는다 |
+| `scanner_ip` | 아니오 | 공개 스테이징에 허용할 DAST 실행기 공인 IPv4. `auto`면 도구를 실행하는 곳의 현재 공인 IP를 매번 확인해 쓴다. 내부 스테이징에는 보내면 400 |
 
 ## 상태와 응답
 
@@ -77,22 +78,32 @@ AWS 자격 증명은 boto3 기본 경로(`AWS_PROFILE` 등)를 쓴다. 이 도�
 | `stopped` | 점검 뒤 내렸다 |
 | `replaced` | 다른 실행이 스테이징을 가져갔다 |
 
-`steps`는 `accepted → task_definition → service_updated → rollout_completed → healthy` 순서다.
+`steps`는 `accepted → (scanner_allowed) → task_definition → service_updated → rollout_completed → healthy` 순서다. `scanner_ip`를 준 실행은 응답의 `scanner_ip`에 허용한 IP가 남는다.
 
 | HTTP | 뜻 |
 |---|---|
 | 202 | 배포 시작(또는 같은 `run_id`의 기존 상태) |
-| 400 | 허용하지 않은 이미지 저장소 |
+| 400 | 허용하지 않은 이미지 저장소, 내부 스테이징에 `scanner_ip` |
 | 409 | 다른 실행이 사용 중, 또는 같은 `run_id`로 다른 이미지 |
 | 422 | 스키마 위반, 비밀처럼 보이는 env |
 | 501 | 설정되지 않은 클라우드 |
 
 ## 안전장치
 
-- 스테이징 주소는 내부 ALB다. Terraform이 스캐너 CIDR이나 보안 그룹만 허용하고, 인터넷 대역은 입력에서 거부한다.
+- 내부 모드면 Terraform이 스캐너 CIDR이나 보안 그룹만 허용한다. 공개 모드면 보안 그룹이 닫힌 채로 시작하고, 도구가 실행기의 현재 IP /32 하나만 열고 이전 IP는 지운다. 중지하거나 배포가 실패하면 그 IP도 닫는다. 어느 모드든 전체 대역은 받지 않는다.
 - 이미지는 설정의 `allowed_image_prefixes`(기본: 같은 계정의 ECR)만 받는다. 에이전트가 임의 이미지를 띄우지 못한다.
 - 배포 전에 STS로 자격 증명 계정이 설정의 `account_id`와 같은지 확인한다.
 - 비밀 값은 env로 받지 않는다. 시크릿이 필요하면 태스크 정의의 secrets(Secrets Manager 참조)로 Terraform에서 넣는다.
+
+## 필요한 AWS 권한(배포 역할)
+
+- `sts:GetCallerIdentity`
+- `ecs:DescribeTaskDefinition`, `ecs:RegisterTaskDefinition`, `ecs:TagResource`, 해당 서비스의 `ecs:UpdateService`·`ecs:DescribeServices`
+- `elasticloadbalancing:DescribeTargetHealth`
+- `iam:PassRole`(실행 역할·태스크 역할 두 개만)
+- 공개 모드: ALB 보안 그룹의 `ec2:DescribeSecurityGroupRules`, `ec2:AuthorizeSecurityGroupIngress`, `ec2:RevokeSecurityGroupIngress`, `ec2:CreateTags`
+
+실제 배포 환경에서는 장기 키 대신 OIDC(웹 아이덴티티)나 태스크 역할로 받는다. boto3 기본 체인이 둘 다 읽으므로 코드 변경은 없다.
 
 ## 현재 한계
 

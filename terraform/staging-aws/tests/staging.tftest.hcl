@@ -17,7 +17,7 @@ override_data {
 }
 override_data {
   target = data.aws_subnet.selected["subnet-00000000000000002"]
-  values = { id = "subnet-00000000000000002", vpc_id = "vpc-00000000000000001", availability_zone_id = "apne2-az2", map_public_ip_on_launch = false }
+  values = { id = "subnet-00000000000000002", vpc_id = "vpc-00000000000000001", availability_zone_id = "apne2-az2", map_public_ip_on_launch = true }
 }
 
 override_resource {
@@ -65,6 +65,10 @@ run "private_staging_foundation" {
     condition     = tolist(output.tool_config.allowed_image_prefixes) == tolist(["444455556666.dkr.ecr.ap-northeast-2.amazonaws.com/"]) && output.tool_config.cloud == "aws" && output.tool_config.container_name == "app"
     error_message = "The tool config defaults to this account's ECR only."
   }
+  assert {
+    condition     = one(aws_ecr_repository.app).image_tag_mutability == "IMMUTABLE" && one(one(aws_ecr_repository.app).image_scanning_configuration).scan_on_push && length(aws_ecr_lifecycle_policy.app) == 1
+    error_message = "The staging repository keeps immutable, scanned images with a retention policy."
+  }
 }
 
 run "scanner_security_group_without_endpoints" {
@@ -74,6 +78,7 @@ run "scanner_security_group_without_endpoints" {
     scanner_security_group_ids = ["sg-00000000000000009"]
     create_vpc_endpoints       = false
     route_table_ids            = []
+    create_ecr_repository      = false
   }
   assert {
     condition     = length(aws_vpc_security_group_ingress_rule.alb_from_scanner_sg) == 1 && length(aws_vpc_security_group_ingress_rule.alb_from_scanner_cidr) == 0
@@ -82,6 +87,10 @@ run "scanner_security_group_without_endpoints" {
   assert {
     condition     = length(aws_vpc_endpoint.interface) == 0 && length(aws_vpc_endpoint.s3) == 0 && length(aws_security_group.endpoints) == 0 && length(aws_vpc_security_group_egress_rule.service_to_s3) == 0
     error_message = "Endpoints are optional for subnets that already have egress."
+  }
+  assert {
+    condition     = length(aws_ecr_repository.app) == 0 && output.ecr_repository_url == null
+    error_message = "The repository is optional when images come from an existing registry."
   }
 }
 
@@ -113,6 +122,69 @@ run "endpoints_need_route_tables" {
   command = plan
   variables {
     route_table_ids = []
+  }
+  expect_failures = [terraform_data.contract]
+}
+
+run "internet_facing_with_dynamic_scanner_access" {
+  command = plan
+  variables {
+    alb_internet_facing  = true
+    scanner_cidrs        = []
+    scanner_public_cidrs = ["203.0.113.10/32"]
+  }
+  assert {
+    condition     = !aws_lb.staging.internal && !one(aws_ecs_service.app.network_configuration).assign_public_ip
+    error_message = "Only the ALB faces the internet; tasks still get no public IP."
+  }
+  assert {
+    condition     = length(aws_vpc_security_group_ingress_rule.alb_from_scanner_public) == 1 && length(aws_vpc_security_group_ingress_rule.alb_from_scanner_cidr) == 0
+    error_message = "Only the fixed scanner egress CIDR is opened statically."
+  }
+  assert {
+    condition     = output.tool_config.dynamic_scanner_access && output.tool_config.alb_security_group_id == "sg-00000000000000001"
+    error_message = "The tool must know it manages the runner's current IP on the ALB security group."
+  }
+  assert {
+    condition     = one(aws_lb_target_group.app.health_check).interval == 5 && one(aws_lb_target_group.app.health_check).healthy_threshold == 2
+    error_message = "Fast health checks keep the image swap short."
+  }
+}
+
+run "internet_facing_needs_no_static_source" {
+  command = plan
+  variables {
+    alb_internet_facing = true
+    scanner_cidrs       = []
+  }
+  assert {
+    condition     = !aws_lb.staging.internal && length(aws_vpc_security_group_ingress_rule.alb_from_scanner_public) == 0
+    error_message = "With dynamic access the ALB starts closed until the tool adds the runner IP."
+  }
+}
+
+run "rejects_open_public_scanner_cidr" {
+  command = plan
+  variables {
+    alb_internet_facing  = true
+    scanner_public_cidrs = ["0.0.0.0/0"]
+  }
+  expect_failures = [var.scanner_public_cidrs]
+}
+
+run "rejects_private_public_scanner_cidr" {
+  command = plan
+  variables {
+    alb_internet_facing  = true
+    scanner_public_cidrs = ["10.0.0.0/24"]
+  }
+  expect_failures = [var.scanner_public_cidrs]
+}
+
+run "public_cidrs_need_internet_facing" {
+  command = plan
+  variables {
+    scanner_public_cidrs = ["203.0.113.10/32"]
   }
   expect_failures = [terraform_data.contract]
 }

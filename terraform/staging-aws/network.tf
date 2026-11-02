@@ -1,6 +1,6 @@
 resource "aws_security_group" "alb" {
   name_prefix = "${local.prefix}-alb-"
-  description = "DAST runner to the internal staging ALB only"
+  description = "DAST runner to the staging ALB only"
   vpc_id      = var.vpc_id
   tags        = { Name = "${local.prefix}-alb" }
   depends_on  = [terraform_data.contract]
@@ -14,6 +14,17 @@ resource "aws_vpc_security_group_ingress_rule" "alb_from_scanner_cidr" {
   to_port           = 80
   description       = "DAST runner CIDR"
 }
+resource "aws_vpc_security_group_ingress_rule" "alb_from_scanner_public" {
+  for_each          = var.scanner_public_cidrs
+  security_group_id = aws_security_group.alb.id
+  cidr_ipv4         = each.value
+  ip_protocol       = "tcp"
+  from_port         = 80
+  to_port           = 80
+  description       = "DAST runner public egress"
+}
+# The staging tool adds and removes the runner's current /32 itself (tag DeltaManaged=scanner).
+# Standalone rule resources never remove rules Terraform does not own.
 resource "aws_vpc_security_group_ingress_rule" "alb_from_scanner_sg" {
   for_each                     = var.scanner_security_group_ids
   security_group_id            = aws_security_group.alb.id

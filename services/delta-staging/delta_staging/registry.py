@@ -21,7 +21,7 @@ ACTIVE = ("deploying", "ready")
 
 
 class Provider(Protocol):
-    def check_image(self, image: str) -> None: ...
+    def check_request(self, req: DeployRequest) -> None: ...
     async def deploy(self, req: DeployRequest, report: Report) -> Outcome: ...
     async def stop(self) -> None: ...
 
@@ -30,7 +30,7 @@ class Unsupported(Exception):
     pass
 
 
-class ImageRejected(Exception):
+class RequestRejected(Exception):
     pass
 
 
@@ -100,9 +100,9 @@ class StagingRegistry:
                     raise Conflict("같은 run_id 로 다른 이미지나 클라우드를 요청했다")
                 return existing
             try:
-                provider.check_image(req.image)
+                provider.check_request(req)
             except StagingError as exc:
-                raise ImageRejected(str(exc)) from exc
+                raise RequestRejected(str(exc)) from exc
             active = [d for d in self._deployments.values() if d.cloud == req.cloud and d.state in ACTIVE]
             for current in active:
                 if not req.replace or current.state == "deploying":
@@ -133,7 +133,7 @@ class StagingRegistry:
             return
         current = self._deployments[req.run_id]
         self._put(current.model_copy(update={"state": "ready", "url": outcome.url, "revision": outcome.revision,
-                                             "ready_at": _now()}))
+                                             "scanner_ip": outcome.scanner_ip, "ready_at": _now()}))
 
     async def _fail(self, run_id: str, error: str, provider: Provider) -> None:
         current = self._deployments[run_id]

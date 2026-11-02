@@ -14,12 +14,16 @@ locals {
 
 resource "terraform_data" "contract" {
   input = {
-    scanner_sources = length(var.scanner_cidrs) + length(var.scanner_security_group_ids)
+    scanner_sources = length(var.scanner_cidrs) + length(var.scanner_security_group_ids) + length(var.scanner_public_cidrs)
   }
   lifecycle {
     precondition {
-      condition     = length(var.scanner_cidrs) + length(var.scanner_security_group_ids) > 0
+      condition     = var.alb_internet_facing || length(var.scanner_cidrs) + length(var.scanner_security_group_ids) > 0
       error_message = "Set scanner_cidrs or scanner_security_group_ids; otherwise nothing can reach the internal ALB."
+    }
+    precondition {
+      condition     = var.alb_internet_facing || length(var.scanner_public_cidrs) == 0
+      error_message = "scanner_public_cidrs only applies to an internet-facing ALB."
     }
     precondition {
       condition     = !var.create_vpc_endpoints || length(var.route_table_ids) > 0
@@ -27,7 +31,7 @@ resource "terraform_data" "contract" {
     }
     precondition {
       condition     = length(distinct([for subnet in data.aws_subnet.selected : subnet.availability_zone_id])) >= 2
-      error_message = "subnet_ids must span at least two AZs for the internal ALB."
+      error_message = "subnet_ids must span at least two AZs for the ALB."
     }
   }
 }

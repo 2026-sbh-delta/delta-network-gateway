@@ -25,6 +25,8 @@ class AwsTarget(BaseModel):
     task_family: str
     container_name: str
     target_group_arn: str
+    alb_security_group_id: str | None = None
+    dynamic_scanner_access: bool = False  # 공개 ALB 에 실행기의 현재 IP 를 도구가 직접 허용한다
     url: str
     allowed_image_prefixes: tuple[str, ...] = Field(min_length=1)
 

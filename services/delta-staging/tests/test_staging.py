@@ -3,12 +3,12 @@ from __future__ import annotations
 import json
 
 import pytest
-from conftest import ECR, IMAGE, FakeEcs, FakeElb, FakeSts, make_provider
+from conftest import ECR, IMAGE, FakeEc2, FakeEcs, FakeElb, FakeSts, make_provider
 from pydantic import ValidationError
 
 from delta_staging.config import load_targets
 from delta_staging.contract import DeployRequest
-from delta_staging.registry import Busy, Conflict, ImageRejected, StagingRegistry, Unsupported
+from delta_staging.registry import Busy, Conflict, RequestRejected, StagingRegistry, Unsupported
 
 
 def _req(**overrides) -> DeployRequest:
@@ -39,7 +39,7 @@ async def test_image_outside_allowed_registry_is_rejected_before_any_call(target
     ecs = FakeEcs()
     registry = StagingRegistry({"aws": make_provider(target, ecs=ecs)})
 
-    with pytest.raises(ImageRejected):
+    with pytest.raises(RequestRejected):
         await registry.start(_req(image="ghcr.io/someone/app:latest"))
     assert ecs.calls == []
 
@@ -152,3 +152,51 @@ def test_load_targets_reads_terraform_tool_config(tmp_path, target):
     path.write_text(json.dumps(target.model_dump(mode="json")), encoding="utf-8")
 
     assert load_targets(path)["aws"] == target
+
+
+async def test_auto_scanner_ip_opens_only_the_current_runner(public_target):
+    ec2 = FakeEc2()
+    registry = StagingRegistry({"aws": make_provider(public_target, ec2=ec2, public_ip="52.78.10.20")})
+
+    await registry.start(_req(scanner_ip="auto"))
+    done = await registry.wait("run-1")
+
+    assert done.state == "ready" and done.scanner_ip == "52.78.10.20"
+    assert [rule["CidrIpv4"] for rule in ec2.rules] == ["52.78.10.20/32"]
+    assert "scanner_allowed" in [step.name for step in done.steps]
+
+
+async def test_new_runner_ip_replaces_the_old_rule(public_target):
+    ec2 = FakeEc2()
+    registry = StagingRegistry({"aws": make_provider(public_target, ec2=ec2, public_ip="52.78.10.20")})
+    await registry.start(_req(scanner_ip="auto"))
+    await registry.wait("run-1")
+
+    await registry.start(_req(run_id="run-2", scanner_ip="3.35.120.9", replace=True))
+    await registry.wait("run-2")
+
+    assert [rule["CidrIpv4"] for rule in ec2.rules] == ["3.35.120.9/32"]
+
+
+async def test_stop_closes_the_runner_ip(public_target):
+    ec2 = FakeEc2()
+    registry = StagingRegistry({"aws": make_provider(public_target, ec2=ec2)})
+    await registry.start(_req(scanner_ip="auto"))
+    await registry.wait("run-1")
+
+    await registry.stop("run-1")
+
+    assert ec2.rules == []
+
+
+async def test_internal_staging_refuses_scanner_ip(target):
+    registry = StagingRegistry({"aws": make_provider(target)})
+
+    with pytest.raises(RequestRejected):
+        await registry.start(_req(scanner_ip="auto"))
+
+
+@pytest.mark.parametrize("ip", ["10.0.0.1", "127.0.0.1", "::1", "not-an-ip"])
+def test_scanner_ip_must_be_public_ipv4_or_auto(ip):
+    with pytest.raises(ValidationError):
+        _req(scanner_ip=ip)

@@ -6,6 +6,30 @@ resource "aws_ecs_cluster" "staging" {
   }
 }
 
+resource "aws_ecr_repository" "app" {
+  count                = var.create_ecr_repository ? 1 : 0
+  name                 = local.prefix
+  image_tag_mutability = "IMMUTABLE"
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+  encryption_configuration {
+    encryption_type = "AES256"
+  }
+}
+resource "aws_ecr_lifecycle_policy" "app" {
+  count      = var.create_ecr_repository ? 1 : 0
+  repository = aws_ecr_repository.app[0].name
+  policy = jsonencode({
+    rules = [{
+      rulePriority = 1
+      description  = "Keep the latest 20 staging images"
+      selection    = { tagStatus = "any", countType = "imageCountMoreThan", countNumber = 20 }
+      action       = { type = "expire" }
+    }]
+  })
+}
+
 resource "aws_cloudwatch_log_group" "app" {
   name              = "/delta/${local.prefix}"
   retention_in_days = var.log_retention_days
@@ -70,7 +94,7 @@ resource "aws_ecs_task_definition" "app" {
 
 resource "aws_lb" "staging" {
   name                       = substr("${local.prefix}-alb", 0, 32)
-  internal                   = true
+  internal                   = !var.alb_internet_facing
   load_balancer_type         = "application"
   subnets                    = sort(tolist(var.subnet_ids))
   security_groups            = [aws_security_group.alb.id]
@@ -87,8 +111,8 @@ resource "aws_lb_target_group" "app" {
   health_check {
     path                = var.health_check_path
     matcher             = "200-399"
-    interval            = 10
-    timeout             = 5
+    interval            = 5
+    timeout             = 4
     healthy_threshold   = 2
     unhealthy_threshold = 3
   }

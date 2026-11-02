@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 import re
 from datetime import datetime
 from typing import Literal
@@ -32,6 +33,19 @@ class DeployRequest(_Model):
     commit: str | None = Field(default=None, pattern=r"^[0-9a-f]{7,40}$", description="이미지를 만든 커밋 SHA")
     env: dict[str, str] = Field(default_factory=dict, description="비밀이 아닌 앱 환경 변수")
     replace: bool = Field(default=False, description="다른 실행이 스테이징을 쓰고 있으면 교체한다")
+    scanner_ip: str | None = Field(
+        default=None,
+        description="공개 스테이징에 접근할 DAST 실행기의 공인 IPv4. auto 면 도구를 실행하는 곳의 현재 공인 IP 를 확인해 쓴다")
+
+    @field_validator("scanner_ip")
+    @classmethod
+    def _public_ipv4(cls, value: str | None) -> str | None:
+        if value is None or value == "auto":
+            return value
+        address = ipaddress.ip_address(value)
+        if address.version != 4 or not address.is_global:
+            raise ValueError("scanner_ip 는 공인 IPv4 이거나 auto 다")
+        return value
 
     @field_validator("env")
     @classmethod
@@ -67,6 +81,7 @@ class Deployment(_Model):
     commit: str | None = None
     url: str | None = Field(default=None, description="스캐너만 닿는 내부 주소. ready 일 때만 채운다")
     revision: str | None = Field(default=None, description="클라우드의 배포 개정판 식별자")
+    scanner_ip: str | None = Field(default=None, description="이번 실행에 허용한 스캐너 IP")
     started_at: datetime
     ready_at: datetime | None = None
     ended_at: datetime | None = None
