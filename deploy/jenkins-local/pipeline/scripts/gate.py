@@ -13,7 +13,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -40,6 +40,11 @@ def read_tail(path: Path, limit: int = LOG_TAIL_CHARS) -> str:
     if not path.is_file():
         return ""
     return path.read_text(encoding="utf-8", errors="replace")[-limit:]
+
+
+def read_logs(paths: Sequence[Path]) -> str:
+    """판단 서비스는 끝부분만 쓰므로 원인에 가까운 로그를 뒤에 둔다."""
+    return "\n".join(f"== {path.name} ==\n{read_tail(path)}" for path in paths if path.is_file())
 
 
 def collect_code(root: Path) -> dict[str, str]:
@@ -121,7 +126,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("kind", choices=("code_security", "deployment_gate"))
     parser.add_argument("--id", required=True)
     parser.add_argument("--service", default="demo-app")
-    parser.add_argument("--commit", default="local")
+    parser.add_argument("--commit", default=os.environ.get("RELEASE_ID", "local"))
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--events", type=Path, default=Path("events.jsonl"))
     parser.add_argument("--sarif", type=Path)
@@ -131,7 +136,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--target")
     parser.add_argument("--traffic", type=int)
     parser.add_argument("--exit-code", type=int)
-    parser.add_argument("--log", type=Path)
+    parser.add_argument("--log", type=Path, action="append", default=[])
     parser.add_argument("--metrics", type=Path)
     return parser
 
@@ -145,7 +150,7 @@ def _request_from_args(args: argparse.Namespace) -> dict[str, Any]:
     return deployment_request(assessment_id=args.id, service_id=args.service, commit=args.commit,
                               stage=args.stage or "unknown", status=args.status, target=args.target,
                               traffic_percent=args.traffic, exit_code=args.exit_code,
-                              log_tail=read_tail(args.log) if args.log else "", metrics=tuple(metrics))
+                              log_tail=read_logs(args.log), metrics=tuple(metrics))
 
 
 def main(argv: list[str] | None = None) -> int:
