@@ -17,6 +17,7 @@ fi
 
 (cd ../../services/delta-ai && uv sync --quiet --all-extras)
 (cd ../../services/delta-dast && uv sync --quiet)
+(cd ../../services/delta-pipeline && uv sync --quiet --all-extras)
 
 start() {  # 이름, 포트, 실행 폴더, 명령...
   local name="$1" port="$2" dir="$3"
@@ -30,6 +31,6 @@ start() {  # 이름, 포트, 실행 폴더, 명령...
 }
 
 start dast 8765 ../../services/delta-dast uv run python -m dast_agent serve --port 8765 --target-port 8766
-start console 18100 "$HERE" ../../services/delta-ai/.venv/bin/python server.py --port 18100
+start console 18100 "$HERE" ../../services/delta-pipeline/.venv/bin/python server.py --port 18100
 sleep 2
 echo "시연 콘솔: http://127.0.0.1:18100"

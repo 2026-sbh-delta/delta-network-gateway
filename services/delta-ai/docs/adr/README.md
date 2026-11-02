@@ -63,6 +63,7 @@ FastAPI ─ Bearer 토큰 인증
 | [37](ADR-AI-37-aws-front-door.md) | 트래픽 앞단 | HAProxy 기각, AWS 기능 사용 | **ALB 가중치 권고, 시험 전** |
 | [38](ADR-AI-38-terraform-vs-cartography.md) | 출발 환경 값의 출처 | Terraform 기준 | 유지, Cartography 미구현 |
 | [39](ADR-AI-39-migration-mapping.md) | CSP 간 매핑 판단 | `migration_mapping` 구현, 대응표·등급 | 로컬 구현, **대응 값 팀 확인** |
+| [40](ADR-AI-40-pipeline-graph.md) | 전체 흐름 구동 | 고정 전이 그래프가 구동, Jenkins 는 도구 | 1단계 로컬 구현, **팀 확정 전** |
 
 ## 오늘 회의에서 정할 것
 

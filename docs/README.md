@@ -3,6 +3,7 @@
 ## 현재 상태
 
 - 기준일: 2026-11-02 (Asia/Seoul)
+- 파이프라인 그래프: 콘솔 흐름을 `services/delta-pipeline` 의 고정 전이 LangGraph 그래프로 옮겼다. 2026-11-02 테스트 32개, 로컬 스택 3개 시나리오·강제 종료 재개 확인. 브랜치 `feat/pipeline-graph` 까지 푸시했고(PR 전) AWS·GCP 이전은 없다. [기록](ai-dlc/pipeline-graph.md)
 - AWS → GCP 매핑 판단: [`migration_mapping`](ai-dlc/migration-mapping.md) 로컬 구현(미커밋). 실제 AWS state 로 대조했고 GCP 생성은 안 함. 앞단은 HAProxy 기각, AWS 기능 사용 방향(ADR-AI-37), 값의 기준은 Terraform(ADR-AI-38), GCP 담당은 동규 님(2026-11-02 사용자 전달).
 - 통합 시연: `deploy/demo-console/` 에서 온프레미스 증거·DAST·AI 판단·Jenkins 카나리를 한 흐름과 화면으로 돌린다. 2026-11-02 로컬 리허설 3개 시나리오 확인, 로컬 브랜치 `feat/demo-integration` 까지 커밋했고 푸시·서버 배포는 안 함. 배포는 Mac Docker 대역이고 AWS·GCP 는 미연결. [기록](ai-dlc/demo-integration.md)
 - Jenkins 배포·AI 판단: `deploy/jenkins-local/`에서 카나리 승격·자동 롤백·사람 확인을 로컬 시나리오로 확인했다. main 병합 후 2026-11-02 delta-ai `.venv/bin/pytest -q` 85개, 파이프라인 스크립트 51개 통과, 병합 후 Jenkins 빌드 #53~65(가짜 LLM)로 사전 확인과 시나리오 경로 확인. 커밋은 로컬 브랜치 `feat/jenkins-on-main` 까지이고 푸시·AWS 배포는 안 했다. [기록](ai-dlc/jenkins-local.md)
@@ -31,6 +32,7 @@
 
 ## 문서
 
+- [파이프라인 고정 전이 그래프](ai-dlc/pipeline-graph.md)
 - [AWS → GCP 매핑 판단](ai-dlc/migration-mapping.md)
 - [Jenkins 배포와 AI 판단 로컬 검증](ai-dlc/jenkins-local.md)
 - [CloudFront 웹의 중앙 ANF 허용/차단 시험](ai-dlc/cloudfront-anf-demo.md)

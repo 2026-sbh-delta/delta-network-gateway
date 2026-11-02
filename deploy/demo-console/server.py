@@ -23,13 +23,15 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
-from clients import Dast, DeltaAi, Jenkins, ServiceUnavailable
-from flow import SCENARIOS, Options, Run
+from delta_pipeline.clients import Dast, DeltaAi, Jenkins, ServiceUnavailable
+from delta_pipeline.model import SCENARIOS, Options
+from delta_pipeline.run import Run, latest_unfinished
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent.parent
 JENKINS_ENV = REPO / "deploy" / "jenkins-local" / ".env"
 ONPREM_DIR = HERE / "var" / "onprem"
+PIPELINE_DIR = HERE / "var" / "pipeline"
 ONPREM_CONFIG = Path(os.environ.get("DEMO_ONPREM_CONFIG", REPO.parent / "notes" / "delta-onprem-collect.json"))
 COLLECTOR = REPO / "services" / "delta-ai" / "scripts" / "collect_onprem.py"
 COLLECTOR_PYTHON = REPO / "services" / "delta-ai" / ".venv" / "bin" / "python"
@@ -104,6 +106,21 @@ class App:
         self.thread: threading.Thread | None = None
         self.collect_state: dict[str, Any] = {"state": "idle"}
         self._lock = threading.Lock()
+        self._resume_unfinished()
+
+    def _resume_unfinished(self) -> None:
+        """콘솔이 강제 종료됐으면 끝나지 못한 실행을 이어 간다."""
+        saved = latest_unfinished(PIPELINE_DIR) if PIPELINE_DIR.exists() else None
+        if saved:
+            run_id, options = saved
+            self._launch(options, run_id)
+
+    def _launch(self, options: Options, run_id: str | None = None) -> None:
+        self.run = Run(options, delta=self.delta, dast=self.dast, jenkins=self.jenkins,
+                       onprem_dir=ONPREM_DIR, store_dir=PIPELINE_DIR, service_ready=self._service_ready,
+                       on_release_start=self.traffic.reset, run_id=run_id)
+        self.thread = threading.Thread(target=self.run.execute, daemon=True)
+        self.thread.start()
 
     def running(self) -> bool:
         return self.thread is not None and self.thread.is_alive()
@@ -116,11 +133,7 @@ class App:
             if self.running():
                 return "이미 진행 중이다"
             self.traffic.reset()
-            self.run = Run(Options(scenario, planner, rejudge), delta=self.delta, dast=self.dast, jenkins=self.jenkins,
-                           onprem_dir=ONPREM_DIR, service_ready=self._service_ready,
-                           on_release_start=self.traffic.reset)
-            self.thread = threading.Thread(target=self.run.execute, daemon=True)
-            self.thread.start()
+            self._launch(Options(scenario, planner, rejudge))
         return None
 
     def _service_ready(self) -> bool:

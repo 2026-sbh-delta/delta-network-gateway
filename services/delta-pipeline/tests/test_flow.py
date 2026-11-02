@@ -1,77 +1,19 @@
 from __future__ import annotations
 
 import json
-import sys
 import threading
 import time
-from pathlib import Path
 
 import pytest
+from fakes import FakeDast, FakeDelta, FakeJenkins
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
-from clients import ServiceUnavailable  # noqa: E402
-from flow import SCENARIOS, Options, Run, combined_verdict, dast_request  # noqa: E402
+from delta_pipeline.clients import ServiceUnavailable
+from delta_pipeline.graph import route_dast_judge
+from delta_pipeline.model import SCENARIOS, Board, Options, combined_verdict, dast_request
+from delta_pipeline.run import Run
+from delta_pipeline.steps import READ_ATTEMPTS, Deps, Steps, Stopped, assert_gates_passed, sync_stages
 
 SCENARIO = {s.id: s for s in SCENARIOS}
-
-
-class FakeDelta:
-    def __init__(self, *, onprem="pass", fail=False):
-        self.onprem, self.fail, self.kinds = onprem, fail, []
-
-    def assess(self, body):
-        if self.fail:
-            raise ServiceUnavailable("죽음")
-        self.kinds.append(body["kind"])
-        if body["kind"] == "dast_verification":
-            statuses = [r["status"] for r in body["evidence"]["dast"]["results"]]
-            return {"verdict": "pass" if statuses == ["NOT_REPRODUCED"] else "needs_human", "findings": []}
-        return {"verdict": self.onprem, "findings": [{"rule_id": "R", "status": "fail", "severity": "high"}]}
-
-
-class FakeDast:
-    def __init__(self):
-        self.scenarios = []
-
-    def config(self):
-        return {"sample_report": {"findings": []}, "target_ids": ["local-fixture"]}
-
-    def start(self, scenario, planner, report):
-        self.scenarios.append(scenario)
-        return f"run-{scenario}"
-
-    def run(self, run_id):
-        status = "NOT_REPRODUCED" if run_id.endswith("fixed") else "REPRODUCED"
-        return {"status": "done", "results": [{"finding_id": "F", "title": "XSS", "status": status, "message": "m"}]}
-
-
-class FakeJenkins:
-    def __init__(self, final="SUCCESS", *, files=None, inputs=0):
-        self.final, self.files, self.triggered = final, files or {}, []
-        self.inputs, self.answers = inputs, []
-
-    def trigger(self, scenario):
-        self.triggered.append(scenario)
-        return len(self.triggered)
-
-    def describe(self, build):
-        if self.inputs:
-            return {"status": "PAUSED_PENDING_INPUT", "stages": []}
-        return {"status": self.final, "stages": [{"name": "단계적 전환", "status": self.final}]}
-
-    def pending_inputs(self, build):
-        return [{"id": "HumanGate", "message": "확인"}] if self.inputs else []
-
-    def answer_input(self, build, input_id, *, approve):
-        self.answers.append(approve)
-        self.inputs = 0
-
-    def file(self, build, name):
-        return self.files.get(name)
-
-    def console_url(self, build):
-        return f"http://jenkins/{build}"
 
 
 @pytest.fixture
@@ -83,7 +25,7 @@ def onprem_dir(tmp_path):
 
 def _run(scenario, onprem_dir, *, delta=None, dast=None, jenkins=None, ready=True):
     return Run(Options(SCENARIO[scenario]), delta=delta or FakeDelta(), dast=dast or FakeDast(), jenkins=jenkins or FakeJenkins(),
-               onprem_dir=onprem_dir, service_ready=lambda: ready, sleep=lambda _: None)
+               onprem_dir=onprem_dir, store_dir=onprem_dir / "store", service_ready=lambda: ready, sleep=lambda _: None)
 
 
 def _execute(run, answers=()):
@@ -198,13 +140,26 @@ def test_jenkins_input_is_answered_from_the_console(onprem_dir):
     assert snapshot["outcome"] == "deployed"
 
 
-def test_previous_builds_files_are_ignored_before_the_rollout_stage(onprem_dir):
+def test_previous_builds_files_are_ignored_before_the_rollout_stage(tmp_path):
     stale = {"gate-10.json": {"verdict": "pass"}, "metrics-10.json": {"metrics": []}}
-    run = _run("normal", onprem_dir, jenkins=FakeJenkins(files=stale))
+    options = Options(SCENARIO["normal"])
+    board = Board(tmp_path / "board.json", options, "r")
+    deps = Deps(run_id="r", options=options, board=board, delta=FakeDelta(), dast=FakeDast(), jenkins=FakeJenkins(files=stale),
+                onprem_dir=tmp_path, service_ready=lambda: True, on_release_start=lambda: None, sleep=lambda _: None)
 
-    run._sync_stages(1, {"stages": [{"name": "테스트", "status": "IN_PROGRESS"}]})
+    sync_stages(deps, 1, {"stages": [{"name": "테스트", "status": "IN_PROGRESS"}]})
 
-    assert _states(run.snapshot())["canary-10"] == "pending"
+    assert _states(board.snapshot())["canary-10"] == "pending"
+
+
+@pytest.mark.parametrize("gates", [{}, {"onprem": "pass"}, {"onprem": "pass", "dast": "needs_human"}])
+def test_deploy_refuses_without_a_pass_record_for_every_gate(gates):
+    with pytest.raises(Stopped):
+        assert_gates_passed(gates)
+
+
+def test_deploy_accepts_pass_and_human_approval():
+    assert_gates_passed({"onprem": "approved", "dast": "pass"})
 
 
 @pytest.mark.parametrize("verdicts,expected", [
@@ -220,3 +175,79 @@ def test_dast_request_keeps_only_the_observation_fields():
     body = dast_request(run, assessment_id="a", target="t")
 
     assert body["evidence"]["dast"]["results"] == [{"finding_id": "F", "title": "", "status": "REPRODUCED", "message": ""}]
+
+
+class AlwaysReproducedDast(FakeDast):
+    def run(self, run_id):
+        return {"status": "done", "results": [{"finding_id": "F", "title": "XSS", "status": "REPRODUCED", "message": "m"}]}
+
+
+def test_fixed_build_that_still_reproduces_waits_for_a_person_and_can_stop(onprem_dir):
+    dast, jenkins = AlwaysReproducedDast(), FakeJenkins()
+
+    snapshot = _execute(_run("vulnerable", onprem_dir, dast=dast, jenkins=jenkins), ["reverify", "stop"])
+
+    assert dast.scenarios == ["vulnerable", "fixed"]
+    assert snapshot["outcome"] == "stopped"
+    assert jenkins.triggered == []
+    assert _states(snapshot)["dast-judge"] == "fail"
+
+
+@pytest.mark.parametrize("state,expected", [
+    ({"halt": "x", "dast_before": {}}, "halted"),
+    ({"dast_before": {}}, "ask_reverify"),
+    ({"dast_before": None, "pending_gate": {"key": "dast"}}, "ask_dast"),
+    ({"dast_before": None, "pending_gate": None}, "deploy_check"),
+])
+def test_dast_judgment_routes(state, expected):
+    assert route_dast_judge(state) == expected
+
+
+def test_release_start_refuses_without_gate_records_and_never_triggers(tmp_path):
+    options, jenkins = Options(SCENARIO["normal"]), FakeJenkins()
+    deps = Deps(run_id="r", options=options, board=Board(tmp_path / "board.json", options, "r"), delta=FakeDelta(), dast=FakeDast(),
+                jenkins=jenkins, onprem_dir=tmp_path, service_ready=lambda: True, on_release_start=lambda: None, sleep=lambda _: None)
+
+    with pytest.raises(Stopped):
+        Steps(deps).release_start({"gates": {"onprem": "pass"}})
+
+    assert jenkins.triggered == []
+
+
+class FlakyJenkins(FakeJenkins):
+    """호출마다 정해진 횟수만큼 조회가 실패한다."""
+
+    def __init__(self, failures, **kwargs):
+        super().__init__(**kwargs)
+        self.failures = {"find_build": failures, "describe": failures}
+
+    def _flaky(self, name):
+        if self.failures[name] > 0:
+            self.failures[name] -= 1
+            raise ServiceUnavailable("시간 초과")
+
+    def find_build(self, run_key):
+        self._flaky("find_build")
+        return super().find_build(run_key)
+
+    def describe(self, build):
+        self._flaky("describe")
+        return super().describe(build)
+
+
+def test_short_jenkins_read_failures_do_not_end_the_run(onprem_dir):
+    jenkins = FlakyJenkins(failures=READ_ATTEMPTS - 1)
+
+    snapshot = _execute(_run("normal", onprem_dir, jenkins=jenkins))
+
+    assert snapshot["outcome"] == "deployed"
+    assert jenkins.triggered == ["good"]
+
+
+def test_jenkins_that_stays_unreachable_stops_and_says_so(onprem_dir):
+    jenkins = FlakyJenkins(failures=10_000)
+
+    snapshot = _execute(_run("normal", onprem_dir, jenkins=jenkins))
+
+    assert snapshot["outcome"] == "stopped"
+    assert jenkins.triggered == []

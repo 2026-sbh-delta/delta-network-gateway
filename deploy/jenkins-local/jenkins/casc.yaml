@@ -26,6 +26,11 @@ jobs:
         description('스캔 → 사람 확인 → 카나리 → 승격 또는 자동 롤백')
         parameters {
           choiceParam('SCENARIO', ['good', 'vulnerable-code', 'failing-test', 'bad-canary', 'gate-down', 'low-traffic'], '시험할 상황')
+          stringParam('RUN_ID', '', '파이프라인 실행 식별자. 재개할 때 같은 빌드를 찾는 데 쓴다')
+        }
+        // Jenkinsfile 의 options 는 재시작 후 첫 빌드가 돌아야 적용돼, 그 사이 빌드가 겹쳤다(#88·#89)
+        properties {
+          disableConcurrentBuilds()
         }
         definition {
           cps {

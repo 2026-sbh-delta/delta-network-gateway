@@ -1,4 +1,4 @@
-"""시연 콘솔이 부르는 세 서비스의 HTTP 호출. 표준 라이브러리만 쓴다."""
+"""파이프라인이 부르는 세 서비스의 HTTP 호출. 표준 라이브러리만 쓴다."""
 
 from __future__ import annotations
 
@@ -18,6 +18,7 @@ JOB = "delta-demo-deploy"
 JENKINS_CONTAINER = "delta-jenkins-local-jenkins-1"
 WORKSPACE = f"/var/jenkins_home/workspace/{JOB}"
 QUEUE_WAIT_SECONDS = 120
+BUILD_SEARCH_LIMIT = 50
 
 
 class ServiceUnavailable(RuntimeError):
@@ -117,10 +118,24 @@ class Jenkins:
             time.sleep(1)
         raise ServiceUnavailable("Jenkins 빌드가 시작되지 않았다")
 
-    def trigger(self, scenario: str) -> int:
+    def trigger(self, scenario: str, run_key: str) -> int:
         """빌드를 시작하고 빌드 번호를 돌려준다."""
-        query = urllib.parse.urlencode({"SCENARIO": scenario})
+        query = urllib.parse.urlencode({"SCENARIO": scenario, "RUN_ID": run_key})
         return self._wait_started(self._post(f"/job/{JOB}/buildWithParameters?{query}"))
+
+    def find_build(self, run_key: str) -> int | None:
+        """이미 시작했거나 큐에 있는 빌드를 찾는다. 재개할 때 같은 배포를 두 번 시작하지 않으려는 것이다."""
+        queue = self._get("/queue/api/json?" + urllib.parse.urlencode({"tree": "items[id,params,task[name]]"}))
+        for item in queue.get("items", ()):
+            if (item.get("task") or {}).get("name") == JOB and f"RUN_ID={run_key}\n" in f"{item.get('params', '')}\n":
+                return self._wait_started(f"/queue/item/{item['id']}/")
+        tree = f"builds[number,actions[parameters[name,value]]]{{0,{BUILD_SEARCH_LIMIT}}}"
+        builds = self._get(f"/job/{JOB}/api/json?" + urllib.parse.urlencode({"tree": tree}))
+        for build in builds.get("builds", ()):
+            parameters = (p for action in build.get("actions", ()) for p in action.get("parameters", ()))
+            if any(p.get("name") == "RUN_ID" and p.get("value") == run_key for p in parameters):
+                return int(build["number"])
+        return None
 
     def describe(self, build: int) -> dict[str, Any]:
         return self._get(f"/job/{JOB}/{build}/wfapi/describe")

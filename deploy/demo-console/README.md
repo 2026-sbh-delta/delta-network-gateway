@@ -45,10 +45,10 @@ http://127.0.0.1:18100 을 연다. 끌 때는 `./down.sh` 를 쓴다. 빌드 기
 
 판정은 delta-ai 만 내린다. 어느 서비스든 응답이 없으면 통과로 보지 않고 멈춘다.
 
-콘솔이 흐름을 구동하는 것은 임시다. DAST 는 루프백 전용이고 재수집에는 Mac 의 SSH 가 필요해 Jenkins 컨테이너에서 부를 수 없다. 서버 배포에서는 [ADR-AI-27](../../services/delta-ai/docs/adr/ADR-AI-27-dast-verdict.md) 의 결정에 따라 파이프라인으로 옮긴다.
+흐름 구동은 [`services/delta-pipeline`](../../services/delta-pipeline/README.md) 의 고정 전이 그래프가 맡는다. 콘솔은 화면과 시작·답변 입구만 맡고, 강제 종료 뒤 다시 켜면 끝나지 못한 실행을 이어 간다. 서버 배포 방식은 정해지지 않았다([ADR-AI-40](../../services/delta-ai/docs/adr/ADR-AI-40-pipeline-graph.md)).
 
 ## 테스트
 
 ```bash
-../../services/delta-ai/.venv/bin/python -m pytest -q tests
+cd ../../services/delta-pipeline && .venv/bin/python -m pytest -q
 ```
