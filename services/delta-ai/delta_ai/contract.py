@@ -9,7 +9,7 @@ from typing import Annotated, Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-Kind = Literal["migration_parity", "feedback_ingest", "deployment_gate", "runtime_security"]
+Kind = Literal["migration_parity", "feedback_ingest", "deployment_gate", "runtime_security", "dast_verification"]
 Provider = Literal["aws", "gcp", "onprem"]
 Verdict = Literal["pass", "fix", "needs_human"]
 Severity = Literal["high", "medium", "low"]
@@ -190,11 +190,27 @@ class NetworkPosture(_Model):
     namespaces_without_policy: tuple[Annotated[str, Field(pattern=r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$")], ...] | None = None
 
 
+class DastResult(_Model):
+    finding_id: str = Field(min_length=1)
+    title: str = ""
+    status: Literal["REPRODUCED", "NOT_REPRODUCED", "BLOCKED", "INCONCLUSIVE"]
+    message: str = ""
+
+
+class DastEvidence(_Model):
+    """점검 서비스가 관측한 결과. 재현 여부만 받고 배포 여부는 판단 서비스가 정한다."""
+
+    run_id: str = Field(min_length=1)
+    target: str = Field(min_length=1)
+    results: tuple[DastResult, ...] = Field(min_length=1)  # 결과 없는 점검을 통과로 읽지 않는다
+
+
 class Evidence(_Model):
     attack_results: tuple[AttackResult, ...] = ()
     reachability: tuple[ReachabilityProbe, ...] = ()
     report: Report | None = None
     deployment: DeploymentEvidence | None = None
+    dast: DastEvidence | None = None
     # None 은 점검 안 함, 빈 값은 점검했고 나온 것이 없다는 뜻이다
     image_vulnerabilities: tuple[PackageVulnerability, ...] | None = Field(default=None, max_length=MAX_RUNTIME_PACKAGES)
     cluster_checks: tuple[ClusterCheck, ...] | None = None
@@ -218,6 +234,8 @@ class AssessmentRequest(_Model):
             raise ValueError("feedback_ingest 는 evidence.report 가 필요하다")
         if self.kind == "deployment_gate" and self.evidence.deployment is None:
             raise ValueError("deployment_gate 는 evidence.deployment 가 필요하다")
+        if self.kind == "dast_verification" and self.evidence.dast is None:
+            raise ValueError("dast_verification 은 evidence.dast 가 필요하다")
         evidence = self.evidence
         if self.kind == "runtime_security" and all(
                 value is None for value in (evidence.image_vulnerabilities, evidence.cluster_checks, evidence.log_signals,

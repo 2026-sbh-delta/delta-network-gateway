@@ -557,7 +557,8 @@
         "migration_parity",
         "feedback_ingest",
         "deployment_gate",
-        "runtime_security"
+        "runtime_security",
+        "dast_verification"
       ],
       "title": "Kind",
       "type": "string"

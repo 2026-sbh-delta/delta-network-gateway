@@ -50,6 +50,7 @@ FastAPI ─ Bearer 토큰 인증
 | [24](ADR-AI-24-progress-graph.md) | 진행 그래프 | 미구현 | **팀 결정: 단계 이벤트와 화면 담당** |
 | [25](ADR-AI-25-jenkins-gate.md) | 배포 파이프라인 연결 | 로컬 시험(Jenkins) | **단계별 게이트 권고, 팀 결정: Jenkins 와 AWS 구성도** |
 | [26](ADR-AI-26-onprem-runtime.md) | 온프레미스 증거 연동 | `runtime_security`와 수집기 구현 | **팀 결정: 데모 범위 포함 여부** |
+| [27](ADR-AI-27-dast-verdict.md) | DAST 결과 판정 | `dast_verification` 과 시연 콘솔 구현 | **팀 결정: 구동 주체와 패치 흐름** |
 
 ## 오늘 회의에서 정할 것
 

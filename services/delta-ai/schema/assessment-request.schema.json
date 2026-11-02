@@ -88,6 +88,73 @@
       "title": "ClusterCheck",
       "type": "object"
     },
+    "DastEvidence": {
+      "additionalProperties": false,
+      "description": "점검 서비스가 관측한 결과. 재현 여부만 받고 배포 여부는 판단 서비스가 정한다.",
+      "properties": {
+        "run_id": {
+          "minLength": 1,
+          "title": "Run Id",
+          "type": "string"
+        },
+        "target": {
+          "minLength": 1,
+          "title": "Target",
+          "type": "string"
+        },
+        "results": {
+          "items": {
+            "$ref": "#/$defs/DastResult"
+          },
+          "minItems": 1,
+          "title": "Results",
+          "type": "array"
+        }
+      },
+      "required": [
+        "run_id",
+        "target",
+        "results"
+      ],
+      "title": "DastEvidence",
+      "type": "object"
+    },
+    "DastResult": {
+      "additionalProperties": false,
+      "properties": {
+        "finding_id": {
+          "minLength": 1,
+          "title": "Finding Id",
+          "type": "string"
+        },
+        "title": {
+          "default": "",
+          "title": "Title",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "REPRODUCED",
+            "NOT_REPRODUCED",
+            "BLOCKED",
+            "INCONCLUSIVE"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "message": {
+          "default": "",
+          "title": "Message",
+          "type": "string"
+        }
+      },
+      "required": [
+        "finding_id",
+        "status"
+      ],
+      "title": "DastResult",
+      "type": "object"
+    },
     "DeploymentEvidence": {
       "additionalProperties": false,
       "properties": {
@@ -269,6 +336,17 @@
           "anyOf": [
             {
               "$ref": "#/$defs/DeploymentEvidence"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "dast": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DastEvidence"
             },
             {
               "type": "null"
@@ -1123,7 +1201,8 @@
         "migration_parity",
         "feedback_ingest",
         "deployment_gate",
-        "runtime_security"
+        "runtime_security",
+        "dast_verification"
       ],
       "title": "Kind",
       "type": "string"
@@ -1160,6 +1239,7 @@
         "reachability": [],
         "report": null,
         "deployment": null,
+        "dast": null,
         "image_vulnerabilities": null,
         "cluster_checks": null,
         "log_signals": null,
