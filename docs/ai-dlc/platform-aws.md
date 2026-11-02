@@ -67,3 +67,12 @@ NAT를 처음 `t4g.nano`로 만들었지만 초기 패키지 설치가 메모리
 - GitHub PR 검사 실행은 [41479405704](https://github.com/2026-sbh-delta/delta-network-gateway/actions/runs/41479405704)에서 시작됐다. 이 기록은 시작 확인이며 최종 성공 여부는 PR Checks를 따른다.
 
 [인프라 입력·출력](../../platform/deploy/terraform/README.md)
+
+## CI의 Linux 검증값 수정
+
+2026-11-03 PR #7의 앱 테스트는 통과했지만 Terraform job은 `the cached package ... does not match any of the checksums` 오류로 실패했다. Mac ARM64의 `h1` 검증값만 있었으며, CI의 `init -lockfile=readonly`가 Linux AMD64 검증값을 추가하지 못해 후속 `validate`에서 실패했다.
+
+- Git에 포함된 Terraform 파일만 별도 디렉터리에 복사하고, `hashicorp/terraform:1.16.4`의 `linux/amd64` 컨테이너에서 `init -backend=false -lockfile=readonly && validate`를 실행해 같은 오류·종료 코드 1을 재현했다.
+- `terraform providers lock -platform=darwin_arm64 -platform=linux_amd64`로 HashiCorp 서명 배포 파일을 확인했다. 변경은 Linux `h1` 한 줄 추가이며 Provider 버전·기존 검증값은 유지했다.
+- 같은 Linux 환경에서 `init -backend=false -lockfile=readonly && validate && test`를 다시 실행해 종료 코드 0, mock 3개 통과를 확인했다. Mac의 `fmt -check -recursive`·`validate`도 통과했다.
+- 기존 GitHub Terraform job이 이 오류를 재현하는 회귀 검사다. 검증을 완화하거나 CI에서 lock 파일을 변경하도록 우회하지 않았다. 실제 AWS Plan/Apply·리소스 변경은 수행하지 않았다. 푸시 후 원격 최종 결과는 PR Checks를 따른다.

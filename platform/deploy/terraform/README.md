@@ -44,8 +44,14 @@
 
 Terraform 1.16.4, AWS Provider 6.71.0을 고정한다. 실제 `terraform.tfvars.json`, `backend.hcl`, Plan·state·인증 파일은 Git에 넣지 않는다.
 
+Mac 개발 환경(`darwin_arm64`)과 GitHub 실행 환경(`linux_amd64`)의 검증값을 lock 파일에 함께 기록한다. Provider 버전을 변경할 때는 다음 명령으로 공식 배포 파일의 검증값을 갱신한 뒤 커밋한다. CI는 `-lockfile=readonly`를 유지한다. [Terraform 공식 안내](https://developer.hashicorp.com/terraform/cli/commands/providers/lock)
+
 ```bash
-terraform init -backend=false
+terraform providers lock -platform=darwin_arm64 -platform=linux_amd64
+```
+
+```bash
+terraform init -backend=false -lockfile=readonly
 terraform validate
 terraform test
 ```
