@@ -140,7 +140,23 @@ Jenkins 2.580.2-lts-jdk21, 플러그인 7개는 `jenkins/plugins.txt` 에 버전
 | 빌드 #45·47·48·49 의 실제 `sast.sarif` 로 `sast_findings.py` | 탐지 0건 3회 종료 코드 0, 1건 1회 20 |
 | Jenkins 선언형 문법 검사(`/pipeline-model-converter/validate`) | 통과 |
 
-**병합 후 Jenkins 빌드는 아직 실행하지 않았다.** 로컬 스택이 원래 작업 폴더를 마운트하고 있고, 다른 작업이 쓰는 중이었다.
+병합 후 실제 Jenkins 빌드(2026-11-02, 가짜 LLM). 사람 확인은 Jenkins REST API 로 처리했다.
+
+| 빌드 | 시나리오 | 결과 | 확인한 것 |
+|---|---|---|---|
+| #53 | `good` | SUCCESS | 안정 슬롯이 없는 첫 배포라 100% 만 거쳤다 |
+| #54 | `vulnerable-code` 중단 | ABORTED | Semgrep 1건으로 사람 확인 대기, 실패 분석 호출 없음 |
+| #55 | `vulnerable-code` 승인 | SUCCESS | 승인 뒤 카나리 단계를 거쳐 버전 55 승격 |
+| #56 | `failing-test` | FAILURE | 배포 전 중단, 실패 분석 응답 있음 |
+| #57 | `bad-canary` | FAILURE | 10% 오류율 0.7 로 자동 롤백, 실패 기록 |
+| #58 | `bad-canary` 재실행 중단 | ABORTED | 재발 확인에서 대기, 트래픽 없음 |
+| #59 | `gate-down` | FAILURE | 10% 판단 불가로 롤백, 분석 없음 |
+| #60 | `low-traffic` 중단 | ABORTED | 10% 표본 부족으로 대기, 롤백 |
+
+#60 뒤 서비스는 버전 55 로 응답했다.
+
+- **동작 변화:** `gate-down` 은 전에 SAST 판단에서 배포 전에 멈췄지만, 이제 SAST 가 판단 서비스를 부르지 않아 카나리 10% 까지 간 뒤 롤백된다. 통과로 처리되지는 않지만 그동안 사용자 트래픽 일부가 새 버전으로 간다.
+- **확인 못 한 것:** 실제 Claude 호출은 이번에 하지 않았다. 호스트 부하 평균은 12~16 이었고 이번에는 지연 오탐이 없었지만, 고정 기준의 위험은 위 기록과 같다.
 
 ## 아직 안 된 것
 
