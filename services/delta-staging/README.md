@@ -78,7 +78,11 @@ AWS 자격 증명은 boto3 기본 경로(`AWS_PROFILE` 등)를 쓴다. 이 도�
 | `stopped` | 점검 뒤 내렸다 |
 | `replaced` | 다른 실행이 스테이징을 가져갔다 |
 
-`steps`는 `accepted → (scanner_allowed) → task_definition → service_updated → rollout_completed → healthy` 순서다. `scanner_ip`를 준 실행은 응답의 `scanner_ip`에 허용한 IP가 남는다.
+`steps`는 `accepted → (scanner_allowed) → task_definition → service_updated → rollout_completed → image_digest → healthy` 순서다. `scanner_ip`를 준 실행은 응답의 `scanner_ip`에 허용한 IP가 남는다.
+
+`image_digest`는 요청 값이 아니라 새 개정판으로 **실행 중인 태스크**에서 ECS가 실제로 받은 이미지 digest(`sha256:<64자리>`)다. 빌드 기록과 대조하는 빌드 식별자로 쓴다. 요청 이미지를 digest로 줬는데 실행 중인 digest와 다르면 `failed`로 끝낸다. 확인한 태스크는 `task_arn`에 남는다.
+
+빌드는 아키텍처별 단일 매니페스트로 만든다. `docker buildx`는 플랫폼 하나만 지정해도 기본으로 provenance 증명을 붙여 이미지 인덱스를 만들기 때문에, `--platform linux/amd64 --provenance=false --sbom=false`로 빌드해야 빌드 기록의 digest와 ECS가 보고하는 digest가 같다.
 
 | HTTP | 뜻 |
 |---|---|
@@ -99,6 +103,7 @@ AWS 자격 증명은 boto3 기본 경로(`AWS_PROFILE` 등)를 쓴다. 이 도�
 
 - `sts:GetCallerIdentity`
 - `ecs:DescribeTaskDefinition`, `ecs:RegisterTaskDefinition`, `ecs:TagResource`, 해당 서비스의 `ecs:UpdateService`·`ecs:DescribeServices`
+- 실행 중 digest 확인: `ecs:ListTasks`, `ecs:DescribeTasks`
 - `elasticloadbalancing:DescribeTargetHealth`
 - `iam:PassRole`(실행 역할·태스크 역할 두 개만)
 - 공개 모드: ALB 보안 그룹의 `ec2:DescribeSecurityGroupRules`, `ec2:AuthorizeSecurityGroupIngress`, `ec2:RevokeSecurityGroupIngress`, `ec2:CreateTags`

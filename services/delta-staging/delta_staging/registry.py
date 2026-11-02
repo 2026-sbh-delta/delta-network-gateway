@@ -133,6 +133,7 @@ class StagingRegistry:
             return
         current = self._deployments[req.run_id]
         self._put(current.model_copy(update={"state": "ready", "url": outcome.url, "revision": outcome.revision,
+                                             "image_digest": outcome.image_digest, "task_arn": outcome.task_arn,
                                              "scanner_ip": outcome.scanner_ip, "ready_at": _now()}))
 
     async def _fail(self, run_id: str, error: str, provider: Provider) -> None:

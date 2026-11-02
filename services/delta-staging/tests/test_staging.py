@@ -32,7 +32,29 @@ async def test_deploy_swaps_image_and_reports_internal_url(target):
     assert "taskDefinitionArn" not in registered and "status" not in registered
     update = next(kwargs for name, kwargs in ecs.calls if name == "update_service")
     assert update["desiredCount"] == 1 and update["taskDefinition"] == done.revision
-    assert [s.name for s in done.steps] == ["accepted", "task_definition", "service_updated", "rollout_completed", "healthy"]
+    assert [s.name for s in done.steps] == ["accepted", "task_definition", "service_updated", "rollout_completed",
+                                            "image_digest", "healthy"]
+    assert done.image_digest == "sha256:" + "a" * 64 and done.task_arn.endswith("/abc")
+
+
+async def test_tag_image_records_digest_from_running_task(target):
+    registry = StagingRegistry({"aws": make_provider(target, ecs=FakeEcs())})
+
+    await registry.start(_req(image=ECR + "demo-app:v1"))
+    done = await registry.wait("run-1")
+
+    assert done.state == "ready" and not done.pinned
+    assert done.image_digest == "sha256:" + "b" * 64  # 요청에는 없던 값을 실행 중인 태스크에서 읽었다
+
+
+async def test_running_digest_mismatch_fails(target):
+    ecs = FakeEcs(running_digest="sha256:" + "c" * 64)
+    registry = StagingRegistry({"aws": make_provider(target, ecs=ecs)})
+
+    await registry.start(_req())
+    done = await registry.wait("run-1")
+
+    assert done.state == "failed" and "digest" in done.error and done.image_digest is None
 
 
 async def test_image_outside_allowed_registry_is_rejected_before_any_call(target):

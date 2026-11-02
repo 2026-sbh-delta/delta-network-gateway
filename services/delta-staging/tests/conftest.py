@@ -14,9 +14,12 @@ IMAGE = ECR + "demo-app@sha256:" + "a" * 64
 class FakeEcs:
     """ECS 응답 흉내. rollout 은 describe_services 호출 횟수로 진행시킨다."""
 
-    def __init__(self, *, rollout: list[str] | None = None, failure_reason: str = "") -> None:
+    def __init__(self, *, rollout: list[str] | None = None, failure_reason: str = "",
+                 running_digest: str | None = None) -> None:
         self.rollout = rollout or ["IN_PROGRESS", "COMPLETED"]
         self.failure_reason = failure_reason
+        self.running_digest = running_digest
+        self.image = ""
         self.calls: list[tuple[str, dict[str, Any]]] = []
         self.revision = 1
         self.current = ""
@@ -34,6 +37,7 @@ class FakeEcs:
 
     def register_task_definition(self, **kwargs: Any) -> dict[str, Any]:
         self.calls.append(("register_task_definition", kwargs))
+        self.image = kwargs["containerDefinitions"][0]["image"]
         self.revision += 1
         arn = f"arn:aws:ecs:ap-northeast-2:444455556666:task-definition/delta-lab-staging:{self.revision}"
         return {"taskDefinition": {"taskDefinitionArn": arn}}
@@ -43,6 +47,16 @@ class FakeEcs:
         if "taskDefinition" in kwargs:
             self.current = kwargs["taskDefinition"]
         return {}
+
+    def list_tasks(self, **kwargs: Any) -> dict[str, Any]:
+        self.calls.append(("list_tasks", kwargs))
+        return {"taskArns": ["arn:aws:ecs:ap-northeast-2:444455556666:task/delta-lab/abc"] if self.current else []}
+
+    def describe_tasks(self, **kwargs: Any) -> dict[str, Any]:
+        self.calls.append(("describe_tasks", kwargs))
+        digest = self.running_digest or (self.image.rsplit("@", 1)[1] if "@sha256:" in self.image else "sha256:" + "b" * 64)
+        return {"tasks": [{"taskArn": kwargs["tasks"][0], "taskDefinitionArn": self.current, "lastStatus": "RUNNING",
+                           "containers": [{"name": "app", "imageDigest": digest}]}]}
 
     def describe_services(self, **kwargs: Any) -> dict[str, Any]:
         self.calls.append(("describe_services", kwargs))

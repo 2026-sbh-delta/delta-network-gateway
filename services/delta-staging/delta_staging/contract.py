@@ -81,6 +81,10 @@ class Deployment(_Model):
     commit: str | None = None
     url: str | None = Field(default=None, description="스캐너만 닿는 내부 주소. ready 일 때만 채운다")
     revision: str | None = Field(default=None, description="클라우드의 배포 개정판 식별자")
+    image_digest: str | None = Field(
+        default=None, pattern=r"^sha256:[0-9a-f]{64}$",
+        description="실행 중인 태스크에서 확인한 이미지 digest(요청 값이 아니다). 빌드 기록과 대조하는 빌드 식별자")
+    task_arn: str | None = Field(default=None, description="digest를 확인한 실행 중 태스크")
     scanner_ip: str | None = Field(default=None, description="이번 실행에 허용한 스캐너 IP")
     started_at: datetime
     ready_at: datetime | None = None

@@ -1,12 +1,14 @@
 """AWS ECS 스테이징. 기반(클러스터·서비스·내부 ALB)은 Terraform 이 만들고, 여기서는 이미지만 바꾼다.
 
-순서: 계정 확인 → 태스크 정의 새 개정판(이미지·env 교체) → 서비스 갱신(1개) → 배포 완료 대기 → 대상 그룹 healthy 대기.
+순서: 계정 확인 → 태스크 정의 새 개정판(이미지·env 교체) → 서비스 갱신(1개) → 배포 완료 대기
+→ 실행 중인 태스크의 이미지 digest 확인 → 대상 그룹 healthy 대기.
 """
 
 from __future__ import annotations
 
 import asyncio
 import ipaddress
+import re
 import time
 import urllib.request
 from collections.abc import Callable
@@ -24,6 +26,7 @@ _REGISTER_KEYS = ("family", "taskRoleArn", "executionRoleArn", "networkMode", "c
 Report = Callable[[str, str], None]
 SCANNER_TAG = {"Key": "DeltaManaged", "Value": "scanner"}
 CHECKIP_URL = "https://checkip.amazonaws.com"
+DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
 
 
 class StagingError(Exception):
@@ -34,6 +37,8 @@ class StagingError(Exception):
 class Outcome:
     url: str
     revision: str
+    image_digest: str
+    task_arn: str
     scanner_ip: str | None = None
 
 
@@ -99,9 +104,14 @@ class AwsEcsStaging:
         report("service_updated", f"{self.target.service} desired=1")
         await self._wait_rollout(revision)
         report("rollout_completed", revision)
+        task_arn, digest = await self._running_digest(revision)
+        if "@sha256:" in req.image and req.image.rsplit("@", 1)[1] != digest:
+            raise StagingError(f"실행 중인 이미지 digest가 요청과 다르다: {digest}")
+        report("image_digest", digest)
         await self._wait_healthy()
         report("healthy", self.target.url)
-        return Outcome(url=self.target.url, revision=revision, scanner_ip=scanner_ip)
+        return Outcome(url=self.target.url, revision=revision, image_digest=digest, task_arn=task_arn,
+                       scanner_ip=scanner_ip)
 
     async def _register(self, req: DeployRequest) -> str:
         current = (await self._call("ecs", "describe_task_definition", taskDefinition=self.target.task_family))["taskDefinition"]
@@ -137,6 +147,24 @@ class AwsEcsStaging:
                     return
             if time.monotonic() >= deadline:
                 raise StagingError(f"ECS 배포가 {int(self.rollout_timeout)}초 안에 끝나지 않았다")
+            await asyncio.sleep(self.poll_seconds)
+
+    async def _running_digest(self, revision: str) -> tuple[str, str]:
+        """새 개정판으로 실행 중인 태스크에서 ECS가 실제로 받은 이미지 digest를 읽는다(요청 값이 아니다)."""
+        deadline = time.monotonic() + self.health_timeout
+        while True:
+            arns = (await self._call("ecs", "list_tasks", cluster=self.target.cluster, serviceName=self.target.service,
+                                     desiredStatus="RUNNING"))["taskArns"]
+            tasks = (await self._call("ecs", "describe_tasks", cluster=self.target.cluster, tasks=arns))["tasks"] if arns else []
+            for task in tasks:
+                if task.get("taskDefinitionArn") != revision or task.get("lastStatus") != "RUNNING":
+                    continue
+                container = next((c for c in task.get("containers", []) if c.get("name") == self.target.container_name), None)
+                digest = (container or {}).get("imageDigest", "")
+                if DIGEST.match(digest):
+                    return task["taskArn"], digest
+            if time.monotonic() >= deadline:
+                raise StagingError("실행 중인 태스크에서 이미지 digest를 확인하지 못했다")
             await asyncio.sleep(self.poll_seconds)
 
     async def _wait_healthy(self) -> None:
