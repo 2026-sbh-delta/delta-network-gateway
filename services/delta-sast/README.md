@@ -63,6 +63,11 @@ DELTA_SAST_TOKEN=<토큰> SAST_LOCAL_ROOTS=<허용 로컬 경로> \
 - `runs[0].properties.dast_targets`: DAST 대상 수. 0이면 파이프라인이 DAST를 건너뛸 수 있다
 - `baselineState`, `runs[0].properties.baseline`: `baseline_run_id`를 줬을 때 이전 회차 대비 new·unchanged·updated와 새 탐지·해결 수
 
+## DAST와 주고받기
+
+1. `sast_sarif`로 받은 SARIF를 그대로 DAST `POST /api/runs`의 `report`에 넣는다. DAST가 XSS 결과를 골라 `sast-<경로 ID>` finding으로 바꾼다.
+2. DAST가 끝나면 `delta_sast.dast_bridge.feedback_from_dast(<DAST run 응답>)`로 피드백을 만들어 `sast_dast_feedback`으로 보낸다. `BLOCKED`는 `REPRODUCED`(필터 효과 없음), `INCONCLUSIVE`는 `ERROR`(학습 안 함)로 보낸다.
+
 ## 테스트
 
 ```bash

@@ -177,7 +177,7 @@ LLM 판정과 DAST 결과가 어긋나면 캐시하지 않고 `불확실`로 남
 | U2 | Python AST 호출 그래프, 데이터 흐름, 저장 경계, 출력 맥락 | 구현·테스트 |
 | U3 | 분류 규칙, 안전 목록, 규칙 캐시 | 구현·테스트 |
 | U4 | 빠른 모드 LLM 판단과 출력 검증 | 구현·가짜 LLM 테스트. 실제 API 호출 미검증 |
-| U5 | SARIF 출력(`codeFlows`, `properties.dast`)과 DAST 입력 연결 | SARIF 구현·테스트. DAST 연결 미착수 |
+| U5 | SARIF 출력(`codeFlows`, `properties.dast`)과 DAST 입력 연결 | 구현·테스트. DAST가 SARIF를 입력 형식 (C)로 받고, 결과를 `dast_bridge`로 되돌린다 |
 | U6 | 전체 모드(함수 단위 검토, 규칙 후보) | 미착수 |
 | U7 | 도구 API·CLI·도구 정의, 문서 | 구현·테스트 |
 
@@ -234,5 +234,7 @@ LLM 판정과 DAST 결과가 어긋나면 캐시하지 않고 `불확실`로 남
   - 로컬 커밋 지정 시 git archive로 그 커밋을 풀어 점검한다.
 - 2026-11-03, Claude Code 로그인 백엔드로 실제 LLM 판단 실행(`python -m delta_sast scan <기타 예제>`): 직접 만든 필터 `clean()` 경로 1건을 `vulnerable`로 판정. 근거 줄 `shop/filters.py:6`, `shop/app.py:27`(경로 안), 페이로드 틀 `img_onerror`. 판단 9.5초, 전체 11.7초. 같은 캐시로 다시 실행하면 LLM 호출 0회, SARIF 결과 동일.
 - API 키 백엔드(`api`)는 아직 실제로 호출하지 않았다.
+- 2026-11-03, SAST → DAST → SAST 왕복 실제 실행: 게시판 예제 SARIF(`services/delta-dast/examples/delta-sast-board.sarif`)를 DAST `POST /api/runs`(에이전트 모드, Claude Code 로그인, 로컬 취약 게시판)에 그대로 넣었다. 75초 뒤 `form.body`·`form.comment` 저장형 XSS는 `REPRODUCED`, `path.post_id`(404로 막히는 경로)는 `INCONCLUSIVE`. `dast_bridge.feedback_from_dast()`가 이를 경로 ID별 `REPRODUCED`·`REPRODUCED`·`ERROR` 피드백으로 바꿨다. 두 건은 규칙 판정이라 캐시 학습 대상은 아니다.
+- 남은 연결: 스테이징 URL을 DAST 대상으로 등록하는 것. 지금 DAST는 로컬 비교군(`scenario`)만 점검한다.
 - 게시판 예제의 `path.post_id` → 댓글 폼 `action` URL 후보는 게시글이 없으면 404로 끝나 실제로는 재현되지 않는 경로다. CFG가 없어 SAST는 후보로 내고, DAST 재현 실패로 걸러지는 것을 기대한다.
 

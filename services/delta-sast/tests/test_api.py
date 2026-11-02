@@ -180,3 +180,20 @@ def test_baseline_comparison_for_patch_round(client, fixtures):
     assert (body_result["kind"], body_result["baselineState"]) == ("pass", "updated")
     assert body_result["partialFingerprints"]["deltaFlow/v1"] in base["resolved_fingerprints"]
     assert {r["baselineState"] for r in results} <= {"unchanged", "updated"}
+
+
+def test_dast_bridge_maps_dast_results_back_to_fingerprints():
+    from delta_sast.dast_bridge import feedback_from_dast
+
+    fp = "a" * 32
+    view = {"results": [
+        {"finding_id": f"sast-{fp}", "status": "REPRODUCED"},
+        {"finding_id": f"sast-{'b' * 32}", "status": "BLOCKED"},
+        {"finding_id": f"sast-{'c' * 32}", "status": "NOT_REPRODUCED"},
+        {"finding_id": f"sast-{'d' * 32}", "status": "INCONCLUSIVE"},
+        {"finding_id": "SAST-XSS-101", "status": "REPRODUCED"},
+    ]}
+    fb = feedback_from_dast(view)
+    assert [(r.fingerprint[0], r.status) for r in fb.results] == [
+        ("a", "REPRODUCED"), ("b", "REPRODUCED"), ("c", "NOT_REPRODUCED"), ("d", "ERROR")]
+    assert feedback_from_dast({"results": [{"finding_id": "x", "status": "REPRODUCED"}]}) is None
