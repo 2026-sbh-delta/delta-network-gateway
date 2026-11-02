@@ -109,6 +109,8 @@ def test_sarif_shape_for_dast(fixtures):
     assert {s["location"]["physicalLocation"]["artifactLocation"]["uri"] for s in steps} >= {"app/board.py", "app/store.py"}
     assert all(r["kind"] == "pass" for r in run0["results"] if r["properties"]["dast"].get("field") == "title")
     assert run0["properties"]["dast_targets"] == sum(1 for r in run0["results"] if r["kind"] in ("fail", "review"))
+    prints = [r["partialFingerprints"]["deltaFlow/v1"] for r in run0["results"]]
+    assert len(prints) == len(set(prints))
 
 
 @needs_opengrep
@@ -122,6 +124,13 @@ def test_fingerprint_ignores_line_moves(fixtures, tmp_path):
         sarif = run(root, None, RuleCache()).sarif(run_id="r")
         prints.append(sorted(r["partialFingerprints"]["deltaFlow/v1"] for r in sarif["runs"][0]["results"]))
     assert prints[0] == prints[1]
+
+
+@needs_opengrep
+def test_fingerprints_unique_when_same_input_hits_two_sinks(fixtures):
+    sarif = run(fixtures / "misc", None, RuleCache()).sarif(run_id="r")
+    prints = [r["partialFingerprints"]["deltaFlow/v1"] for r in sarif["runs"][0]["results"]]
+    assert len(prints) == len(set(prints))
 
 
 @needs_opengrep
@@ -148,3 +157,21 @@ def test_columns_convert_utf8_bytes_to_code_points():
     cols = Columns(P)
     byte_col = len('x = "한글"; '.encode("utf-8")) + 1
     assert cols.char("a.py", 1, byte_col) == len('x = "한글"; ') + 1
+
+
+@needs_opengrep
+def test_patch_keeps_fingerprint_and_turns_result_to_pass(fixtures, tmp_path):
+    """패치로 escape를 넣으면 같은 경로 ID가 fail → pass로 바뀐다(회귀 매칭)."""
+    patched = tmp_path / "patched"
+    shutil.copytree(fixtures / "board", patched)
+    board = patched / "app" / "board.py"
+    board.write_text(board.read_text(encoding="utf-8").replace('body = post["body"]', 'body = escape(post["body"])'),
+                     encoding="utf-8")
+
+    def body_result(root):
+        results = run(root, None, RuleCache()).sarif(run_id="r")["runs"][0]["results"]
+        return next(r for r in results if r["properties"]["dast"].get("field") == "body")
+
+    before, after = body_result(fixtures / "board"), body_result(patched)
+    assert before["partialFingerprints"] == after["partialFingerprints"]
+    assert (before["kind"], after["kind"]) == ("fail", "pass")

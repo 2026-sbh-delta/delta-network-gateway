@@ -59,10 +59,20 @@ def physical(loc: Loc, cols: Columns) -> dict:
     return {"artifactLocation": {"uri": loc.path, "uriBaseId": "SRCROOT"}, "region": region}
 
 
-def fingerprint(flow: Flow, project: Project) -> str:
-    sink_func = project.enclosing(flow.sink.path, flow.sink.line)
+def sink_ordinals(flows: list[Flow], project: Project) -> dict[tuple, tuple[str, int]]:
+    """싱크 위치 → (싱크가 있는 함수, 그 함수 안에서 몇 번째 싱크인지). 줄이 밀려도 순서는 같다."""
+    by_func: dict[str, set[tuple]] = {}
+    for flow in flows:
+        func = project.enclosing(flow.sink.path, flow.sink.line)
+        name = func.qname if func else flow.sink.path
+        by_func.setdefault(name, set()).add(flow.sink.key())
+    return {key: (name, i) for name, keys in by_func.items() for i, key in enumerate(sorted(keys))}
+
+
+def fingerprint(flow: Flow, ordinals: dict[tuple, tuple[str, int]]) -> str:
+    sink_func, ordinal = ordinals[flow.sink.key()]
     parts = [flow.vuln, flow.context, flow.source.func, f"{flow.source.kind}.{flow.source.field_name}",
-             sink_func.qname if sink_func else flow.sink.path, ",".join(r.text() for r in flow.render)]
+             sink_func, str(ordinal), ",".join(r.text() for r in flow.render)]
     return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()[:32]
 
 
@@ -82,7 +92,7 @@ def message(flow: Flow) -> str:
     return f"{entry}의 {field} 값이{filt} {where}에 들어간다."
 
 
-def flow_result(flow: Flow, judgment: Judgment, project: Project, cols: Columns, mode: str) -> dict:
+def flow_result(flow: Flow, judgment: Judgment, ordinals: dict, cols: Columns, mode: str) -> dict:
     kind = KIND_BY_VERDICT[judgment.verdict]
     locations = []
     for i, step in enumerate(flow.steps):
@@ -99,7 +109,7 @@ def flow_result(flow: Flow, judgment: Judgment, project: Project, cols: Columns,
         "message": {"text": message(flow)},
         "locations": [{"physicalLocation": physical(flow.sink, cols)}],
         "codeFlows": [{"threadFlows": [{"locations": locations}]}],
-        "partialFingerprints": {"deltaFlow/v1": fingerprint(flow, project)},
+        "partialFingerprints": {"deltaFlow/v1": fingerprint(flow, ordinals)},
         "properties": {
             "dast": {
                 "verifiable": True,
@@ -145,11 +155,43 @@ def secret_result(secret: Secret, cols: Columns, mode: str) -> dict:
     }
 
 
+OPEN = ("fail", "review")
+
+
+def annotate_baseline(sarif: dict, baseline: dict) -> dict:
+    """기준 SARIF와 경로 ID를 비교해 결과마다 baselineState(new·unchanged·updated)를 달고 요약을 돌려준다."""
+    fp = "deltaFlow/v1"
+    base = {r["partialFingerprints"][fp]: r["kind"] for r in baseline["runs"][0]["results"]}
+    current = {}
+    new = []
+    for r in sarif["runs"][0]["results"]:
+        key = r["partialFingerprints"][fp]
+        current[key] = r["kind"]
+        if key not in base:
+            r["baselineState"] = "new"
+            if r["kind"] in OPEN:
+                new.append(r)
+        else:
+            r["baselineState"] = "unchanged" if base[key] == r["kind"] else "updated"
+    opened = [k for k, kind in base.items() if kind in OPEN]
+    resolved = [k for k in opened if current.get(k, "pass") == "pass"]
+    return {
+        "run_id": baseline["runs"][0]["properties"]["run_id"],
+        "new_findings": len(new),
+        "new_review": sum(1 for r in new if r["kind"] == "review"),
+        "still_open": sum(1 for k in opened if current.get(k) in OPEN),
+        "resolved": len(resolved),
+        "resolved_fingerprints": sorted(resolved),
+        "new_fingerprints": sorted(r["partialFingerprints"][fp] for r in new),
+    }
+
+
 def build(findings: list[tuple[Flow, Judgment]], secrets: list[Secret], project: Project, *,
           run_id: str, commit: str | None, mode: str, payload_mode: str, stats: dict,
           repo: str | None = None) -> dict:
     cols = Columns(project)
-    results = [flow_result(f, j, project, cols, mode) for f, j in findings]
+    ordinals = sink_ordinals([f for f, _ in findings], project)
+    results = [flow_result(f, j, ordinals, cols, mode) for f, j in findings]
     results += [secret_result(s, cols, mode) for s in secrets]
     dast_targets = sum(1 for r in results if r["kind"] in ("fail", "review") and r["properties"]["dast"]["verifiable"])
     return {

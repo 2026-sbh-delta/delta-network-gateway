@@ -58,14 +58,18 @@ class RuleCache:
         self.llm[key] = answer
 
     def learn(self, flow: Flow, llm_verdict: str, dast_status: str, run_id: str) -> str:
+        return self.learn_key(cache_key(flow), [s.name for s in flow.sans], flow.context,
+                              llm_verdict, dast_status, run_id)
+
+    def learn_key(self, key: str, sanitizers: list[str], context: str, llm_verdict: str, dast_status: str,
+                  run_id: str) -> str:
         """LLM 판정과 DAST 재현 결과가 맞으면 규칙으로 굳히고, 어긋나면 지운다. 결과 상태를 돌려준다."""
-        key = cache_key(flow)
         agree = {("vulnerable", "REPRODUCED"): "ineffective", ("safe", "NOT_REPRODUCED"): "effective"}
         verdict = agree.get((llm_verdict, dast_status))
         if verdict is None:
             self.drop(key)
             return "conflict"
-        self.put(key, {"sanitizers": [s.name for s in flow.sans], "context": flow.context, "verdict": verdict,
+        self.put(key, {"sanitizers": sanitizers, "context": context, "verdict": verdict,
                        "evidence": {"llm": run_id, "dast": f"{run_id}:{dast_status}"}})
         return verdict
 

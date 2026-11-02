@@ -28,16 +28,42 @@ PYTHONPATH=services/delta-sast uv run --no-project --with pyyaml --with anthropi
 
 `ANTHROPIC_API_KEY`가 없으면 LLM 없이 진행한다. 모델은 `SAST_LLM_MODEL`(기본 `claude-sonnet-5-5`).
 
+## HTTP 서버 (관리 에이전트용)
+
+```bash
+DELTA_SAST_TOKEN=<토큰> SAST_LOCAL_ROOTS=<허용 로컬 경로> \
+  PYTHONPATH=services/delta-sast uv run --no-project --with pyyaml --with anthropic --with fastapi \
+  --with uvicorn --with pydantic uvicorn delta_sast.api:app --port 8790
+```
+
+| 도구 | HTTP | 용도 |
+|---|---|---|
+| `sast_scan` | `POST /v1/sast/scans` | 점검 시작(202, running). 패치 회차는 `baseline_run_id`로 이전 회차와 비교 |
+| `sast_status` | `GET /v1/sast/scans/{run_id}` | 상태·단계·요약(`summary.dast_targets`) |
+| `sast_sarif` | `GET /v1/sast/scans/{run_id}/sarif` | SARIF 원문(done일 때만) |
+| `sast_dast_feedback` | `POST /v1/sast/scans/{run_id}/dast-results` | DAST 재현 결과로 규칙 캐시 학습 |
+
+`GET /v1/tools`가 LLM 도구 정의(`tools`)와 HTTP 경로(`routes`)를 함께 준다. `python -m delta_sast tools`로도 볼 수 있다.
+
+| 환경 변수 | 기본값 | 뜻 |
+|---|---|---|
+| `DELTA_SAST_TOKEN` | (필수) | Bearer 토큰 |
+| `DELTA_SAST_STATE` | `var/sast` | 상태·SARIF·캐시 폴더 |
+| `SAST_REPO_PREFIXES` | `https://github.com/2026-sbh-delta/` | 허용할 원격 저장소 접두어(쉼표 구분) |
+| `SAST_LOCAL_ROOTS` | (비움 = 로컬 거절) | 허용할 로컬 경로 루트 |
+| `ANTHROPIC_API_KEY`, `SAST_LLM_MODEL` | | LLM 판단. 키가 없으면 규칙·캐시까지만 |
+
 ## DAST가 읽는 필드
 
 - 대상: `kind`가 `fail` 또는 `review`이고 `properties.dast.verifiable`이 `true`인 결과
 - `properties.dast`: `input`, `field`, `entry`, `render`, `context`, `stored`, `payload`
 - `partialFingerprints["deltaFlow/v1"]`: 줄 번호와 무관한 경로 ID. 패치 후 회귀 대상 매칭에 쓴다
 - `runs[0].properties.dast_targets`: DAST 대상 수. 0이면 파이프라인이 DAST를 건너뛸 수 있다
+- `baselineState`, `runs[0].properties.baseline`: `baseline_run_id`를 줬을 때 이전 회차 대비 new·unchanged·updated와 새 탐지·해결 수
 
 ## 테스트
 
 ```bash
 PYTHONPATH=services/delta-sast uv run --no-project --with pyyaml --with pytest --with anthropic \
-  python -m pytest services/delta-sast/tests -q
+  --with fastapi --with httpx --with pydantic python -m pytest services/delta-sast/tests -q
 ```

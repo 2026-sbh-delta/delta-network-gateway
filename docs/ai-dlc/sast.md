@@ -8,7 +8,7 @@
   - 규칙 → AI → DAST의 하이브리드로 가고, 규칙으로 굳히기는 꼭 넣는다(2026-11-01).
   - 빠른 모드와 전체 LLM 검증 모드를 둘 다 구현한다. 시연은 빠른 모드로 하되 완성도를 높인다(2026-11-02).
 - Inception 승인: 사용자가 "정할 것"의 제안대로 시작하라고 지시했다(2026-11-02).
-- 현재 단계: Construction. U1~U5 구현과 로컬 테스트 완료. U6(전체 모드)·U7(API·도구 정의)은 미착수. 커밋·푸시 전.
+- 현재 단계: Construction. U1~U5, U7 구현과 로컬 테스트 완료. U6(전체 모드)은 미착수. 푸시 전.
 - 범위: `services/delta-sast/`의 점검 도구. 빠른 모드(파이프라인)와 전체 모드(파이프라인 밖), SARIF 출력, 규칙 캐시, 관리 에이전트용 도구 정의.
 - 범위 밖: SCA(의존성 취약점), IaC 점검, DAST 실행, 수정안 생성(DAST 서비스가 맡음).
 
@@ -150,7 +150,14 @@ LLM 판정과 DAST 결과가 어긋나면 캐시하지 않고 `불확실`로 남
 | `sast_scan` | `POST /v1/sast/scans` | 점검 시작. 바로 `running`을 돌려준다 |
 | `sast_status` | `GET /v1/sast/scans/{run_id}` | 상태, 단계, 요약(유형별 개수, LLM 호출 수, 캐시 적중 수) |
 | `sast_sarif` | `GET /v1/sast/scans/{run_id}/sarif` | SARIF 원문 |
-| `sast_rule_candidates` | `GET /v1/sast/rule-candidates`, `POST .../{id}/decision` | 전체 모드가 낸 규칙 후보 조회·승인 |
+| `sast_dast_feedback` | `POST /v1/sast/scans/{run_id}/dast-results` | DAST 재현 결과를 받아 LLM 판정과 맞으면 규칙 캐시로 굳힌다 |
+| `sast_rule_candidates` | `GET /v1/sast/rule-candidates`, `POST .../{id}/decision` | 전체 모드가 낸 규칙 후보 조회·승인. U6에서 추가 |
+
+- 인증: `Authorization: Bearer <DELTA_SAST_TOKEN>`. `/healthz`만 인증 없이 연다.
+- 같은 `run_id`로 같은 요청을 다시 보내면 기존 상태를 돌려준다. 저장소·커밋이 다르면 409.
+- 소스 가져오기: 원격은 `SAST_REPO_PREFIXES`(기본 `https://github.com/2026-sbh-delta/`)로 시작하는 https 주소와 commit이 필요하다. 그 커밋 하나만 얕게 받는다. 로컬은 `SAST_LOCAL_ROOTS` 아래 경로만 받는다. 주소에 자격 정보를 넣으면 거절한다.
+- `mode: full`은 U6 전까지 501.
+- 상태·SARIF·캐시는 `DELTA_SAST_STATE`(기본 `var/sast`)에 둔다. 서비스가 재시작되면 진행 중이던 점검은 failed로 바뀐다.
 
 ### 요구사항
 
@@ -172,7 +179,7 @@ LLM 판정과 DAST 결과가 어긋나면 캐시하지 않고 `불확실`로 남
 | U4 | 빠른 모드 LLM 판단과 출력 검증 | 구현·가짜 LLM 테스트. 실제 API 호출 미검증 |
 | U5 | SARIF 출력(`codeFlows`, `properties.dast`)과 DAST 입력 연결 | SARIF 구현·테스트. DAST 연결 미착수 |
 | U6 | 전체 모드(함수 단위 검토, 규칙 후보) | 미착수 |
-| U7 | 도구 API·CLI·도구 정의, 문서 | 미착수 |
+| U7 | 도구 API·CLI·도구 정의, 문서 | 구현·테스트 |
 
 ### 정할 것
 
@@ -198,6 +205,9 @@ LLM 판정과 DAST 결과가 어긋나면 캐시하지 않고 `불확실`로 남
 - 패치 단계 SAST의 일은 패치가 새로 만든 경로와 비밀값을 찾는 것이다. 기존 취약점이 고쳐졌는지는 DAST가 증명한다.
 - 1회차에서 재현된 취약점은 SAST에서 사라져도 DAST 회귀 대상으로 넣는다. 매칭에는 `partialFingerprints["deltaFlow/v1"]`를 쓴다. 이 값은 줄 번호가 아니라 함수·입력 칸·출력 라우트로 만든다.
 - 파이프라인 옵션: SAST의 DAST 대상(`runs[0].properties.dast_targets`)이 0이면 DAST를 건너뛸 수 있다. 기본은 실행이다. 회귀 대상이 있으면 이 옵션과 무관하게 실행한다.
+- 회차마다 `run_id`를 다르게 준다(예: `run-42-1`, `run-42-2`). 같은 `run_id`는 멱등이라 다시 점검하지 않는다(2026-11-03 김연재 제안 수용).
+- 패치 회차는 `baseline_run_id`에 이전 회차를 준다. 결과마다 SARIF `baselineState`(`new`·`unchanged`·`updated`)를 달고, 요약 `summary.baseline`에 `new_findings`·`new_review`·`still_open`·`resolved`와 경로 ID 목록을 준다. `fix_review`는 `new_findings > 0`이면 통과시키지 않는다. `new_review`(판정 불확실한 새 결과)는 `needs_human`으로 보내는 것을 제안했다.
+- 알려진 한계: 경로 ID에 함수 안 싱크 순서가 들어가므로, 패치가 같은 함수 앞쪽에 새 출력을 넣으면 뒤쪽 기존 경로가 `new`로 보일 수 있다.
 
 ### 구현 메모
 
@@ -215,6 +225,13 @@ LLM 판정과 DAST 결과가 어긋나면 캐시하지 않고 `불확실`로 남
   - 기타 예제: SQLi, 명령 주입, DB 테이블을 거치는 저장형 XSS, URL 맥락 XSS, 직접 만든 필터(LLM 대기), 비밀값. 바인딩 쿼리·`subprocess` 목록 인자·`int()` 변환은 경로로 내지 않는다.
   - LLM 판단은 가짜 클라이언트로 확인했다: 인용 줄 검증, 맥락 밖 페이로드 제거, 실패 시 uncertain, 두 번째 실행 LLM 호출 0, 같은 SARIF.
 - 2026-11-02, CLI `python -m delta_sast scan <게시판 예제> --no-llm` → 후보 3, 양호 2, 위치 표시 1.9초, 경로 분석 0.002초.
+- 2026-11-03, U7 포함 전체 테스트(`--with fastapi --with httpx --with pydantic` 추가) → 37 passed.
+  - 패치 비교: 게시판 예제(A)와 body에 `escape`를 넣은 예제(B)를 `baseline_run_id`로 비교하면 `new_findings 0`, `resolved 1`, `still_open 2`.
+- 2026-11-03, `uvicorn delta_sast.api:app`으로 실제 서버를 띄워 healthz → tools → 점검(running → done, 3.6초) → SARIF 조회까지 확인.
+  - API: 인증, 도구 정의 형식, 점검 수명(running → done, 단계 기록), 같은 run_id 재요청·충돌, 허용 밖 저장소 실패, full 모드 501.
+  - DAST 결과 학습: LLM이 판정한 결과에 REPRODUCED를 보내면 `ineffective`로 굳고, 다음 점검에서 같은 경로가 `cache`로 판정되며 LLM을 다시 부르지 않는다. 규칙으로 판정된 결과는 `skipped`.
+  - 경로 ID: 같은 함수에서 같은 입력이 싱크 두 곳에 닿아도 겹치지 않는다(함수 안 싱크 순서 포함). 패치로 `escape`를 넣으면 같은 ID가 fail → pass로 바뀐다.
+  - 로컬 커밋 지정 시 git archive로 그 커밋을 풀어 점검한다.
 - 실제 Claude API 호출은 아직 검증하지 않았다(실행 환경에 API 키 없음).
 - 게시판 예제의 `path.post_id` → 댓글 폼 `action` URL 후보는 게시글이 없으면 404로 끝나 실제로는 재현되지 않는 경로다. CFG가 없어 SAST는 후보로 내고, DAST 재현 실패로 걸러지는 것을 기대한다.
 

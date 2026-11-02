@@ -1,4 +1,9 @@
-"""CLI: python -m delta_sast scan <소스 경로> --out result.sarif"""
+"""CLI
+
+python -m delta_sast scan <소스 경로> --out result.sarif
+python -m delta_sast tools
+uvicorn delta_sast.api:app (HTTP 서버)
+"""
 
 from __future__ import annotations
 
@@ -25,7 +30,14 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--cache", type=Path, default=Path(".delta-sast-cache.json"))
     p.add_argument("--payload-mode", choices=["ai", "preset"], default="ai")
     p.add_argument("--no-llm", action="store_true", help="LLM 판단 없이 규칙·캐시까지만")
+    sub.add_parser("tools", help="관리 에이전트용 도구 정의를 출력한다")
     args = parser.parse_args(argv)
+
+    if args.cmd == "tools":
+        from .tools import tool_catalog
+
+        print(json.dumps(tool_catalog(), ensure_ascii=False, indent=2))
+        return 0
 
     if not args.root.is_dir():
         print(f"소스 경로가 없다: {args.root}", file=sys.stderr)
