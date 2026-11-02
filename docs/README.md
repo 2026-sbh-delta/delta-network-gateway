@@ -2,7 +2,8 @@
 
 ## 현재 상태
 
-- 기준일: 2026-11-01 (Asia/Seoul)
+- 기준일: 2026-11-02 (Asia/Seoul)
+- 플랫폼 작업 시작(2026-11-02): 로컬 `feat/platform` 브랜치와 전용 `platform/` 디렉터리를 준비했다. 웹, 백엔드 API/Worker, 계약, VM 배포 자동화, HTML 설명을 분리한다. 현재 구조·설계 문서 단계이며 기능 구현·애플리케이션 테스트·Plan/Apply·배포는 미실행이다. 구조·링크·ignore 규칙 검증 후 사용자에게 Conventional Commit 메시지를 제시했고 로컬 커밋 승인을 받았다. 실제 커밋은 Git 이력을 기준으로 하며 원격 푸시는 미실행이다. 후속 커밋도 사전에 알린다. [작업 영역](../platform/README.md) · [설계/진행 기록](ai-dlc/platform.md)
 - AI 판단 서비스 SAST 경로 제거(2026-11-02): `services/delta-ai/`에서 코드 보안 판단(`code_security`, SARIF 입력, 코드 패치)을 뺐다. SAST는 별도 서비스가 SARIF와 코드 흐름으로 다시 설계한다. 환경 차이 판단과 피드백 규칙 후보·승인 API는 유지하며, 승인 규칙을 적용할 코드 검사는 아직 없다. 같은 날 `.venv/bin/pytest -q` 66개 통과, `scripts/demo.py fake` 실행 완료.
 - SAST 점검 서비스(설계): 빠른 모드(파이프라인, Opengrep 위치 표시 + 자체 AST 경로 + 애매한 경로만 LLM)와 전체 LLM 검증 모드(파이프라인 밖)를 둘 다 두는 설계 초안을 작성했다(2026-11-02). 구현은 미착수다. [설계](ai-dlc/sast.md)를 따른다.
 - 스테이징 도구(설계·검증 기록): 관리 에이전트가 호출하는 파이프라인 스테이징 도구와 AWS 기반 모듈은 `feat/add-staging-tool` 브랜치에 있고 main에는 아직 병합하지 않았다. 2026-11-02 mock `terraform test` 11개와 도구 단위 테스트 29개 통과, Workload 계정 기본 VPC 대상 실제 Plan(25개 추가) 저장. Apply와 ECS 배포는 미실행이다. [설계/검증 기록](ai-dlc/staging-tool.md)을 따른다.
@@ -30,6 +31,8 @@
 
 ## 문서
 
+- [개발자용 플랫폼 설계·구현 단위](ai-dlc/platform.md)
+- [플랫폼 구성 설명 HTML](../platform/docs/overview.ko.html)
 - [SAST 점검 서비스 설계(빠른 모드·전체 모드)](ai-dlc/sast.md)
 - [파이프라인 스테이징 도구 설계/검증 상태](ai-dlc/staging-tool.md)
 - [CloudFront 웹의 중앙 ANF 허용/차단 시험](ai-dlc/cloudfront-anf-demo.md)
@@ -47,6 +50,8 @@
 - [GCP와 AWS VPN 연결/관제 검증](../terraform/gcp-server/RUNBOOK.md)
 
 ## 다음 작업
+
+플랫폼은 `feat/platform`의 `platform/`에서 별도로 진행한다. 다음 단위는 서비스 등록·권한·영속적인 작업 상태를 갖춘 API/Worker 기반(U1)이다. 세부 설계·구현 계획은 [플랫폼 AI-DLC](ai-dlc/platform.md)를 따른다. ECS 연동은 해당 도구의 실제 병합·실행 상태를 확인한 뒤 연결한다.
 
 CloudFront 두 버튼 웹의 실제 ANF 허용/차단 대조는 확인했다. 직접 EC2 Origin/Server IGW와 SG rule/임시 ALB ingress 정리와 실제 검증 JSON 게시를 마쳤고 네 root 최종 Plan은 No changes다. 남은 화면 검증은 UI 도구가 안정된 환경에서 차단 버튼 완료 화면/최종 검증 문구를 확인하는 것이다. 페이지 하단 검증 기록은 배포 당시 로그 대조 결과이며 개별 요청의 실시간 관제 판정은 아니다.
 
