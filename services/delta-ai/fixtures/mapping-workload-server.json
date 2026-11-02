@@ -1,0 +1,18 @@
+{
+  "assessment_id": "map-workload-server",
+  "kind": "migration_mapping",
+  "service": {"service_id": "delta-lab-server"},
+  "evidence": {
+    "mapping": {
+      "subnets": [
+        {"name": "delta-lab-server-apne2-az1-server", "cidr": "10.20.1.0/24", "tier": "private", "zone": "apne2-az1", "origin": "terraform"},
+        {"name": "delta-lab-server-apne2-az2-server", "cidr": "10.20.3.0/24", "tier": "private", "zone": "apne2-az2", "origin": "terraform"}
+      ],
+      "servers": [
+        {"name": "delta-lab-server", "instance_type": "t4g.nano", "os": "amazon_linux", "multi_arch_image": true,
+         "instance_profile": false, "origin": "terraform"}
+      ],
+      "security": {"guardduty_enabled": false, "origin": "operator"}
+    }
+  }
+}

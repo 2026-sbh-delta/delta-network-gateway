@@ -47,5 +47,5 @@
 
 - Jenkins 와 AWS 구성도 중 무엇을 쓸지 팀에서 정한다.
 - 사설망 Jenkins 의 외부 경로, ANF 규칙, 서버 크기를 호원 님과 맞춘다.
-- 동규 님의 HAProxy 가 나오면 `haproxy_ctl.py` 를 그 설정에 맞춘다.
+- ~~동규 님의 HAProxy 가 나오면 `haproxy_ctl.py` 를 그 설정에 맞춘다.~~ 2026-11-02 HAProxy 기각. `haproxy_ctl.py` 는 시험대 전용으로 두고 서버용 전환은 [ADR-AI-37](ADR-AI-37-aws-front-door.md)을 따른다.
 - `code_security` 제거(PR #3)로 SAST 탐지는 지금 사람이 본다. 패치 출처(DAST `/fix` 검토)와 진행 그래프용 단계 이벤트(ADR-AI-24)를 정한다.

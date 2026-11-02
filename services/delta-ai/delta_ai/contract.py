@@ -5,11 +5,13 @@
 
 from __future__ import annotations
 
+import ipaddress
 from typing import Annotated, Any, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
 
-Kind = Literal["migration_parity", "feedback_ingest", "deployment_gate", "runtime_security", "dast_verification"]
+Kind = Literal["migration_parity", "feedback_ingest", "deployment_gate", "runtime_security", "dast_verification",
+               "migration_mapping"]
 Provider = Literal["aws", "gcp", "onprem"]
 Verdict = Literal["pass", "fix", "needs_human"]
 Severity = Literal["high", "medium", "low"]
@@ -205,6 +207,68 @@ class DastEvidence(_Model):
     results: tuple[DastResult, ...] = Field(min_length=1)  # 결과 없는 점검을 통과로 읽지 않는다
 
 
+def _valid_cidr(value: str) -> str:
+    return str(ipaddress.ip_network(value))  # 잘못된 값은 계약 검증에서 거부한다
+
+
+Cidr = Annotated[str, AfterValidator(_valid_cidr)]
+ValueOrigin = Literal["terraform", "default", "operator"]
+SubnetTier = Literal["public", "private"]
+
+
+class SourceSubnet(_Model):
+    name: str = Field(min_length=1)
+    cidr: Cidr
+    tier: SubnetTier | None = None
+    zone: str | None = None
+    target_cidr: Cidr | None = None  # 없으면 기본값 대역에서 고르고 출처를 default 로 표시한다
+    origin: ValueOrigin = "operator"
+
+
+class ExistingSubnet(_Model):
+    name: str = Field(min_length=1)
+    cidr: Cidr
+    tier: SubnetTier | None = None
+
+
+class SourceServer(_Model):
+    name: str = Field(min_length=1)
+    instance_type: str | None = None
+    os: str | None = None  # amazon_linux, ubuntu, rhel, rocky, debian 등
+    multi_arch_image: bool | None = None  # 대상 CPU 구조용 이미지를 확인했는가
+    instance_profile: bool | None = None
+    permissions: tuple[str, ...] | None = None  # 프로파일이 쓰는 AWS 동작. None 은 모른다는 뜻이다
+    peak_memory_percent: float | None = Field(default=None, ge=0, le=100)  # 있으면 작은 후보를 제안만 한다
+    origin: ValueOrigin = "operator"
+
+
+class SourceSecurity(_Model):
+    guardduty_enabled: bool | None = None  # Terraform 밖에서 켰을 수 있으므로 없다고 꺼진 것으로 보지 않는다
+    guardduty_plans: tuple[str, ...] = ()
+    other_tools: tuple[str, ...] = ()
+    origin: ValueOrigin = "operator"
+
+
+class MappingInput(_Model):
+    """이전 전에 무엇을 만들지 정하는 입력. 지금은 AWS → GCP 만 다룬다."""
+
+    network_mode: Literal["create", "reuse"] = "create"
+    region: str | None = None
+    subnets: tuple[SourceSubnet, ...] = ()
+    servers: tuple[SourceServer, ...] = ()
+    security: SourceSecurity | None = None
+    existing_subnets: tuple[ExistingSubnet, ...] | None = None
+    reserved_cidrs: tuple[Cidr, ...] = ()
+    scc_tier: Literal["standard", "premium"] | None = None
+    accepted_gaps: tuple[str, ...] = ()  # 사람이 잃어도 된다고 승인한 능력. 표에는 gap 으로 남는다
+
+    @model_validator(mode="after")
+    def _require_something_to_map(self) -> Self:
+        if not (self.subnets or self.servers or self.security):
+            raise ValueError("mapping 은 subnets, servers, security 중 하나가 필요하다")
+        return self
+
+
 class Evidence(_Model):
     attack_results: tuple[AttackResult, ...] = ()
     reachability: tuple[ReachabilityProbe, ...] = ()
@@ -216,6 +280,7 @@ class Evidence(_Model):
     cluster_checks: tuple[ClusterCheck, ...] | None = None
     log_signals: tuple[LogSignal, ...] | None = None
     network_posture: NetworkPosture | None = None
+    mapping: MappingInput | None = None
 
 
 class AssessmentRequest(_Model):
@@ -236,6 +301,8 @@ class AssessmentRequest(_Model):
             raise ValueError("deployment_gate 는 evidence.deployment 가 필요하다")
         if self.kind == "dast_verification" and self.evidence.dast is None:
             raise ValueError("dast_verification 은 evidence.dast 가 필요하다")
+        if self.kind == "migration_mapping" and self.evidence.mapping is None:
+            raise ValueError("migration_mapping 은 evidence.mapping 이 필요하다")
         evidence = self.evidence
         if self.kind == "runtime_security" and all(
                 value is None for value in (evidence.image_vulnerabilities, evidence.cluster_checks, evidence.log_signals,
@@ -352,6 +419,29 @@ class PostureResult(_Model):
     proposals: tuple[PostureProposal, ...] = ()
 
 
+MappingGrade = Literal["exact", "approximate", "split", "gap", "unknown"]
+
+
+class MappingRow(_Model):
+    """매핑표 한 행. 등급은 이전 전 판단이고 실제로 같은지는 migration_parity 와 시험으로 확인한다."""
+
+    resource: Literal["subnet", "compute", "cpu_arch", "os", "identity", "security"]
+    source: str
+    target: str | None
+    grade: MappingGrade
+    differences: tuple[str, ...] = ()
+    required_tests: tuple[str, ...] = ()
+    value_source: ValueOrigin
+    rule_id: str
+
+
+class MappingResult(_Model):
+    region: str
+    network_mode: Literal["create", "reuse"]
+    rows: tuple[MappingRow, ...]
+    assumptions: tuple[str, ...] = ()
+
+
 class AssessmentResult(_Model):
     assessment_id: str
     kind: Kind
@@ -361,6 +451,7 @@ class AssessmentResult(_Model):
     checks: tuple[Check, ...] = ()
     verified_controls: tuple[VerifiedControl, ...] = ()
     posture: PostureResult | None = None
+    mapping: MappingResult | None = None
     remediation: Remediation = Remediation()
     rule_candidates: tuple[RuleCandidate, ...] = ()
     meta: Meta = Meta()

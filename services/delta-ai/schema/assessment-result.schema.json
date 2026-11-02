@@ -145,6 +145,128 @@
       "title": "Finding",
       "type": "object"
     },
+    "MappingResult": {
+      "additionalProperties": false,
+      "properties": {
+        "region": {
+          "title": "Region",
+          "type": "string"
+        },
+        "network_mode": {
+          "enum": [
+            "create",
+            "reuse"
+          ],
+          "title": "Network Mode",
+          "type": "string"
+        },
+        "rows": {
+          "items": {
+            "$ref": "#/$defs/MappingRow"
+          },
+          "title": "Rows",
+          "type": "array"
+        },
+        "assumptions": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Assumptions",
+          "type": "array"
+        }
+      },
+      "required": [
+        "region",
+        "network_mode",
+        "rows"
+      ],
+      "title": "MappingResult",
+      "type": "object"
+    },
+    "MappingRow": {
+      "additionalProperties": false,
+      "description": "매핑표 한 행. 등급은 이전 전 판단이고 실제로 같은지는 migration_parity 와 시험으로 확인한다.",
+      "properties": {
+        "resource": {
+          "enum": [
+            "subnet",
+            "compute",
+            "cpu_arch",
+            "os",
+            "identity",
+            "security"
+          ],
+          "title": "Resource",
+          "type": "string"
+        },
+        "source": {
+          "title": "Source",
+          "type": "string"
+        },
+        "target": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Target"
+        },
+        "grade": {
+          "enum": [
+            "exact",
+            "approximate",
+            "split",
+            "gap",
+            "unknown"
+          ],
+          "title": "Grade",
+          "type": "string"
+        },
+        "differences": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Differences",
+          "type": "array"
+        },
+        "required_tests": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Required Tests",
+          "type": "array"
+        },
+        "value_source": {
+          "enum": [
+            "terraform",
+            "default",
+            "operator"
+          ],
+          "title": "Value Source",
+          "type": "string"
+        },
+        "rule_id": {
+          "title": "Rule Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "resource",
+        "source",
+        "target",
+        "grade",
+        "value_source",
+        "rule_id"
+      ],
+      "title": "MappingRow",
+      "type": "object"
+    },
     "Meta": {
       "additionalProperties": false,
       "properties": {
@@ -558,7 +680,8 @@
         "feedback_ingest",
         "deployment_gate",
         "runtime_security",
-        "dast_verification"
+        "dast_verification",
+        "migration_mapping"
       ],
       "title": "Kind",
       "type": "string"
@@ -608,6 +731,17 @@
       "anyOf": [
         {
           "$ref": "#/$defs/PostureResult"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "mapping": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/MappingResult"
         },
         {
           "type": "null"

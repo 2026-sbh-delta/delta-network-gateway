@@ -1,7 +1,7 @@
 # 온프레미스·DAST·AI 판단·배포 통합 시연
 
 - 기준일: 2026-11-02 (Asia/Seoul)
-- 상태: 로컬 구현·리허설 완료. **로컬 커밋만 했고 푸시·서버 배포는 안 함.** 사용자 요청 "전체 임시 시연, 보여 줄 UI" 에 따른 작업이며 팀 합의 전이다.
+- 상태: 로컬 구현·리허설 완료. **브랜치는 푸시했고(PR 전) 서버 배포는 안 함.** 사용자 요청 "전체 임시 시연, 보여 줄 UI" 에 따른 작업이며 팀 합의 전이다.
 - 브랜치: `feat/demo-integration` (`feat/jenkins-on-main` + `feat/onprem-integration` 병합)
 - 실행 방법: [deploy/demo-console](../../deploy/demo-console/README.md)
 - 결정 근거: [ADR-AI-27](../../services/delta-ai/docs/adr/ADR-AI-27-dast-verdict.md) (제안)
@@ -60,6 +60,6 @@
 
 ## 다음 작업
 
-- 준우 님과 ADR-AI-27 합의(구동 주체, `/fix` 패치 흐름, DAST 대상을 실제 릴리스로 맞추기).
+- 준우 님과 ADR-AI-27 합의(Jenkins 구동에 맞춘 호출 방식, `/fix` 패치 흐름, DAST 대상을 실제 릴리스로 맞추기).
 - 배포 대상을 온프레미스 k3s 로 옮겨 증거를 낸 곳과 배포하는 곳을 일치시키기.
 - 동규 님 게이트웨이 결정 뒤 `haproxy_ctl.py` 를 비율 변경·상태 조회·즉시 원복 계약으로 교체.

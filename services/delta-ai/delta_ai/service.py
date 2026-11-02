@@ -23,6 +23,7 @@ from delta_ai.feedback import candidate_id, detector_error, regression_check, re
 from delta_ai.judge import PROMPT_VERSION, JudgeOutcome, judge
 from delta_ai.knowledge import Chunk, load_chunks
 from delta_ai.llm import LlmClient
+from delta_ai.mapping import check_mapping, mapping_checks
 from delta_ai.parity import check_parity, evaluated_network_rules, parity_checks
 from delta_ai.runtime import check_runtime, evaluated_runtime_rules, runtime_checks
 from delta_ai.store import RuleStore
@@ -63,6 +64,9 @@ async def _assess_checks(req: AssessmentRequest, llm: LlmClient | None, started:
     elif req.kind == "dast_verification":
         outcome = check_dast(req.evidence.dast)
         rebuild_checks = dast_checks
+    elif req.kind == "migration_mapping":
+        outcome = check_mapping(req.evidence.mapping)
+        rebuild_checks = lambda findings: mapping_checks(findings, outcome.mapping.rows)
     elif req.kind == "runtime_security":
         outcome = check_runtime(req.evidence)
         evaluated = evaluated_runtime_rules(req.evidence)
@@ -76,7 +80,8 @@ async def _assess_checks(req: AssessmentRequest, llm: LlmClient | None, started:
     verdict, reasons = decide(judged.findings, judged.reasons)
     return AssessmentResult(assessment_id=req.assessment_id, kind=req.kind, verdict=verdict, reasons=reasons,
                             findings=judged.findings, checks=rebuild_checks(judged.findings),
-                            verified_controls=outcome.verified, posture=outcome.posture, remediation=_remediation(judged.findings),
+                            verified_controls=outcome.verified, posture=outcome.posture,
+                            mapping=outcome.mapping, remediation=_remediation(judged.findings),
                             meta=_meta(judged, started))
 
 

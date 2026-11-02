@@ -39,7 +39,7 @@ FastAPI ─ Bearer 토큰 인증
 | [13](ADR-AI-13-evidence-retrieval.md) | 근거 검색 | 규칙 ID 정확 매칭 | 유지, 문서 추가 |
 | [14](ADR-AI-14-security-detection-input.md) | 취약점 탐지 | ~~Semgrep SARIF 입력~~ | 폐기: SAST 서비스로 이동 |
 | [15](ADR-AI-15-patch-format.md) | 패치 형식 | ~~서버 재생성 diff~~ | 폐기: 코드 패치 경로 제거 |
-| [16](ADR-AI-16-waf-parity.md) | WAF 동등성 | 범주 매핑·공격 시험 | **게이트웨이 결정 후 재검토** |
+| [16](ADR-AI-16-waf-parity.md) | WAF 동등성 | 범주 매핑·공격 시험 | 유지. HAProxy 기각으로 Option D 재검토 안 함(37) |
 | [17](ADR-AI-17-feedback-activation.md) | 규칙 활성화 | 회귀 시험·사람 승인 | 유지 |
 | [18](ADR-AI-18-detector-format.md) | 탐지기 형식 | 문자열 조합 | **변경 권고: Semgrep 규칙** |
 | [19](ADR-AI-19-rule-store.md) | 규칙 저장 | JSON 파일 | 유지, 인스턴스 1개 |
@@ -50,7 +50,7 @@ FastAPI ─ Bearer 토큰 인증
 | [24](ADR-AI-24-progress-graph.md) | 진행 그래프 | 미구현 | **팀 결정: 단계 이벤트와 화면 담당** |
 | [25](ADR-AI-25-jenkins-gate.md) | 배포 파이프라인 연결 | 로컬 시험(Jenkins) | **단계별 게이트 권고, 팀 결정: Jenkins 와 AWS 구성도** |
 | [26](ADR-AI-26-onprem-runtime.md) | 온프레미스 증거 연동 | `runtime_security`와 수집기 구현 | **팀 결정: 데모 범위 포함 여부** |
-| [27](ADR-AI-27-dast-verdict.md) | DAST 역할·판정, 구동 주체 | `dast_verification` 과 시연 콘솔 구현 | **팀 결정: 구동 주체(Jenkins, 관리 에이전트)와 패치 흐름** |
+| [27](ADR-AI-27-dast-verdict.md) | DAST 역할·판정, 구동 주체 | `dast_verification` 과 시연 콘솔 구현. Jenkins 구동, 관리 에이전트 우선 기각 | **준우 님 설계와 맞춤, 패치 흐름 합의** |
 | [28](ADR-AI-28-fix-guidance-review.md) | 보안 패치 경계 | 미구현, 기준 공유·증거 판정 제안 | **준우 님과 합의 필요** |
 | [29](ADR-AI-29-deployment-decision-log.md) | 배포 결정 경위 | Jenkins 구동·delta-ai 판정 구조 | **권고, 팀 결정** |
 | [30](ADR-AI-30-jenkins-argo.md) | Jenkins + Argo CD | Jenkins 단독 | **권고, 팀 결정: 고객 앱 인프라** |
@@ -60,6 +60,9 @@ FastAPI ─ Bearer 토큰 인증
 | [34](ADR-AI-34-onprem-waf-priority.md) | 온프레미스 WAF 순서 | 태세 구분 먼저, WAF 미착수 | **앞단 결정 후 재검토** |
 | [35](ADR-AI-35-jenkins-main-alignment.md) | main 맞추기 | 새 브랜치 병합, SAST 사람 확인 | 로컬 구현, 리뷰 전 |
 | [36](ADR-AI-36-gate-preflight.md) | 판단 서비스 사전 확인 | 토큰 조회로 트래픽 전 중단 | 로컬 구현, 리뷰 전 |
+| [37](ADR-AI-37-aws-front-door.md) | 트래픽 앞단 | HAProxy 기각, AWS 기능 사용 | **ALB 가중치 권고, 시험 전** |
+| [38](ADR-AI-38-terraform-vs-cartography.md) | 출발 환경 값의 출처 | Terraform 기준 | 유지, Cartography 미구현 |
+| [39](ADR-AI-39-migration-mapping.md) | CSP 간 매핑 판단 | `migration_mapping` 구현, 대응표·등급 | 로컬 구현, **대응 값 팀 확인** |
 
 ## 오늘 회의에서 정할 것
 

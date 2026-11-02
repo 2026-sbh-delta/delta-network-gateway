@@ -11,6 +11,7 @@ from delta_ai.contract import (
     EnvInventory,
     Finding,
     FirewallRule,
+    MappingResult,
     PostureResult,
     ReachabilityProbe,
     Severity,
@@ -56,6 +57,7 @@ class CheckOutcome:
     checks: tuple[Check, ...]
     verified: tuple[VerifiedControl, ...] = ()
     posture: PostureResult | None = None
+    mapping: MappingResult | None = None
 
 
 def _finding(rule_id: str, *, status: str, severity: Severity, evidence: str, location: dict[str, str] | None = None,

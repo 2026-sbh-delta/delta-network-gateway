@@ -410,9 +410,56 @@
             }
           ],
           "default": null
+        },
+        "mapping": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MappingInput"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         }
       },
       "title": "Evidence",
+      "type": "object"
+    },
+    "ExistingSubnet": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "cidr": {
+          "title": "Cidr",
+          "type": "string"
+        },
+        "tier": {
+          "anyOf": [
+            {
+              "enum": [
+                "public",
+                "private"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tier"
+        }
+      },
+      "required": [
+        "name",
+        "cidr"
+      ],
+      "title": "ExistingSubnet",
       "type": "object"
     },
     "FirewallRule": {
@@ -616,6 +663,109 @@
         }
       },
       "title": "LoggingInventory",
+      "type": "object"
+    },
+    "MappingInput": {
+      "additionalProperties": false,
+      "description": "이전 전에 무엇을 만들지 정하는 입력. 지금은 AWS → GCP 만 다룬다.",
+      "properties": {
+        "network_mode": {
+          "default": "create",
+          "enum": [
+            "create",
+            "reuse"
+          ],
+          "title": "Network Mode",
+          "type": "string"
+        },
+        "region": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Region"
+        },
+        "subnets": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/SourceSubnet"
+          },
+          "title": "Subnets",
+          "type": "array"
+        },
+        "servers": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/SourceServer"
+          },
+          "title": "Servers",
+          "type": "array"
+        },
+        "security": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceSecurity"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "existing_subnets": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/ExistingSubnet"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Existing Subnets"
+        },
+        "reserved_cidrs": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Reserved Cidrs",
+          "type": "array"
+        },
+        "scc_tier": {
+          "anyOf": [
+            {
+              "enum": [
+                "standard",
+                "premium"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Scc Tier"
+        },
+        "accepted_gaps": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Accepted Gaps",
+          "type": "array"
+        }
+      },
+      "title": "MappingInput",
       "type": "object"
     },
     "MetricObservation": {
@@ -1126,6 +1276,223 @@
       "title": "ServiceRef",
       "type": "object"
     },
+    "SourceSecurity": {
+      "additionalProperties": false,
+      "properties": {
+        "guardduty_enabled": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Guardduty Enabled"
+        },
+        "guardduty_plans": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Guardduty Plans",
+          "type": "array"
+        },
+        "other_tools": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Other Tools",
+          "type": "array"
+        },
+        "origin": {
+          "default": "operator",
+          "enum": [
+            "terraform",
+            "default",
+            "operator"
+          ],
+          "title": "Origin",
+          "type": "string"
+        }
+      },
+      "title": "SourceSecurity",
+      "type": "object"
+    },
+    "SourceServer": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "instance_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Instance Type"
+        },
+        "os": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Os"
+        },
+        "multi_arch_image": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Multi Arch Image"
+        },
+        "instance_profile": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Instance Profile"
+        },
+        "permissions": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Permissions"
+        },
+        "peak_memory_percent": {
+          "anyOf": [
+            {
+              "maximum": 100,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Peak Memory Percent"
+        },
+        "origin": {
+          "default": "operator",
+          "enum": [
+            "terraform",
+            "default",
+            "operator"
+          ],
+          "title": "Origin",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "SourceServer",
+      "type": "object"
+    },
+    "SourceSubnet": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "cidr": {
+          "title": "Cidr",
+          "type": "string"
+        },
+        "tier": {
+          "anyOf": [
+            {
+              "enum": [
+                "public",
+                "private"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tier"
+        },
+        "zone": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Zone"
+        },
+        "target_cidr": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Cidr"
+        },
+        "origin": {
+          "default": "operator",
+          "enum": [
+            "terraform",
+            "default",
+            "operator"
+          ],
+          "title": "Origin",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "cidr"
+      ],
+      "title": "SourceSubnet",
+      "type": "object"
+    },
     "WafInventory": {
       "additionalProperties": false,
       "properties": {
@@ -1202,7 +1569,8 @@
         "feedback_ingest",
         "deployment_gate",
         "runtime_security",
-        "dast_verification"
+        "dast_verification",
+        "migration_mapping"
       ],
       "title": "Kind",
       "type": "string"
@@ -1243,7 +1611,8 @@
         "image_vulnerabilities": null,
         "cluster_checks": null,
         "log_signals": null,
-        "network_posture": null
+        "network_posture": null,
+        "mapping": null
       }
     }
   },

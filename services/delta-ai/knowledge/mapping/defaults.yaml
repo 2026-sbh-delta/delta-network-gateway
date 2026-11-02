@@ -1,0 +1,9 @@
+# 입력이 비었을 때 쓰는 임시 기본값. 실제 확인이 아니며 결과의 assumptions 와 출처 default 로 드러난다.
+region: asia-northeast3
+cidr_pool: 10.60.0.0/16
+subnet_prefix: 24
+reserved_cidrs:
+  - 10.10.0.0/16   # AWS Client VPC
+  - 10.20.0.0/16   # AWS Server VPC
+  - 10.250.0.0/16  # 중앙 VPC
+  - 10.40.0.0/24   # 온프레미스 데모망

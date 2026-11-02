@@ -3,6 +3,7 @@
 ## 현재 상태
 
 - 기준일: 2026-11-02 (Asia/Seoul)
+- AWS → GCP 매핑 판단: [`migration_mapping`](ai-dlc/migration-mapping.md) 로컬 구현(미커밋). 실제 AWS state 로 대조했고 GCP 생성은 안 함. 앞단은 HAProxy 기각, AWS 기능 사용 방향(ADR-AI-37), 값의 기준은 Terraform(ADR-AI-38), GCP 담당은 동규 님(2026-11-02 사용자 전달).
 - 통합 시연: `deploy/demo-console/` 에서 온프레미스 증거·DAST·AI 판단·Jenkins 카나리를 한 흐름과 화면으로 돌린다. 2026-11-02 로컬 리허설 3개 시나리오 확인, 로컬 브랜치 `feat/demo-integration` 까지 커밋했고 푸시·서버 배포는 안 함. 배포는 Mac Docker 대역이고 AWS·GCP 는 미연결. [기록](ai-dlc/demo-integration.md)
 - Jenkins 배포·AI 판단: `deploy/jenkins-local/`에서 카나리 승격·자동 롤백·사람 확인을 로컬 시나리오로 확인했다. main 병합 후 2026-11-02 delta-ai `.venv/bin/pytest -q` 85개, 파이프라인 스크립트 51개 통과, 병합 후 Jenkins 빌드 #53~65(가짜 LLM)로 사전 확인과 시나리오 경로 확인. 커밋은 로컬 브랜치 `feat/jenkins-on-main` 까지이고 푸시·AWS 배포는 안 했다. [기록](ai-dlc/jenkins-local.md)
 - AI 판단 서비스 SAST 경로 제거(2026-11-02): `services/delta-ai/`에서 코드 보안 판단(`code_security`, SARIF 입력, 코드 패치)을 뺐다. SAST는 별도 서비스가 SARIF와 코드 흐름으로 다시 설계한다. 환경 차이 판단과 피드백 규칙 후보·승인 API는 유지하며, 승인 규칙을 적용할 코드 검사는 아직 없다. 같은 날 `.venv/bin/pytest -q` 66개 통과, `scripts/demo.py fake` 실행 완료.
@@ -30,6 +31,7 @@
 
 ## 문서
 
+- [AWS → GCP 매핑 판단](ai-dlc/migration-mapping.md)
 - [Jenkins 배포와 AI 판단 로컬 검증](ai-dlc/jenkins-local.md)
 - [CloudFront 웹의 중앙 ANF 허용/차단 시험](ai-dlc/cloudfront-anf-demo.md)
 - [CloudFront 직접 EC2 VPC Origin](ai-dlc/cloudfront-server.md)

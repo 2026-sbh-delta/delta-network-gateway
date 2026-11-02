@@ -316,7 +316,7 @@ sequenceDiagram
     ]
   },
   "rule_candidates": [],
-  "meta": { "llm_used": true, "model": "fake-llm", "prompt_version": "delta-judge-v6", "duration_ms": 5 }
+  "meta": { "llm_used": true, "model": "fake-llm", "prompt_version": "delta-judge-v7", "duration_ms": 5 }
 }
 ```
 
