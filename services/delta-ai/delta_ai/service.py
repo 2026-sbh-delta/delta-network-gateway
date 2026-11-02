@@ -74,7 +74,7 @@ async def _assess_checks(req: AssessmentRequest, llm: LlmClient | None, store: R
     verdict, reasons = decide(judged.findings, judged.reasons)
     return AssessmentResult(assessment_id=req.assessment_id, kind=req.kind, verdict=verdict, reasons=reasons,
                             findings=judged.findings, checks=rebuild_checks(judged.findings),
-                            verified_controls=outcome.verified, remediation=_remediation(judged.findings),
+                            verified_controls=outcome.verified, posture=outcome.posture, remediation=_remediation(judged.findings),
                             meta=_meta(judged, started))
 
 

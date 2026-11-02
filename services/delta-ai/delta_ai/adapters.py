@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import re
 from collections.abc import Iterable, Mapping, Sequence
@@ -26,6 +27,9 @@ _PF_PROTO = re.compile(r"\bproto (\S+)")
 _PF_FROM = re.compile(r"\bfrom (! )?(\S+)")
 _PF_TO = re.compile(r"\bto (! )?(\S+)(?: port (?:= )?(\S+))?")
 _PF_LABEL = re.compile(r'\blabel "([^"]+)"')
+_INPUT_POLICY = re.compile(r"^-P INPUT (\w+)", re.MULTILINE)
+_IP_ADDRESS = re.compile(r"\binet6? ([0-9a-fA-F.:]+)/")
+_DEFAULT_ROUTE = re.compile(r"^default via (\S+)", re.MULTILINE)
 _PROBE_RC = re.compile(r"\brc=(\d+)")
 _SENSITIVE_ENV = re.compile(r"PASSW|SECRET|TOKEN|CREDENTIAL|API_?KEY|PRIVATE_?KEY", re.IGNORECASE)
 _ATTACK_PATTERN = re.compile(r"'\s*or\s|union\s+select|<script|\.\./|/etc/passwd", re.IGNORECASE)
@@ -151,6 +155,68 @@ def cluster_facts(ingresses: Sequence[Mapping[str, Any]], workloads: Sequence[Ma
     tls = all((i.get("spec") or {}).get("tls") for i in ingresses) if ingresses else None
     return ClusterFacts(ingress_tls=tls, secrets_source=source, plaintext_env=plaintext,
                         images=tuple(dict.fromkeys(c["image"] for c in containers)))
+
+
+def host_firewall_state(iptables_v4: str, iptables_v6: str) -> Literal["default_deny", "permissive"] | None:
+    """INPUT 기본 정책을 읽는다. 한쪽 주소 체계만 막으면 그쪽으로 들어올 수 있어 허용으로 본다."""
+    policies = [_INPUT_POLICY.search(text) for text in (iptables_v4, iptables_v6)]
+    if None in policies:
+        return None
+    return "default_deny" if all(p.group(1) == "DROP" for p in policies) else "permissive"
+
+
+def node_has_public_ip(ip_addr: str) -> bool | None:
+    """`ip -o addr` 출력을 읽는다. 사설·CGNAT·링크 로컬은 공인으로 치지 않는다."""
+    addresses = _IP_ADDRESS.findall(ip_addr)
+    if not addresses:
+        return None
+    return any(ipaddress.ip_address(address).is_global for address in addresses)
+
+
+def exposed_ports(ss_listeners: str, services: Iterable[Mapping[str, Any]]) -> tuple[int, ...]:
+    """노드 밖에서 닿을 수 있는 포트. NodePort 는 ss 에 보이지 않아 Service 에서 함께 읽는다."""
+    ports = set()
+    for line in ss_listeners.splitlines():
+        fields = line.split()
+        if len(fields) < 4:
+            continue
+        address, _, port = fields[3].rpartition(":")
+        if port.isdigit() and not address.startswith(("127.", "[::1]")):
+            ports.add(int(port))
+    for service in services:
+        if service["spec"].get("type") in ("NodePort", "LoadBalancer"):
+            for item in service["spec"].get("ports") or ():
+                ports.update(item[key] for key in ("port", "nodePort") if key in item)
+    return tuple(sorted(ports))
+
+
+def default_gateway(ip_route: str) -> str | None:
+    found = _DEFAULT_ROUTE.search(ip_route)
+    return found.group(1) if found else None
+
+
+def _allows_any_source(rule: Mapping[str, Any]) -> bool:
+    peers = rule.get("from")
+    if not peers:
+        return True
+    return any(peer.get("namespaceSelector") == {} and not peer.get("podSelector")
+               or (peer.get("ipBlock") or {}).get("cidr") == "0.0.0.0/0" for peer in peers)
+
+
+def _covers_namespace(policy: Mapping[str, Any]) -> bool:
+    spec = policy.get("spec") or {}
+    selector = spec.get("podSelector") or {}
+    if selector.get("matchLabels") or selector.get("matchExpressions"):
+        return False
+    if "Ingress" not in spec.get("policyTypes", ["Ingress"]):
+        return False
+    return not any(_allows_any_source(rule) for rule in spec.get("ingress") or ())
+
+
+def namespaces_without_policy(namespaces: Iterable[str], policies: Iterable[Mapping[str, Any]]) -> tuple[str, ...]:
+    """네임스페이스 전체의 수신을 실제로 제한하는 정책이 없는 곳을 돌려준다."""
+    covered = {p["metadata"]["namespace"] for p in policies if _covers_namespace(p)}
+    return tuple(namespace for namespace in namespaces if namespace not in covered)
 
 
 def _samples(values: Iterable[str]) -> tuple[str, ...]:

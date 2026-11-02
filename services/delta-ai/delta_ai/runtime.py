@@ -17,12 +17,14 @@ from delta_ai.contract import (
 )
 from delta_ai.findings import check_state, finding_id
 from delta_ai.parity import CheckOutcome
+from delta_ai.posture import POSTURE_RULES, check_posture
 from delta_ai.secrets_pattern import redact
 
 RULES: dict[str, tuple[str, str]] = {  # rule_id → (category, 제목)
     "SCA-IMG-001": ("image", "이미지 패키지 취약점"),
     "CIS-K8S-001": ("cluster", "클러스터 보안 기준"),
     "LOG-SIG-001": ("logging", "로그 보안 신호"),
+    **POSTURE_RULES,
 }
 PACKAGE_SEVERITY: dict[str, Severity] = {"critical": "high", "high": "high", "medium": "medium", "low": "low",
                                          "unknown": "medium"}
@@ -84,18 +86,22 @@ def _signal_controls(signals: Sequence[LogSignal]) -> tuple[VerifiedControl, ...
 def evaluated_runtime_rules(evidence: Evidence) -> frozenset[str]:
     inputs = {"SCA-IMG-001": evidence.image_vulnerabilities, "CIS-K8S-001": evidence.cluster_checks,
               "LOG-SIG-001": evidence.log_signals}
-    return frozenset(rule_id for rule_id, value in inputs.items() if value is not None)
+    evaluated = {rule_id for rule_id, value in inputs.items() if value is not None}
+    return frozenset(evaluated | (set(POSTURE_RULES) if evidence.network_posture is not None else set()))
 
 
 def check_runtime(evidence: Evidence) -> CheckOutcome:
     signals = evidence.log_signals or ()
+    posture = check_posture(evidence.network_posture) if evidence.network_posture is not None else None
     findings = (
         *(_package_finding(p) for p in evidence.image_vulnerabilities or ()),
         *(_cluster_finding(c) for c in evidence.cluster_checks or ()),
         *(f for f in map(_signal_finding, signals) if f is not None),
+        *(posture.findings if posture else ()),
     )
     return CheckOutcome(findings=findings, checks=runtime_checks(findings, evaluated_runtime_rules(evidence)),
-                        verified=_signal_controls(signals))
+                        verified=(*_signal_controls(signals), *(posture.verified if posture else ())),
+                        posture=posture.result if posture else None)
 
 
 def runtime_checks(findings: Sequence[Finding], evaluated: frozenset[str]) -> tuple[Check, ...]:

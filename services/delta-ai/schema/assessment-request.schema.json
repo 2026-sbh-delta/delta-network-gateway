@@ -249,6 +249,17 @@
           ],
           "default": null,
           "title": "Log Signals"
+        },
+        "network_posture": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NetworkPosture"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         }
       },
       "title": "Evidence",
@@ -526,6 +537,113 @@
         }
       },
       "title": "NetworkInventory",
+      "type": "object"
+    },
+    "NetworkPosture": {
+      "additionalProperties": false,
+      "description": "격리 상태를 판정할 실측값. None 은 측정하지 못했다는 뜻이며 안전으로 읽지 않는다.",
+      "properties": {
+        "upstream_firewall": {
+          "anyOf": [
+            {
+              "enum": [
+                "managed",
+                "unmanaged"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Upstream Firewall"
+        },
+        "node_public_ip": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Node Public Ip"
+        },
+        "host_firewall": {
+          "anyOf": [
+            {
+              "enum": [
+                "default_deny",
+                "permissive"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Host Firewall"
+        },
+        "exposed_ports": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Exposed Ports"
+        },
+        "network_probes": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ReachabilityProbe"
+          },
+          "title": "Network Probes",
+          "type": "array"
+        },
+        "inbound_probes": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ReachabilityProbe"
+          },
+          "title": "Inbound Probes",
+          "type": "array"
+        },
+        "cluster_probes": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ReachabilityProbe"
+          },
+          "title": "Cluster Probes",
+          "type": "array"
+        },
+        "namespaces_without_policy": {
+          "anyOf": [
+            {
+              "items": {
+                "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$",
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Namespaces Without Policy"
+        }
+      },
+      "title": "NetworkPosture",
       "type": "object"
     },
     "PackageVulnerability": {
@@ -920,7 +1038,8 @@
         "report": null,
         "image_vulnerabilities": null,
         "cluster_checks": null,
-        "log_signals": null
+        "log_signals": null,
+        "network_posture": null
       }
     }
   },

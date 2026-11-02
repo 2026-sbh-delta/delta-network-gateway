@@ -1,5 +1,6 @@
 {
   "service_id": "demo-web",
+  "upstream_firewall": "managed",
   "firewall_ssh": ["ssh", "-o", "BatchMode=yes", "firewall"],
   "node_ssh": ["ssh", "-o", "BatchMode=yes", "-J", "jump", "delta@192.0.2.10"],
   "node_name": "delta-onprem",
@@ -16,6 +17,16 @@
     {"source": "node", "target": "gateway", "host": "192.0.2.1", "port": 53, "expected": "open"},
     {"source": "node", "target": "gateway", "host": "192.0.2.1", "port": 22, "expected": "closed"},
     {"source": "pod:demo/web", "target": "gateway", "host": "192.0.2.1", "port": 22, "expected": "closed"}
+  ],
+  "vantage_ssh": ["ssh", "-o", "BatchMode=yes", "other-host"],
+  "inbound_probes": [
+    {"target": "node", "host": "192.0.2.10", "port": 80, "expected": "open"},
+    {"target": "node", "host": "192.0.2.10", "port": 6443, "expected": "closed"}
+  ],
+  "cluster_probes": [
+    {"source": "temp-pod:default", "target": "dns", "host": "kube-dns.kube-system.svc.cluster.local", "port": 53, "expected": "open"},
+    {"source": "pod:demo/web", "target": "db", "host": "db.demo.svc.cluster.local", "port": 5432, "expected": "open"},
+    {"source": "temp-pod:default", "target": "db", "host": "db.demo.svc.cluster.local", "port": 5432, "expected": "closed"}
   ],
   "source_env": {"provider": "aws", "waf": {"enabled": true, "product": "aws_waf", "mode": "block"}},
   "declared_target": {

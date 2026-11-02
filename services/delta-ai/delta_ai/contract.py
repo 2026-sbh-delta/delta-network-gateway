@@ -159,6 +159,19 @@ class LogSignal(_Model):
                                                                                        max_length=MAX_LOG_SAMPLES)
 
 
+class NetworkPosture(_Model):
+    """격리 상태를 판정할 실측값. None 은 측정하지 못했다는 뜻이며 안전으로 읽지 않는다."""
+
+    upstream_firewall: Literal["managed", "unmanaged"] | None = None  # 운영자가 상위 방화벽을 바꿀 수 있는가
+    node_public_ip: bool | None = None
+    host_firewall: Literal["default_deny", "permissive"] | None = None
+    exposed_ports: tuple[int, ...] | None = None
+    network_probes: tuple[ReachabilityProbe, ...] = ()  # expected=open 은 시험 도구를 확인하는 양성 대조다
+    inbound_probes: tuple[ReachabilityProbe, ...] = ()  # 노드 밖 지점에서 노드로 건 시험. NodePort 는 이것으로만 드러난다
+    cluster_probes: tuple[ReachabilityProbe, ...] = ()
+    namespaces_without_policy: tuple[Annotated[str, Field(pattern=r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$")], ...] | None = None
+
+
 class Evidence(_Model):
     attack_results: tuple[AttackResult, ...] = ()
     reachability: tuple[ReachabilityProbe, ...] = ()
@@ -169,6 +182,7 @@ class Evidence(_Model):
     image_vulnerabilities: tuple[PackageVulnerability, ...] | None = Field(default=None, max_length=MAX_RUNTIME_PACKAGES)
     cluster_checks: tuple[ClusterCheck, ...] | None = None
     log_signals: tuple[LogSignal, ...] | None = None
+    network_posture: NetworkPosture | None = None
 
     @field_validator("code_files")
     @classmethod
@@ -198,8 +212,10 @@ class AssessmentRequest(_Model):
             raise ValueError("feedback_ingest 는 evidence.report 가 필요하다")
         evidence = self.evidence
         if self.kind == "runtime_security" and all(
-                value is None for value in (evidence.image_vulnerabilities, evidence.cluster_checks, evidence.log_signals)):
-            raise ValueError("runtime_security 는 image_vulnerabilities, cluster_checks, log_signals 중 하나가 필요하다")
+                value is None for value in (evidence.image_vulnerabilities, evidence.cluster_checks, evidence.log_signals,
+                                           evidence.network_posture)):
+            raise ValueError("runtime_security 는 image_vulnerabilities, cluster_checks, log_signals, "
+                             "network_posture 중 하나가 필요하다")
         return self
 
 
@@ -293,6 +309,30 @@ class VerifiedControl(_Model):
     observed: str
 
 
+PostureLayerName = Literal["network", "node", "cluster"]
+
+
+class PostureLayer(_Model):
+    layer: PostureLayerName
+    state: Literal["isolated", "open", "unknown"]
+    basis: str
+
+
+class PostureProposal(_Model):
+    """적용은 사람이 정한다. manifest 는 검토용 초안이다."""
+
+    layer: PostureLayerName
+    action: str
+    manifest: str | None = None
+
+
+class PostureResult(_Model):
+    overall: Literal["isolated", "partial", "open", "unknown"]
+    upstream_firewall: Literal["managed", "unmanaged"] | None
+    layers: tuple[PostureLayer, ...]
+    proposals: tuple[PostureProposal, ...] = ()
+
+
 class AssessmentResult(_Model):
     assessment_id: str
     kind: Kind
@@ -301,6 +341,7 @@ class AssessmentResult(_Model):
     findings: tuple[Finding, ...] = ()
     checks: tuple[Check, ...] = ()
     verified_controls: tuple[VerifiedControl, ...] = ()
+    posture: PostureResult | None = None
     remediation: Remediation = Remediation()
     rule_candidates: tuple[RuleCandidate, ...] = ()
     meta: Meta = Meta()

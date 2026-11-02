@@ -6,10 +6,15 @@ import pytest
 
 from delta_ai.adapters import (
     cluster_facts,
+    default_gateway,
+    exposed_ports,
     filter_log_signal,
+    host_firewall_state,
     k3s_false_positives,
     kube_bench_checks,
     limit_packages,
+    namespaces_without_policy,
+    node_has_public_ip,
     pf_firewall_rules,
     pf_self_block_label,
     probe_observed,
@@ -209,3 +214,58 @@ def test_limit_packages_keeps_most_severe_and_reports_dropped():
     kept, dropped = limit_packages([low, critical], limit=1)
 
     assert ([p.package for p in kept], dropped) == (["c"], 1)
+
+
+@pytest.mark.parametrize(("v4", "v6", "state"), [
+    ("-P INPUT DROP\n-A INPUT -j X\n", "-P INPUT DROP\n", "default_deny"),
+    ("-P INPUT ACCEPT\n", "-P INPUT DROP\n", "permissive"),
+    ("-P INPUT DROP\n", "-P INPUT ACCEPT\n", "permissive"),
+    ("", "", None),
+    ("-P INPUT DROP\n", "", None),
+])
+def test_host_firewall_requires_default_deny_on_both_families(v4, v6, state):
+    assert host_firewall_state(v4, v6) == state
+
+
+def test_public_ip_ignores_private_cgnat_and_link_local():
+    private = """1: lo    inet 127.0.0.1/8 scope host lo
+2: eth0    inet 192.168.0.5/24 brd 192.168.0.255 scope global eth0
+3: ts0    inet 100.64.0.5/32 scope global ts0
+2: eth0    inet6 fe80::1/64 scope link
+4: ts0    inet6 fd7a:115c::1/128 scope global
+"""
+
+    assert node_has_public_ip(private) is False
+    assert node_has_public_ip(private + "2: eth0    inet 8.8.4.4/24 scope global eth0\n") is True
+    assert node_has_public_ip(private + "2: eth0    inet6 2606:4700::1/64 scope global\n") is True
+    assert node_has_public_ip("") is None
+
+
+def test_exposed_ports_merge_listeners_and_services_without_loopback():
+    listeners = "LISTEN 0 4096 127.0.0.1:10248 0.0.0.0:*\nLISTEN 0 4096 *:6443 *:*\nLISTEN 0 128 0.0.0.0:22 0.0.0.0:*\nLISTEN 0 128 [::1]:631 [::]:*\n"
+    services = [{"spec": {"type": "LoadBalancer", "ports": [{"port": 80, "nodePort": 30826}]}},
+                {"spec": {"type": "ClusterIP", "ports": [{"port": 5432}]}}]
+
+    assert exposed_ports(listeners, services) == (22, 80, 6443, 30826)
+
+
+def test_default_gateway_is_read_from_route():
+    assert default_gateway("default via 192.0.2.1 dev eth0 proto dhcp\n192.0.2.0/24 dev eth0\n") == "192.0.2.1"
+    assert default_gateway("192.0.2.0/24 dev eth0\n") is None
+
+
+def _policy(namespace: str, **spec: object) -> dict:
+    return {"metadata": {"namespace": namespace}, "spec": {"podSelector": {}, **spec}}
+
+
+def test_only_a_namespace_wide_ingress_restriction_counts_as_coverage():
+    policies = [
+        _policy("safe", policyTypes=["Ingress"], ingress=[{"from": [{"podSelector": {}}]}]),
+        _policy("deny", policyTypes=["Ingress"]),
+        _policy("allow-all", policyTypes=["Ingress"], ingress=[{}]),
+        _policy("egress-only", policyTypes=["Egress"]),
+        {"metadata": {"namespace": "one-pod"}, "spec": {"podSelector": {"matchLabels": {"a": "b"}}, "policyTypes": ["Ingress"]}},
+    ]
+
+    assert namespaces_without_policy(["safe", "deny", "allow-all", "egress-only", "one-pod", "none"], policies) == (
+        "allow-all", "egress-only", "one-pod", "none")
