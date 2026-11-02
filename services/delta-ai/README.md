@@ -38,7 +38,7 @@ curl -s -X POST localhost:8090/v1/assessments -H "Authorization: Bearer $DELTA_A
 
 | `kind` | 호출 시점 | 필요한 입력 |
 |---|---|---|
-| `migration_mapping` | 이전 전, 대상 자원을 만들기 전 | `evidence.mapping` (서브넷·서버·보안 도구). `scripts/extract_terraform.py` 로 만들 수 있다 |
+| `migration_mapping` | 이전 전, 대상 자원을 만들기 전 | `evidence.mapping` (서브넷·서버·보안 도구). `scripts/extract_terraform.py` 로 만들 수 있다. 결과의 `mapping.cost` 는 서버 월 예상 비용 참고 값이다 |
 | `migration_parity` | 이전 직전, 샌드박스 시험 후 | `source_env`, `target_env`, `evidence.attack_results` |
 | `feedback_ingest` | 긴 리뷰·모의해킹 완료 후 | `evidence.report` |
 | `deployment_gate` | 배포 단계·트래픽 단계 후 | `evidence.deployment` |

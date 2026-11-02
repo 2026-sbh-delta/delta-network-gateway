@@ -86,6 +86,16 @@
 - 근거 문서가 없는 규칙은 지금 체계대로 사람 확인으로 간다.
 - 발표에서는 "베스트 프랙티스를 참고해 대응표를 만들었고 차이는 표에 남겼다"까지만 말한다. "완전히 같다"고 말하지 않는다.
 
+### 월 예상 비용
+
+- 11/02 호원 님 제안. 결과의 `mapping.cost` 로 서버별 출발·대상 월 비용과 차액을 낸다. **참고 값이며 finding 과 판정을 만들지 않는다.** 판정이 가격 변동에 흔들리지 않게 하기 위해서다.
+- 기준: 온디맨드 시간당 단가 × 730 시간. 원 단위가 아니라 USD 이고, 표에 보이는 값끼리 더하고 빼서 합계가 맞게 한다.
+- 범위: 서버 비용만 넣는다. 디스크, 네트워크 전송·NAT·공인 IP, OS 라이선스, 보안 도구, 약정·Spot·무료 등급 할인은 빼고 `excludes` 에 적는다. 그래서 전체 이전 비용으로 말하면 안 된다.
+- 단가는 서울 리전(`ap-northeast-2`, `asia-northeast3`)만 넣었다. 다른 리전이나 표에 없는 타입은 추정하지 않고 `null` 로 두며, 모르는 줄이 있으면 합계도 `null` 이다.
+- 대상 메모리가 원본보다 크면 차액에 사양 차이가 섞인다고 줄에 적는다. 예: `t4g.nano`(0.5 GiB) → `e2-micro`(1 GiB).
+- 단가는 사람이 관리하는 표다(2026-11-02 확인). 실시간 조회는 넣지 않았다. 판단 서비스가 외부 가격 API 에 묶이지 않게 하기 위해서다.
+- `source_region` 을 주지 않으면 `ap-northeast-2` 를 쓰고 `assumptions` 에 적는다. Terraform 추출기는 아직 이 값을 넣지 않는다.
+
 ### 시각화
 
 - 결과는 표 데이터로 내므로 준우 님 11/01 다이어그램에 얹을 수 있다. 화면 담당과 형식은 합의가 필요하다.
@@ -118,3 +128,5 @@
 - https://docs.aws.amazon.com/guardduty/latest/ug/what-is-guardduty.html
 - https://docs.cloud.google.com/security-command-center/docs/concepts-security-sources
 - https://docs.cloud.google.com/security-command-center/docs/overview-threats
+- https://aws.amazon.com/ec2/pricing/on-demand/
+- https://cloud.google.com/products/compute/pricing/general-purpose

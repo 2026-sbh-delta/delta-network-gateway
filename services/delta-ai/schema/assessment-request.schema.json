@@ -690,6 +690,18 @@
           "default": null,
           "title": "Region"
         },
+        "source_region": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Region"
+        },
         "subnets": {
           "default": [],
           "items": {

@@ -5,9 +5,12 @@ from pydantic import ValidationError
 
 from delta_ai.contract import AssessmentRequest
 from delta_ai.fake_llm import FakeLLM
+from delta_ai.mapping_catalog import AWS_HOURLY_USD, AWS_INSTANCES, GCP_HOURLY_USD, GCP_INSTANCES
 from delta_ai.service import assess
 from delta_ai.store import RuleStore
 
+DEFAULT_SOURCE_REGION = "ap-northeast-2"
+DEFAULT_TARGET_REGION = "asia-northeast3"
 SERVER = {"name": "web", "instance_type": "t4g.nano", "os": "ubuntu", "multi_arch_image": True,
           "instance_profile": False}
 SUBNET = {"name": "web-a", "cidr": "10.20.1.0/24", "tier": "private", "zone": "apne2-az1", "target_cidr": "10.60.1.0/24"}
@@ -265,3 +268,86 @@ def test_request_requires_something_to_map_and_a_valid_cidr():
         _request(subnets=[{**SUBNET, "cidr": "not-a-cidr"}])
     with pytest.raises(ValidationError):
         AssessmentRequest.model_validate({"assessment_id": "m", "kind": "migration_mapping", "service": {"service_id": "w"}})
+
+
+def _server(name: str, instance_type: str) -> dict[str, object]:
+    return {**SERVER, "name": name, "instance_type": instance_type}
+
+
+async def test_cost_compares_the_mapped_servers_for_the_same_hours(tmp_path):
+    result = await _assess(tmp_path, servers=[SERVER])
+
+    cost = result.mapping.cost
+    line = cost.lines[0]
+    assert (cost.hours_per_month, cost.currency) == (730, "USD")
+    assert (line.source_type, line.target_type) == ("t4g.nano", "e2-micro")
+    assert (line.source_monthly, line.target_monthly, line.difference) == (3.80, 7.84, 4.04)
+
+
+async def test_cost_totals_add_up_from_the_lines_shown(tmp_path):
+    result = await _assess(tmp_path, servers=[_server("a", "t4g.nano"), _server("b", "t3.large")])
+
+    cost = result.mapping.cost
+    assert cost.source_total == round(sum(line.source_monthly for line in cost.lines), 2)
+    assert cost.target_total == round(sum(line.target_monthly for line in cost.lines), 2)
+    assert cost.difference_total == round(cost.target_total - cost.source_total, 2)
+
+
+async def test_cost_says_when_the_target_is_larger_than_the_source(tmp_path):
+    larger = await _assess(tmp_path, servers=[_server("a", "t4g.nano")])
+    same = await _assess(tmp_path, servers=[_server("a", "t4g.small")])
+
+    assert any("메모리" in note for note in larger.mapping.cost.lines[0].notes)
+    assert same.mapping.cost.lines[0].notes == ()
+
+
+async def test_unpriced_server_has_no_estimate_and_no_partial_total(tmp_path):
+    result = await _assess(tmp_path, servers=[_server("a", "t4g.nano"), _server("b", "z1d.metal")])
+
+    cost = result.mapping.cost
+    assert cost.lines[1].source_monthly is None
+    assert cost.lines[1].target_type is None
+    assert cost.lines[1].difference is None
+    assert cost.source_total is None
+    assert cost.difference_total is None
+
+
+@pytest.mark.parametrize("regions", [{"region": "us-central1"}, {"source_region": "us-east-1"}])
+async def test_region_without_a_price_is_not_guessed_from_another_region(tmp_path, regions):
+    result = await _assess(tmp_path, servers=[SERVER], **regions)
+
+    line = result.mapping.cost.lines[0]
+    assert line.difference is None
+    assert result.mapping.cost.difference_total is None
+    assert any("단가" in note for note in line.notes)
+
+
+async def test_cost_never_changes_the_verdict_or_findings(tmp_path):
+    result = await _assess(tmp_path, servers=[{**SERVER, "instance_type": "t3.xlarge", "multi_arch_image": None}])
+
+    assert result.verdict == "pass"
+    assert result.findings == () or all(f.severity == "low" for f in result.findings)
+    assert result.mapping.cost.difference_total < 0  # 대상이 싸도 판정에 영향이 없다
+
+
+async def test_cost_states_its_basis_and_what_it_leaves_out(tmp_path):
+    result = await _assess(tmp_path, servers=[SERVER])
+
+    cost = result.mapping.cost
+    assert cost.priced_on
+    assert cost.source_region == "ap-northeast-2"
+    assert cost.target_region == "asia-northeast3"
+    for excluded in ("디스크", "OS 라이선스", "보안 도구"):
+        assert any(excluded in item for item in cost.excludes)
+    assert any("ap-northeast-2" in assumption for assumption in result.mapping.assumptions)
+
+
+async def test_no_servers_means_no_cost_section(tmp_path):
+    result = await _assess(tmp_path, subnets=[SUBNET])
+
+    assert result.mapping.cost is None
+
+
+def test_every_instance_in_the_mapping_table_has_a_price():
+    assert set(AWS_HOURLY_USD[DEFAULT_SOURCE_REGION]) == set(AWS_INSTANCES)
+    assert set(GCP_HOURLY_USD[DEFAULT_TARGET_REGION]) == set(GCP_INSTANCES)

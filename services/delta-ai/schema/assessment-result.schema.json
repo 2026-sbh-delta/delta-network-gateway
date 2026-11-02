@@ -29,6 +29,177 @@
       "title": "Check",
       "type": "object"
     },
+    "CostEstimate": {
+      "additionalProperties": false,
+      "description": "같은 사용 시간 기준 참고 값이다. 판정에 쓰지 않으며 실제 청구액이 아니다.",
+      "properties": {
+        "currency": {
+          "const": "USD",
+          "default": "USD",
+          "title": "Currency",
+          "type": "string"
+        },
+        "hours_per_month": {
+          "title": "Hours Per Month",
+          "type": "integer"
+        },
+        "priced_on": {
+          "title": "Priced On",
+          "type": "string"
+        },
+        "source_region": {
+          "title": "Source Region",
+          "type": "string"
+        },
+        "target_region": {
+          "title": "Target Region",
+          "type": "string"
+        },
+        "lines": {
+          "items": {
+            "$ref": "#/$defs/CostLine"
+          },
+          "title": "Lines",
+          "type": "array"
+        },
+        "source_total": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Source Total"
+        },
+        "target_total": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Target Total"
+        },
+        "difference_total": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Difference Total"
+        },
+        "excludes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Excludes",
+          "type": "array"
+        }
+      },
+      "required": [
+        "hours_per_month",
+        "priced_on",
+        "source_region",
+        "target_region",
+        "lines",
+        "source_total",
+        "target_total",
+        "difference_total",
+        "excludes"
+      ],
+      "title": "CostEstimate",
+      "type": "object"
+    },
+    "CostLine": {
+      "additionalProperties": false,
+      "description": "서버 한 대의 월 예상 비용. 단가를 모르는 쪽은 None 이다.",
+      "properties": {
+        "server": {
+          "title": "Server",
+          "type": "string"
+        },
+        "source_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Source Type"
+        },
+        "target_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Target Type"
+        },
+        "source_monthly": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Source Monthly"
+        },
+        "target_monthly": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Target Monthly"
+        },
+        "difference": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Difference"
+        },
+        "notes": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Notes",
+          "type": "array"
+        }
+      },
+      "required": [
+        "server",
+        "source_type",
+        "target_type",
+        "source_monthly",
+        "target_monthly",
+        "difference"
+      ],
+      "title": "CostLine",
+      "type": "object"
+    },
     "Finding": {
       "additionalProperties": false,
       "properties": {
@@ -174,6 +345,17 @@
           },
           "title": "Assumptions",
           "type": "array"
+        },
+        "cost": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CostEstimate"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         }
       },
       "required": [

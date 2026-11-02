@@ -254,6 +254,7 @@ class MappingInput(_Model):
 
     network_mode: Literal["create", "reuse"] = "create"
     region: str | None = None
+    source_region: str | None = None  # 비용 비교에만 쓴다. 없으면 기본값을 쓰고 assumptions 에 적는다
     subnets: tuple[SourceSubnet, ...] = ()
     servers: tuple[SourceServer, ...] = ()
     security: SourceSecurity | None = None
@@ -435,11 +436,39 @@ class MappingRow(_Model):
     rule_id: str
 
 
+class CostLine(_Model):
+    """서버 한 대의 월 예상 비용. 단가를 모르는 쪽은 None 이다."""
+
+    server: str
+    source_type: str | None
+    target_type: str | None
+    source_monthly: float | None
+    target_monthly: float | None
+    difference: float | None  # 대상 - 출발. 양수면 대상이 비싸다
+    notes: tuple[str, ...] = ()
+
+
+class CostEstimate(_Model):
+    """같은 사용 시간 기준 참고 값이다. 판정에 쓰지 않으며 실제 청구액이 아니다."""
+
+    currency: Literal["USD"] = "USD"
+    hours_per_month: int
+    priced_on: str
+    source_region: str
+    target_region: str
+    lines: tuple[CostLine, ...]
+    source_total: float | None  # 모르는 줄이 있으면 일부만 더한 합계를 내지 않는다
+    target_total: float | None
+    difference_total: float | None
+    excludes: tuple[str, ...]
+
+
 class MappingResult(_Model):
     region: str
     network_mode: Literal["create", "reuse"]
     rows: tuple[MappingRow, ...]
     assumptions: tuple[str, ...] = ()
+    cost: CostEstimate | None = None
 
 
 class AssessmentResult(_Model):
