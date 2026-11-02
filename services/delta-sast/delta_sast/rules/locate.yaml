@@ -1,0 +1,126 @@
+# 위치 표시 규칙. 취약 여부는 판정하지 않는다.
+# metadata.delta.role: source | sink | secret
+#   source: kind(입력 종류), field_metavar(입력 칸 이름이 들어 있는 메타변수)
+#   sink: context(출력 맥락), arg_metavar(위험한 인자 메타변수)
+#   secret: kind
+# HTML 문자열 조립(f-string, format, +) 싱크와 출력 맥락은 AST가 직접 찾는다.
+rules:
+  # ---------- 소스: Flask 요청 입력 ----------
+  - id: delta-src-flask-get
+    languages: [python]
+    severity: INFO
+    message: Flask 요청 입력
+    patterns:
+      - pattern: flask.request.$KIND.get($FIELD, ...)
+      - metavariable-regex:
+          metavariable: $KIND
+          regex: ^(form|args|values|cookies|headers|files)$
+    metadata:
+      delta: {role: source, kind_metavar: $KIND, field_metavar: $FIELD}
+
+  - id: delta-src-flask-item
+    languages: [python]
+    severity: INFO
+    message: Flask 요청 입력
+    patterns:
+      - pattern: flask.request.$KIND[$FIELD]
+      - metavariable-regex:
+          metavariable: $KIND
+          regex: ^(form|args|values|cookies|headers|files)$
+    metadata:
+      delta: {role: source, kind_metavar: $KIND, field_metavar: $FIELD}
+
+  - id: delta-src-flask-json
+    languages: [python]
+    severity: INFO
+    message: Flask 요청 본문
+    pattern-either:
+      - pattern: flask.request.get_json(...)
+      - pattern: flask.request.json
+      - pattern: flask.request.data
+      - pattern: flask.request.get_data(...)
+    metadata:
+      delta: {role: source, kind: body}
+
+  # ---------- 싱크: SQL ----------
+  - id: delta-sink-sql
+    languages: [python]
+    severity: INFO
+    message: SQL 실행에 조립한 문자열
+    patterns:
+      - pattern-either:
+          - pattern: $C.execute($Q, ...)
+          - pattern: $C.executemany($Q, ...)
+          - pattern: $C.executescript($Q)
+          - pattern: sqlalchemy.text($Q)
+      - pattern-not: $C.execute("...", ...)
+      - pattern-not: $C.executemany("...", ...)
+      - pattern-not: $C.executescript("...")
+      - pattern-not: sqlalchemy.text("...")
+    metadata:
+      delta: {role: sink, context: sql, arg_metavar: $Q}
+
+  # ---------- 싱크: 셸 ----------
+  - id: delta-sink-shell
+    languages: [python]
+    severity: INFO
+    message: 셸 명령 실행
+    pattern-either:
+      - pattern: os.system($X)
+      - pattern: os.popen($X, ...)
+      - pattern: subprocess.$F($X, ..., shell=True, ...)
+      - pattern: subprocess.getoutput($X)
+      - pattern: subprocess.getstatusoutput($X)
+    metadata:
+      delta: {role: sink, context: shell, arg_metavar: $X}
+
+  # ---------- 싱크: escape를 끄는 HTML ----------
+  - id: delta-sink-markup
+    languages: [python]
+    severity: INFO
+    message: escape 없이 HTML로 표시
+    pattern-either:
+      - pattern: markupsafe.Markup($X)
+      - pattern: flask.Markup($X)
+    metadata:
+      delta: {role: sink, context: html_text, arg_metavar: $X}
+
+  - id: delta-sink-template-string
+    languages: [python]
+    severity: INFO
+    message: 입력으로 템플릿 조립
+    pattern: flask.render_template_string($X, ...)
+    metadata:
+      delta: {role: sink, context: template, arg_metavar: $X}
+
+  # ---------- 하드코딩 비밀값 ----------
+  - id: delta-secret-assign
+    languages: [python]
+    severity: WARNING
+    message: 비밀값으로 보이는 문자열을 코드에 둠
+    patterns:
+      - pattern-either:
+          - pattern: $NAME = "$VAL"
+          - pattern: $OBJ[$NAME] = "$VAL"
+          - pattern: $OBJ.$NAME = "$VAL"
+      - metavariable-regex:
+          metavariable: $NAME
+          regex: (?i).*(password|passwd|pwd|secret|token|api_?key|access_?key|private_?key).*
+      - metavariable-regex:
+          metavariable: $VAL
+          regex: ^.{8,}$
+    metadata:
+      delta: {role: secret, kind: assignment}
+
+  - id: delta-secret-token
+    languages: [python]
+    severity: WARNING
+    message: 알려진 형식의 키·토큰
+    pattern-either:
+      - pattern-regex: AKIA[0-9A-Z]{16}
+      - pattern-regex: sk-ant-[A-Za-z0-9_-]{20,}
+      - pattern-regex: gh[pousr]_[A-Za-z0-9]{36,}
+      - pattern-regex: xox[abprs]-[A-Za-z0-9-]{10,}
+      - pattern-regex: -----BEGIN (RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----
+    metadata:
+      delta: {role: secret, kind: token}

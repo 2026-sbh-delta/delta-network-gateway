@@ -1,0 +1,39 @@
+# 출력 맥락별 안전 목록. 경로 위 필터가 여기 있고 맥락이 맞으면 LLM 없이 "양호"로 판정한다.
+# 이름은 import를 풀어 쓴 전체 이름이다.
+contexts:
+  html_text:
+    - html.escape
+    - markupsafe.escape
+    - flask.escape
+    - jinja2.escape
+    - bleach.clean
+  html_attr:
+    - html.escape
+    - markupsafe.escape
+    - flask.escape
+  url:
+    - urllib.parse.quote
+    - urllib.parse.quote_plus
+  shell:
+    - shlex.quote
+  sql: []
+  js_string: []
+  template: []
+
+# 값을 숫자·불리언 등으로 바꿔 문자열 공격이 불가능해지는 호출. 경로를 끊는다.
+kills:
+  - int
+  - float
+  - bool
+  - len
+  - abs
+  - round
+  - hash
+  - id
+  - uuid.uuid4
+  - uuid.uuid1
+  - secrets.token_hex
+  - secrets.token_urlsafe
+
+# 안전 목록에는 없지만 필터로 보고 경로에 기록할 이름 패턴(함수 이름 기준).
+filter_name_pattern: (?i)(clean|saniti[sz]e|escape|filter|strip_tags|purif|encode|quote|safe)
