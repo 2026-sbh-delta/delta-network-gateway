@@ -1,4 +1,4 @@
-// 스캔 → AI 판단(수정 루프) → 재발 확인 → 카나리 → 승격 또는 자동 롤백.
+// 스캔 → 사람 확인 → 재발 확인 → 카나리 → 승격 또는 자동 롤백.
 // 판단 서비스는 판정만 내고, 실행은 이 파이프라인이 한다 (ADR-AI-05).
 // 기준을 넘은 지표의 롤백은 판단 응답을 기다리지 않는다. 승격은 pass 를 받아야만 한다.
 
@@ -8,19 +8,6 @@ def canaryLogLines() { return 50 }
 
 def computeReleaseId() {
     return sh(returnStdout: true, script: "python3 ${scripts()}/releases.py id --root app --extra FAIL_RATE=${env.CANARY_FAIL_RATE}").trim()
-}
-
-// 패치를 사본에서 검증하고, 사람이 승인해야 실제 작업 트리에 반영한다.
-def applyVerifiedFix() {
-    int code = sh(returnStatus: true, script: "python3 ${scripts()}/fix_loop.py --id build-${BUILD_NUMBER} --commit ${env.RELEASE_ID} --result sast-result.json --sarif sast.sarif")
-    archiveArtifacts artifacts: 'fix-*, fix.diff', allowEmptyArchive: true
-    if (code != 0) {
-        error('AI 수정을 검증하지 못했다: fix-report.json 을 보고 사람이 고친다')
-    }
-    sh 'cat fix.diff'
-    humanGate('AI 패치가 샌드박스 테스트·재검사·재판단을 통과했다. 콘솔이나 fix.diff 를 보고 이 패치로 배포할지 정한다')
-    sh 'rm -rf app && cp -r fix/app app'
-    env.RELEASE_ID = computeReleaseId()
 }
 
 def logged(String stage, String command) {
@@ -57,23 +44,18 @@ def rollback() {
     echo "롤백 완료: 안정 슬롯=${env.STABLE_SLOT ?: '없음'}"
 }
 
-def judgeSecurity() {
-    int code = gate("code_security --id build-${BUILD_NUMBER}-sast --sarif sast.sarif --code-root app --out sast-result.json")
+// SAST 판단 서비스가 정해지기 전까지 탐지 결과는 AI 없이 사람이 본다. 읽지 못한 결과는 통과로 보지 않는다.
+def reviewSast() {
+    int code = sh(returnStatus: true, script: "python3 ${scripts()}/sast_findings.py sast.sarif")
     if (code == 0) {
         return
     }
-    env.GATE_ALREADY_REPORTED = 'true'  // 판정이 곧 중단 사유다. 단계 실패로 다시 분석하지 않는다
-    if (code == 10) {
-        applyVerifiedFix()
-        env.GATE_ALREADY_REPORTED = 'false'
-        return
+    if (code != 20) {
+        error('SAST 결과를 읽지 못했다: 통과로 보지 않는다')
     }
-    if (code == 20) {
-        humanGate('보안 판단이 사람 확인을 요구한다. sast-result.json 을 보고 진행 여부를 정한다')
-        env.GATE_ALREADY_REPORTED = 'false'
-        return
-    }
-    error('판단 서비스 응답 없음: 통과로 보지 않는다')
+    env.GATE_ALREADY_REPORTED = 'true'  // 사람이 중단하면 단계 실패가 아니므로 다시 분석하지 않는다
+    humanGate('Semgrep 이 코드를 지목했다. sast.sarif 를 보고 진행 여부를 정한다')
+    env.GATE_ALREADY_REPORTED = 'false'
 }
 
 def promoteStep(int percent) {
@@ -111,7 +93,7 @@ pipeline {
         buildDiscarder(logRotator(numToKeepStr: '20'))
     }
     parameters {
-        choice(name: 'SCENARIO', choices: ['good', 'vulnerable-code', 'bad-patch', 'failing-test', 'bad-canary', 'gate-down', 'low-traffic'],
+        choice(name: 'SCENARIO', choices: ['good', 'vulnerable-code', 'failing-test', 'bad-canary', 'gate-down', 'low-traffic'],
                description: '시험할 상황')
     }
     environment {
@@ -135,9 +117,6 @@ pipeline {
                     if (params.SCENARIO == 'vulnerable-code') {
                         sh 'cp scenarios/vulnerable.py scenarios/test_ping_contract.py app/'
                     }
-                    if (params.SCENARIO == 'bad-patch') {
-                        sh 'cp scenarios/vulnerable.py scenarios/test_requires_shell.py app/'
-                    }
                     if (params.SCENARIO == 'failing-test') {
                         sh 'cp scenarios/test_broken.py app/'
                     }
@@ -150,11 +129,11 @@ pipeline {
                 script { logged('test', 'python3 -m unittest discover -s app -v') }
             }
         }
-        stage('SAST·보안 판단') {
+        stage('SAST') {
             steps {
                 script {
                     logged('sast', 'semgrep scan --config app/.semgrep.yml --sarif --output sast.sarif --metrics=off --disable-version-check app')
-                    judgeSecurity()
+                    reviewSast()
                 }
             }
         }
@@ -239,7 +218,7 @@ pipeline {
             }
         }
         cleanup {
-            archiveArtifacts artifacts: 'logs/**, *.json, *.sarif, *.diff, events.jsonl', allowEmptyArchive: true
+            archiveArtifacts artifacts: 'logs/**, *.json, *.sarif, events.jsonl', allowEmptyArchive: true
         }
     }
 }

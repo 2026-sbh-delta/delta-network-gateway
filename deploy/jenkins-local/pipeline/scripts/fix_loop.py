@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
-"""판단 서비스의 패치를 사본에 적용하고 테스트·재검사·재판단으로 확인한다.
+"""AI 패치를 사본에 적용하고 테스트·재검사·재판단으로 확인한다.
 
+패치를 주던 delta-ai code_security 가 main 에서 빠져 지금은 파이프라인이 호출하지 않는다. 패치 출처를 정하면 다시 연결한다.
 여기서 통과해도 배포하지 않는다. 적용 여부는 파이프라인의 사람 확인이 정한다.
 패치한 코드는 LLM 산출물이라 Jenkins 안에서 실행하지 않고 네트워크 없는 컨테이너에서만 실행한다.
 검사 설정은 패치가 닿을 수 없는 원본에서 읽고, 스캐너가 지목한 파일만 고칠 수 있다.
@@ -8,24 +8,17 @@
 
 from __future__ import annotations
 
-import argparse
-import contextlib
 import hashlib
 import json
-import os
-import shutil
 import subprocess
 import sys
-import time
 from collections.abc import Callable, Mapping
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import gate
 
-EXIT_VERIFIED = 0
-EXIT_STOPPED = 40
 DEFAULT_MAX_ATTEMPTS = 2  # 패치가 수렴하지 않을 때 LLM 호출이 끝없이 늘지 않게 한다
 SANDBOX_TIMEOUT_SECONDS = 120
 SANDBOX_IMAGE = "python:3.12-alpine"  # demo-app 과 같은 기반 이미지
@@ -148,57 +141,3 @@ def semgrep_scan(workdir: Path, config: Path, out: Path) -> dict[str, Any]:
                     "--metrics=off", "--disable-version-check", "app"],
                    cwd=workdir, check=True, capture_output=True, text=True, timeout=SCAN_TIMEOUT_SECONDS)
     return json.loads(out.read_text(encoding="utf-8"))
-
-
-def _judge(args: argparse.Namespace, workdir: Path, attempt: int, sarif: dict[str, Any]) -> dict[str, Any]:
-    run_id = f"{args.id}-{attempt}"
-    with contextlib.chdir(workdir):  # 경로가 SARIF 의 app/... 와 맞아야 한다
-        code = gate.collect_code(Path("app"))
-    body = gate.security_request(assessment_id=f"{run_id}-{int(time.time())}", service_id=args.service,
-                                 commit=args.commit, sarif=sarif, code_files=code)
-    try:
-        result = gate.call_gate(args.delta_url, args.token, body)
-    except gate.GateUnavailable:
-        gate.append_event(Path("events.jsonl"), run_id=run_id, step="fix", state="unavailable", verdict=None)
-        raise
-    Path(f"fix-attempt-{attempt}.json").write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
-    gate.append_event(Path("events.jsonl"), run_id=run_id, step="fix", state="judged", verdict=result.get("verdict"))
-    return result
-
-
-def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--id", required=True)
-    parser.add_argument("--result", type=Path, required=True)
-    parser.add_argument("--sarif", type=Path, required=True)
-    parser.add_argument("--source", type=Path, default=Path("app"))
-    parser.add_argument("--workdir", type=Path, default=Path("fix"))
-    parser.add_argument("--service", default="demo-app")
-    parser.add_argument("--commit", default="local")
-    parser.add_argument("--max-attempts", type=int, default=DEFAULT_MAX_ATTEMPTS)
-    return parser
-
-
-def main(argv: list[str] | None = None) -> int:
-    args = _parser().parse_args(argv)
-    args.delta_url, args.token = os.environ["DELTA_URL"], os.environ["DELTA_API_TOKEN"]
-    workdir = args.workdir.resolve()
-    shutil.rmtree(workdir, ignore_errors=True)
-    shutil.copytree(args.source, workdir / "app", ignore=shutil.ignore_patterns(*SKIPPED_DIRS))
-    config = (args.source / ".semgrep.yml").resolve()
-    tools = Tools(
-        run_tests=lambda attempt: sandbox_tests(workdir, f"delta-sandbox-{args.id}-{attempt}"),
-        scan=lambda attempt: semgrep_scan(workdir, config, Path(f"fix-attempt-{attempt}.sarif")),
-        judge=lambda attempt, sarif: _judge(args, workdir, attempt, sarif),
-    )
-    report = run_loop(workdir, json.loads(args.result.read_text(encoding="utf-8")),
-                      json.loads(args.sarif.read_text(encoding="utf-8")), max_attempts=args.max_attempts, tools=tools)
-    Path("fix-report.json").write_text(json.dumps(asdict(report), ensure_ascii=False, indent=2), encoding="utf-8")
-    if report.diff:
-        Path("fix.diff").write_text(report.diff, encoding="utf-8")
-    print(f"수정 루프: {report.outcome} ({report.attempts}회) {report.reason}")
-    return EXIT_VERIFIED if report.outcome == "verified" else EXIT_STOPPED
-
-
-if __name__ == "__main__":
-    sys.exit(main())

@@ -27,9 +27,6 @@ REQUEST_TIMEOUT_SECONDS = 150  # delta-ai 의 LLM 제한(60초 × 2회)보다 �
 MAX_ATTEMPTS = 2
 RETRY_DELAY_SECONDS = 3
 LOG_TAIL_CHARS = 20_000
-CODE_SUFFIXES = (".py", ".js", ".ts", ".java", ".go")
-MAX_CODE_FILES = 50
-MAX_CODE_FILE_CHARS = 256_000
 
 
 class GateUnavailable(RuntimeError):
@@ -45,24 +42,6 @@ def read_tail(path: Path, limit: int = LOG_TAIL_CHARS) -> str:
 def read_logs(paths: Sequence[Path]) -> str:
     """판단 서비스는 끝부분만 쓰므로 원인에 가까운 로그를 뒤에 둔다."""
     return "\n".join(f"== {path.name} ==\n{read_tail(path)}" for path in paths if path.is_file())
-
-
-def collect_code(root: Path) -> dict[str, str]:
-    """경로는 SARIF 의 uri 와 맞도록 작업 디렉터리 기준으로 쓴다."""
-    files = sorted(p for p in root.rglob("*") if p.is_file() and p.suffix in CODE_SUFFIXES)
-    collected: dict[str, str] = {}
-    for path in files[:MAX_CODE_FILES]:
-        text = path.read_text(encoding="utf-8", errors="replace")
-        if len(text) <= MAX_CODE_FILE_CHARS:
-            collected[path.as_posix()] = text
-    return collected
-
-
-def security_request(*, assessment_id: str, service_id: str, commit: str, sarif: dict[str, Any],
-                     code_files: Mapping[str, str]) -> dict[str, Any]:
-    return {"assessment_id": assessment_id, "kind": "code_security",
-            "service": {"service_id": service_id, "commit": commit},
-            "evidence": {"sarif": sarif, "code_files": dict(code_files)}}
 
 
 def deployment_request(*, assessment_id: str, service_id: str, commit: str, stage: str, status: str,
@@ -123,14 +102,12 @@ def append_event(path: Path, *, run_id: str, step: str, state: str, verdict: str
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("kind", choices=("code_security", "deployment_gate"))
+    parser.add_argument("kind", choices=("deployment_gate",))
     parser.add_argument("--id", required=True)
     parser.add_argument("--service", default="demo-app")
     parser.add_argument("--commit", default=os.environ.get("RELEASE_ID", "local"))
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--events", type=Path, default=Path("events.jsonl"))
-    parser.add_argument("--sarif", type=Path)
-    parser.add_argument("--code-root", type=Path)
     parser.add_argument("--stage")
     parser.add_argument("--status", choices=("succeeded", "failed"), default="succeeded")
     parser.add_argument("--target")
@@ -142,10 +119,6 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def _request_from_args(args: argparse.Namespace) -> dict[str, Any]:
-    if args.kind == "code_security":
-        sarif = json.loads(args.sarif.read_text(encoding="utf-8"))
-        return security_request(assessment_id=args.id, service_id=args.service, commit=args.commit, sarif=sarif,
-                                code_files=collect_code(args.code_root))
     metrics = json.loads(args.metrics.read_text(encoding="utf-8"))["metrics"] if args.metrics else []
     return deployment_request(assessment_id=args.id, service_id=args.service, commit=args.commit,
                               stage=args.stage or "unknown", status=args.status, target=args.target,

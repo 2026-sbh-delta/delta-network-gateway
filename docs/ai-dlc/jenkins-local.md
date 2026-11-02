@@ -93,9 +93,27 @@ Jenkins 2.580.2-lts-jdk21, 플러그인 7개는 `jenkins/plugins.txt` 에 버전
 
 한계: 패치 시험은 취약점 1종 3회이고 표본이 작다. 평가에서 승인한 시험 규칙이 로컬 볼륨에 남아 있다(`./down.sh --volumes` 로 제거).
 
+## main 병합 (2026-11-02)
+
+`origin/main`(PR #2 DAST 추가, PR #3 `code_security` 제거)을 `feat/jenkins-on-main` 에 병합했다. 위 검증 기록과 빌드 번호는 병합 전 코드 기준이다.
+
+- `deployment_gate` 는 유지하고 `code_security` 는 main 을 따라 뺐다.
+- SAST 단계는 AI 판단 없이 동작한다. Semgrep 탐지가 있으면 사람 확인에서 멈추고, SARIF 를 읽지 못하면 실패한다(`sast_findings.py`).
+- 수정 루프(`fix_loop.py`)는 패치 출처가 없어 파이프라인에서 분리했다. 검증 로직과 테스트만 남겼고 `bad-patch` 시나리오는 뺐다.
+
+| 명령 | 결과 |
+|---|---|
+| `services/delta-ai`: `.venv/bin/pytest -q` | 85 통과 |
+| `deploy/jenkins-local`: `python -m pytest -q tests` | 47 통과 |
+| 실제 서버(가짜 LLM)에 호출 | `code_security` 422, `deployment_gate`·`migration_parity` 정상 응답 |
+| 빌드 #45·47·48·49 의 실제 `sast.sarif` 로 `sast_findings.py` | 탐지 0건 3회 종료 코드 0, 1건 1회 20 |
+| Jenkins 선언형 문법 검사(`/pipeline-model-converter/validate`) | 통과 |
+
+**병합 후 Jenkins 빌드는 아직 실행하지 않았다.** 로컬 스택이 원래 작업 폴더를 마운트하고 있고, 다른 작업이 쓰는 중이었다.
+
 ## 아직 안 된 것
 
-- `fix` 패치 자동 적용과 재실행. ADR-AI-05 의 샌드박스 적용 주체가 없다. 지금은 패치를 남기고 멈춘다.
+- AI 패치 적용과 재실행. `code_security` 제거로 패치 출처가 없다. DAST `/fix` 연결을 검토한다.
 - 카나리 앱 로그 전달, 같은 실패의 재배포 차단, 실제 commit SHA 전달.
 - 이벤트는 판단 호출 때만 남긴다. ADR-AI-24 진행 그래프에 쓰려면 단계 시작·종료도 내보내야 한다.
 - Dependency-Check, SonarQube, ZAP.

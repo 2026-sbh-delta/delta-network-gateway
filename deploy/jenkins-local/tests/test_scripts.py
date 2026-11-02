@@ -12,6 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "pipeline" / "sc
 
 import gate  # noqa: E402
 import haproxy_ctl  # noqa: E402
+import sast_findings  # noqa: E402
 import traffic  # noqa: E402
 from delta_ai.contract import AssessmentRequest  # noqa: E402
 
@@ -26,13 +27,6 @@ def test_deployment_request_matches_service_contract():
                                    metrics=({"name": "error_rate", "value": 0.1, "threshold": 0.05, "samples": 40},))
 
     assert AssessmentRequest.model_validate(body).evidence.deployment.traffic_percent == 10
-
-
-def test_security_request_matches_service_contract():
-    body = gate.security_request(assessment_id="a", service_id="demo", commit="c", sarif={"runs": []},
-                                 code_files={"app/a.py": "x"})
-
-    assert AssessmentRequest.model_validate(body).kind == "code_security"
 
 
 @pytest.mark.parametrize("verdict,code", [("pass", gate.EXIT_PASS), ("fix", gate.EXIT_FIX),
@@ -94,15 +88,6 @@ def test_read_tail_keeps_the_end_and_tolerates_missing_file(tmp_path):
 
     assert gate.read_tail(log, limit=3) == "END"
     assert gate.read_tail(tmp_path / "none.log") == ""
-
-
-def test_collect_code_uses_relative_paths_and_skips_other_files(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-    (tmp_path / "app").mkdir()
-    (tmp_path / "app" / "a.py").write_text("x = 1\n")
-    (tmp_path / "app" / "notes.txt").write_text("skip")
-
-    assert gate.collect_code(Path("app")) == {"app/a.py": "x = 1\n"}
 
 
 def _samples(version: str | None, status: int, count: int, seconds: float = 0.01) -> list[traffic.Sample]:
@@ -175,3 +160,20 @@ def test_server_status_reads_stat_csv():
     assert haproxy_ctl.server_status(csv, "blue") == "UP"
     assert haproxy_ctl.server_status(csv, "green") == "DOWN"
     assert haproxy_ctl.server_status("", "blue") is None
+
+
+@pytest.mark.parametrize("results,code", [([], sast_findings.EXIT_CLEAN), ([{"ruleId": "x"}], sast_findings.EXIT_NEEDS_HUMAN)])
+def test_sast_findings_requires_human_only_when_something_was_found(tmp_path, results, code):
+    path = tmp_path / "sast.sarif"
+    path.write_text(json.dumps({"runs": [{"results": results}]}), encoding="utf-8")
+
+    assert sast_findings.main([str(path)]) == code
+
+
+@pytest.mark.parametrize("content", ["not json", "{}", '{"runs": [{}]}'])
+def test_unreadable_sarif_does_not_pass(tmp_path, content):
+    path = tmp_path / "sast.sarif"
+    path.write_text(content, encoding="utf-8")
+
+    with pytest.raises((ValueError, KeyError)):
+        sast_findings.main([str(path)])
