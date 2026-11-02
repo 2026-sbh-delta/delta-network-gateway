@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 
 from .classify import RuleCache
-from .judge import ClaudeClient, LlmUnavailable
+from .judge import client_from_env
 from .locate import LocateError
 from .scan import run_fast
 
@@ -42,12 +42,9 @@ def main(argv: list[str] | None = None) -> int:
     if not args.root.is_dir():
         print(f"소스 경로가 없다: {args.root}", file=sys.stderr)
         return 2
-    client = None
-    if not args.no_llm:
-        try:
-            client = ClaudeClient()
-        except LlmUnavailable as exc:
-            print(f"LLM 없이 진행한다: {exc}", file=sys.stderr)
+    client = None if args.no_llm else client_from_env()
+    if client is None and not args.no_llm:
+        print("LLM을 쓸 수 없어 규칙·캐시까지만 판정한다(SAST_LLM_BACKEND 확인)", file=sys.stderr)
     cache = RuleCache(args.cache)
     try:
         result = asyncio.run(run_fast(args.root, client=client, cache=cache, payload_mode=args.payload_mode))

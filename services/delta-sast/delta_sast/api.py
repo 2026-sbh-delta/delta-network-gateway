@@ -5,7 +5,8 @@
 - DELTA_SAST_STATE(기본 var/sast): 상태·SARIF·캐시 저장 폴더
 - SAST_REPO_PREFIXES(기본 https://github.com/2026-sbh-delta/): 허용할 원격 저장소 주소 접두어(쉼표 구분)
 - SAST_LOCAL_ROOTS: 허용할 로컬 경로 루트(경로 구분자 구분). 비우면 로컬 경로를 받지 않는다
-- ANTHROPIC_API_KEY, SAST_LLM_MODEL: LLM 판단. 키가 없으면 LLM 없이 규칙·캐시까지만
+- SAST_LLM_BACKEND(기본 claude-code): claude-code(로그인 사용) | api(ANTHROPIC_API_KEY) | off
+- SAST_LLM_MODEL(기본 claude-sonnet-5-5)
 """
 
 from __future__ import annotations
@@ -20,7 +21,7 @@ from fastapi import Depends, FastAPI, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from .contract import DastFeedback, FeedbackOutcome, Scan, ScanRequest
-from .judge import ClaudeClient, LlmClient, LlmUnavailable
+from .judge import LlmClient, client_from_env
 from .registry import Conflict, NotFound, NotReady, RequestRejected, SastRegistry, Unsupported
 from .source import SourcePolicy
 from .tools import tool_catalog
@@ -89,13 +90,7 @@ def create_app(*, registry: SastRegistry, token: str) -> FastAPI:
 
 
 def llm_from_env() -> Callable[[], LlmClient | None]:
-    def factory() -> LlmClient | None:
-        try:
-            return ClaudeClient()
-        except LlmUnavailable:
-            return None
-
-    return factory
+    return client_from_env
 
 
 def registry_from_env() -> SastRegistry:

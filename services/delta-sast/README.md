@@ -15,7 +15,7 @@ Python(Flask) 소스를 점검해 SARIF 2.1.0을 낸다. DAST는 이 SARIF만 �
 opengrep 1.33.1이 PATH에 있어야 한다.
 
 ```bash
-PYTHONPATH=services/delta-sast uv run --no-project --with pyyaml --with anthropic \
+PYTHONPATH=services/delta-sast uv run --no-project --with pyyaml --with anthropic --with 'claude-agent-sdk>=0.2.176,<0.3' \
   python -m delta_sast scan <소스 경로> --out result.sarif --run-id run-42 --commit abc1234
 ```
 
@@ -26,7 +26,7 @@ PYTHONPATH=services/delta-sast uv run --no-project --with pyyaml --with anthropi
 | `--payload-mode` | `ai` | `preset`이면 페이로드 틀을 비우고 DAST 기본 틀을 쓴다 |
 | `--no-llm` | 끔 | 규칙·캐시까지만. LLM 대기 경로는 `uncertain`으로 남는다 |
 
-`ANTHROPIC_API_KEY`가 없으면 LLM 없이 진행한다. 모델은 `SAST_LLM_MODEL`(기본 `claude-sonnet-5-5`).
+LLM 백엔드는 `SAST_LLM_BACKEND`로 고른다. `claude-code`(기본)는 이 머신의 Claude Code 로그인을 쓰고(DAST와 같은 방식, 도구·설정 모두 차단), `api`는 `ANTHROPIC_API_KEY`를 쓰고, `off`는 LLM 없이 규칙·캐시까지만 판정한다. 서버에 올릴 때는 `api`로 바꾼다. 모델은 `SAST_LLM_MODEL`(기본 `claude-sonnet-5-5`).
 
 ## HTTP 서버 (관리 에이전트용)
 
@@ -51,7 +51,9 @@ DELTA_SAST_TOKEN=<토큰> SAST_LOCAL_ROOTS=<허용 로컬 경로> \
 | `DELTA_SAST_STATE` | `var/sast` | 상태·SARIF·캐시 폴더 |
 | `SAST_REPO_PREFIXES` | `https://github.com/2026-sbh-delta/` | 허용할 원격 저장소 접두어(쉼표 구분) |
 | `SAST_LOCAL_ROOTS` | (비움 = 로컬 거절) | 허용할 로컬 경로 루트 |
-| `ANTHROPIC_API_KEY`, `SAST_LLM_MODEL` | | LLM 판단. 키가 없으면 규칙·캐시까지만 |
+| `SAST_LLM_BACKEND` | `claude-code` | `claude-code` \| `api` \| `off` |
+| `ANTHROPIC_API_KEY` | | `api` 백엔드일 때 |
+| `SAST_LLM_MODEL` | `claude-sonnet-5-5` | 판단 모델 |
 
 ## DAST가 읽는 필드
 

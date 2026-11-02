@@ -188,7 +188,7 @@ LLM 판정과 DAST 결과가 어긋나면 캐시하지 않고 `불확실`로 남
 | 대상 언어·프레임워크 | Python(Flask)부터. DAST 샘플과 같다 | 결정 |
 | 취약점 범위(11/7까지) | 저장형·반사형 XSS, SQLi, 명령 주입, 하드코딩 비밀값 | 결정 |
 | 엔진 | Opengrep(LGPL 2.1) + 자체 AST | 결정. Opengrep 1.33.1로 확인 |
-| LLM | delta-ai와 같은 공급자·모델. 기본 `claude-sonnet-5-5`, `SAST_LLM_MODEL`로 바꾼다 | 결정 |
+| LLM | delta-ai·DAST와 같은 모델. 기본 `claude-sonnet-5-5`, `SAST_LLM_MODEL`로 바꾼다. 테스트 단계는 Claude Code 로그인(`SAST_LLM_BACKEND=claude-code`, DAST와 같은 방식), 서버에 올릴 때 API 키(`api`)로 바꾼다 | 결정(2026-11-03) |
 | SAST 후보가 없을 때 DAST | 기본은 실행. 시간이 부족하면 건너뛰는 옵션을 둔다 | 결정(2026-11-02) |
 | 규칙 캐시 저장소 | JSON 파일(프로세스 1개). 다중 실행은 이후 | 제안 |
 
@@ -232,6 +232,7 @@ LLM 판정과 DAST 결과가 어긋나면 캐시하지 않고 `불확실`로 남
   - DAST 결과 학습: LLM이 판정한 결과에 REPRODUCED를 보내면 `ineffective`로 굳고, 다음 점검에서 같은 경로가 `cache`로 판정되며 LLM을 다시 부르지 않는다. 규칙으로 판정된 결과는 `skipped`.
   - 경로 ID: 같은 함수에서 같은 입력이 싱크 두 곳에 닿아도 겹치지 않는다(함수 안 싱크 순서 포함). 패치로 `escape`를 넣으면 같은 ID가 fail → pass로 바뀐다.
   - 로컬 커밋 지정 시 git archive로 그 커밋을 풀어 점검한다.
-- 실제 Claude API 호출은 아직 검증하지 않았다(실행 환경에 API 키 없음).
+- 2026-11-03, Claude Code 로그인 백엔드로 실제 LLM 판단 실행(`python -m delta_sast scan <기타 예제>`): 직접 만든 필터 `clean()` 경로 1건을 `vulnerable`로 판정. 근거 줄 `shop/filters.py:6`, `shop/app.py:27`(경로 안), 페이로드 틀 `img_onerror`. 판단 9.5초, 전체 11.7초. 같은 캐시로 다시 실행하면 LLM 호출 0회, SARIF 결과 동일.
+- API 키 백엔드(`api`)는 아직 실제로 호출하지 않았다.
 - 게시판 예제의 `path.post_id` → 댓글 폼 `action` URL 후보는 게시글이 없으면 404로 끝나 실제로는 재현되지 않는 경로다. CFG가 없어 SAST는 후보로 내고, DAST 재현 실패로 걸러지는 것을 기대한다.
 

@@ -188,6 +188,59 @@ class ClaudeClient:
         return json.loads(text)
 
 
+class ClaudeCodeClient:
+    """Claude Code 로그인으로 호출한다(API 키 없이 테스트할 때). DAST와 같은 방식으로 도구·설정을 모두 막는다."""
+
+    def __init__(self, model: str = DEFAULT_MODEL, timeout: float = 90.0):
+        try:
+            import claude_agent_sdk  # noqa: F401
+        except ImportError as exc:
+            raise LlmUnavailable("claude-agent-sdk가 설치되지 않았다") from exc
+        if not re.fullmatch(r"[A-Za-z0-9._:-]{1,120}", model):
+            raise LlmUnavailable("SAST_LLM_MODEL 형식이 잘못됐다")
+        self.model = model
+        self.timeout = timeout
+
+    async def ask(self, system: str, user: str, schema: dict) -> dict:
+        import tempfile
+
+        from claude_agent_sdk import ClaudeAgentOptions, PermissionResultDeny, ResultMessage, query
+
+        async def deny_tool(*_args):
+            return PermissionResultDeny(message="SAST 판단에서는 도구를 쓰지 않는다")
+
+        with tempfile.TemporaryDirectory(prefix="sast-judge-") as directory:
+            options = ClaudeAgentOptions(
+                model=self.model, tools=[], allowed_tools=[],
+                disallowed_tools=["Bash", "Read", "Write", "Edit", "Glob", "Grep", "WebFetch", "WebSearch",
+                                  "Agent", "Task", "Skill"],
+                setting_sources=[], skills=[], plugins=[], mcp_servers={}, strict_mcp_config=True,
+                can_use_tool=deny_tool, cwd=directory, max_turns=3, max_budget_usd=0.30,
+                extra_args={"no-session-persistence": None}, stderr=lambda _line: None, debug_stderr=None,
+                output_format={"type": "json_schema", "schema": schema}, system_prompt=system,
+            )
+            result = None
+            async with asyncio.timeout(self.timeout):
+                async for message in query(prompt=user, options=options):
+                    if isinstance(message, ResultMessage):
+                        result = message
+        if result is None or result.is_error or result.subtype != "success" or result.structured_output is None:
+            raise ValueError("Claude Code 응답을 받지 못했다")
+        value = result.structured_output
+        return json.loads(value) if isinstance(value, str) else value
+
+
+def client_from_env() -> LlmClient | None:
+    """SAST_LLM_BACKEND: claude-code(기본, 로그인 사용) | api(ANTHROPIC_API_KEY) | off."""
+    backend = os.environ.get("SAST_LLM_BACKEND", "claude-code")
+    if backend == "off":
+        return None
+    try:
+        return ClaudeClient() if backend == "api" else ClaudeCodeClient()
+    except LlmUnavailable:
+        return None
+
+
 class FakeClient:
     """테스트용. 필터 이름 → 응답(dict 또는 예외)."""
 
