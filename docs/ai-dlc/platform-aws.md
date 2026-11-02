@@ -62,7 +62,8 @@ NAT를 처음 `t4g.nano`로 만들었지만 초기 패키지 설치가 메모리
 - `platform-release.yml`: 테스트 후 ARM64 이미지·ECR·SSM 배포, 기존 SSM 비밀값·PostgreSQL digest 유지.
 - 인증은 OIDC 임시 역할을 전제로 한다. 터미널의 세션 키를 GitHub에 복사하지 않는다.
 - `actionlint` 통과, `python3 -m unittest discover -s platform/deploy/tests -v` 8개 통과. 잘못된 계정·다른 커밋 Plan 거부와 CI의 비밀값 생성·조회 금지를 확인했다. 배포 Python lint·format 통과.
-- **GitHub OIDC 역할·Environment 연결, 원격 워크플로 실행은 미실행**이다. 설정 방법과 권한 범위는 [GitHub 배포 안내](../../platform/deploy/GITHUB.md)에 기록했다.
-- 이번 변경은 커밋·푸시하지 않았다. 사용자에게 Conventional Commit 메시지를 먼저 제시한다.
+- PR 테스트 워크플로는 원격 실행을 시작했다. **GitHub OIDC 역할·Environment 연결, GitHub를 통한 실제 인프라·앱 배포는 미실행**이다. 설정 방법과 권한 범위는 [GitHub 배포 안내](../../platform/deploy/GITHUB.md)에 기록했다.
+- 2026-11-03 Conventional Commit 메시지를 제시하고 사용자 `commit and open PR` 지시로 구현을 `5390c63`에 커밋했다. `git push -u origin feat/platform` 성공 후 `gh pr create`로 [PR #7](https://github.com/2026-sbh-delta/delta-network-gateway/pull/7)을 열었다.
+- GitHub PR 검사 실행은 [41479405704](https://github.com/2026-sbh-delta/delta-network-gateway/actions/runs/41479405704)에서 시작됐다. 이 기록은 시작 확인이며 최종 성공 여부는 PR Checks를 따른다.
 
 [인프라 입력·출력](../../platform/deploy/terraform/README.md)

@@ -5,7 +5,7 @@
 - 브랜치: `feat/platform`
 - [구현 범위·검증 기록](../docs/ai-dlc/platform-u1.md)
 - [전체 방향과 후속 단위](../docs/ai-dlc/platform.md) · [한국어 구성 설명](docs/overview.ko.html)
-- AWS 배포 완료: https://d3udcz0zch0on.cloudfront.net · [실제 검증](../docs/ai-dlc/platform-aws.md). GitHub 워크플로는 준비했으며 [OIDC·Environment 연결](deploy/GITHUB.md)과 푸시·원격 실행 전이다.
+- AWS 배포 완료: https://d3udcz0zch0on.cloudfront.net · [실제 검증](../docs/ai-dlc/platform-aws.md). GitHub 워크플로는 [PR #7](https://github.com/2026-sbh-delta/delta-network-gateway/pull/7)에 게시했다. [OIDC·Environment 연결](deploy/GITHUB.md)과 GitHub를 통한 실제 AWS 배포는 아직 수행하지 않았다.
 
 ## 로컬 실행
 

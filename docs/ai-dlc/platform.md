@@ -9,7 +9,7 @@
 - 로그인은 사용자 정정에 따라 고정 ID·비밀번호 한 쌍과 공통 작업 공간으로 시작한다. U1에 회원가입·계정 관리·소셜 로그인·개인별 권한은 없다.
 - 문서는 한국어로 작성하고 코드 주석은 필요하면 영어로 작성한다.
 - 구현 전 작업 범위를 공유한다. 추가 지시 `Dont forget to tell me before you commit.`에 따라 커밋 전에 변경 내용·검증 결과를 알린다. 푸시는 별도 지시 범위다.
-- U1 기능·로컬 검증·AWS 최초 배포를 완료했다. GitHub CI 워크플로는 로컬 준비·검증 상태이며 OIDC 연결·푸시·원격 실행 전이다.
+- U1 기능·로컬 검증·AWS 최초 배포를 완료했다. GitHub 워크플로를 PR #7에 게시하고 원격 테스트 실행을 시작했다. OIDC 연결·GitHub를 통한 실제 AWS 배포는 미실행이다.
 
 ## Ideation
 
@@ -90,7 +90,7 @@
 
 ## Operation
 
-사용자 지시로 AWS 사설 EC2·CloudFront 기반에 배포했다. 실제 HTTPS·재시작·백업 복원과 최종 No changes를 확인했다. [AWS 결과](platform-aws.md)와 [GitHub 전환 안내](../../platform/deploy/GITHUB.md)를 따른다. GitHub OIDC 역할·Environment 연결과 Actions 실행은 아직 하지 않았다. 고객 앱 배포 U4와 플랫폼 자체 배포를 구분한다.
+사용자 지시로 AWS 사설 EC2·CloudFront 기반에 배포했다. 실제 HTTPS·재시작·백업 복원과 최종 No changes를 확인했다. [AWS 결과](platform-aws.md)와 [GitHub 전환 안내](../../platform/deploy/GITHUB.md)를 따른다. PR 테스트 Actions 실행은 시작했으며 최종 결과는 PR Checks를 따른다. GitHub OIDC 역할·Environment 연결과 실제 AWS 배포 Actions 실행은 아직 하지 않았다. 고객 앱 배포 U4와 플랫폼 자체 배포를 구분한다.
 
 ## 검증 기록
 
@@ -109,5 +109,6 @@
 
 - U0 변경 내용·검증 결과와 Conventional Commit 메시지를 공유한 뒤 `Go ahead.`로 로컬 커밋 승인을 받았다.
 - U0 커밋: `0567762` — `chore(platform): scaffold isolated platform workspace`.
-- U1 구현·AWS 배포·GitHub 워크플로 변경은 아직 커밋하지 않았다. 원격 푸시는 미실행이다.
+- 2026-11-03 사용자 `commit and open PR` 지시로 U1 구현·AWS 배포·GitHub 워크플로를 `5390c63` (`feat(platform): add developer workspace and AWS deployment workflows`)으로 커밋하고 `git push -u origin feat/platform` 성공을 확인했다.
+- `gh pr create --base main --head feat/platform`으로 [PR #7](https://github.com/2026-sbh-delta/delta-network-gateway/pull/7)을 생성했다. GitHub 조회 결과 OPEN, MERGEABLE이며 PR 테스트 실행이 시작됐다. 병합은 실행하지 않았다.
 - 후속 커밋 전에도 변경 내용과 검증 결과를 사용자에게 알린다.

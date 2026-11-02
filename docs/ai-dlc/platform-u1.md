@@ -3,7 +3,7 @@
 ## 상태와 범위
 
 - 작성일: 2026-11-02 (Asia/Seoul), 브랜치 `feat/platform`.
-- 사용자의 `Proceed.`에 따라 U1의 API·DB·로그인·검증 계획을 구체화했다. 사용자의 `You can start implementation.`으로 U1 구현을 승인받았다. API·Worker·웹 구현과 로컬 검증을 수행했고, 후속 AWS 배포 지시로 업무 계정 616723161368의 서울 리전에 배포했다. HTTPS·재시작·백업 복원·브라우저 결과와 CI 준비 상태는 [AWS 기록](platform-aws.md)을 따른다. 이번 변경의 커밋·푸시는 미실행이다.
+- 사용자의 `Proceed.`에 따라 U1의 API·DB·로그인·검증 계획을 구체화했다. 사용자의 `You can start implementation.`으로 U1 구현을 승인받았다. API·Worker·웹 구현과 로컬 검증을 수행했고, 후속 AWS 배포 지시로 업무 계정 616723161368의 서울 리전에 배포했다. HTTPS·재시작·백업 복원·브라우저 결과와 CI 준비 상태는 [AWS 기록](platform-aws.md)을 따른다. 2026-11-03 구현 커밋 `5390c63`을 푸시하고 [PR #7](https://github.com/2026-sbh-delta/delta-network-gateway/pull/7)을 열었다.
 
 ## 설계와 구현 범위
 

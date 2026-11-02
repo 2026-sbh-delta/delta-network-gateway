@@ -4,7 +4,7 @@
 
 [인프라 구성·입출력](terraform/README.md) · [현재 배포·검증 기록](../../docs/ai-dlc/platform-aws.md)
 
-팀의 정상 변경 경로는 [GitHub Actions 배포](GITHUB.md)다. 아래 로컬 명령은 최초 기반 준비·복구용으로 남긴다. 현재 최초 AWS 배포는 완료됐고, GitHub 워크플로는 로컬 준비 상태다. OIDC 역할·Environment 연결과 푸시·실제 Actions 실행은 아직 수행하지 않았다.
+팀의 정상 변경 경로는 [GitHub Actions 배포](GITHUB.md)다. 아래 로컬 명령은 최초 기반 준비·복구용으로 남긴다. 현재 최초 AWS 배포는 완료됐고, GitHub 워크플로는 PR #7에 게시했다. PR 검사와 달리 OIDC 역할·Environment 연결과 GitHub를 통한 실제 AWS 배포는 아직 수행하지 않았다.
 
 ## 배포 순서
 

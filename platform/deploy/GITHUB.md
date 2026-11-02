@@ -2,7 +2,7 @@
 
 인프라는 **GitHub Actions → OIDC 임시 인증 → Terraform → AWS**, 앱은 **테스트 → ARM64 이미지 → ECR → SSM → 사설 VM**으로 배포한다. 웹 서버가 자기 인프라의 Terraform을 실행하지 않는다.
 
-현재 AWS 최초 배포는 로컬에서 수행했다. 워크플로와 로컬 검증은 준비했지만 **GitHub에 아직 푸시하지 않았고 OIDC 역할·Environment도 연결하지 않았다. GitHub 실행 성공으로 표시하지 않는다.**
+현재 AWS 최초 배포는 로컬에서 수행했다. 워크플로를 [PR #7](https://github.com/2026-sbh-delta/delta-network-gateway/pull/7)에 게시하고 원격 테스트 실행을 시작했다. 최종 테스트 결과는 PR Checks를 따른다. **OIDC 역할·Environment는 아직 연결하지 않았으며 GitHub를 통한 AWS 배포 성공으로 표시하지 않는다.**
 
 ## 세 가지 실행
 
