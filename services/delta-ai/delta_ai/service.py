@@ -1,4 +1,4 @@
-"""assess() — 세 호출(환경 차이·피드백·배포 단계)이 같은 순서를 따른다: 규칙 → 근거 → LLM → 코드 판정."""
+"""assess() — 네 호출(환경 차이·피드백·배포 단계·런타임 보안)이 같은 순서를 따른다: 규칙 → 근거 → LLM → 코드 판정."""
 
 from __future__ import annotations
 
@@ -22,7 +22,8 @@ from delta_ai.feedback import candidate_id, detector_error, regression_check, re
 from delta_ai.judge import PROMPT_VERSION, JudgeOutcome, judge
 from delta_ai.knowledge import Chunk, load_chunks
 from delta_ai.llm import LlmClient
-from delta_ai.parity import check_parity, parity_checks
+from delta_ai.parity import check_parity, evaluated_network_rules, parity_checks
+from delta_ai.runtime import check_runtime, evaluated_runtime_rules, runtime_checks
 from delta_ai.store import RuleStore
 from delta_ai.verdict import decide
 
@@ -58,15 +59,21 @@ async def _assess_checks(req: AssessmentRequest, llm: LlmClient | None, started:
     if req.kind == "deployment_gate":
         outcome = check_deployment(req.evidence.deployment)
         rebuild_checks = deployment_checks
+    elif req.kind == "runtime_security":
+        outcome = check_runtime(req.evidence)
+        evaluated = evaluated_runtime_rules(req.evidence)
+        rebuild_checks = lambda findings: runtime_checks(findings, evaluated)
     else:
-        outcome = check_parity(req.source_env, req.target_env, req.evidence.attack_results)
-        rebuild_checks = parity_checks
+        outcome = check_parity(req.source_env, req.target_env, req.evidence.attack_results, req.evidence.reachability)
+        evaluated = evaluated_network_rules(req.target_env, req.evidence.reachability)
+        rebuild_checks = lambda findings: parity_checks(findings, evaluated)
     docs = _retrieve(outcome.findings)
     judged = await judge(req.kind, _with_doc_flags(outcome.findings, docs), docs, llm)
     verdict, reasons = decide(judged.findings, judged.reasons)
     return AssessmentResult(assessment_id=req.assessment_id, kind=req.kind, verdict=verdict, reasons=reasons,
                             findings=judged.findings, checks=rebuild_checks(judged.findings),
-                            remediation=_remediation(judged.findings), meta=_meta(judged, started))
+                            verified_controls=outcome.verified, posture=outcome.posture, remediation=_remediation(judged.findings),
+                            meta=_meta(judged, started))
 
 
 def _candidate(item, source: str, literals: tuple[str, ...]) -> RuleCandidate:

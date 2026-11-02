@@ -203,6 +203,129 @@
       "title": "Meta",
       "type": "object"
     },
+    "PostureLayer": {
+      "additionalProperties": false,
+      "properties": {
+        "layer": {
+          "enum": [
+            "network",
+            "node",
+            "cluster"
+          ],
+          "title": "Layer",
+          "type": "string"
+        },
+        "state": {
+          "enum": [
+            "isolated",
+            "open",
+            "unknown"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "basis": {
+          "title": "Basis",
+          "type": "string"
+        }
+      },
+      "required": [
+        "layer",
+        "state",
+        "basis"
+      ],
+      "title": "PostureLayer",
+      "type": "object"
+    },
+    "PostureProposal": {
+      "additionalProperties": false,
+      "description": "적용은 사람이 정한다. manifest 는 검토용 초안이다.",
+      "properties": {
+        "layer": {
+          "enum": [
+            "network",
+            "node",
+            "cluster"
+          ],
+          "title": "Layer",
+          "type": "string"
+        },
+        "action": {
+          "title": "Action",
+          "type": "string"
+        },
+        "manifest": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Manifest"
+        }
+      },
+      "required": [
+        "layer",
+        "action"
+      ],
+      "title": "PostureProposal",
+      "type": "object"
+    },
+    "PostureResult": {
+      "additionalProperties": false,
+      "properties": {
+        "overall": {
+          "enum": [
+            "isolated",
+            "partial",
+            "open",
+            "unknown"
+          ],
+          "title": "Overall",
+          "type": "string"
+        },
+        "upstream_firewall": {
+          "anyOf": [
+            {
+              "enum": [
+                "managed",
+                "unmanaged"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Upstream Firewall"
+        },
+        "layers": {
+          "items": {
+            "$ref": "#/$defs/PostureLayer"
+          },
+          "title": "Layers",
+          "type": "array"
+        },
+        "proposals": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/PostureProposal"
+          },
+          "title": "Proposals",
+          "type": "array"
+        }
+      },
+      "required": [
+        "overall",
+        "upstream_firewall",
+        "layers"
+      ],
+      "title": "PostureResult",
+      "type": "object"
+    },
     "Regression": {
       "additionalProperties": false,
       "properties": {
@@ -351,6 +474,48 @@
       "title": "SpecOp",
       "type": "object"
     },
+    "VerifiedControl": {
+      "additionalProperties": false,
+      "description": "막혔다고 실측된 통제. finding 은 문제만 담으므로 보호 근거는 따로 남긴다.",
+      "properties": {
+        "rule_id": {
+          "title": "Rule Id",
+          "type": "string"
+        },
+        "environment": {
+          "anyOf": [
+            {
+              "enum": [
+                "aws",
+                "gcp",
+                "onprem"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Environment"
+        },
+        "subject": {
+          "title": "Subject",
+          "type": "string"
+        },
+        "observed": {
+          "title": "Observed",
+          "type": "string"
+        }
+      },
+      "required": [
+        "rule_id",
+        "subject",
+        "observed"
+      ],
+      "title": "VerifiedControl",
+      "type": "object"
+    },
     "WafRule": {
       "additionalProperties": false,
       "properties": {
@@ -391,7 +556,8 @@
       "enum": [
         "migration_parity",
         "feedback_ingest",
-        "deployment_gate"
+        "deployment_gate",
+        "runtime_security"
       ],
       "title": "Kind",
       "type": "string"
@@ -428,6 +594,25 @@
       },
       "title": "Checks",
       "type": "array"
+    },
+    "verified_controls": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/VerifiedControl"
+      },
+      "title": "Verified Controls",
+      "type": "array"
+    },
+    "posture": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/PostureResult"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
     },
     "remediation": {
       "$ref": "#/$defs/Remediation",
