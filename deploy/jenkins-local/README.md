@@ -16,7 +16,7 @@ Jenkins 파이프라인이 판단 서비스(`services/delta-ai`)를 단계마다
 |---|---|---|
 | Jenkins | http://127.0.0.1:18080 | `admin`, 비밀번호는 `.env` |
 | 서비스 | http://127.0.0.1:18081/api/hello | HAProxy, `X-App-Version` 헤더로 버전 확인 |
-| delta-ai | 외부 포트 없음 | Compose 내부망에서만 호출 |
+| delta-ai | http://127.0.0.1:18090 | 시연 콘솔·수집기 호출용, 토큰 필요 |
 
 ```bash
 ./down.sh            # 멈춘다. 빌드 기록은 남는다
@@ -37,7 +37,7 @@ docker compose up -d --wait delta-ai
 
 ## 시나리오
 
-Jenkins 의 `SCENARIO` 파라미터로 고른다. Job 을 처음 올린 뒤에는 Jenkins 가 파라미터를 아직 모르므로 첫 빌드 한 번은 기본값(`good`)으로 돌아간다.
+Jenkins 의 `SCENARIO` 파라미터로 고른다.
 
 | 값 | 넣는 문제 | 기대 결과 |
 |---|---|---|

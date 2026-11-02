@@ -24,6 +24,9 @@ jobs:
   - script: >
       pipelineJob('delta-demo-deploy') {
         description('스캔 → 사람 확인 → 카나리 → 승격 또는 자동 롤백')
+        parameters {
+          choiceParam('SCENARIO', ['good', 'vulnerable-code', 'failing-test', 'bad-canary', 'gate-down', 'low-traffic'], '시험할 상황')
+        }
         definition {
           cps {
             script(new File('/pipelines/pipeline/Jenkinsfile').text)

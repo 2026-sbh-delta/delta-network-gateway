@@ -6,6 +6,8 @@ def scripts() { return '/pipelines/pipeline/scripts' }
 
 def canaryLogLines() { return 50 }
 
+def canaryHoldSeconds() { return 8 }
+
 def computeReleaseId() {
     return sh(returnStdout: true, script: "python3 ${scripts()}/releases.py id --root app --extra FAIL_RATE=${env.CANARY_FAIL_RATE}").trim()
 }
@@ -61,8 +63,10 @@ def reviewSast() {
 def promoteStep(int percent) {
     if (env.STABLE_SLOT) {
         setSplit(env.STABLE_SLOT, env.CANARY_SLOT, percent)
+        // 측정은 1초 안에 끝난다. 시연 화면에서 비율이 보이도록 잠시 유지한다
+        sleep(time: canaryHoldSeconds(), unit: 'SECONDS')
     }
-    int status = sh(returnStatus: true, script: "#!/bin/bash\n${scripts()}/run_logged.sh traffic-${percent} python3 ${scripts()}/traffic.py --url http://haproxy/api/hello --version ${BUILD_NUMBER} --requests ${env.TRAFFIC_REQUESTS} --out metrics-${percent}.json")
+    int status = sh(returnStatus: true, script: "#!/bin/bash\n${scripts()}/run_logged.sh traffic-${percent} python3 ${scripts()}/traffic.py --url http://haproxy/api/hello --version ${BUILD_NUMBER} --requests ${env.TRAFFIC_REQUESTS} --max-p95-ms ${env.MAX_P95_MS} --out metrics-${percent}.json")
     env.CURRENT_STAGE = "traffic-${percent}"
     if (status == 3) {
         rollback()
@@ -102,6 +106,8 @@ pipeline {
         CANARY_FAIL_RATE = "${params.SCENARIO == 'bad-canary' ? '0.5' : '0'}"
         // 10% 단계의 표본이 판단 최소치(20건)에 못 미치게 해 사람 확인 경로를 시험한다
         TRAFFIC_REQUESTS = "${params.SCENARIO == 'low-traffic' ? '100' : '400'}"
+        // 노트북 메모리 압박에서 정상 빌드의 p95 가 544ms 까지 나와 되돌려졌다(#76). 서버 기준이 아니라 시험대 값이다
+        MAX_P95_MS = '2000'
         DOCKER_BUILDKIT = '0'
         RELEASE_STATE = '/var/jenkins_home/delta-state/failed-releases.json'
     }

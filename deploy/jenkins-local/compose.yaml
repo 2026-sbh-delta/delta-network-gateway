@@ -28,6 +28,8 @@ services:
       DELTA_API_TOKEN: ${DELTA_API_TOKEN:?up.sh 로 실행한다}
       DELTA_LLM: ${DELTA_LLM:-fake}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    ports:
+      - "127.0.0.1:18090:8090"  # 시연 콘솔·온프레미스 수집기가 호출한다
     volumes:
       - delta-ai-var:/app/var
 
