@@ -1,6 +1,6 @@
 # delta-ai ADR 목록
 
-기술 스택과 설계 결정을 팀 ADR 템플릿 형식으로 정리했다. 모두 **상태: 제안**이며 팀 합의 전이다. Notion에 올릴 때 팀 번호로 바꾼다. 구조도, 워크플로, 데이터 계약은 [architecture.md](../architecture.md)에 있다.
+기술 스택과 설계 결정을 팀 ADR 템플릿 형식으로 정리했다. 모두 **상태: 제안**이며 팀 합의 전이다. Notion에 올릴 때 팀 번호로 바꾼다. 26번 이후는 Notion 초안과 같은 번호를 쓴다. 구조도, 워크플로, 데이터 계약은 [architecture.md](../architecture.md)에 있다.
 
 ## MVP 구조
 
@@ -50,7 +50,16 @@ FastAPI ─ Bearer 토큰 인증
 | [24](ADR-AI-24-progress-graph.md) | 진행 그래프 | 미구현 | **팀 결정: 단계 이벤트와 화면 담당** |
 | [25](ADR-AI-25-jenkins-gate.md) | 배포 파이프라인 연결 | 로컬 시험(Jenkins) | **단계별 게이트 권고, 팀 결정: Jenkins 와 AWS 구성도** |
 | [26](ADR-AI-26-onprem-runtime.md) | 온프레미스 증거 연동 | `runtime_security`와 수집기 구현 | **팀 결정: 데모 범위 포함 여부** |
-| [27](ADR-AI-27-dast-verdict.md) | DAST 결과 판정 | `dast_verification` 과 시연 콘솔 구현 | **팀 결정: 구동 주체와 패치 흐름** |
+| [27](ADR-AI-27-dast-verdict.md) | DAST 역할·판정, 구동 주체 | `dast_verification` 과 시연 콘솔 구현 | **팀 결정: 구동 주체(Jenkins, 관리 에이전트)와 패치 흐름** |
+| [28](ADR-AI-28-fix-guidance-review.md) | 보안 패치 경계 | 미구현, 기준 공유·증거 판정 제안 | **준우 님과 합의 필요** |
+| [29](ADR-AI-29-deployment-decision-log.md) | 배포 결정 경위 | Jenkins 구동·delta-ai 판정 구조 | **권고, 팀 결정** |
+| [30](ADR-AI-30-jenkins-argo.md) | Jenkins + Argo CD | Jenkins 단독 | **권고, 팀 결정: 고객 앱 인프라** |
+| [31](ADR-AI-31-demo-time-budget.md) | 시연 구성 | 사전 실행 + 카나리 롤백 라이브 | **권고, 시간 미측정** |
+| [32](ADR-AI-32-onprem-environment.md) | 온프레미스 시험 환경 | 홈 서버 전용 VM·격리 VLAN | **팀 결정: 본선 범위, VPN 적용** |
+| [33](ADR-AI-33-network-posture.md) | 환경별 격리 구분 | 실측 3계층 태세 구현 | **팀 결정: 데모 범위, 호출 주체** |
+| [34](ADR-AI-34-onprem-waf-priority.md) | 온프레미스 WAF 순서 | 태세 구분 먼저, WAF 미착수 | **앞단 결정 후 재검토** |
+| [35](ADR-AI-35-jenkins-main-alignment.md) | main 맞추기 | 새 브랜치 병합, SAST 사람 확인 | 로컬 구현, 리뷰 전 |
+| [36](ADR-AI-36-gate-preflight.md) | 판단 서비스 사전 확인 | 토큰 조회로 트래픽 전 중단 | 로컬 구현, 리뷰 전 |
 
 ## 오늘 회의에서 정할 것
 

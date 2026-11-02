@@ -50,7 +50,7 @@
 
 - 긍정: 실제 VM에서 수정 전 방화벽 룰은 `PAR-NET-003` 실패, 현재 룰은 통과로 갈렸다. kube-bench FAIL 8건 중 7건이 근거와 함께 오탐으로 정리됐다. NetworkPolicy 적용 전후로 태세가 `partial` 에서 `isolated` 로 바뀌었다.
 - 부정: 로그의 공격 판별은 시연용 문자열 패턴이라 정상 요청을 잘못 잡거나 공격을 놓칠 수 있다. 방화벽 파서는 pf(OPNsense)만 지원한다. 호스트 방화벽은 iptables 기본 정책만 읽어 nftables 전용 룰은 허용으로 보인다. 바깥 지점 시험은 호출자가 고른 한 지점의 결과라 다른 경로의 노출까지 보장하지 않는다.
-- 후속 작업: 팀 결정, 호출 주기와 호출 주체 결정, `deployment_gate` 작업과 계약 병합.
+- 후속 작업: 팀 결정, 호출 주기와 호출 주체 결정. `deployment_gate` 작업과는 `feat/demo-integration` 에서 합쳤고, 시연 콘솔은 저장된 수집본을 읽어 판단한다.
 
 ## Affected Components
 
