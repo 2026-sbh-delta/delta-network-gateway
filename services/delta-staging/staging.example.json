@@ -1,0 +1,12 @@
+{
+  "cloud": "aws",
+  "region": "ap-northeast-2",
+  "account_id": "444455556666",
+  "cluster": "delta-lab-staging",
+  "service": "delta-lab-staging",
+  "task_family": "delta-lab-staging",
+  "container_name": "app",
+  "target_group_arn": "arn:aws:elasticloadbalancing:ap-northeast-2:444455556666:targetgroup/stg-example/0000000000000000",
+  "url": "http://internal-delta-lab-staging-alb-0000000000.ap-northeast-2.elb.amazonaws.com",
+  "allowed_image_prefixes": ["444455556666.dkr.ecr.ap-northeast-2.amazonaws.com/"]
+}
