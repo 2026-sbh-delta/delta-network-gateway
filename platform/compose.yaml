@@ -1,0 +1,19 @@
+name: delta-platform
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: platform
+      POSTGRES_DB: platform
+      POSTGRES_PASSWORD: ${PLATFORM_DB_PASSWORD:?PLATFORM_DB_PASSWORD를 설정하세요}
+    ports:
+      - "127.0.0.1:55432:5432"
+    volumes:
+      - platform-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U platform -d platform"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+volumes:
+  platform-db:

@@ -2,7 +2,10 @@
 
 ## 현재 상태
 
-- 기준일: 2026-11-01 (Asia/Seoul)
+- 기준일: 2026-11-03 (Asia/Seoul)
+- 플랫폼 CI 수정(2026-11-03): PR #7의 앱 테스트는 통과했고 Terraform은 Linux용 Provider 검증값 누락으로 실패했다. 깨끗한 Linux 환경에서 재현한 뒤 lock 파일에 해당 검증값을 추가해 `init`·`validate`·mock 3개 통과를 확인했다. 원격 최종 상태는 PR Checks를 따른다. [원인·검증 기록](ai-dlc/platform-aws.md#ci의-linux-검증값-수정)
+- 플랫폼 U1(2026-11-03): 사용자 구현 승인 후 고정 로그인·공개 GitHub 소스 확인·PostgreSQL 상태/이력·API/Worker·웹을 구현했다. 실제 PostgreSQL 통합 56개, 실제 GitHub 1개, 브라우저 3개를 통과했고 ARM64 이미지의 실제 검사·재시작 후 상태 보존도 확인했다. 추가 지시에 따라 AWS 업무 계정 616723161368/서울에 별도 기반을 배포했다. HTTPS 로그인·실제 GitHub 확인·재시작·S3 백업의 임시 DB 복원·브라우저를 검증했고 최종 Plan은 No changes다. GitHub 워크플로 3개를 게시했고 PR 테스트 실행을 시작했다. AWS OIDC 연결·GitHub를 통한 실제 배포는 미실행이다. 구현 커밋 `5390c63`을 `feat/platform`에 푸시하고 [PR #7](https://github.com/2026-sbh-delta/delta-network-gateway/pull/7)을 열었다. 최종 GitHub 테스트 상태는 PR Checks를 따른다. [U1 기록](ai-dlc/platform-u1.md) · [AWS 배포](ai-dlc/platform-aws.md)
+- 플랫폼 작업 시작(2026-11-02): 로컬 `feat/platform` 브랜치와 전용 `platform/` 디렉터리를 준비했다. 웹, 백엔드 API/Worker, 계약, VM 배포 자동화, HTML 설명을 분리한다. 당시 U0는 구조·설계 문서 단계였고 기능 구현·테스트·배포는 수행하지 않았다. 현재 U1 상태는 위 항목을 따른다. 구조·링크·ignore 규칙 검증 후 사용자에게 Conventional Commit 메시지를 제시했고 로컬 커밋 승인을 받았다. U0 커밋은 `0567762`이며 이후 U1과 함께 PR #7에 게시했다. 후속 커밋도 사전에 알린다. [작업 영역](../platform/README.md) · [설계/진행 기록](ai-dlc/platform.md)
 - AI 판단 서비스 SAST 경로 제거(2026-11-02): `services/delta-ai/`에서 코드 보안 판단(`code_security`, SARIF 입력, 코드 패치)을 뺐다. SAST는 별도 서비스가 SARIF와 코드 흐름으로 다시 설계한다. 환경 차이 판단과 피드백 규칙 후보·승인 API는 유지하며, 승인 규칙을 적용할 코드 검사는 아직 없다. 같은 날 `.venv/bin/pytest -q` 66개 통과, `scripts/demo.py fake` 실행 완료.
 - SAST 점검 서비스(설계): 빠른 모드(파이프라인, Opengrep 위치 표시 + 자체 AST 경로 + 애매한 경로만 LLM)와 전체 LLM 검증 모드(파이프라인 밖)를 둘 다 두는 설계 초안을 작성했다(2026-11-02). 구현은 미착수다. [설계](ai-dlc/sast.md)를 따른다.
 - 스테이징 도구(설계·검증 기록): 관리 에이전트가 호출하는 파이프라인 스테이징 도구와 AWS 기반 모듈은 `feat/add-staging-tool` 브랜치에 있고 main에는 아직 병합하지 않았다. 2026-11-02 mock `terraform test` 11개와 도구 단위 테스트 29개 통과, Workload 계정 기본 VPC 대상 실제 Plan(25개 추가) 저장. Apply와 ECS 배포는 미실행이다. [설계/검증 기록](ai-dlc/staging-tool.md)을 따른다.
@@ -30,6 +33,10 @@
 
 ## 문서
 
+- [개발자용 플랫폼 설계·구현 단위](ai-dlc/platform.md)
+- [플랫폼 U1: 구현·검증 기록](ai-dlc/platform-u1.md)
+- [플랫폼 AWS 배포·운영 기록](ai-dlc/platform-aws.md)
+- [플랫폼 구성 설명 HTML](../platform/docs/overview.ko.html)
 - [SAST 점검 서비스 설계(빠른 모드·전체 모드)](ai-dlc/sast.md)
 - [파이프라인 스테이징 도구 설계/검증 상태](ai-dlc/staging-tool.md)
 - [CloudFront 웹의 중앙 ANF 허용/차단 시험](ai-dlc/cloudfront-anf-demo.md)
@@ -47,6 +54,8 @@
 - [GCP와 AWS VPN 연결/관제 검증](../terraform/gcp-server/RUNBOOK.md)
 
 ## 다음 작업
+
+플랫폼은 `feat/platform`의 `platform/`에서 별도로 진행한다. U1은 고정 로그인 → 서비스 등록 → 공개 GitHub 사전 검사 → 결과 조회까지 구현·로컬 검증했다. [AWS 배포](ai-dlc/platform-aws.md)와 HTTPS 운영 검증을 완료했다. 다음은 PR 검토와 GitHub OIDC·Environment 연결, 이후 U2 공개 소스 격리 빌드다. ECS 연동은 후속 단위에서 해당 도구의 실제 병합·실행 상태를 확인한 뒤 연결한다.
 
 CloudFront 두 버튼 웹의 실제 ANF 허용/차단 대조는 확인했다. 직접 EC2 Origin/Server IGW와 SG rule/임시 ALB ingress 정리와 실제 검증 JSON 게시를 마쳤고 네 root 최종 Plan은 No changes다. 남은 화면 검증은 UI 도구가 안정된 환경에서 차단 버튼 완료 화면/최종 검증 문구를 확인하는 것이다. 페이지 하단 검증 기록은 배포 당시 로그 대조 결과이며 개별 요청의 실시간 관제 판정은 아니다.
 
