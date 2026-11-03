@@ -61,3 +61,7 @@ terraform test
 비용은 앱/NAT EC2, EBS, NAT 공인 IPv4, CloudFront 전송·요청, S3·ECR 저장에서 발생한다. NAT 장애 시 GitHub 검사와 관리 통신이 실패할 수 있으나 CloudFront 수신 경로는 NAT를 거치지 않는다. DB 디스크·백업 보호를 임의로 해제하거나 전체 destroy를 일반 롤백으로 사용하지 않는다.
 
 [CloudFront VPC Origin 전제](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/private-content-vpc-origins.html)
+
+## Worker의 AWS 인증
+
+U2부터 API/Worker 관리 컨테이너가 VM 역할로 CodeBuild·ECR·빌드 로그를 호출한다. app VM만 IMDSv2 hop limit을 2로 설정해 Docker bridge에서 임시 자격 증명을 받는다. NAT VM은 1을 유지한다. 고객 Dockerfile은 이 VM에서 실행하지 않는다. 호출 권한은 [빌드 기반](../builds/README.md)의 전용 inline policy가 관리한다.

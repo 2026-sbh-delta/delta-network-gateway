@@ -40,7 +40,7 @@ test("로그인 → 등록 → 실제 DB·Worker 검사 → 새로고침 → 로
     page.getByText("소스 확인 완료", { exact: true }).first(),
   ).toBeVisible({ timeout: 15000 });
   await expect(
-    page.getByText("이미지 빌드·실행 검사·배포는 아직 수행하지 않았습니다.", {
+    page.getByText("소스 확인 성공은 실행 검사·배포 성공을 뜻하지 않습니다.", {
       exact: false,
     }),
   ).toBeVisible();
@@ -101,4 +101,62 @@ test("모바일 화면과 잘못된 로그인", async ({ page }, info) => {
       () => document.documentElement.scrollWidth <= window.innerWidth,
     ),
   ).toBe(true);
+});
+
+test("소스 커밋 빌드 → digest 보존 → 로그를 텍스트로 표시", async ({
+  page,
+}, info) => {
+  await login(page);
+  await register(page, "빌드 검증 서비스");
+  await expect(
+    page.getByRole("button", { name: "이 커밋 빌드" }),
+  ).toBeDisabled();
+  await page.getByRole("button", { name: "소스 확인", exact: true }).click();
+  await expect(page.getByRole("button", { name: "이 커밋 빌드" })).toBeEnabled({
+    timeout: 15000,
+  });
+  await page.getByRole("button", { name: "이 커밋 빌드" }).click();
+  await expect(page.getByText("빌드 완료", { exact: true })).toBeVisible({
+    timeout: 15000,
+  });
+  await expect(page.locator(".build-result")).toContainText("@sha256:");
+  await page.getByRole("button", { name: "빌드 로그 보기" }).click();
+  await expect(page.locator(".build-logs")).toContainText("<script>");
+  expect(
+    await page.evaluate(
+      () => (window as unknown as Record<string, unknown>).untrustedBuildLog,
+    ),
+  ).toBeUndefined();
+  await page.screenshot({
+    path: info.outputPath("build-result.png"),
+    fullPage: true,
+  });
+  await page.reload();
+  await page.getByRole("button", { name: /빌드 검증 서비스/ }).click();
+  await expect(page.locator(".build-result")).toContainText("@sha256:");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({
+    path: info.outputPath("build-mobile.png"),
+    fullPage: true,
+  });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+});
+
+test("빌드 실패는 이미지 성공으로 표시하지 않는다", async ({ page }) => {
+  await login(page);
+  await register(page, "빌드 실패 서비스");
+  await page.getByRole("button", { name: "소스 확인", exact: true }).click();
+  await expect(page.getByRole("button", { name: "이 커밋 빌드" })).toBeEnabled({
+    timeout: 15000,
+  });
+  await page.getByRole("button", { name: "이 커밋 빌드" }).click();
+  await expect(page.getByText("빌드 실패", { exact: true })).toBeVisible({
+    timeout: 15000,
+  });
+  await expect(page.getByText("build_failed", { exact: true })).toBeVisible();
+  await expect(page.locator(".build-result")).toHaveCount(0);
 });

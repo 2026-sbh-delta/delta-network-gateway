@@ -3,6 +3,9 @@ import signal
 import threading
 import time
 
+from botocore.exceptions import BotoCoreError, ClientError
+
+from delta_platform.adapters.builds import BuildError, CodeBuildRunner
 from delta_platform.adapters.github import GitHubReader, SourceError
 from delta_platform.config import Settings
 from delta_platform.core.auth import Auth
@@ -13,7 +16,7 @@ from delta_platform.core.store import Store
 logger = logging.getLogger("delta_platform.worker")
 
 
-def process_one(store, reader):
+def process_one(store, reader, builder=None):
     claim = store.claim()
     if claim is None:
         return False
@@ -37,10 +40,44 @@ def process_one(store, reader):
     beat = threading.Thread(target=heartbeat, daemon=True)
     beat.start()
     try:
-        result = reader.inspect(claim["input_snapshot"], claim["resolved_commit_sha"], progress)
+        if claim["kind"] == "image_build":
+            builder = builder or CodeBuildRunner(Settings())
+            result = builder.execute(claim, store, progress)
+        else:
+            result = reader.inspect(claim["input_snapshot"], claim["resolved_commit_sha"], progress)
         if lost.is_set():
             raise LeaseLost()
         store.finish(run_id, token, result=result)
+    except BuildError as exc:
+        try:
+            store.finish(run_id, token, error=exc.payload)
+        except LeaseLost:
+            logger.info("lease_lost run_id=%s", run_id)
+    except (BotoCoreError, ClientError) as exc:
+        if isinstance(exc, ClientError):
+            aws_code = exc.response.get("Error", {}).get("Code", "Unknown")
+        else:
+            aws_code = type(exc).__name__
+        # Return only a bounded provider error code, not upstream bodies/credentials.
+        denied = aws_code in {
+            "AccessDeniedException",
+            "AccessDenied",
+            "UnrecognizedClientException",
+            "NoCredentialsError",
+        }
+        try:
+            store.finish(
+                run_id,
+                token,
+                error={
+                    "code": "build_provider_error",
+                    "message": "빌드 실행기 연결에 실패했습니다. AWS 권한·연결 설정을 확인하세요.",
+                    "provider_code": aws_code[:80],
+                },
+                retry=not denied,
+            )
+        except LeaseLost:
+            logger.info("lease_lost run_id=%s", run_id)
     except SourceError as exc:
         try:
             store.finish(run_id, token, error=exc.payload, retry=exc.retry)

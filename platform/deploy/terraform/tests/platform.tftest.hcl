@@ -16,8 +16,8 @@ variables {
 run "private_platform_and_no_auth_cache" {
   command = plan
   assert {
-    condition     = !aws_instance.app.associate_public_ip_address && !aws_subnet.private.map_public_ip_on_launch && aws_instance.app.metadata_options[0].http_tokens == "required" && aws_instance.app.metadata_options[0].http_put_response_hop_limit == 1
-    error_message = "플랫폼은 사설 VM이며 IMDSv2와 단일 hop을 사용해야 합니다."
+    condition     = !aws_instance.app.associate_public_ip_address && !aws_subnet.private.map_public_ip_on_launch && aws_instance.app.metadata_options[0].http_tokens == "required" && aws_instance.app.metadata_options[0].http_put_response_hop_limit == 2
+    error_message = "사설 VM의 관리 컨테이너가 역할을 사용하도록 IMDSv2와 hop limit 2를 사용합니다."
   }
   assert {
     condition     = aws_ebs_volume.data.encrypted && aws_instance.app.root_block_device[0].encrypted && aws_ebs_volume.data.size == 20

@@ -9,7 +9,7 @@
 - 로그인은 사용자 정정에 따라 고정 ID·비밀번호 한 쌍과 공통 작업 공간으로 시작한다. U1에 회원가입·계정 관리·소셜 로그인·개인별 권한은 없다.
 - 문서는 한국어로 작성하고 코드 주석은 필요하면 영어로 작성한다.
 - 구현 전 작업 범위를 공유한다. 추가 지시 `Dont forget to tell me before you commit.`에 따라 커밋 전에 변경 내용·검증 결과를 알린다. 푸시는 별도 지시 범위다.
-- U1 기능·로컬 검증·AWS 최초 배포를 완료했다. GitHub 워크플로를 PR #7에 게시하고 원격 테스트 실행을 시작했다. OIDC 연결·GitHub를 통한 실제 AWS 배포는 미실행이다.
+- U1과 GitHub OIDC 연결·실제 Plan/Release 검증을 완료했다. U2는 사용자가 CodeBuild 선택을 승인해 `feat/platform-builds`에서 구현·실제 AWS 빌드 검증을 완료했다. 사용자가 로컬 커밋을 승인했다. 앱 운영 배포·푸시는 아직 하지 않았다. [U2 기록](platform-u2.md)을 따른다.
 
 ## Ideation
 
@@ -43,7 +43,7 @@
 개발자 → platform/web → backend/api → 플랫폼 DB
                                      ↕
                               backend/worker
-                               ├─ 공개 소스 빌드 CI → 이미지 저장소
+                               ├─ CodeBuild → 고객 이미지 전용 ECR
                                ├─ ECS / SAST·DAST·AI 도구
                                ├─ Terraform → 전용 출력 → VM 준비 검사
                                ├─ automation → VM 앱 배포·헬스 체크
@@ -60,7 +60,7 @@
 | --- | --- | --- | --- |
 | U0 | 브랜치·디렉터리·문서 | `feat/platform`, 역할별 경계, 설명 문서·진행 기록 | 준비 완료 |
 | U1 | 고정 로그인·서비스 등록·소스 사전 검사 | 실제 DB 공유, 인증 보호·재시작 보존·중복 요청·GitHub 확인 검증 | [구현·검증 완료](platform-u1.md), AWS 배포 완료 |
-| U2 | 공개 저장소·빌드 | 특정 커밋의 이미지·결과 저장, 관리 권한 없는 빌드 | 미착수 |
+| U2 | 공개 저장소·빌드 | 특정 커밋의 이미지·결과 저장, 관리 권한 없는 빌드 | [구현·AWS 빌드 검증 완료](platform-u2.md), 앱 배포 대기 |
 | U3 | ECS 검사 연결 | 검사한 digest·증거 연결, 미통과/미연결 시 배포 차단 | 미착수 |
 | U4 | Terraform·VM 배포 | handoff 검증·준비 검사·배포·헬스 체크·실패 처리 | 미착수 |
 | U5 | 관측 조회 | 실제 지표·로그·트레이스, 조회 실패·수집 시각 표시 | 미착수 |
@@ -76,8 +76,8 @@
 
 ## 연결 전에 확인할 사항
 
-- AWS 시험 VM/ECS는 ARM64, GCP 코드는 x86_64다. amd64 통일은 추천안이며 변경하지 않았다.
-- 스테이징 구현은 문서상 `feat/add-staging-tool`에 있으며 현재 작업 트리에는 미병합이다. 최신 공개 ALB 결정과 과거 internal ALB 설명을 구분한다.
+- 최신 스테이징 도구의 고객 이미지는 x86_64다. U2는 `linux/amd64` 단일 manifest를 만든다. 플랫폼 자체 VM/이미지의 ARM64와 구분한다.
+- 스테이징 도구 PR #6은 main에 병합됐고 AWS 실배포 검증 기록이 있다. U3에서 고정 digest·인증·접속 계약을 확인해 연결한다.
 - DAST의 로컬 토큰과 플랫폼 사용자 인증은 별개다. 서비스 간 인증을 설계한다.
 - 기존 VM의 외부 통신 제한에 맞춰 이미지·로그·비밀값 접근 경로와 권한을 준비해야 한다.
 - Terraform 출력 스키마, LB/주소/요청 전환, 관측 조회·보관, 실제 DB 유형은 미확정이다.
@@ -90,7 +90,7 @@
 
 ## Operation
 
-사용자 지시로 AWS 사설 EC2·CloudFront 기반에 배포했다. 실제 HTTPS·재시작·백업 복원과 최종 No changes를 확인했다. [AWS 결과](platform-aws.md)와 [GitHub 전환 안내](../../platform/deploy/GITHUB.md)를 따른다. PR 테스트 Actions 실행은 시작했으며 최종 결과는 PR Checks를 따른다. GitHub OIDC 역할·Environment 연결과 실제 AWS 배포 Actions 실행은 아직 하지 않았다. 고객 앱 배포 U4와 플랫폼 자체 배포를 구분한다.
+사용자 지시로 AWS 사설 EC2·CloudFront 기반에 배포했다. 실제 HTTPS·재시작·백업 복원과 최종 No changes를 확인했다. [AWS 결과](platform-aws.md)와 [GitHub 전환 안내](../../platform/deploy/GITHUB.md)를 따른다. PR #7·#8·#9는 병합됐고 GitHub OIDC Plan/Release도 성공했다. Free/private 저장소이므로 GitHub Environment 없이 main 전용 역할을 사용한다. 고객 앱 배포 U4와 플랫폼 자체 배포를 구분한다.
 
 ## 검증 기록
 

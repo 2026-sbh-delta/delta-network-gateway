@@ -19,3 +19,5 @@ Terraform 전체 state를 웹에 전달하지 않는다. 비밀값은 실제 값
 
 - [스테이징 도구](../../docs/ai-dlc/staging-tool.md): 현재 작업 트리에 구현이 미병합이다. 최신 결정인 공개 ALB·스캐너 접근 제한과 문서의 과거 internal ALB 설명을 구분한다.
 - [DAST API](../../services/delta-dast/docs/API.md): 로컬 토큰 흐름은 플랫폼 사용자 인증이 아니다. 서비스 간 인증·호출 범위는 연동 시 설계한다.
+
+- [U2 이미지 빌드 API·상태·결과 계약](u2-builds.md)

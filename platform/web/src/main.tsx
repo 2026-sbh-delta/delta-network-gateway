@@ -13,6 +13,7 @@ import {
   type Page,
 } from "./api";
 import "./style.css";
+import { BuildPanel } from "./BuildPanel";
 
 const labels = {
   queued: "확인 대기",
@@ -81,7 +82,7 @@ function Login({ onLogin }: { onLogin: (s: Session) => void }) {
         </p>
         <div className="scope">
           <span>01 소스 확인</span>
-          <span>02 빌드 · 후속 단계</span>
+          <span>02 이미지 빌드</span>
           <span>03 배포 · 후속 단계</span>
         </div>
       </section>
@@ -454,8 +455,9 @@ function Detail({ id, onBack }: { id: string; onBack: () => void }) {
               )}
               {run?.status === "succeeded" && (
                 <p className="success-note">
-                  등록한 소스 위치를 확인했습니다. 이미지 빌드·실행 검사·배포는
-                  아직 수행하지 않았습니다.
+                  등록한 소스 위치를 확인했습니다. 이미지 빌드는 아래에서 별도로
+                  요청합니다. 소스 확인 성공은 실행 검사·배포 성공을 뜻하지
+                  않습니다.
                 </p>
               )}
               <h3 className="subhead">
@@ -490,12 +492,13 @@ function Detail({ id, onBack }: { id: string; onBack: () => void }) {
                 ))}
               </dl>
               <p className="notice">
-                소스는 실행하지 않습니다.
+                소스 확인 후 별도 빌드 환경에서 이미지를 만들 수 있습니다.
                 <br />
                 비밀값은 등록 정보에 넣지 마세요.
               </p>
             </aside>
           </div>
+          <BuildPanel key={id} serviceId={id} source={run} />
           <section className="panel history">
             <h2>검사 이력</h2>
             {history.length === 0 ? (
@@ -631,13 +634,13 @@ function Workspace({
             <div className="stage-banner">
               <span className="stage-number">01</span>
               <div>
-                <strong>지금은 소스 확인 단계입니다.</strong>
+                <strong>소스 확인부터 이미지 빌드까지.</strong>
                 <p>
-                  공개 저장소와 Dockerfile을 확인합니다. 빌드·샌드박스
-                  검사·배포는 다음 단계입니다.
+                  공개 저장소의 커밋을 확인하고 이미지를 만듭니다. 실행 검사와
+                  배포는 후속 단계입니다.
                 </p>
               </div>
-              <span className="status running">U1</span>
+              <span className="status running">소스 · 빌드</span>
             </div>
             {register && (
               <Register
