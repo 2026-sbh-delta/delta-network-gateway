@@ -1,0 +1,11 @@
+{
+  "AWS_ACCOUNT_ID": "616723161368",
+  "AWS_REGION": "ap-northeast-2",
+  "AWS_PLAN_ROLE_ARN": "arn:aws:iam::616723161368:role/delta-platform-github-plan",
+  "AWS_APPLY_ROLE_ARN": "arn:aws:iam::616723161368:role/delta-platform-github-apply",
+  "AWS_RELEASE_ROLE_ARN": "arn:aws:iam::616723161368:role/delta-platform-github-release",
+  "PLATFORM_STATE_BUCKET": "delta-platform-tf-616723161368",
+  "PLATFORM_TF_INPUTS": "{\"account_id\":\"616723161368\",\"region\":\"ap-northeast-2\",\"availability_zone\":\"ap-northeast-2a\",\"ami_id\":\"ami-029fa37c14d9a8917\",\"bootstrap_origin_access\":false}",
+  "PLATFORM_POSTGRES_IMAGE": "616723161368.dkr.ecr.ap-northeast-2.amazonaws.com/delta-platform@sha256:a78d9af300151935bbc4dfaf00aae291d12abaea3037c636e43603cc1675684e",
+  "PLATFORM_CI_ENABLED": "false"
+}

@@ -76,3 +76,7 @@ NAT를 처음 `t4g.nano`로 만들었지만 초기 패키지 설치가 메모리
 - `terraform providers lock -platform=darwin_arm64 -platform=linux_amd64`로 HashiCorp 서명 배포 파일을 확인했다. 변경은 Linux `h1` 한 줄 추가이며 Provider 버전·기존 검증값은 유지했다.
 - 같은 Linux 환경에서 `init -backend=false -lockfile=readonly && validate && test`를 다시 실행해 종료 코드 0, mock 3개 통과를 확인했다. Mac의 `fmt -check -recursive`·`validate`도 통과했다.
 - 기존 GitHub Terraform job이 이 오류를 재현하는 회귀 검사다. 검증을 완화하거나 CI에서 lock 파일을 변경하도록 우회하지 않았다. 실제 AWS Plan/Apply·리소스 변경은 수행하지 않았다. 푸시 후 원격 최종 결과는 PR Checks를 따른다.
+
+## 후속 OIDC 연결
+
+2026-11-03 PR #7의 수정 후 원격 test·terraform 검사가 모두 성공했고 main 병합(`d05afae`)을 확인했다. 기존 Environment 기반 계획은 현재 Free/private 저장소에 맞춰 main 전용 repository variables·OIDC 역할 구성으로 변경했다. 이후 구현·권한 적용·GitHub 배포 상태는 [OIDC 기록](platform-oidc.md)을 따른다.

@@ -18,7 +18,6 @@ jobs:
     needs: checks
     runs-on: ubuntu-24.04
     timeout-minutes: 45
-    environment: platform-release
     permissions:
       contents: read
       id-token: write
@@ -27,6 +26,7 @@ jobs:
       PLATFORM_STATE_BUCKET: ${{ vars.PLATFORM_STATE_BUCKET }}
       AWS_REGION: ${{ vars.AWS_REGION }}
       AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+      AWS_ROLE_ARN: ${{ vars.AWS_RELEASE_ROLE_ARN }}
       POSTGRES_IMAGE: ${{ vars.PLATFORM_POSTGRES_IMAGE }}
       TF_IN_AUTOMATION: 'true'
       TF_INPUT: 'false'
@@ -37,7 +37,7 @@ jobs:
       - name: Validate CI configuration
         env:
           CI_ENABLED: ${{ vars.PLATFORM_CI_ENABLED }}
-          ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
+          ROLE_ARN: ${{ env.AWS_ROLE_ARN }}
         run: |
           test "$CI_ENABLED" = true
           test -n "$ROLE_ARN"
@@ -59,7 +59,7 @@ jobs:
         run: docker buildx build --platform linux/arm64 --load -t delta-platform:release -f platform/Dockerfile platform
       - uses: aws-actions/configure-aws-credentials@61815dcd50bd041e203e49132bacad1fd04d2708 # v5
         with:
-          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
           allowed-account-ids: ${{ vars.AWS_ACCOUNT_ID }}
           role-session-name: platform-release-${{ github.run_id }}
