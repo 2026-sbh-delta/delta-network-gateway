@@ -3,8 +3,8 @@
 ## 현재 상태
 
 - 기준일: 2026-11-04 (Asia/Seoul)
-- 플랫폼 관측·서비스 이전: 사용자 TODO 구현과 커밋·PR 병합 위임을 받아 진행 중이다. DAST PR #21은 CI 통과 후 병합했고, OTel 한 페이지 대시보드와 세션 예제를 구현했다. PR #22도 병합했고 실제 로컬 앱→AWS 관측 수집과 조회 IAM Apply를 검증했다. 이어 workflow/AI 실행 식별·승인과 계획 화면을 구현했으며 운영 릴리스·앱/DB 이전과 구분한다. [현재 범위·검증 기록](ai-dlc/platform-continuity.md)
-- 플랫폼 DAST 연결: `feat/platform-dast`에서 팀 DAST API·ECS 수명·취소/복구·결과 화면과 사설 네트워크 확장을 구현했다. 현재 AWS 샌드박스 대상이며 GCP·온프레미스는 각 환경의 별도 검증을 추가한다. 로컬 검증 결과는 [진행 기록](ai-dlc/platform-dast.md), 운영 연결은 [배포 안내](../platform/deploy/dast/README.md)를 따른다. PR #21은 main에 병합됐고 사설 경로·SG 추가 Apply를 완료했다. 도구 이미지 활성화·플랫폼 릴리스와 실제 DAST 검증을 진행 중이다.
+- 플랫폼 관측·서비스 이전: 사용자 TODO 구현과 커밋·PR 병합 위임을 받아 진행 중이다. DAST PR #21은 CI 통과 후 병합했고, OTel 한 페이지 대시보드와 세션 예제를 구현했다. PR #22도 병합했고 실제 로컬 앱→AWS 관측 수집과 조회 IAM Apply를 검증했다. workflow/AI 실행 식별·승인과 계획 화면도 PR #23으로 병합·배포했다. PostgreSQL 초기 복사·CDC·안전 전환 실행기와 로컬 전체 앱·세션 이전을 검증했다. 고객 클라우드 VM/DB와 웹 자동 실행기 연결은 후속이다. [현재 범위·검증 기록](ai-dlc/platform-continuity.md)
+- 플랫폼 DAST 연결: `feat/platform-dast`에서 팀 DAST API·ECS 수명·취소/복구·결과 화면과 사설 네트워크 확장을 구현했다. 현재 AWS 샌드박스 대상이며 GCP·온프레미스는 각 환경의 별도 검증을 추가한다. 로컬 검증 결과는 [진행 기록](ai-dlc/platform-dast.md), 운영 연결은 [배포 안내](../platform/deploy/dast/README.md)를 따른다. PR #21은 main에 병합됐고 사설 경로·SG 추가 Apply를 완료했다. 도구 이미지 활성화·플랫폼 릴리스를 완료했고 실제 ECS 실행·정리와 후보0건의 DAST 미실행 표시를 검증했다. 실제 XSS 재현 검증은 별도다.
 - Jenkins AWS 운영 연결 완료(2026-11-03): PR #19 병합 후 GitHub OIDC로 사설 컨트롤러/전용 에이전트와 플랫폼을 배포했다. 공개 웹에서 실제 Jenkins 빌드 → ECR digest → ECS HTTP 검사·종료 및 데스크톱·모바일 표시를 검증했다. 기존 로그인·DB·서비스와 팀 스테이징을 보존했고 플랫폼/IAM 세 root는 No changes다. 배포 중 발견한 신규 SG 규칙 생성 권한 수정은 `42bbe5b`로 분리했고 운영 문서는 후속 `feat/platform-sast-aws` PR에 함께 포함한다. [진행 기록](ai-dlc/platform-jenkins-aws.md)
 - 플랫폼 Jenkins 전환: PR #18/#19는 main에 병합됐다. 최초 로컬 실제 검증은 [기록](ai-dlc/platform-jenkins.md)에 보존하고 현재 운영 상태는 위 AWS 기록을 따른다. 고객 앱 빌드는 Jenkins, 플랫폼 인프라·릴리스는 GitHub Actions/OIDC가 담당한다.
 - 플랫폼 SAST 운영 연결 완료(2026-11-04): 사용자가 PR #20을 병합했고 main `d4200f7`의 [GitHub Release](https://github.com/2026-sbh-delta/delta-network-gateway/actions/runs/41666361286)가 성공했다. 기존 로그인·DB·Jenkins 설정을 보존해 SAST를 활성화하고, 공개 웹의 실제 검사·커밋/이미지 연결·SARIF 해시·데스크톱/모바일·새로고침을 검증했다. 검증 도중 웹 콘솔에서 중지된 공용 도구 VM은 사용자 답변 후 재가동했다. JavaScript 예제의 발견 사항 0건은 전체 안전 판정이 아니다. 당시 DAST는 미연결이었으며, 후속 구현 상태는 위 DAST 항목을 따른다. 이 운영 기록도 후속 PR #21에 포함해 병합했다. [안내](../platform/deploy/sast/README.md) · [기록](ai-dlc/platform-security.md)
@@ -82,7 +82,7 @@
 
 ANF는 비용 중단 모드로 유지한다. ignored `terraform/network-security/inspection-mode.auto.tfvars`를 보존하고, 검사가 필요할 때 [전환 Runbook](../terraform/network-security/RUNBOOK.md#anf-비용-중단과-원복)의 `disabled -> bypass -> enabled` 순서로 원복한다. 우회 중에는 기존 8081 차단 시험도 HTTP 200으로 응답한다.
 
-플랫폼의 Jenkins 운영 전환·ECR·ECS 실행/종료와 공개 웹 SAST 검증을 완료했다. PR #20은 사용자가 병합했고 설정 활성화와 GitHub Release도 성공했다. DAST 코드·화면·취소/정리 계약을 구현했다. PR #21/#22를 병합했고 DAST 사설 네트워크와 관측 조회 IAM Apply를 마쳤다. 도구 이미지 갱신·플랫폼 설정 활성화·GitHub Release와 실제 XSS 앱 검증을 이어간다. GCP·온프레미스로 이전할 때에는 각 대상 환경의 실행기를 연결하고 별도로 검사한다. 이후 AI 수정 제안·사람 승인·재빌드/재검증, 고정 digest의 Terraform/VM 배포로 연결한다. 이 후속 전체 흐름은 아직 플랫폼에서 구현·검증되지 않았다.
+플랫폼의 Jenkins 운영 전환·ECR·ECS 실행/종료와 공개 웹 SAST 검증을 완료했다. PR #20은 사용자가 병합했고 설정 활성화와 GitHub Release도 성공했다. DAST 코드·화면·취소/정리 계약을 구현했다. PR #21/#22를 병합했고 DAST 사설 네트워크와 관측 조회 IAM Apply를 마쳤다. 도구 이미지·런타임 갱신·GitHub Release와 실제 후보0건 처리를 확인했다. 실제 XSS 재현은 별도 후속이다. GCP·온프레미스로 이전할 때에는 각 대상 환경의 실행기를 연결하고 별도로 검사한다. 이후 AI 수정 제안·사람 승인·재빌드/재검증, 고정 digest의 Terraform/VM 배포로 연결한다. 이 후속 전체 흐름은 아직 플랫폼에서 구현·검증되지 않았다.
 
 CloudFront 두 버튼 웹의 실제 ANF 허용/차단 대조는 확인했다. 직접 EC2 Origin/Server IGW와 SG rule/임시 ALB ingress 정리와 실제 검증 JSON 게시를 마쳤고 네 root 최종 Plan은 No changes다. 남은 화면 검증은 UI 도구가 안정된 환경에서 차단 버튼 완료 화면/최종 검증 문구를 확인하는 것이다. 페이지 하단 검증 기록은 배포 당시 로그 대조 결과이며 개별 요청의 실시간 관제 판정은 아니다.
 

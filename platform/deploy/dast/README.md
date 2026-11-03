@@ -1,6 +1,6 @@
 # 플랫폼 DAST 운영 연결
 
-현재는 구현·로컬 검증 완료 단계다. 운영 도구 이미지 갱신, AWS 네트워크 Apply, 플랫폼 런타임 활성화와 공개 웹의 실제 DAST는 아직 하지 않았다. 사용자 main 병합 후 아래 순서로 진행한다.
+2026-11-04 PR #21/#23 병합 후 AWS 사설 경로 Apply·도구 DAST 이미지 갱신·런타임 활성화·플랫폼 Release를 완료했다. 실제 ECS 실행/정리와 지원 후보0건의 `미실행` 처리를 확인했다. 실제 XSS 재현 성공은 아직 검증하지 않았다. [현재 운영 기록](../../../docs/ai-dlc/platform-continuity.md)을 따른다. 아래는 재설치·복구 절차다.
 
 ```text
 플랫폼 API/Worker ─사설 HTTPS→ 기존 도구 VM의 DAST
@@ -22,7 +22,7 @@ python3 /opt/delta/platform-dast-configure.py --sandbox-url 'http://internal-del
 
 이 스크립트는 기존 `/api/runs`에 실행 중인 검사가 있으면 중단한다. `/opt/delta/dast-platform.env`에 별도 토큰을 0600으로 저장하고 `/opt/delta/platform-sandbox.json`에 고정 ALB 대상만 등록한다. 재실행해도 토큰은 유지한다. 컨테이너 자체는 재시작하지 않는다.
 
-4. main의 기존 도구 배포 절차로 새 DAST 이미지를 배포한다. `deploy/tooling/remote.sh`가 위 환경 파일과 대상 파일을 읽고 기존 상태·모델 인증 마운트를 유지한다. 이 스크립트는 SAST도 재시작하므로 두 검사 서비스 모두 비운 상태에서 실행한다. 복구용으로 이전 이미지 digest를 기록해 둔다.
+4. main의 기존 도구 배포 절차로 새 DAST 이미지를 배포한다. `deploy/tooling/remote.sh`가 위 환경 파일과 대상 파일을 읽고 기존 상태·모델 인증 마운트를 유지한다. 이 스크립트는 SAST도 재시작하므로 두 검사 서비스 모두 비운 상태에서 실행한다. 2026-11-04 실제 작업에서는 기존 SAST를 유지하고 DAST 컨테이너의 환경·마운트를 보존해 DAST만 교체했다. 복구용으로 이전 이미지 digest를 기록해 둔다.
 5. 갱신된 HTTPS installer를 설치한다. SAST 경로를 유지하고 DAST 접수·조회·취소 경로만 추가한다. DAST 자체의 웹 화면이나 임의 제어 API는 공개하지 않는다.
 
 ```bash

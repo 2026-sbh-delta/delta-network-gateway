@@ -65,3 +65,25 @@
 - DAST 사설 연결은 기존 ALB·VM 교체 없이 Route 3개·SG 규칙 1개 추가 Plan을 검토·Apply했다. 실제 DAST 이미지 갱신/활성화·플랫폼 Release 검증은 이어서 진행한다.
 
 [식별 계약과 현재 경계](../../platform/docs/workflows.ko.md). 이 단위의 실제 AI 서버 연결·변경 실행기·앱/DB 이전 검증은 후속이며 계획 승인만으로 완료라고 표시하지 않는다.
+
+## DB 이전 실행기·전체 앱 로컬 검증 (2026-11-04)
+
+- 설계·계획: 같은 PostgreSQL17·전용 DB/앱 계정·같은 스키마, 초기 복사/CDC, 모든 앱 DB 연결 차단/정리, 복제 마커·전체 데이터 대조·sequence 동기화, 단일 쓰기 승격을 구현한다. source/target은 별도 클러스터로 제한한다. 기존 앱·DB와 팀 인프라를 변경하지 않는 별도 로컬 예제로 먼저 검증한다. 기존 TODO 구현 승인 범위다.
+- 구현: `delta_platform.migration`에 비밀값 없는 저장 계획, 프로세스 간 journal 잠금·원자 저장, 스키마·DB 신원·쓰기 권한 검증, 복제 슬롯 상한 확인, 재개·승격 전 중단·승격 후 자동 원복 거부를 추가했다. CLI와 한국어 운영 문서, Docker 통합 검사를 작성했다. 현재 웹 Worker 자동 연결은 하지 않았다.
+- 실제 DB 검사: `docker compose -f platform/migration/compose.test.yaml build test` 후 `run --rm test` → **6 passed**. PostgreSQL 두 개를 사용하며 플랫폼 테스트 DB와 분리된다.
+- 실제 전체 앱: `uv run --project platform/backend python platform/migration/demo.py` → 같은 로컬 Docker 이미지 ID로 프론트/백엔드·DB 이전, Chromium 로그인 1회·같은 URL/쿠키·이전 전/CDC 중 메모·대상 새 메모 저장 확인. 증거는 ignored `platform/.runtime/migration-demo/proof.json`과 before/after PNG에 저장했다. 마지막 제어된 대기 **4.332초**, 헬스 **503 17건 / 200 12건**.
+- 검증 중 수정: 새 target 스키마를 복원할 때 public 스키마가 이미 존재하므로 데모의 빈 스키마만 비CASCADE 삭제하고 복원했다. 실제 이전기는 대상 데이터를 지우지 않는다. Nginx reload 직후의 503을 발견해 새 진입 경로에서 target 정상 응답을 연속 확인한 뒤 완료를 알리도록 했다. 이미지도 로컬 content ID로 고정하고 양쪽 컨테이너의 실제 ID를 대조한다.
+- 범위: 로컬 Nginx는 주소 유지용 시험 도구다. 운영에 HAProxy나 추가 LB를 넣었다는 뜻이 아니다. DB 중단 시간이 있으며 무중단·대규모 DB 성능·AWS→GCP 실제 이전은 미검증이다.
+- GCP 실조회: term2-delta, 고객 서브넷 `delta-customer-vms-seoul` `10.30.1.0/24` 존재, VM0·asia-northeast3 VPN 터널0. 실제 고객 VM/DB 준비 주체를 사용자에게 확인하면서 독립 구현을 계속한다.
+
+## 플랫폼 Release·DAST 운영 확인 (2026-11-04)
+
+- PR #23은 전체 CI 통과 후 main `4c138ee`로 병합했다. [Release 41691494886](https://github.com/2026-sbh-delta/delta-network-gateway/actions/runs/41691494886) 성공. DB0007·관측·계획 화면·DAST 연결이 AWS 플랫폼에 배포됐다.
+- 공개 웹 재로그인·기존 서비스/빌드/SAST 보존, 데스크톱/모바일·콘솔 오류·가로 넘침을 확인했다. 환경 미등록은 실제 값 없음으로 표시하며 예제 지표를 채우지 않는다. 실제 AI 서버/고객 환경 등록은 별도 후속이다.
+- DAST Route3/SG1 추가 후 실제 Plan **No changes**. 기존 SAST 컨테이너는 재시작하지 않았다. DAST만 main 기반 새 ARM64 이미지로 교체했고 기존 환경/마운트/모델 인증을 유지했다. 중지된 이전 DAST 컨테이너는 복구용으로 보존했다. 사설 HTTPS·고정 샌드박스 등록을 확인하고 SSM runtime의 DAST 필드만 활성화했다.
+- 공개 API의 실제 DAST 실행 `7841eef7-34cd-4ae5-8531-ec387b300f62`: 기존 성공한 이미지/커밋/SAST로 ECS를 실행해 헬스·이미지를 확인하고 DAST API를 호출했다. 지원 XSS 후보가 0개여서 `dast_check=not_run`, `requires_review=true`, `deployment_approved=false`로 기록했다. 이것은 취약점 재현 성공이 아니다. 실행 종료 후 ECS running/pending 0개를 확인했다. 증거는 ignored `platform/.runtime/dast-public-result.json`.
+- 원본 관측 IAM과 DAST 사설 연결 Apply는 완료했지만, 실제 취약 앱의 XSS 재현·GCP/온프레미스 샌드박스는 아직 별도 검증이 필요하다.
+
+- DB 이전 단위 커밋 전 회귀: `platform/backend`에서 `uv run pytest -q` → **158 passed, 1 deselected**. backend와 migration 도구 Ruff 검사·포맷, `git diff --check` 통과. 새 DB/전체 앱 CI 단계는 추가했으며 원격 실행 결과는 PR에서 확인한다.
+
+- PR #24 최초 CI: 기존 앱·브라우저·Terraform 7개 root와 PostgreSQL 통합 6개는 통과했지만 Linux 전체 앱 데모는 root 소유 0600 계획 파일을 runner 사용자가 읽지 못해 실패했다. Linux 컨테이너에서 같은 PermissionError를 재현했고, 동일 사용자 UID/GID로 journal 생성·읽기 및 0600 유지가 통과하는 것을 확인했다. 데모 실행기를 호출 사용자로 실행하고 미리 설치한 CLI를 사용한다. 실패 정리 중 브라우저 종료 대기가 원래 오류를 덮지 않도록 kill 후 정리한다. 전체 CI 재검증은 후속 실행 결과를 따른다.

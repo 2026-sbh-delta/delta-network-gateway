@@ -1,0 +1,35 @@
+name: delta-migration-tests
+services:
+  source:
+    image: postgres:17-alpine
+    command: [postgres, -c, wal_level=logical, -c, max_replication_slots=10, -c, max_wal_senders=10, -c, max_slot_wal_keep_size=256MB, -c, max_prepared_transactions=10]
+    environment: &database
+      POSTGRES_DB: migration_test
+      POSTGRES_USER: operator
+      POSTGRES_PASSWORD: isolated-test-only
+    tmpfs: [/var/lib/postgresql/data]
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U operator -d migration_test]
+      interval: 1s
+      timeout: 2s
+      retries: 30
+  target:
+    image: postgres:17-alpine
+    environment: *database
+    tmpfs: [/var/lib/postgresql/data]
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U operator -d migration_test]
+      interval: 1s
+      timeout: 2s
+      retries: 30
+  test:
+    build:
+      context: ../..
+      dockerfile: platform/migration/Dockerfile.test
+    depends_on:
+      source: {condition: service_healthy}
+      target: {condition: service_healthy}
+    environment:
+      MIGRATION_TEST_SOURCE: postgresql://operator:isolated-test-only@source/migration_test
+      MIGRATION_TEST_TARGET: postgresql://operator:isolated-test-only@target/migration_test
+      MIGRATION_TEST_REPLICA: postgresql://replicator:replication-test-only@source/migration_test
