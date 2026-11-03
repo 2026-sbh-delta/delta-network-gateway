@@ -2,10 +2,10 @@
 
 ## 현재 상태
 
-- 기준일: 2026-11-03 (Asia/Seoul)
-- Jenkins AWS 운영 연결: PR #18 병합 후 `feat/platform-jenkins-aws`에서 사설 컨트롤러/전용 에이전트·CA 검증·GitHub Plan/Apply/Release를 준비한다. 백엔드 126개, Terraform mock 14개, 배포 도구 24개가 통과했다. 실제 VM 배포·공개 플랫폼 전환은 검증 중이다. [진행 기록](ai-dlc/platform-jenkins-aws.md)
-- 플랫폼 Jenkins 전환: 사용자 지시로 `feat/platform-jenkins`의 별도 worktree에서 새 빌드 실행기를 Jenkins로 연결했다. 로컬 실제 Jenkins → ECR → ECS digest/헬스/종료와 웹 표시를 검증했다. 빌드 전용 IAM 기반은 적용했고 Jenkins 운영 EC2·HTTPS·공개 플랫폼 전환은 아직이다. 구현 `337b0ec`을 푸시하고 [PR #18](https://github.com/2026-sbh-delta/delta-network-gateway/pull/18)을 열었다. 최신 CI는 PR Checks를 따른다. [구성 안내](../platform/deploy/jenkins/README.md) · [검증 기록](ai-dlc/platform-jenkins.md)
-- 플랫폼 SAST 연결: 성공한 빌드의 고정 커밋 검사와 발견 사항·근거 표시를 구현했다. 실제 SAST HTTP 연결과 DB/Worker/브라우저 통합을 각각 검증했다. 검사 완료와 운영 배포 승인을 구분한다. 운영 SAST 연결·DB migration `0004`·릴리스는 아직이다. [계약](../platform/contracts/security-checks.md) · [검증 기록](ai-dlc/platform-security.md)
+- 기준일: 2026-11-04 (Asia/Seoul)
+- Jenkins AWS 운영 연결 완료(2026-11-03): PR #19 병합 후 GitHub OIDC로 사설 컨트롤러/전용 에이전트와 플랫폼을 배포했다. 공개 웹에서 실제 Jenkins 빌드 → ECR digest → ECS HTTP 검사·종료 및 데스크톱·모바일 표시를 검증했다. 기존 로그인·DB·서비스와 팀 스테이징을 보존했고 플랫폼/IAM 세 root는 No changes다. 배포 중 발견한 신규 SG 규칙 생성 권한 수정은 `42bbe5b`로 분리했고 운영 문서는 후속 `feat/platform-sast-aws` PR에 함께 포함한다. [진행 기록](ai-dlc/platform-jenkins-aws.md)
+- 플랫폼 Jenkins 전환: PR #18/#19는 main에 병합됐다. 최초 로컬 실제 검증은 [기록](ai-dlc/platform-jenkins.md)에 보존하고 현재 운영 상태는 위 AWS 기록을 따른다. 고객 앱 빌드는 Jenkins, 플랫폼 인프라·릴리스는 GitHub Actions/OIDC가 담당한다.
+- 플랫폼 SAST 연결(2026-11-04): 기존 도구 VM에 사설 HTTPS를 구성하고 두 VM `/32` 연결을 적용했다. CA 지원·백엔드 131개/배포 도구 29개/네트워크 mock 3개가 통과했다. 실제 플랫폼 VM 경유 SAST 검사·SARIF·이미지 연결과 비허용 VM 접근 거부를 검증했다. 연결 값은 별도 SecureString에 준비했고 공개 플랫폼은 아직 미활성이다. main 반영·설정 activate·GitHub Release·공개 웹 검증이 남는다. [안내](../platform/deploy/sast/README.md) · [기록](ai-dlc/platform-security.md)
 - 플랫폼 U3: 사용자가 PR #16을 병합했고 main `35aff4a`의 GitHub Release가 성공했다. 공개 웹에서 실제 VM 역할의 ECS 실행·digest·헬스·태스크 0개 정리를 검증했다. 이후 Jenkins 전환은 위 별도 기록을 따른다. [기록](ai-dlc/platform-u3.md)
 - 플랫폼 U2: [PR #14](https://github.com/2026-sbh-delta/delta-network-gateway/pull/14) 병합 후 GitHub OIDC Plan·Apply·Release를 완료했다. [공개 플랫폼](https://d3udcz0zch0on.cloudfront.net)에서 기존 로그인·서비스를 유지하고 실제 공개 저장소 빌드 → ECR digest → 결과·로그 표시를 검증했다. 운영 역할의 CodeBuild 조회 권한 오류를 수정·적용했고 회귀 검증, 실제 역할 조회, 데스크톱·모바일 화면과 두 Terraform root의 최종 No changes를 확인했다. 권한 수정 PR #15도 main에 병합됐다. [기록](ai-dlc/platform-u2.md)
 - ANF 비용 절감(2026-11-03 17:08 KST): **최종 disabled 적용 완료**. Firewall/엔드포인트 2개를 제거했고 ALB/사설 Client의 두 포트 HTTP 200과 중앙 Plan No changes를 확인했다. 실제 ANF 재생성과 검사 경로/삭제 보호 원복, 허용/차단/양방향 로그까지 검증한 뒤 다시 꺼뒀다. 정책/규칙/기존 로그와 네트워크는 보존했다. 최신 main pull 후에도 중앙 mock 41개와 helper 테스트 11개 통과. 구현/테스트/운영 문서 3개 서명 커밋을 origin/main에 게시했고 원격 `fae8ca04` 일치를 확인했다. 이 게시 확인 기록은 후속 문서 커밋으로 남긴다. [기록](ai-dlc/anf-cost-mode.md)
@@ -79,7 +79,7 @@
 
 ANF는 비용 중단 모드로 유지한다. ignored `terraform/network-security/inspection-mode.auto.tfvars`를 보존하고, 검사가 필요할 때 [전환 Runbook](../terraform/network-security/RUNBOOK.md#anf-비용-중단과-원복)의 `disabled -> bypass -> enabled` 순서로 원복한다. 우회 중에는 기존 8081 차단 시험도 HTTP 200으로 응답한다.
 
-플랫폼 U3의 공개 Release 검증을 완료했다. Jenkins 전환·SAST 결과 연결의 구현과 로컬 검증도 완료했다. [PR #18](https://github.com/2026-sbh-delta/delta-network-gateway/pull/18)의 CI 확인·병합 후 운영 Jenkins 서버·HTTPS·SAST 설정, DB migration과 플랫폼 릴리스가 남는다. 다음 기능은 DAST를 위한 ECS 앱의 검사 수명·접근 계약 확정이다. 이후 고정 digest의 Terraform/VM 배포로 이어간다.
+플랫폼의 Jenkins 운영 전환과 공개 웹에서 실제 빌드·ECR·ECS 실행/종료 검증을 완료했다. SAST 서버의 사설 연결·실통신 검증도 완료했다. 다음은 변경 코드의 main 반영, 준비한 SAST 설정 활성화와 GitHub Release, 공개 웹 검사 결과 검증이다. 이어 DAST를 위한 ECS 앱의 검사 수명·접근 계약을 확정하고, 고정 digest의 Terraform/VM 배포로 연결한다. 사용자가 IAM 보완·SAST 연결의 커밋·푸시·PR 생성을 승인했으며 main 병합은 직접 진행한다.
 
 CloudFront 두 버튼 웹의 실제 ANF 허용/차단 대조는 확인했다. 직접 EC2 Origin/Server IGW와 SG rule/임시 ALB ingress 정리와 실제 검증 JSON 게시를 마쳤고 네 root 최종 Plan은 No changes다. 남은 화면 검증은 UI 도구가 안정된 환경에서 차단 버튼 완료 화면/최종 검증 문구를 확인하는 것이다. 페이지 하단 검증 기록은 배포 당시 로그 대조 결과이며 개별 요청의 실시간 관제 판정은 아니다.
 

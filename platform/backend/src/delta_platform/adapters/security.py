@@ -1,7 +1,10 @@
 """Bind a trusted SAST report to the exact commit and image in a platform build."""
 
+import base64
+import binascii
 import hashlib
 import json
+import ssl
 import time
 from datetime import UTC, datetime
 from urllib.parse import urlsplit
@@ -10,6 +13,20 @@ import httpx
 
 from delta_platform.adapters.builds import BuildError
 from delta_platform.core.errors import Problem
+
+
+def sast_ca(settings):
+    encoded = settings.sast_ca_base64
+    if not encoded:
+        return None
+    try:
+        if len(encoded) > 32768:
+            raise ValueError()
+        pem = base64.b64decode(encoded, validate=True).decode("ascii")
+        ssl.create_default_context(cadata=pem)
+        return pem
+    except (ValueError, UnicodeError, binascii.Error, ssl.SSLError):
+        raise Problem("security_config_invalid", "SAST CA 인증서를 확인하세요.", 503) from None
 
 
 def security_target(settings):
@@ -31,7 +48,13 @@ def security_target(settings):
         or (p.scheme != "https" and not (local and p.scheme == "http"))
     ):
         raise Problem("security_config_invalid", "SAST 서비스 주소를 확인하세요.", 503)
-    return {"url": url, "mode": "fast", "payload_mode": "preset"}
+    ca = sast_ca(settings)
+    return {
+        "url": url,
+        "mode": "fast",
+        "payload_mode": "preset",
+        **({"ca_sha256": hashlib.sha256(ca.encode()).hexdigest()} if ca else {}),
+    }
 
 
 class SecurityRunner:
@@ -39,12 +62,14 @@ class SecurityRunner:
         self.target = security_target(settings)
         self.token = settings.sast_token.get_secret_value()
         self.transport, self.sleep = transport, sleep
+        self.verify = ssl.create_default_context(cadata=sast_ca(settings))
 
     def request(self, method, path, body=None):
         with httpx.Client(
             timeout=20,
             follow_redirects=False,
             trust_env=False,
+            verify=self.verify,
             transport=self.transport,
             headers={"Authorization": "Bearer " + self.token},
         ) as client:

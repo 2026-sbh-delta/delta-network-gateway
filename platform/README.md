@@ -1,12 +1,12 @@
 # Delta Platform
 
-개발자용 플랫폼의 웹·API·Worker를 관리한다. **고정 로그인 → 공개 GitHub 등록 → 소스 확인 → CodeBuild 이미지 빌드 → 결과·로그 조회**를 운영 배포하고 공개 HTTPS에서 실제 빌드를 검증했다. [U2 진행 기록](../docs/ai-dlc/platform-u2.md)을 따른다. 빌드 성공은 실행 검사나 배포 성공을 뜻하지 않는다.
+개발자용 플랫폼의 웹·API·Worker를 관리한다. 현재 운영 경로는 **고정 로그인 → 공개 GitHub 등록 → 소스 확인 → Jenkins 이미지 빌드 → ECS 실행 검사 → 결과·로그 조회**다. [Jenkins AWS 운영 기록](../docs/ai-dlc/platform-jenkins-aws.md)에서 배포와 실제 기능 검증 상태를 확인한다. 빌드 성공은 실행 검사나 배포 성공을 뜻하지 않는다.
 
 - [구현 범위·검증 기록](../docs/ai-dlc/platform-u1.md)
 - [전체 방향과 후속 단위](../docs/ai-dlc/platform.md) · [한국어 구성 설명](docs/overview.ko.html)
 - AWS 배포 완료: https://d3udcz0zch0on.cloudfront.net · [실제 검증](../docs/ai-dlc/platform-aws.md). GitHub 워크플로는 [PR #7](https://github.com/2026-sbh-delta/delta-network-gateway/pull/7)에서 CI 성공 후 병합됐다. [OIDC 역할 생성과 변수 입력](deploy/GITHUB.md)을 완료했으며, 새 워크플로도 PR #8에서 main에 반영했고 GitHub OIDC Plan·Release 및 배포 후 로그인·Worker 작업까지 검증했다.
 
-고객 앱 빌드는 Jenkins로 전환한다. [Jenkins 구성·실행 안내](deploy/jenkins/README.md)와 [진행 기록](../docs/ai-dlc/platform-jenkins.md)을 따른다. 코드·로컬 실제 검증과 공개 AWS 플랫폼의 운영 전환을 구분한다.
+고객 앱 빌드는 사설 Jenkins 컨트롤러와 전용 에이전트를 사용한다. 플랫폼 자체의 인프라·릴리스는 GitHub Actions/OIDC가 담당한다. [AWS 구성·운영 안내](deploy/jenkins/aws/README.md)를 따른다.
 
 ## 로컬 실행
 
@@ -101,4 +101,4 @@ DB migration은 배포 전에 한 번 실행한다. `/health/ready`는 DB·스�
 
 기능 코드 롤백 전 DB 백업과 migration 호환성을 확인한다. 최초 migration의 downgrade는 테이블을 삭제하므로 실제 데이터가 있는 환경에서 일반 롤백으로 사용하지 않는다.
 
-U2의 새 기본 실행기는 Jenkins이며 별도 에이전트에서 고객 Dockerfile을 빌드하고 결과 digest를 저장한다. 기존 CodeBuild 설정·이미지·이력은 전환 기간 동안 유지한다. [Jenkins 구성](deploy/jenkins/README.md)과 [API 계약](contracts/u2-builds.md)을 따른다. U3의 실제 배포 상태는 [U3 기록](../docs/ai-dlc/platform-u3.md), SAST의 로컬 구현·검증 상태는 [SAST 기록](../docs/ai-dlc/platform-security.md)을 따른다. 운영 Jenkins/SAST 연결 후 DAST, Terraform·VM 배포, 관측 조회, 같은 엔진의 DB 이전으로 이어간다. **커밋 전에 변경 내용·검증 결과·Conventional Commit 메시지를 알리고, 푸시는 별도 지시에 따른다.**
+U2의 새 기본 실행기는 Jenkins이며 별도 에이전트에서 고객 Dockerfile을 빌드하고 결과 digest를 저장한다. 기존 CodeBuild 설정·이미지·이력은 전환 기간 동안 유지한다. [Jenkins 구성](deploy/jenkins/README.md)과 [API 계약](contracts/u2-builds.md)을 따른다. U3의 실제 배포 상태는 [U3 기록](../docs/ai-dlc/platform-u3.md), SAST의 로컬 구현·검증 상태는 [SAST 기록](../docs/ai-dlc/platform-security.md)을 따른다. Jenkins 운영 전환과 공개 웹의 실제 빌드·ECS 실행/종료 검증은 완료했다. SAST 사설 연결과 실통신 검증은 완료했으며 새 코드 main 반영·운영 활성화·공개 검증이 남는다. [SAST 운영 안내](deploy/sast/README.md)를 따른다. 이후 DAST, Terraform·VM 배포, 관측 조회, 같은 엔진의 DB 이전으로 이어간다. **커밋 전에 변경 내용·검증 결과·Conventional Commit 메시지를 알리고, 푸시는 별도 지시에 따른다.**
