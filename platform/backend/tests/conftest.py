@@ -24,7 +24,11 @@ def engine():
 @pytest.fixture(autouse=True)
 def clean_db(engine):
     with engine.begin() as conn:
-        conn.execute(sa.text("TRUNCATE sessions, auth_rate_limits, run_events, runs, services"))
+        conn.execute(
+            sa.text(
+                "TRUNCATE sessions, auth_rate_limits, run_events, runs, service_environments, services"
+            )
+        )
 
 
 @pytest.fixture

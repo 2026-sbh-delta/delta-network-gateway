@@ -47,6 +47,22 @@ services = sa.Table(
     timestamp("created_at", nullable=False, server_default=sa.func.now()),
     sa.CheckConstraint("container_port BETWEEN 1 AND 65535", name="valid_port"),
 )
+environments = sa.Table(
+    "service_environments",
+    metadata,
+    col("id", UUID(as_uuid=True), primary_key=True),
+    sa.Column("service_id", UUID(as_uuid=True), sa.ForeignKey("services.id"), nullable=False),
+    col("project_id", UUID(as_uuid=True), nullable=False),
+    col("name", sa.String(80), nullable=False),
+    col("cloud", sa.String(16), nullable=False),
+    col("region", sa.String(64), nullable=False),
+    col("version", sa.String(128)),
+    col("binding", JSONB, nullable=False),
+    timestamp("created_at", nullable=False, server_default=sa.func.now()),
+    timestamp("updated_at", nullable=False, server_default=sa.func.now()),
+    sa.UniqueConstraint("service_id", "name", name="environment_name_unique"),
+    sa.CheckConstraint("cloud IN ('aws','gcp','onprem')", name="environment_cloud"),
+)
 runs = sa.Table(
     "runs",
     metadata,

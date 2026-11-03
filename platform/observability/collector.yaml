@@ -1,0 +1,97 @@
+# One collector per registered customer environment. Its network is private.
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+        max_request_body_size: 1048576
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 96
+    spike_limit_mib: 24
+  resource/identity:
+    attributes:
+      - key: delta_project_id
+        value: ${env:DELTA_PROJECT_ID}
+        action: upsert
+      - key: delta_service_id
+        value: ${env:DELTA_SERVICE_ID}
+        action: upsert
+      - key: delta_environment_id
+        value: ${env:DELTA_ENVIRONMENT_ID}
+        action: upsert
+  filter/warnings:
+    error_mode: propagate
+    logs:
+      log_record:
+        - severity_number < SEVERITY_NUMBER_WARN
+  transform/privacy:
+    error_mode: propagate
+    trace_statements:
+      - context: span
+        statements:
+          - keep_keys(attributes, ["http.request.method", "http.response.status_code", "http.route", "db.system", "db.system.name"])
+          - set(attributes["delta_service_id"], resource.attributes["delta_service_id"])
+          - set(attributes["delta_environment_id"], resource.attributes["delta_environment_id"])
+    log_statements:
+      - context: log
+        statements:
+          - keep_keys(attributes, ["error.type"])
+          - replace_pattern(body, "(?i)(Bearer|Basic) +[^ ]+", "[redacted]") where IsString(body)
+          - replace_pattern(body, "(?i)(password|token|secret|api_key) *[=:] *[^ ,;]+", "[redacted]") where IsString(body)
+    metric_statements:
+      - context: datapoint
+        statements:
+          - keep_keys(attributes, ["http.request.method", "http.response.status_code", "http.route"])
+  batch:
+    timeout: 5s
+    send_batch_size: 100
+    send_batch_max_size: 200
+extensions:
+  sigv4auth/metrics:
+    region: ${env:AWS_REGION}
+    service: monitoring
+exporters:
+  otlp_http/metrics:
+    metrics_endpoint: https://monitoring.${env:AWS_REGION}.amazonaws.com/v1/metrics
+    auth:
+      authenticator: sigv4auth/metrics
+    sending_queue:
+      queue_size: 64
+    retry_on_failure:
+      max_elapsed_time: 30s
+  awscloudwatchlogs:
+    region: ${env:AWS_REGION}
+    log_group_name: /delta-platform/apps/${env:DELTA_SERVICE_ID}/${env:DELTA_ENVIRONMENT_ID}
+    log_stream_name: application
+    log_retention: 1
+    raw_log: false
+    sending_queue:
+      num_consumers: 1
+      queue_size: 64
+  awsxray:
+    region: ${env:AWS_REGION}
+    local_mode: true
+    indexed_attributes: [delta_service_id, delta_environment_id]
+    request_timeout_seconds: 5
+    max_retries: 1
+    num_workers: 2
+service:
+  extensions: [sigv4auth/metrics]
+  telemetry:
+    logs:
+      level: warn
+  pipelines:
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, resource/identity, transform/privacy, batch]
+      exporters: [otlp_http/metrics]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, resource/identity, filter/warnings, transform/privacy, batch]
+      exporters: [awscloudwatchlogs]
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, resource/identity, transform/privacy, batch]
+      exporters: [awsxray]
