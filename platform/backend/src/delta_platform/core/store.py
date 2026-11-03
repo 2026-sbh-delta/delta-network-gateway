@@ -1,6 +1,7 @@
 import base64
 import hashlib
 import json
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 from uuid import UUID, uuid4
 
@@ -29,6 +30,7 @@ RUN_FIELDS = (
     "current_step",
     "resolved_commit_sha",
     "external_id",
+    "cancel_requested",
     "attempt",
     "result",
     "error",
@@ -169,6 +171,7 @@ class Store:
                 **select_fields(row, SERVICE_FIELDS),
                 "latest_source_check": self._latest(conn, service_id),
                 "latest_build": self._latest(conn, service_id, "image_build"),
+                "latest_sandbox": self._latest(conn, service_id, "sandbox_check"),
             }
 
     def list_services(self, limit, cursor):
@@ -396,7 +399,7 @@ class Store:
             )
             if not row:
                 return None
-            if row["attempt"] >= 3:
+            if row["attempt"] >= 3 and row["kind"] != "sandbox_check":
                 conn.execute(
                     runs.update()
                     .where(runs.c.id == row["id"])
@@ -425,7 +428,7 @@ class Store:
                         started_at=instant,
                         current_step="build_queued"
                         if row["kind"] == "image_build"
-                        else "repository",
+                        else ("sandbox_queued" if row["kind"] == "sandbox_check" else "repository"),
                     )
                     .returning(runs)
                 )
@@ -441,7 +444,11 @@ class Store:
                 else (
                     "이미지 빌드를 시작했습니다."
                     if row["kind"] == "image_build"
-                    else "소스 확인을 시작했습니다."
+                    else (
+                        "샌드박스 실행 확인을 시작했습니다."
+                        if row["kind"] == "sandbox_check"
+                        else "소스 확인을 시작했습니다."
+                    )
                 ),
             )
             return dict(claimed)
@@ -458,7 +465,8 @@ class Store:
             or row["status"] != "running"
             or row["lease_token"] != token
             or row["lease_expires_at"] <= instant
-            or row["started_at"] + timedelta(seconds=1800 if row["kind"] == "image_build" else 120)
+            or row["started_at"]
+            + timedelta(seconds=1800 if row["kind"] in ("image_build", "sandbox_check") else 120)
             <= instant
         ):
             raise LeaseLost()
@@ -470,7 +478,9 @@ class Store:
             expiry = min(
                 instant + timedelta(seconds=60),
                 row["started_at"]
-                + timedelta(seconds=1800 if row["kind"] == "image_build" else 120),
+                + timedelta(
+                    seconds=1800 if row["kind"] in ("image_build", "sandbox_check") else 120
+                ),
             )
             if expiry <= instant:
                 raise LeaseLost()
@@ -492,6 +502,11 @@ class Store:
     def finish(self, run_id, token, *, result=None, error=None, retry=False):
         with self.engine.begin() as conn:
             row, instant = self._owned(conn, run_id, token)
+            if row["kind"] == "sandbox_check" and row["cancel_requested"] and not error:
+                result, error = (
+                    None,
+                    {"code": "sandbox_cancelled", "message": "샌드박스를 중단하고 정리했습니다."},
+                )
             retry = bool(error and retry and row["attempt"] < 3)
             state = "queued" if retry else ("failed" if error else "succeeded")
             values = dict(
@@ -517,9 +532,185 @@ class Store:
                     else (
                         "이미지 빌드를 완료했습니다."
                         if row["kind"] == "image_build"
-                        else "소스 확인을 완료했습니다."
+                        else (
+                            "샌드박스 실행 확인과 정리를 완료했습니다. 보안 검사는 아직 하지 않았습니다."
+                            if row["kind"] == "sandbox_check"
+                            else "소스 확인을 완료했습니다."
+                        )
                     )
                 ),
                 row["current_step"],
                 error or {},
             )
+
+    def enqueue_sandbox(self, service_id, build_id, key, target):
+        request_hash = digest({"build_id": str(build_id)})
+        with self.engine.begin() as conn:
+            # Serialize admission to the one configured sandbox across all services.
+            conn.execute(sa.text("SELECT pg_advisory_xact_lock(72401031)"))
+            service = conn.scalar(
+                sa.select(services.c.id).where(services.c.id == service_id).with_for_update()
+            )
+            if not service:
+                raise Problem("service_not_found", "서비스를 찾을 수 없습니다.", 404)
+            existing = (
+                conn.execute(
+                    sa.select(runs).where(
+                        runs.c.service_id == service_id,
+                        runs.c.kind == "sandbox_check",
+                        runs.c.request_key == key,
+                    )
+                )
+                .mappings()
+                .first()
+            )
+            if existing:
+                if existing["request_hash"] != request_hash:
+                    raise Problem("idempotency_conflict", "같은 요청 키의 내용이 다릅니다.", 409)
+                return select_fields(existing, RUN_FIELDS), False
+            build = (
+                conn.execute(
+                    sa.select(runs).where(
+                        runs.c.id == build_id,
+                        runs.c.service_id == service_id,
+                        runs.c.kind == "image_build",
+                        runs.c.status == "succeeded",
+                    )
+                )
+                .mappings()
+                .first()
+            )
+            if not build:
+                raise Problem(
+                    "successful_build_required", "이 서비스의 성공한 이미지 빌드가 필요합니다.", 409
+                )
+            active = conn.scalar(
+                sa.select(runs.c.id).where(
+                    runs.c.status.in_(["queued", "running"]),
+                    sa.or_(runs.c.service_id == service_id, runs.c.kind == "sandbox_check"),
+                )
+            )
+            if active:
+                raise Problem(
+                    "sandbox_busy",
+                    "진행 중인 작업 또는 사용 중인 샌드박스가 있습니다. 완료 후 다시 실행하세요.",
+                    409,
+                    run_id=str(active),
+                )
+            result = build["result"]
+            if (
+                result.get("platform") != "linux/amd64"
+                or not result.get("image")
+                or result.get("commit_sha") != build["resolved_commit_sha"]
+            ):
+                raise Problem(
+                    "sandbox_build_invalid",
+                    "샌드박스에 전달할 빌드 정보를 확인할 수 없습니다.",
+                    409,
+                )
+            row = (
+                conn.execute(
+                    runs.insert()
+                    .values(
+                        id=uuid4(),
+                        service_id=service_id,
+                        kind="sandbox_check",
+                        status="queued",
+                        input_snapshot={
+                            "build_id": str(build_id),
+                            "image": result["image"],
+                            "image_digest": result["image_digest"],
+                            "container_port": build["input_snapshot"]["container_port"],
+                            "healthcheck_path": build["input_snapshot"]["healthcheck_path"],
+                            "sandbox_target": target,
+                        },
+                        resolved_commit_sha=build["resolved_commit_sha"],
+                        request_key=key,
+                        request_hash=request_hash,
+                    )
+                    .returning(runs)
+                )
+                .mappings()
+                .one()
+            )
+            append_event(
+                conn, row["id"], "queued", "빌드한 이미지의 샌드박스 실행 확인을 접수했습니다."
+            )
+            return select_fields(row, RUN_FIELDS), True
+
+    def attach_sandbox(self, run_id, token, revision):
+        with self.engine.begin() as conn:
+            row, _ = self._owned(conn, run_id, token)
+            if row["external_id"] and row["external_id"] != revision:
+                raise ValueError("Sandbox revision must not change")
+            conn.execute(runs.update().where(runs.c.id == run_id).values(external_id=revision))
+            append_event(
+                conn,
+                run_id,
+                "sandbox_prepared",
+                "실행할 ECS 개정판을 저장했습니다.",
+                "sandbox_prepared",
+            )
+
+    def sandbox_checkpoint(self, run_id, token, outcome):
+        with self.engine.begin() as conn:
+            row, _ = self._owned(conn, run_id, token)
+            if row["submission"]:
+                return row["submission"]
+            conn.execute(runs.update().where(runs.c.id == run_id).values(submission=outcome))
+            return outcome
+
+    def sandbox_control(self, run_id, token):
+        with self.engine.begin() as conn:
+            row, _ = self._owned(conn, run_id, token)
+            return row["cancel_requested"]
+
+    @contextmanager
+    def sandbox_lock(self):
+        # A session lock also fences a slow, stale worker from its replacement.
+        with self.engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+            acquired = conn.scalar(sa.text("SELECT pg_try_advisory_lock(72401032)"))
+            try:
+                yield acquired
+            finally:
+                if acquired:
+                    conn.execute(sa.text("SELECT pg_advisory_unlock(72401032)"))
+
+    def cancel_sandbox(self, run_id):
+        with self.engine.begin() as conn:
+            row = (
+                conn.execute(
+                    sa.select(runs)
+                    .where(runs.c.id == run_id, runs.c.kind == "sandbox_check")
+                    .with_for_update()
+                )
+                .mappings()
+                .first()
+            )
+            if not row:
+                raise Problem("run_not_found", "실행 이력을 찾을 수 없습니다.", 404)
+            if row["status"] in ("queued", "running") and not row["cancel_requested"]:
+                values = {"cancel_requested": True}
+                if row["status"] == "queued" and not row["external_id"]:
+                    values.update(
+                        status="failed",
+                        finished_at=now(conn),
+                        error={
+                            "code": "sandbox_cancelled",
+                            "message": "샌드박스 실행 요청을 취소했습니다.",
+                        },
+                    )
+                row = (
+                    conn.execute(
+                        runs.update().where(runs.c.id == run_id).values(**values).returning(runs)
+                    )
+                    .mappings()
+                    .one()
+                )
+                append_event(
+                    conn,
+                    run_id,
+                    "cancel_requested",
+                    "중단을 요청했습니다. 실행 중인 자원을 정리한 뒤 종료합니다.",
+                )
+            return select_fields(row, RUN_FIELDS)

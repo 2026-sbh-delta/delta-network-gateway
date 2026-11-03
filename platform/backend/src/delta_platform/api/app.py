@@ -15,11 +15,19 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy.exc import SQLAlchemyError
 
 from delta_platform.adapters.builds import BuildError, CodeBuildRunner, build_target
+from delta_platform.adapters.sandbox import sandbox_target
 from delta_platform.config import Settings
 from delta_platform.core.auth import COOKIE, Auth
 from delta_platform.core.database import engine_for, ready
 from delta_platform.core.errors import Problem
-from delta_platform.core.inputs import BuildInput, EmptyInput, LoginInput, ServiceInput, request_key
+from delta_platform.core.inputs import (
+    BuildInput,
+    EmptyInput,
+    LoginInput,
+    SandboxInput,
+    ServiceInput,
+    request_key,
+)
 from delta_platform.core.store import Store
 
 logger = logging.getLogger("delta_platform")
@@ -218,6 +226,35 @@ def create_app(settings=None, engine=None):
     ):
         store.run(run_id, "image_build")
         return store.run_events(run_id, after_sequence, limit)
+
+    @protected.post("/services/{service_id}/sandbox-checks")
+    def sandbox_check(service_id: UUID, body: SandboxInput, request: Request):
+        result, created = store.enqueue_sandbox(
+            service_id,
+            UUID(body.build_id),
+            request_key(request.headers.get("Idempotency-Key")),
+            sandbox_target(settings),
+        )
+        return JSONResponse(jsonable_encoder(result), status_code=202 if created else 200)
+
+    @protected.get("/services/{service_id}/sandbox-checks")
+    def sandbox_list(service_id: UUID, limit: Limit = 50, cursor: str | None = None):
+        return store.list_runs(service_id, limit, cursor, "sandbox_check")
+
+    @protected.get("/sandbox-checks/{run_id}")
+    def sandbox_detail(run_id: UUID):
+        return store.run(run_id, "sandbox_check")
+
+    @protected.get("/sandbox-checks/{run_id}/events")
+    def sandbox_events(
+        run_id: UUID, after_sequence: Annotated[int, Query(ge=0)] = 0, limit: Limit = 100
+    ):
+        store.run(run_id, "sandbox_check")
+        return store.run_events(run_id, after_sequence, limit)
+
+    @protected.post("/sandbox-checks/{run_id}/cancel")
+    def sandbox_cancel(run_id: UUID, body: EmptyInput):
+        return store.cancel_sandbox(run_id)
 
     @protected.get("/builds/{run_id}/logs")
     def build_logs(run_id: UUID):

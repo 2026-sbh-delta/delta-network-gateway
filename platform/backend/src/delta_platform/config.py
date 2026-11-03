@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     build_project: str = ""
     build_repository: str = ""
     build_region: str = "ap-northeast-2"
+    sandbox_target: str = ""
 
     @model_validator(mode="after")
     def validate_settings(self):

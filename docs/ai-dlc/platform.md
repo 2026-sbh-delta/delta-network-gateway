@@ -9,7 +9,7 @@
 - 로그인은 사용자 정정에 따라 고정 ID·비밀번호 한 쌍과 공통 작업 공간으로 시작한다. U1에 회원가입·계정 관리·소셜 로그인·개인별 권한은 없다.
 - 문서는 한국어로 작성하고 코드 주석은 필요하면 영어로 작성한다.
 - 구현 전 작업 범위를 공유한다. 추가 지시 `Dont forget to tell me before you commit.`에 따라 커밋 전에 변경 내용·검증 결과를 알린다. 푸시는 별도 지시 범위다.
-- U1과 GitHub OIDC 연결·실제 Plan/Release 검증을 완료했다. 사용자가 U2 [PR #14](https://github.com/2026-sbh-delta/delta-network-gateway/pull/14)를 병합한 뒤 GitHub Infra Plan/Apply와 Release로 운영 배포했다. 운영 역할의 CodeBuild 조회 권한을 보완하고 공개 HTTPS에서 실제 빌드·결과·로그·브라우저를 검증했다. 해당 권한 수정은 별도 fix 브랜치로 main 반영이 필요하다. [U2 기록](platform-u2.md)을 따른다.
+- U1과 GitHub OIDC 연결·실제 Plan/Release 검증을 완료했다. 사용자가 U2 [PR #14](https://github.com/2026-sbh-delta/delta-network-gateway/pull/14)를 병합한 뒤 GitHub Infra Plan/Apply와 Release로 운영 배포했다. 운영 역할의 CodeBuild 조회 권한을 보완하고 공개 HTTPS에서 실제 빌드·결과·로그·브라우저를 검증했다. 해당 권한 수정 PR #15도 main에 병합됐다. [U2 기록](platform-u2.md)을 따른다.
 
 ## Ideation
 
@@ -60,8 +60,8 @@
 | --- | --- | --- | --- |
 | U0 | 브랜치·디렉터리·문서 | `feat/platform`, 역할별 경계, 설명 문서·진행 기록 | 준비 완료 |
 | U1 | 고정 로그인·서비스 등록·소스 사전 검사 | 실제 DB 공유, 인증 보호·재시작 보존·중복 요청·GitHub 확인 검증 | [구현·검증 완료](platform-u1.md), AWS 배포 완료 |
-| U2 | 공개 저장소·빌드 | 특정 커밋의 이미지·결과 저장, 관리 권한 없는 빌드 | [운영 배포·공개 HTTPS 실제 빌드 검증 완료](platform-u2.md), 권한 수정 PR 반영 필요 |
-| U3 | ECS 검사 연결 | 검사한 digest·증거 연결, 미통과/미연결 시 배포 차단 | 미착수 |
+| U2 | 공개 저장소·빌드 | 특정 커밋의 이미지·결과 저장, 관리 권한 없는 빌드 | [운영 배포·공개 HTTPS 실제 빌드 검증 완료](platform-u2.md), PR #15 병합 완료 |
+| U3 | ECS 검사 연결 | 검사한 digest·증거 연결, 미통과/미연결 시 배포 차단 | [실행 확인 구현·실제 AWS 검증 완료](platform-u3.md), 공개 웹 Release·보안 검사 연결은 후속 |
 | U4 | Terraform·VM 배포 | handoff 검증·준비 검사·배포·헬스 체크·실패 처리 | 미착수 |
 | U5 | 관측 조회 | 실제 지표·로그·트레이스, 조회 실패·수집 시각 표시 | 미착수 |
 | U6 | DB 이전 | 호환성·복제·최종 동기화·단일 쓰기 전환·검증, 복구 경계 명시 | 미착수 |

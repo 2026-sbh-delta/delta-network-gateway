@@ -42,9 +42,10 @@ uv run platform-worker
 2. 빌드 경로와 Dockerfile 경로는 **저장소 최상위 기준**이다. Dockerfile은 빌드 경로 안에 있어야 한다.
 3. **소스 확인**을 누른다. 공개 여부, 커밋, 빌드 디렉터리, Dockerfile의 위치·유형을 검사한다.
 4. 빌드 실행기를 연결한 환경에서는 성공한 소스 검사 아래 **이 커밋 빌드**를 누른다. 성공 시 이미지 digest를, 실패 시 원인과 빌드 로그를 확인한다.
-5. 확정된 커밋과 단계별 결과를 확인한다. 실패하면 사유를 확인한 뒤 새 검사를 실행한다.
+5. U3 실행기를 연결한 환경에서는 성공한 빌드 아래 **이 이미지 실행 확인**을 누른다. ECS에서 실제 이미지·앱 응답을 확인하고 태스크를 정리한다. 진행 기록·실패 이유·중단 요청을 확인할 수 있다.
+6. 실행 확인 통과와 보안 검사·운영 배포를 구분한다. SAST·DAST·AI 검사 연결은 후속 단계다.
 
-GitHub 무인증 조회 한도에 도달하면 실패 사유를 표시한다. 검사는 소스 코드를 실행하지 않는다. 파일 존재 확인과 빌드·보안 검사를 구분한다. 앱 포트·헬스 체크 경로는 후속 배포를 위한 등록 정보이며 현재 해당 주소에 요청하지 않는다.
+GitHub 무인증 조회 한도에 도달하면 실패 사유를 표시한다. 검사는 소스 코드를 실행하지 않는다. 파일 존재 확인과 빌드·보안 검사를 구분한다. U3 샌드박스는 등록한 앱 포트·헬스 체크 경로를 사용한다. 소스 확인 단계는 앱을 실행하지 않는다.
 
 ## 구조
 
@@ -53,7 +54,7 @@ GitHub 무인증 조회 한도에 도달하면 실패 사유를 표시한다. �
 | `web/` | React·TypeScript 화면, API 연결, 브라우저 테스트 |
 | `backend/src/delta_platform/api/` | 고정 계정 로그인, 요청 검증, 서비스·작업 조회 |
 | `backend/src/delta_platform/core/` | 인증, PostgreSQL 저장, 중복 요청·작업 소유권·상태 전이 |
-| `backend/src/delta_platform/adapters/` | 공개 GitHub API 읽기 |
+| `backend/src/delta_platform/adapters/` | GitHub 소스 확인·CodeBuild 빌드·ECS 실행 확인 |
 | `backend/src/delta_platform/worker/` | 작업 선점, 검사, 재시도·중단 후 복구 |
 | `backend/migrations/` | Alembic DB 변경 이력 |
 | `contracts/` | [HTTP 규격](contracts/u1-http.md), [데이터 구조](contracts/u1-data.md) |
@@ -98,4 +99,4 @@ DB migration은 배포 전에 한 번 실행한다. `/health/ready`는 DB·스�
 
 기능 코드 롤백 전 DB 백업과 migration 호환성을 확인한다. 최초 migration의 downgrade는 테이블을 삭제하므로 실제 데이터가 있는 환경에서 일반 롤백으로 사용하지 않는다.
 
-U2는 별도 CodeBuild에서 고객 Dockerfile을 빌드하고 결과 digest를 저장한다. [빌드 기반 설정](deploy/builds/README.md)과 [API 계약](contracts/u2-builds.md)을 따른다. 후속 작업은 기존 ECS 검사 연동, Terraform·VM 배포, 관측 조회, 같은 엔진의 DB 이전이다. **커밋 전에 변경 내용·검증 결과·Conventional Commit 메시지를 알리고, 푸시는 별도 지시에 따른다.**
+U2는 별도 CodeBuild에서 고객 Dockerfile을 빌드하고 결과 digest를 저장한다. [빌드 기반 설정](deploy/builds/README.md)과 [API 계약](contracts/u2-builds.md)을 따른다. U3의 코드·기반·실제 검증 상태는 [U3 기록](../docs/ai-dlc/platform-u3.md)을 따른다. [샌드박스 설정](deploy/sandbox/README.md)과 [API 계약](contracts/u3-sandbox.md)을 추가했다. 후속 작업은 보안 검사 연동, Terraform·VM 배포, 관측 조회, 같은 엔진의 DB 이전이다. **커밋 전에 변경 내용·검증 결과·Conventional Commit 메시지를 알리고, 푸시는 별도 지시에 따른다.**

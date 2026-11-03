@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { SandboxPanel } from "./SandboxPanel";
 import { api, message, type Page, type Run } from "./api";
 
 const labels = {
@@ -142,128 +143,131 @@ export function BuildPanel({
   }
   const pending = history.some(active);
   return (
-    <section className="panel build-panel" aria-label="이미지 빌드">
-      <div className="panel-top">
-        <div>
-          <h2>이미지 빌드</h2>
-          <p className="muted">
-            선택한 소스 검사에서 확인한 커밋으로 이미지를 만듭니다.
-          </p>
-        </div>
-        <button
-          className="primary"
-          onClick={build}
-          disabled={busy || pending || source?.status !== "succeeded"}
-        >
-          {pending ? "빌드 진행 중…" : "이 커밋 빌드"}
-        </button>
-      </div>
-      <p>
-        선택한 커밋:{" "}
-        <code>
-          {source?.resolved_commit_sha?.slice(0, 12) ??
-            "소스 확인이 필요합니다"}
-        </code>
-      </p>
-      {error && (
-        <p className="error" role="alert">
-          {error}{" "}
-          <button
-            onClick={() => {
-              setError("");
-              setRefresh((n) => n + 1);
-            }}
-          >
-            다시 조회
-          </button>
-        </p>
-      )}
-      {run ? (
-        <>
-          <span className={`status ${run.status}`}>{labels[run.status]}</span>
-          {active(run) && (
-            <p>
-              {stepLabels[run.current_step ?? ""] ??
-                "빌드 상태를 확인하고 있습니다."}
+    <>
+      <section className="panel build-panel" aria-label="이미지 빌드">
+        <div className="panel-top">
+          <div>
+            <h2>이미지 빌드</h2>
+            <p className="muted">
+              선택한 소스 검사에서 확인한 커밋으로 이미지를 만듭니다.
             </p>
-          )}
-          <p className="muted">
-            커밋 {run.resolved_commit_sha?.slice(0, 12)} ·{" "}
-            {new Date(run.created_at).toLocaleString("ko-KR")}
-          </p>
-          {run.error && (
-            <div className="failure">
-              <strong>{run.error.message}</strong>
-              <small>{run.error.code}</small>
-            </div>
-          )}
-          {run.result?.image && (
-            <div className="build-result">
-              <strong>빌드된 이미지</strong>
-              <code>{run.result.image}</code>
-              <small>
-                {run.result.platform} · 다음 ECS 검사에 전달할 이미지입니다.
-                실행 검사·배포는 아직 하지 않았습니다.
-              </small>
-            </div>
-          )}
-          {run.external_id && (
-            <>
-              <p className="muted">
-                CodeBuild 실행: <code>{run.external_id}</code>
-              </p>
-              <button disabled={busy} onClick={readLogs}>
-                {showLogs ? "로그 새로고침" : "빌드 로그 보기"}
-              </button>
-            </>
-          )}
-          {showLogs && (
-            <pre className="build-logs" tabIndex={0}>
-              {logs}
-            </pre>
-          )}
-        </>
-      ) : (
-        <p className="muted">아직 빌드 이력이 없습니다.</p>
-      )}
-      {history.length > 1 && (
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>접수 시각</th>
-                <th>커밋</th>
-                <th>결과</th>
-                <th>상세</th>
-              </tr>
-            </thead>
-            <tbody>
-              {history.map((r) => (
-                <tr key={r.id}>
-                  <td>{new Date(r.created_at).toLocaleString("ko-KR")}</td>
-                  <td>
-                    <code>{r.resolved_commit_sha?.slice(0, 12)}</code>
-                  </td>
-                  <td>{labels[r.status]}</td>
-                  <td>
-                    <button
-                      onClick={() => setRun(r)}
-                      aria-pressed={run?.id === r.id}
-                    >
-                      빌드 보기
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          </div>
+          <button
+            className="primary"
+            onClick={build}
+            disabled={busy || pending || source?.status !== "succeeded"}
+          >
+            {pending ? "빌드 진행 중…" : "이 커밋 빌드"}
+          </button>
         </div>
-      )}
-      {cursor && (
-        <button disabled={busy} onClick={more}>
-          빌드 이력 더 보기
-        </button>
-      )}
-    </section>
+        <p>
+          선택한 커밋:{" "}
+          <code>
+            {source?.resolved_commit_sha?.slice(0, 12) ??
+              "소스 확인이 필요합니다"}
+          </code>
+        </p>
+        {error && (
+          <p className="error" role="alert">
+            {error}{" "}
+            <button
+              onClick={() => {
+                setError("");
+                setRefresh((n) => n + 1);
+              }}
+            >
+              다시 조회
+            </button>
+          </p>
+        )}
+        {run ? (
+          <>
+            <span className={`status ${run.status}`}>{labels[run.status]}</span>
+            {active(run) && (
+              <p>
+                {stepLabels[run.current_step ?? ""] ??
+                  "빌드 상태를 확인하고 있습니다."}
+              </p>
+            )}
+            <p className="muted">
+              커밋 {run.resolved_commit_sha?.slice(0, 12)} ·{" "}
+              {new Date(run.created_at).toLocaleString("ko-KR")}
+            </p>
+            {run.error && (
+              <div className="failure">
+                <strong>{run.error.message}</strong>
+                <small>{run.error.code}</small>
+              </div>
+            )}
+            {run.result?.image && (
+              <div className="build-result">
+                <strong>빌드된 이미지</strong>
+                <code>{run.result.image}</code>
+                <small>
+                  {run.result.platform} · 샌드박스 실행 확인은 아래에서 별도로
+                  진행합니다.
+                </small>
+              </div>
+            )}
+            {run.external_id && (
+              <>
+                <p className="muted">
+                  CodeBuild 실행: <code>{run.external_id}</code>
+                </p>
+                <button disabled={busy} onClick={readLogs}>
+                  {showLogs ? "로그 새로고침" : "빌드 로그 보기"}
+                </button>
+              </>
+            )}
+            {showLogs && (
+              <pre className="build-logs" tabIndex={0}>
+                {logs}
+              </pre>
+            )}
+          </>
+        ) : (
+          <p className="muted">아직 빌드 이력이 없습니다.</p>
+        )}
+        {history.length > 1 && (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>접수 시각</th>
+                  <th>커밋</th>
+                  <th>결과</th>
+                  <th>상세</th>
+                </tr>
+              </thead>
+              <tbody>
+                {history.map((r) => (
+                  <tr key={r.id}>
+                    <td>{new Date(r.created_at).toLocaleString("ko-KR")}</td>
+                    <td>
+                      <code>{r.resolved_commit_sha?.slice(0, 12)}</code>
+                    </td>
+                    <td>{labels[r.status]}</td>
+                    <td>
+                      <button
+                        onClick={() => setRun(r)}
+                        aria-pressed={run?.id === r.id}
+                      >
+                        빌드 보기
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {cursor && (
+          <button disabled={busy} onClick={more}>
+            빌드 이력 더 보기
+          </button>
+        )}
+      </section>
+      <SandboxPanel key={serviceId} serviceId={serviceId} build={run} />
+    </>
   );
 }

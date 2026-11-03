@@ -10,7 +10,7 @@ from alembic import command
 from alembic.config import Config
 from build_fixture import BrowserBuilder
 from support import configure_env
-from test_builds import config as build_config
+from test_sandbox import config as sandbox_config
 
 import delta_platform.api.app as app_module
 from delta_platform.api.app import create_app
@@ -18,7 +18,7 @@ from delta_platform.core.database import engine_for
 
 if __name__ == "__main__":
     configure_env()
-    config = build_config()
+    config = sandbox_config()
     app_module.CodeBuildRunner = BrowserBuilder
     engine = engine_for(config)
     assert engine.url.database == "platform_test" and engine.url.host == "127.0.0.1"

@@ -120,6 +120,16 @@ test("소스 커밋 빌드 → digest 보존 → 로그를 텍스트로 표시",
     timeout: 15000,
   });
   await expect(page.locator(".build-result")).toContainText("@sha256:");
+  await page
+    .getByRole("button", { name: "이 이미지 실행 확인", exact: true })
+    .click();
+  await expect(page.getByText("실행 확인 통과", { exact: true })).toBeVisible({
+    timeout: 15000,
+  });
+  await expect(page.locator(".sandbox-result")).toContainText(
+    "보안 검사 미실행",
+  );
+  await expect(page.locator(".sandbox-result")).toContainText("@sha256:");
   await page.getByRole("button", { name: "빌드 로그 보기" }).click();
   await expect(page.locator(".build-logs")).toContainText("<script>");
   expect(
@@ -133,7 +143,7 @@ test("소스 커밋 빌드 → digest 보존 → 로그를 텍스트로 표시",
   });
   await page.reload();
   await page.getByRole("button", { name: /빌드 검증 서비스/ }).click();
-  await expect(page.locator(".build-result")).toContainText("@sha256:");
+  await expect(page.locator(".sandbox-result")).toContainText("@sha256:");
   await page.setViewportSize({ width: 390, height: 844 });
   await page.screenshot({
     path: info.outputPath("build-mobile.png"),
@@ -160,3 +170,40 @@ test("빌드 실패는 이미지 성공으로 표시하지 않는다", async ({ 
   await expect(page.getByText("build_failed", { exact: true })).toBeVisible();
   await expect(page.locator(".build-result")).toHaveCount(0);
 });
+
+for (const cancel of [false, true]) {
+  test(
+    cancel
+      ? "실행 중단 후 태스크 정리 결과"
+      : "앱 응답 실패는 실행 통과로 표시하지 않는다",
+    async ({ page }) => {
+      await login(page);
+      await register(page, cancel ? "중단 검증 서비스" : "실행 실패 서비스");
+      await page
+        .getByRole("button", { name: "소스 확인", exact: true })
+        .click();
+      await expect(
+        page.getByRole("button", { name: "이 커밋 빌드" }),
+      ).toBeEnabled({ timeout: 15000 });
+      await page.getByRole("button", { name: "이 커밋 빌드" }).click();
+      await expect(
+        page.getByRole("button", { name: "이 이미지 실행 확인", exact: true }),
+      ).toBeEnabled({ timeout: 15000 });
+      await page
+        .getByRole("button", { name: "이 이미지 실행 확인", exact: true })
+        .click();
+      if (cancel)
+        await page
+          .getByRole("button", { name: "실행 중단", exact: true })
+          .click();
+      await expect(page.locator(".sandbox-panel .status")).toHaveText(
+        cancel ? "중단 완료" : "실행 확인 실패",
+        { timeout: 15000 },
+      );
+      await expect(page.locator(".sandbox-result")).toHaveCount(0);
+      await expect(
+        page.getByRole("button", { name: "이 이미지 실행 확인", exact: true }),
+      ).toBeEnabled();
+    },
+  );
+}

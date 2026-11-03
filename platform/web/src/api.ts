@@ -6,7 +6,8 @@ export type Session = {
 export type Run = {
   id: string;
   service_id: string;
-  kind: "source_preflight" | "image_build";
+  kind: "source_preflight" | "image_build" | "sandbox_check";
+  cancel_requested?: boolean;
   external_id: string | null;
   status: "queued" | "running" | "succeeded" | "failed";
   current_step: string | null;
@@ -14,6 +15,12 @@ export type Run = {
   resolved_commit_sha: string | null;
   created_at: string;
   result: {
+    runtime_check?: string;
+    security_check?: string;
+    build_id?: string;
+    container_port?: number;
+    healthcheck_path?: string;
+    cleanup?: string;
     dockerfile_blob_sha?: string;
     checked_at?: string;
     image?: string;

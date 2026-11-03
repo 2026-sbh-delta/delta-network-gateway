@@ -7,12 +7,36 @@ from conftest import ECR, IMAGE, FakeEc2, FakeEcs, FakeElb, FakeSts, make_provid
 from pydantic import ValidationError
 
 from delta_staging.config import load_targets
+from delta_staging.aws_ecs import StagingError
 from delta_staging.contract import DeployRequest
 from delta_staging.registry import Busy, Conflict, RequestRejected, StagingRegistry, Unsupported
 
 
 def _req(**overrides) -> DeployRequest:
     return DeployRequest.model_validate({"run_id": "run-1", "image": IMAGE, "commit": "abc1234", **overrides})
+
+
+async def test_prepare_revision_changes_port_without_starting_service(target):
+    ecs = FakeEcs()
+    provider = make_provider(target, ecs=ecs)
+    revision = await provider.register_image(_req(), 9090)
+    registered = next(kwargs for name, kwargs in ecs.calls if name == "register_task_definition")
+    assert registered["containerDefinitions"][0]["portMappings"] == [{"containerPort": 9090, "protocol": "tcp"}]
+    assert revision.endswith(":2") and not any(name == "update_service" for name, _ in ecs.calls)
+    with pytest.raises(StagingError):
+        await provider.register_image(_req(), 0)
+
+
+async def test_observe_exact_revision_rejects_wrong_digest_and_old_healthy_task(target):
+    ecs = FakeEcs(running_digest="sha256:" + "c" * 64)
+    provider = make_provider(target, ecs=ecs)
+    ecs.current = await provider.register_image(_req(), 3000)
+    with pytest.raises(StagingError, match="digest"):
+        await provider.verify_revision(ecs.current, "sha256:" + "a" * 64)
+    ecs.running_digest = "sha256:" + "a" * 64
+    provider = make_provider(target, ecs=ecs, elb=FakeElb(["healthy"], ["healthy"]), health_timeout=0)
+    with pytest.raises(StagingError, match="헬스 체크"):
+        await provider.verify_revision(ecs.current, "sha256:" + "a" * 64)
 
 
 async def test_deploy_swaps_image_and_reports_internal_url(target):

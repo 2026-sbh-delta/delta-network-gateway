@@ -671,3 +671,25 @@ footer {
   border-radius: 12px;
   font-size: 12px;
 }
+
+.sandbox-boundary {
+  padding: 14px 16px;
+  background: #f3f5f8;
+  border-left: 3px solid #768a9d;
+  border-radius: 6px;
+  color: #526372;
+  font-size: 14px;
+  line-height: 1.65;
+}
+.sandbox-events {
+  margin: 20px 0;
+  color: #526372;
+}
+.sandbox-events summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.sandbox-events li {
+  margin: 10px 0;
+  line-height: 1.6;
+}
