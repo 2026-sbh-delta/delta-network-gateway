@@ -17,6 +17,7 @@ from langgraph.types import Command
 
 from delta_pipeline.clients import ServiceUnavailable
 from delta_pipeline.graph import build_graph
+from delta_pipeline.migration import MigrationTools
 from delta_pipeline.model import SCENARIOS, Board, Options
 from delta_pipeline.steps import ELSEWHERE, DastClient, DeltaClient, Deps, JenkinsClient
 
@@ -42,7 +43,7 @@ class Run:
     def __init__(self, options: Options, *, delta: DeltaClient, dast: DastClient, jenkins: JenkinsClient,
                  onprem_dir: Path, store_dir: Path, service_ready: Callable[[], bool],
                  on_release_start: Callable[[], None] = lambda: None, sleep: Callable[[float], None] = time.sleep,
-                 run_id: str | None = None) -> None:
+                 run_id: str | None = None, migration: MigrationTools | None = None) -> None:
         self.run_id = run_id or uuid.uuid4().hex
         self.options = options
         self._jenkins = jenkins
@@ -50,7 +51,8 @@ class Run:
         self._board = Board(store_dir / BOARD_DIR / f"{self.run_id}.json", options, self.run_id)
         self._store_dir = store_dir
         self._deps = Deps(run_id=self.run_id, options=options, board=self._board, delta=delta, dast=dast, jenkins=jenkins,
-                          onprem_dir=onprem_dir, service_ready=service_ready, on_release_start=on_release_start, sleep=sleep)
+                          onprem_dir=onprem_dir, service_ready=service_ready, on_release_start=on_release_start, sleep=sleep,
+                          migration=migration)
         self._answer: str | None = None
         self._answered = threading.Event()
 

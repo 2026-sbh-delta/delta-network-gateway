@@ -236,7 +236,8 @@
         "autofix": {
           "enum": [
             "allowed",
-            "forbidden"
+            "forbidden",
+            "retry"
           ],
           "title": "Autofix",
           "type": "string"
@@ -863,7 +864,8 @@
         "deployment_gate",
         "runtime_security",
         "dast_verification",
-        "migration_mapping"
+        "migration_mapping",
+        "fix_review"
       ],
       "title": "Kind",
       "type": "string"

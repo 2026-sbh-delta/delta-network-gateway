@@ -47,6 +47,34 @@
       "title": "AttackResult",
       "type": "object"
     },
+    "BuildRef": {
+      "additionalProperties": false,
+      "description": "같은 빌드인지 대조하는 식별자. 태그는 덮어쓸 수 있어 digest 로 고정한다.",
+      "properties": {
+        "run_id": {
+          "minLength": 1,
+          "title": "Run Id",
+          "type": "string"
+        },
+        "commit": {
+          "minLength": 1,
+          "title": "Commit",
+          "type": "string"
+        },
+        "image_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Image Digest",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "commit",
+        "image_digest"
+      ],
+      "title": "BuildRef",
+      "type": "object"
+    },
     "ClusterCheck": {
       "additionalProperties": false,
       "properties": {
@@ -354,6 +382,17 @@
           ],
           "default": null
         },
+        "fix_review": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/FixReviewEvidence"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "image_vulnerabilities": {
           "anyOf": [
             {
@@ -511,6 +550,96 @@
         "destination"
       ],
       "title": "FirewallRule",
+      "type": "object"
+    },
+    "FixReviewEvidence": {
+      "additionalProperties": false,
+      "description": "패치 회차의 측정값. 테스트와 변경 파일은 패치를 만든 쪽이 아니라 Jenkins 가 잰다. None 은 모른다는 뜻이다.",
+      "properties": {
+        "before": {
+          "$ref": "#/$defs/DastEvidence"
+        },
+        "after": {
+          "$ref": "#/$defs/DastEvidence"
+        },
+        "before_commit": {
+          "minLength": 1,
+          "title": "Before Commit",
+          "type": "string"
+        },
+        "staging_build": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BuildRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "jenkins_build": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BuildRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "tests_passed": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tests Passed"
+        },
+        "changed_files": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Changed Files"
+        },
+        "sast": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SastBaseline"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "attempt": {
+          "default": 1,
+          "minimum": 1,
+          "title": "Attempt",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "before",
+        "after",
+        "before_commit"
+      ],
+      "title": "FixReviewEvidence",
       "type": "object"
     },
     "IdentityInventory": {
@@ -1215,6 +1344,40 @@
       "title": "ReportFinding",
       "type": "object"
     },
+    "SastBaseline": {
+      "additionalProperties": false,
+      "description": "기준 회차와 비교한 SAST 요약. new_review 는 new_findings 에 포함된다.",
+      "properties": {
+        "new_findings": {
+          "minimum": 0,
+          "title": "New Findings",
+          "type": "integer"
+        },
+        "new_review": {
+          "default": 0,
+          "minimum": 0,
+          "title": "New Review",
+          "type": "integer"
+        },
+        "still_open": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Still Open",
+          "type": "integer"
+        },
+        "resolved": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Resolved",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "new_findings"
+      ],
+      "title": "SastBaseline",
+      "type": "object"
+    },
     "SecretsInventory": {
       "additionalProperties": false,
       "properties": {
@@ -1582,7 +1745,8 @@
         "deployment_gate",
         "runtime_security",
         "dast_verification",
-        "migration_mapping"
+        "migration_mapping",
+        "fix_review"
       ],
       "title": "Kind",
       "type": "string"
@@ -1620,6 +1784,7 @@
         "report": null,
         "deployment": null,
         "dast": null,
+        "fix_review": null,
         "image_vulnerabilities": null,
         "cluster_checks": null,
         "log_signals": null,

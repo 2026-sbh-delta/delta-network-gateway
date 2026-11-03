@@ -51,7 +51,7 @@ FastAPI ─ Bearer 토큰 인증
 | [25](ADR-AI-25-jenkins-gate.md) | 배포 파이프라인 연결 | 로컬 시험(Jenkins) | **단계별 게이트 권고, 팀 결정: Jenkins 와 AWS 구성도** |
 | [26](ADR-AI-26-onprem-runtime.md) | 온프레미스 증거 연동 | `runtime_security`와 수집기 구현 | **팀 결정: 데모 범위 포함 여부** |
 | [27](ADR-AI-27-dast-verdict.md) | DAST 역할·판정, 구동 주체 | `dast_verification` 과 시연 콘솔 구현. Jenkins 구동, 관리 에이전트 우선 기각 | **준우 님 설계와 맞춤, 패치 흐름 합의** |
-| [28](ADR-AI-28-fix-guidance-review.md) | 보안 패치 경계 | 미구현, 기준 공유·증거 판정 제안 | **준우 님과 합의 필요** |
+| [28](ADR-AI-28-fix-guidance-review.md) | 보안 패치 경계 | `fix_review` 구현, 그래프 연결은 스테이징·DAST 등록 뒤 | **준우 님과 합의 필요** |
 | [29](ADR-AI-29-deployment-decision-log.md) | 배포 결정 경위 | Jenkins 구동·delta-ai 판정 구조 | **권고, 팀 결정** |
 | [30](ADR-AI-30-jenkins-argo.md) | Jenkins + Argo CD | Jenkins 단독 | **권고, 팀 결정: 고객 앱 인프라** |
 | [31](ADR-AI-31-demo-time-budget.md) | 시연 구성 | 사전 실행 + 카나리 롤백 라이브 | **권고, 시간 미측정** |
@@ -63,7 +63,7 @@ FastAPI ─ Bearer 토큰 인증
 | [37](ADR-AI-37-aws-front-door.md) | 트래픽 앞단 | HAProxy 기각, AWS 기능 사용 | **ALB 가중치 권고, 시험 전** |
 | [38](ADR-AI-38-terraform-vs-cartography.md) | 출발 환경 값의 출처 | Terraform 기준 | 유지, Cartography 미구현 |
 | [39](ADR-AI-39-migration-mapping.md) | CSP 간 매핑 판단 | `migration_mapping` 구현, 대응표·등급 | 로컬 구현, **대응 값 팀 확인** |
-| [40](ADR-AI-40-pipeline-graph.md) | 전체 흐름 구동 | 고정 전이 그래프가 구동, Jenkins 는 도구 | 1단계 로컬 구현, **팀 확정 전** |
+| [40](ADR-AI-40-pipeline-graph.md) | 전체 흐름 구동 | 고정 전이 그래프가 구동, Jenkins 는 도구 | 이전 단계는 대역으로 구현, **팀 확정 전** |
 
 ## 오늘 회의에서 정할 것
 

@@ -9,7 +9,7 @@ import threading
 import time
 from pathlib import Path
 
-from fakes import FakeDast, FakeDelta, FakeJenkins
+from fakes import FakeDast, FakeDelta, FakeJenkins, FakeMigration
 
 from delta_pipeline.model import SCENARIOS, Options
 from delta_pipeline.run import Run, latest_unfinished
@@ -60,11 +60,24 @@ class RecordingDast(FakeDast):
         return super().start(scenario, planner, report)
 
 
+class RecordingMigration(FakeMigration):
+    def set_weight(self, run_id, percent):
+        record("weight", percent)
+        kill_if(f"weight_{percent}")
+
+    def cut_over_data(self, run_id):
+        record("cut_over", run_id)
+        kill_if("cut_over")
+        return {"state": "ready", "detail": "d"}
+
+
 def main():
+    # 전환이 시작된 뒤 복제는 멈춘다. 재개가 이 값을 보고 되돌리면 안 된다
     store = BASE / "store"
     saved = latest_unfinished(store) if store.exists() else None
     run_id, options = saved or (None, Options(next(s for s in SCENARIOS if s.id == SCENARIO_ID)))
-    run = Run(options, delta=FakeDelta(), dast=RecordingDast(), jenkins=DurableJenkins(), onprem_dir=BASE / "onprem",
+    run = Run(options, delta=FakeDelta(), dast=RecordingDast(), jenkins=DurableJenkins(files={"image.json": {"image_id": "sha256:abc"}}),
+              migration=RecordingMigration(sync=[("syncing" if recorded("cut_over") else "synced", 0.0)]), onprem_dir=BASE / "onprem",
               store_dir=store, service_ready=lambda: True, sleep=lambda _: None, run_id=run_id)
     thread = threading.Thread(target=run.execute)
     thread.start()

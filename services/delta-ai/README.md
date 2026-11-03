@@ -43,6 +43,7 @@ curl -s -X POST localhost:8090/v1/assessments -H "Authorization: Bearer $DELTA_A
 | `feedback_ingest` | 긴 리뷰·모의해킹 완료 후 | `evidence.report` |
 | `deployment_gate` | 배포 단계·트래픽 단계 후 | `evidence.deployment` |
 | `dast_verification` | DAST 점검이 끝난 뒤, 트래픽을 옮기기 전 | `evidence.dast` (점검 서비스가 관측한 항목별 상태) |
+| `fix_review` | 패치 빌드를 재검증한 뒤, 사람 승인 전 | `evidence.fix_review` (수정 전·후 DAST, 빌드 식별자, 테스트, 변경 파일, SAST 비교). `fix` 면 사유를 `/fix` 로 돌려보내고, `pass` 여도 사람이 승인해야 PR 을 만든다 |
 | `runtime_security` | 배포 후 주기적으로 | `evidence.image_vulnerabilities`, `cluster_checks`, `log_signals`, `network_posture` 중 하나 이상 |
 
 `migration_parity` 는 `evidence.reachability`(실제 연결 시험)와 `target_env.network.firewall_rules` 도 받는다. 보내면 `PAR-NET-002`, `PAR-NET-003` 을 점검한다. 응답의 `verified_controls` 는 막혔다고 실측된 통제다.

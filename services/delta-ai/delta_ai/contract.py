@@ -11,7 +11,7 @@ from typing import Annotated, Any, Literal, Self
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
 
 Kind = Literal["migration_parity", "feedback_ingest", "deployment_gate", "runtime_security", "dast_verification",
-               "migration_mapping"]
+               "migration_mapping", "fix_review"]
 Provider = Literal["aws", "gcp", "onprem"]
 Verdict = Literal["pass", "fix", "needs_human"]
 Severity = Literal["high", "medium", "low"]
@@ -207,6 +207,37 @@ class DastEvidence(_Model):
     results: tuple[DastResult, ...] = Field(min_length=1)  # 결과 없는 점검을 통과로 읽지 않는다
 
 
+class BuildRef(_Model):
+    """같은 빌드인지 대조하는 식별자. 태그는 덮어쓸 수 있어 digest 로 고정한다."""
+
+    run_id: str = Field(min_length=1)
+    commit: str = Field(min_length=1)
+    image_digest: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+
+
+class SastBaseline(_Model):
+    """기준 회차와 비교한 SAST 요약. new_review 는 new_findings 에 포함된다."""
+
+    new_findings: int = Field(ge=0)
+    new_review: int = Field(default=0, ge=0)
+    still_open: int = Field(default=0, ge=0)
+    resolved: int = Field(default=0, ge=0)
+
+
+class FixReviewEvidence(_Model):
+    """패치 회차의 측정값. 테스트와 변경 파일은 패치를 만든 쪽이 아니라 Jenkins 가 잰다. None 은 모른다는 뜻이다."""
+
+    before: DastEvidence
+    after: DastEvidence
+    before_commit: str = Field(min_length=1)
+    staging_build: BuildRef | None = None  # 스테이징 도구가 실행 중인 태스크에서 읽은 값
+    jenkins_build: BuildRef | None = None
+    tests_passed: bool | None = None
+    changed_files: tuple[str, ...] | None = None
+    sast: SastBaseline | None = None
+    attempt: int = Field(default=1, ge=1)
+
+
 def _valid_cidr(value: str) -> str:
     return str(ipaddress.ip_network(value))  # 잘못된 값은 계약 검증에서 거부한다
 
@@ -276,6 +307,7 @@ class Evidence(_Model):
     report: Report | None = None
     deployment: DeploymentEvidence | None = None
     dast: DastEvidence | None = None
+    fix_review: FixReviewEvidence | None = None
     # None 은 점검 안 함, 빈 값은 점검했고 나온 것이 없다는 뜻이다
     image_vulnerabilities: tuple[PackageVulnerability, ...] | None = Field(default=None, max_length=MAX_RUNTIME_PACKAGES)
     cluster_checks: tuple[ClusterCheck, ...] | None = None
@@ -302,6 +334,8 @@ class AssessmentRequest(_Model):
             raise ValueError("deployment_gate 는 evidence.deployment 가 필요하다")
         if self.kind == "dast_verification" and self.evidence.dast is None:
             raise ValueError("dast_verification 은 evidence.dast 가 필요하다")
+        if self.kind == "fix_review" and self.evidence.fix_review is None:
+            raise ValueError("fix_review 는 evidence.fix_review 가 필요하다")
         if self.kind == "migration_mapping" and self.evidence.mapping is None:
             raise ValueError("migration_mapping 은 evidence.mapping 이 필요하다")
         evidence = self.evidence
@@ -334,7 +368,7 @@ class Finding(_Model):
     category: str
     severity: Severity
     status: FindingStatus
-    autofix: Literal["allowed", "forbidden"]
+    autofix: Literal["allowed", "forbidden", "retry"]  # retry 는 수정안 없이 패치를 다시 만들어 오게 한다
     title: str
     location: dict[str, str] = Field(default_factory=dict)
     evidence: str = ""

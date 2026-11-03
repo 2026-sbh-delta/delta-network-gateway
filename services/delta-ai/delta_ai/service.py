@@ -1,4 +1,4 @@
-"""assess() — 다섯 호출(환경 차이·피드백·배포 단계·런타임 보안·DAST)이 같은 순서를 따른다: 규칙 → 근거 → LLM → 코드 판정."""
+"""assess() — 호출마다(환경 차이·피드백·배포 단계·런타임 보안·DAST·매핑·패치)이 같은 순서를 따른다: 규칙 → 근거 → LLM → 코드 판정."""
 
 from __future__ import annotations
 
@@ -20,6 +20,7 @@ from delta_ai.contract import (
 from delta_ai.dast import check_dast, dast_checks
 from delta_ai.deployment import check_deployment, deployment_checks
 from delta_ai.feedback import candidate_id, detector_error, regression_check, report_findings
+from delta_ai.fix_review import check_fix_review, fix_review_checks
 from delta_ai.judge import PROMPT_VERSION, JudgeOutcome, judge
 from delta_ai.knowledge import Chunk, load_chunks
 from delta_ai.llm import LlmClient
@@ -64,6 +65,9 @@ async def _assess_checks(req: AssessmentRequest, llm: LlmClient | None, started:
     elif req.kind == "dast_verification":
         outcome = check_dast(req.evidence.dast)
         rebuild_checks = dast_checks
+    elif req.kind == "fix_review":
+        outcome = check_fix_review(req.evidence.fix_review)
+        rebuild_checks = fix_review_checks
     elif req.kind == "migration_mapping":
         outcome = check_mapping(req.evidence.mapping)
         rebuild_checks = lambda findings: mapping_checks(findings, outcome.mapping.rows)

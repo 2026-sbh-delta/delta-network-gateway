@@ -30,7 +30,7 @@ def _run(scenario, onprem_dir, *, delta=None, dast=None, jenkins=None, ready=Tru
 
 def _execute(run, answers=()):
     """실행하면서 사람 확인이 뜨면 정해 둔 답을 차례로 준다."""
-    thread = threading.Thread(target=run.execute)
+    thread = threading.Thread(target=run.execute, daemon=True)
     thread.start()
     pending = list(answers)
     deadline = time.time() + 10

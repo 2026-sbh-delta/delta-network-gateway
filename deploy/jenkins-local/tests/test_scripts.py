@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import json
+import subprocess
 import sys
 import urllib.error
 from pathlib import Path
@@ -10,6 +11,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "pipeline" / "scripts"))
 
+import build_image  # noqa: E402
 import gate  # noqa: E402
 import gate_ready  # noqa: E402
 import haproxy_ctl  # noqa: E402
@@ -223,3 +225,46 @@ def test_ready_main_returns_unavailable_exit_code(monkeypatch, capsys):
 
     assert gate_ready.main() == gate.EXIT_UNAVAILABLE
     assert "secret-token" not in capsys.readouterr().err
+
+
+class _Docker:
+    """docker 호출을 기록하고 정해 둔 결과를 돌려준다."""
+
+    def __init__(self, *, built=0, inspected="sha256:abc linux/amd64"):
+        self.built, self.inspected, self.calls = built, inspected, []
+
+    def __call__(self, command):
+        self.calls.append(list(command))
+        if command[:3] == ["docker", "image", "inspect"]:
+            return subprocess.CompletedProcess(command, 0, self.inspected, "")
+        return subprocess.CompletedProcess(command, self.built, "", "실패")
+
+
+def test_build_records_the_image_and_platform(tmp_path):
+    docker, out = _Docker(), tmp_path / "image.json"
+
+    assert build_image.build("t:1", "app", "linux/amd64", out, docker) == 0
+
+    assert json.loads(out.read_text()) == {"tag": "t:1", "image_id": "sha256:abc", "platform": "linux/amd64"}
+
+
+def test_buildx_build_turns_off_attestations_so_the_digest_stays_single():
+    command = build_image.build_command("t:1", "app", "linux/amd64")
+
+    assert {"--provenance=false", "--sbom=false", "--load"} <= set(command)
+
+
+def test_image_of_another_architecture_fails_and_is_not_recorded(tmp_path):
+    out = tmp_path / "image.json"
+
+    code = build_image.build("t:1", "app", "linux/amd64", out, _Docker(inspected="sha256:abc linux/arm64"))
+
+    assert code == build_image.EXIT_WRONG_PLATFORM
+    assert not out.exists()
+
+
+def test_failed_build_is_not_recorded(tmp_path):
+    out = tmp_path / "image.json"
+
+    assert build_image.build("t:1", "app", "linux/amd64", out, _Docker(built=1)) == build_image.EXIT_BUILD_FAILED
+    assert not out.exists()

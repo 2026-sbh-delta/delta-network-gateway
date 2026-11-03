@@ -9,6 +9,7 @@ services:
       JENKINS_ADMIN_PASSWORD: ${JENKINS_ADMIN_PASSWORD:?up.sh 로 실행한다}
       DELTA_API_TOKEN: ${DELTA_API_TOKEN:?up.sh 로 실행한다}
       CASC_JENKINS_CONFIG: /pipelines/casc.yaml
+      IMAGE_PLATFORM: ${IMAGE_PLATFORM:-linux/amd64}  # 운영 대상과 맞춘다. Mac 에서는 에뮬레이션이라 느리다
       JAVA_OPTS: -Djenkins.install.runSetupWizard=false -Xmx1g
     ports:
       - "127.0.0.1:18080:8080"

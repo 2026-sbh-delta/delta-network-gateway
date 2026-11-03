@@ -5,7 +5,6 @@ from __future__ import annotations
 import base64
 import http.cookiejar
 import json
-import subprocess
 import time
 import urllib.error
 import urllib.parse
@@ -15,14 +14,17 @@ from typing import Any
 JUDGE_TIMEOUT_SECONDS = 180  # delta-ai 의 LLM 제한(60초 × 2회)보다 길어야 한다
 DEFAULT_TIMEOUT_SECONDS = 15
 JOB = "delta-demo-deploy"
-JENKINS_CONTAINER = "delta-jenkins-local-jenkins-1"
-WORKSPACE = f"/var/jenkins_home/workspace/{JOB}"
 QUEUE_WAIT_SECONDS = 120
 BUILD_SEARCH_LIMIT = 50
+HTTP_NOT_FOUND = 404
 
 
 class ServiceUnavailable(RuntimeError):
     """호출한 서비스에서 판정이나 결과를 받지 못했다. 통과로 읽지 않는다."""
+
+
+class NotFound(ServiceUnavailable):
+    """서비스는 응답했고 그런 항목이 없다고 답했다."""
 
 
 def _json(request: urllib.request.Request, *, timeout: float, opener: Any = urllib.request.urlopen) -> Any:
@@ -30,7 +32,8 @@ def _json(request: urllib.request.Request, *, timeout: float, opener: Any = urll
         with opener(request, timeout=timeout) as response:
             body = response.read()
     except urllib.error.HTTPError as exc:
-        raise ServiceUnavailable(f"HTTP {exc.code}: {request.full_url}") from exc
+        error = NotFound if exc.code == HTTP_NOT_FOUND else ServiceUnavailable
+        raise error(f"HTTP {exc.code}: {request.full_url}") from exc
     except (urllib.error.URLError, TimeoutError, OSError) as exc:
         raise ServiceUnavailable(f"{type(exc).__name__}: {request.full_url}") from exc
     try:
@@ -74,8 +77,8 @@ class Dast:
 
 
 class Jenkins:
-    def __init__(self, url: str, user: str, password: str) -> None:
-        self._url = url
+    def __init__(self, url: str, user: str, password: str, job: str = JOB) -> None:
+        self._url, self._job = url, job
         self._auth = "Basic " + base64.b64encode(f"{user}:{password}".encode()).decode()
         # 크럼은 발급받은 세션에서만 유효하다
         self._opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
@@ -103,7 +106,7 @@ class Jenkins:
             raise ServiceUnavailable(f"{type(exc).__name__}: {path}") from exc
 
     def describe_root(self) -> dict[str, Any]:
-        return self._get(f"/job/{JOB}/api/json?tree=name")
+        return self._get(f"/job/{self._job}/api/json?tree=name")
 
     def _wait_started(self, location: str) -> int:
         queue_path = urllib.parse.urlparse(location).path
@@ -121,16 +124,16 @@ class Jenkins:
     def trigger(self, scenario: str, run_key: str) -> int:
         """빌드를 시작하고 빌드 번호를 돌려준다."""
         query = urllib.parse.urlencode({"SCENARIO": scenario, "RUN_ID": run_key})
-        return self._wait_started(self._post(f"/job/{JOB}/buildWithParameters?{query}"))
+        return self._wait_started(self._post(f"/job/{self._job}/buildWithParameters?{query}"))
 
     def find_build(self, run_key: str) -> int | None:
         """이미 시작했거나 큐에 있는 빌드를 찾는다. 재개할 때 같은 배포를 두 번 시작하지 않으려는 것이다."""
         queue = self._get("/queue/api/json?" + urllib.parse.urlencode({"tree": "items[id,params,task[name]]"}))
         for item in queue.get("items", ()):
-            if (item.get("task") or {}).get("name") == JOB and f"RUN_ID={run_key}\n" in f"{item.get('params', '')}\n":
+            if (item.get("task") or {}).get("name") == self._job and f"RUN_ID={run_key}\n" in f"{item.get('params', '')}\n":
                 return self._wait_started(f"/queue/item/{item['id']}/")
         tree = f"builds[number,actions[parameters[name,value]]]{{0,{BUILD_SEARCH_LIMIT}}}"
-        builds = self._get(f"/job/{JOB}/api/json?" + urllib.parse.urlencode({"tree": tree}))
+        builds = self._get(f"/job/{self._job}/api/json?" + urllib.parse.urlencode({"tree": tree}))
         for build in builds.get("builds", ()):
             parameters = (p for action in build.get("actions", ()) for p in action.get("parameters", ()))
             if any(p.get("name") == "RUN_ID" and p.get("value") == run_key for p in parameters):
@@ -138,31 +141,21 @@ class Jenkins:
         return None
 
     def describe(self, build: int) -> dict[str, Any]:
-        return self._get(f"/job/{JOB}/{build}/wfapi/describe")
+        return self._get(f"/job/{self._job}/{build}/wfapi/describe")
 
     def pending_inputs(self, build: int) -> list[dict[str, Any]]:
-        return self._get(f"/job/{JOB}/{build}/wfapi/pendingInputActions")
+        return self._get(f"/job/{self._job}/{build}/wfapi/pendingInputActions")
 
     def answer_input(self, build: int, input_id: str, *, approve: bool) -> None:
         action = "proceedEmpty" if approve else "abort"
-        self._post(f"/job/{JOB}/{build}/input/{input_id}/{action}")
+        self._post(f"/job/{self._job}/{build}/input/{input_id}/{action}")
 
     def file(self, build: int, name: str) -> dict[str, Any] | None:
-        """끝난 빌드는 산출물에서 읽는다. 진행 중에는 Pipeline 작업 폴더를 HTTP 로 읽을 수 없어 컨테이너에서 읽는다."""
+        """파이프라인이 단계마다 올린 산출물을 읽는다. 아직 없으면 None 이다. 조회 실패는 없는 것으로 치지 않는다."""
         try:
-            return self._get(f"/job/{JOB}/{build}/artifact/{name}")
-        except ServiceUnavailable:
-            return self._workspace_file(name)
-
-    def _workspace_file(self, name: str) -> dict[str, Any] | None:
-        done = subprocess.run(["docker", "exec", JENKINS_CONTAINER, "cat", f"{WORKSPACE}/{name}"],
-                              capture_output=True, timeout=DEFAULT_TIMEOUT_SECONDS, check=False)
-        if done.returncode != 0:
+            return self._get(f"/job/{self._job}/{build}/artifact/{name}")
+        except NotFound:
             return None
-        try:
-            return json.loads(done.stdout)
-        except json.JSONDecodeError:
-            return None  # 쓰는 중인 파일이다. 다음 조회에서 다시 읽는다
 
     def console_url(self, build: int) -> str:
-        return f"{self._url}/job/{JOB}/{build}/"
+        return f"{self._url}/job/{self._job}/{build}/"

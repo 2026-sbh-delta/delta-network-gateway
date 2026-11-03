@@ -66,3 +66,25 @@ def test_stop_after_restart_never_deploys(base):
 
     assert snapshot["outcome"] == "stopped"
     assert not (base / "calls.jsonl").read_text(encoding="utf-8").count('"trigger"')
+
+
+def test_killed_during_the_shift_resumes_at_the_same_step(base):
+    assert _launch(base, "weight_50", "migration", "approve").returncode == KILLED
+    assert _calls(base, "weight") == [10, 50]
+
+    snapshot = _final(_launch(base, "never", "migration", "approve"))
+
+    assert snapshot["outcome"] == "migrated"
+    assert _calls(base, "weight") == [10, 50, 50, 100]
+    assert len(_calls(base, "cut_over")) == 1
+
+
+def test_killed_while_moving_writes_finishes_the_cutover_and_never_returns_the_traffic(base):
+    assert _launch(base, "cut_over", "migration", "approve").returncode == KILLED
+    assert 0 not in _calls(base, "weight")
+
+    snapshot = _final(_launch(base, "never", "migration", "approve"))
+
+    assert snapshot["outcome"] == "migrated"
+    assert 0 not in _calls(base, "weight")
+    assert len(_calls(base, "cut_over")) == 2

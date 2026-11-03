@@ -74,6 +74,11 @@ Jenkins 의 `SCENARIO` 파라미터로 고른다.
 | `sast.sarif`, `sast-result.json` | Semgrep 결과와 판단 결과 |
 | `metrics-<비율>.json`, `gate-<비율>.json` | 트래픽 단계 지표와 판단 결과 |
 | `failure-analysis.json` | 실패 원인 분석 |
+| `image.json` | 빌드한 이미지 태그, 로컬 ID, 플랫폼 |
+
+`metrics-<비율>.json`, `gate-<비율>.json`, `image.json` 은 빌드가 끝나기 전에 단계마다 올려서, 그래프가 Jenkins API 로 읽는다.
+
+이미지는 `build_image.py` 가 buildx 로 만든다. 기본은 `linux/amd64` 단일 이미지이고(증명·SBOM 없음) `IMAGE_PLATFORM` 으로 바꾼다. `image.json` 의 `image_id` 는 로컬 값으로, 저장소 digest 가 아니다. Apple Silicon 에서는 에뮬레이션으로 돌아 빌드와 앱이 느리다.
 
 ## 테스트
 
@@ -84,6 +89,6 @@ Jenkins 의 `SCENARIO` 파라미터로 고른다.
 ## 여기서 확인할 수 없는 것
 
 - 사설망·ANF 경유, Jenkins 의 인터넷 경로, 실제 서버 메모리(t4g.nano·e2-micro)
-- AWS→GCP 교차 배포, ARM/x86 이미지 빌드
+- AWS→GCP 교차 배포, 실제 x86 서버에서의 실행
 - 동규 님의 실제 HAProxy 설정
 - Dependency-Check, SonarQube, ZAP (아직 넣지 않았다)

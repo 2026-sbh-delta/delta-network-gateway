@@ -42,6 +42,7 @@ button.secondary { background: var(--panel); color: var(--text); border-color: v
 button:disabled { opacity: .5; cursor: not-allowed; }
 .graph { display: grid; grid-template-columns: 2fr 2fr 4.4fr 1fr; gap: 10px; margin-bottom: 16px; }
 .lane { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px; min-width: 0; }
+.lane.wide { grid-column: 1 / -1; }
 .lane > div:first-child { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
 .nodes { display: flex; gap: 6px; }
 .node { flex: 1 1 0; min-width: 0; padding: 9px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--idle-soft);
@@ -133,7 +134,7 @@ function h(tag, attrs, ...children) {
 }
 const STATE = { pending: "대기", running: "진행 중", pass: "통과", waiting: "사람 확인", fail: "중단", skipped: "건너뜀" };
 const VERDICT = { pass: "통과", needs_human: "사람 확인", fix: "수정 필요" };
-const OUTCOME = { deployed: "배포 완료", rolled_back: "자동 롤백 · 안정 버전 유지", stopped: "배포 전 중단" };
+const OUTCOME = { deployed: "배포 완료", rolled_back: "자동 롤백 · 안정 버전 유지", stopped: "중단", migrated: "이전 완료" };
 const KIND = { runtime_security: "런타임 보안", migration_parity: "이전 환경 차이", dast_verification: "DAST 판정", deployment_gate: "배포 게이트" };
 const REASON = { AUTOFIX_FORBIDDEN: "자동 수정 금지 항목", EVIDENCE_UNKNOWN: "확인 못 한 근거", NO_EVIDENCE_DOC: "근거 문서 없음", PATCH_MISSING: "수정안 없음" };
 const LAYER = { network: "네트워크", node: "노드", cluster: "클러스터" };
@@ -142,6 +143,7 @@ const LANES = [
   { title: "온프레미스 (홈랩 VM)", ids: ["onprem-evidence", "onprem-judge"] },
   { title: "보안 실측 (준우 님 DAST)", ids: ["dast-run", "dast-judge"] },
   { title: "배포 (Jenkins + 게이트)", ids: ["deploy-prepare", "canary-10", "canary-50", "canary-100"] },
+  { title: "이전 (AWS→GCP)", migrate: true, ids: ["migrate-provision", "migrate-deploy", "migrate-data", "shift-10", "shift-50", "shift-100", "migrate-cutover"] },
   { title: "결과", ids: ["result"] },
 ];
 const VERSION_COLORS = ["var(--idle)", "var(--accent)", "var(--pass)", "var(--wait)"];
@@ -181,7 +183,7 @@ function nodeById(run, id) { return run ? run.nodes.find(n => n.id === id) : nul
 
 function renderGraph(state) {
   const run = state.run;
-  document.getElementById("graph").replaceChildren(...LANES.map(lane => h("div", { class: "lane" },
+  document.getElementById("graph").replaceChildren(...LANES.filter(lane => !lane.migrate || (run ? run.scenario.migrate : scenario === "migration")).map(lane => h("div", { class: lane.migrate ? "lane wide" : "lane" },
     h("div", {}, lane.title),
     h("div", { class: "nodes" }, lane.ids.map(id => {
       const node = nodeById(run, id) || { id, label: id === "result" ? "결과" : id, owner: "", state: "pending" };

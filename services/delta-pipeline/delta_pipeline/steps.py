@@ -17,6 +17,7 @@ from typing import Annotated, Any, Protocol, TypedDict, TypeVar
 from langgraph.types import interrupt
 
 from delta_pipeline.clients import ServiceUnavailable
+from delta_pipeline.migration import MigrationTools
 from delta_pipeline.model import CANARY_STEPS, Board, Options, combined_verdict, dast_request, stage_states, summarize_result
 
 DAST_POLL_SECONDS = 1
@@ -53,6 +54,10 @@ class PipelineState(TypedDict, total=False):
     jenkins_status: str | None
     jenkins_input: dict[str, Any] | None
     jenkins_answer: str | None
+    migrating: bool
+    image: str
+    shift_index: int
+    rollback_reason: str | None
 
 
 class Stopped(Exception):
@@ -91,6 +96,7 @@ class Deps:
     service_ready: Callable[[], bool]
     on_release_start: Callable[[], None]
     sleep: Callable[[float], None]
+    migration: MigrationTools | None = None
 
 
 def guarded(step: Step) -> Step:
@@ -336,10 +342,12 @@ class Steps:
         if status == "SUCCESS":
             for node in ("deploy-prepare", *(f"canary-{p}" for p in CANARY_STEPS)):
                 self._board.update(node, state="pass")
+            if self._deps.options.scenario.migrate:
+                return {"halt": None, "migrating": True}
             self._board.finish("deployed", f"무중단 승격 완료 (빌드 #{build})", passed=True)
             return {"halt": None}
         node_id = self._failed_node(build)
-        analysis = self._deps.jenkins.file(build, "failure-analysis.json")
+        analysis = self._read(lambda: self._deps.jenkins.file(build, "failure-analysis.json"))
         if analysis:
             self._board.add_detail(node_id, results={"deployment_gate": summarize_result(analysis)})
         self._board.update(node_id, state="fail", summary="기준 초과 또는 단계 실패: 자동 롤백" if node_id.startswith("canary-")
@@ -349,7 +357,7 @@ class Steps:
 
     def _failed_node(self, build: int) -> str:
         for percent in reversed(CANARY_STEPS):
-            if self._deps.jenkins.file(build, f"metrics-{percent}.json"):
+            if self._read(lambda: self._deps.jenkins.file(build, f"metrics-{percent}.json")):  # noqa: B023
                 return f"canary-{percent}"
         return "deploy-prepare"
 

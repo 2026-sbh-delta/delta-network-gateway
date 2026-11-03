@@ -1,8 +1,8 @@
 # 파이프라인 고정 전이 그래프
 
-- 기준일: 2026-11-02 (Asia/Seoul)
-- 상태: 1단계 로컬 구현·검증 완료. **브랜치는 푸시했고(PR 전) 서버 배포는 안 함.** AWS·GCP 이전은 포함하지 않는다.
-- 브랜치: `feat/pipeline-graph` (`feat/demo-integration` `ef323a0` 에서 분기)
+- 기준일: 2026-11-03 (Asia/Seoul)
+- 상태: 1단계와 이전 단계(대역) 로컬 구현. **PR 전이고 서버 배포는 안 함.** 실제 AWS·GCP 는 건드리지 않는다.
+- 브랜치: `feat/pipeline-graph` (`ef323a0` 에서 분기, 2026-11-03 main `82ae04d` 를 병합)
 - 승인: 사용자 지시 "네, 1단계 시작"을 아래 범위의 Ideation·Inception·Construction 승인으로 기록한다. 팀 합의 전이다.
 - 결정 근거: [ADR-AI-40](../../services/delta-ai/docs/adr/ADR-AI-40-pipeline-graph.md) (제안)
 
@@ -11,7 +11,7 @@
 - 문제: 흐름 구동 코드가 콘솔의 `flow.py` 에 직접 짜여 있어 재시작하면 실행을 잃고, 이후 도구와 수정 반복을 붙일 자리가 없다.
 - 사용자: 시연자(김연재), 파이프라인 담당 팀원(정준우).
 - 성공 기준: 시연 3개 시나리오가 전과 같게 돌고, 게이트를 통과하지 못하면 배포를 호출하지 않으며, 강제 종료 뒤 같은 배포를 두 번 시작하지 않고 이어 간다.
-- Non-goals: AWS·GCP 배포, Jenkins 작업 분리, SAST 연결, `fix_review`, HTTP API, 취소, 대상별 잠금.
+- Non-goals: 실제 AWS·GCP 변경, Jenkins 작업 분리, 수정 반복 연결, HTTP API, 취소, 대상별 잠금.
 
 ## Inception
 
@@ -34,18 +34,36 @@
 
 실제 실행은 로컬 Docker 대역, DAST `reviewed`(LLM 없음), delta-ai 실제 Claude 다. 온프레미스 판단은 저장된 결과를 재사용했다.
 
+## 검증 기록 (2026-11-03, 이전 단계·x86 빌드)
+
+| 명령·동작 | 결과 |
+|---|---|
+| `services/delta-pipeline`: `.venv/bin/python -m pytest -q` | 64개 통과 (이전 단계·조회 실패·강제 종료 재개 포함) |
+| `services/delta-ai`: `pytest -q` | 272개 통과 (`fix_review` 포함) |
+| `deploy/jenkins-local`: `pytest -q tests` (delta-ai 가상환경) | 55개 통과 |
+| 코드를 일부러 망가뜨려 테스트 확인: 지연 모름을 통과, 이전 판정 무시, 전환 실패 시 되돌림, 전환 직전 재확인 생략, 장애 시 비율 유지, 이미지 기록 없이 이전, 이전 전 게이트 재확인 제거, 사람 중단 무시, 조회 실패를 산출물 없음으로 처리 | 모두 테스트 실패로 잡음. 게이트 재확인 제거와 조회 실패는 처음엔 못 잡아 테스트를 추가했다. 사람 답이 없을 때 테스트가 멈추던 것도 실패로 끝나게 고쳤다 |
+| 1차 실제 실행 (빌드 #97~99) | **3개 모두 `stopped`.** 구식 빌더가 containerd 이미지 저장소에서 `linux/amd64` 를 빌드하지 못했다("does not provide the specified platform"). 단위 테스트로는 드러나지 않았다 |
+| 수정: Jenkins 이미지에 buildx 0.28.0 추가, `build_image.py` 를 buildx 전용으로 | — |
+| 2차 실제 실행 (콘솔 API, 빌드 #101~103) | 정상 `deployed`(87초), 장애 `rolled_back`(10%, 54초), 이전(대역) `migrated`(68초). 세 경우 모두 빌드가 끝나기 전에 단계 지표를 읽었다. `delta-demo:103` 은 `linux/amd64` |
+| 화면 | 이전 시나리오에서 이전 줄(대상 준비~쓰기 전환)과 `대역` 표시 확인 |
+
 ## 알려진 한계
 
 - 조회가 5회 연속 실패하면 흐름은 멈추지만 Jenkins 빌드는 계속 돌 수 있다. 취소 API 가 없어 사람이 Jenkins 에서 멈춰야 한다.
 - 사람 확인 대기 시간은 재개 때 처음부터 다시 잰다. DAST 서버가 재시작되면 진행 중 점검을 잃고 멈춘다(통과로 보지 않는다).
 - 콘솔 밖 입구(`POST /v1/runs`)는 없다. 앞서 제안한 계약은 2단계 이후에 맞춘다.
-- `feat/demo-integration` 작업 폴더의 미커밋 `migration_mapping` 변경은 이 브랜치에 없다.
+- 이전 단계는 전부 대역이다. 지표도 만든 값이라 화면에 `대역`으로 표시한다.
+- `image.json` 의 `image_id` 는 로컬 값이다. 저장소 digest 는 이미지를 올린 뒤에 생기는데 올리는 단계가 아직 없다.
+- `fix_review` 는 서비스에만 있고 그래프에 잇지 않았다. 수정 안내 문서 해시도 `/fix` 가 내지 않아 대조하지 않는다.
+- 실행 위치(플랫폼 VPC EC2)와 ALB 가중치 전환은 제안이다. 고객 서버는 아직 ARM(`t4g.nano`)이라 x86 이미지가 돌지 않는다.
 
 ## Operation
 
-- 실행: [demo-console](../../deploy/demo-console/README.md) 의 `up.sh`. Jenkins 를 이 브랜치의 `casc.yaml`·`Jenkinsfile` 로 다시 띄워야 `RUN_ID` 가 적용된다.
-- 2026-11-02 검증 뒤 로컬 Jenkins 는 `feat/demo-integration` 작업 폴더로 되돌렸다. 이 상태로는 새 콘솔의 재개 멱등이 동작하지 않는다.
+- 실행: [demo-console](../../deploy/demo-console/README.md) 의 `up.sh`. 2026-11-03 부터 로컬 스택은 이 브랜치 작업 폴더에서 돈다.
 
 ## 다음 작업
 
-AWS·GCP 프로비저닝·배포·전환 경로를 정하고 그래프에 도구 자리를 만든다(ADR-AI-40 "아직 정하지 않은 것").
+`MigrationTools` 계약에 실제 구현을 붙인다. 먼저 아래를 정해야 한다.
+
+- 동규 님: GCP 대상 준비 상태와 권한, DB 엔진과 복제 방식, 전환 전 GCP 앱의 쓰기 위치, 플랫폼 코드와 그래프의 경계
+- 호원 님: VPN 일정, ALB 가중치 전환 시험 가능 여부, 고객 EC2 의 x86 교체

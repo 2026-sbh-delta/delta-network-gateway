@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Any
 
 from delta_pipeline.clients import Dast, DeltaAi, Jenkins, ServiceUnavailable
+from delta_pipeline.migration import StandInMigration
 from delta_pipeline.model import SCENARIOS, Options
 from delta_pipeline.run import Run, latest_unfinished
 
@@ -118,7 +119,7 @@ class App:
     def _launch(self, options: Options, run_id: str | None = None) -> None:
         self.run = Run(options, delta=self.delta, dast=self.dast, jenkins=self.jenkins,
                        onprem_dir=ONPREM_DIR, store_dir=PIPELINE_DIR, service_ready=self._service_ready,
-                       on_release_start=self.traffic.reset, run_id=run_id)
+                       on_release_start=self.traffic.reset, run_id=run_id, migration=StandInMigration())
         self.thread = threading.Thread(target=self.run.execute, daemon=True)
         self.thread.start()
 

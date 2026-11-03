@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 CANARY_STEPS = (10, 50, 100)
+SHIFT_STEPS = (10, 50, 100)
 MAX_FINDINGS_SHOWN = 40
 SEVERITY_ORDER = {"high": 0, "medium": 1, "low": 2}
 STATUS_ORDER = {"fail": 0, "unknown": 1, "dismissed": 2}
@@ -24,12 +25,15 @@ class Scenario:
     description: str
     dast_scenario: str
     jenkins_scenario: str
+    migrate: bool = False
 
 
 SCENARIOS: tuple[Scenario, ...] = (
     Scenario("normal", "정상 릴리스", "DAST 통과 후 10→50→100% 무중단 승격", "fixed", "good"),
     Scenario("vulnerable", "취약한 릴리스", "XSS 실측 재현으로 배포 전에 멈추고, 수정본 재검증 후 진행", "vulnerable", "good"),
     Scenario("bad_canary", "장애 릴리스", "새 버전이 500 을 내 10%에서 자동 롤백하고 AI 가 원인을 설명", "fixed", "bad-canary"),
+    Scenario("migration", "AWS→GCP 이전 (대역)", "복제를 비동기로 시작하고 비율을 옮긴 뒤 사람 승인으로 쓰기를 전환. 실제 클라우드는 건드리지 않는다",
+             "fixed", "good", migrate=True),
 )
 
 
@@ -53,7 +57,14 @@ class Node:
     decision: dict[str, Any] | None = None
 
 
-def initial_nodes() -> list[Node]:
+def initial_nodes(scenario: Scenario) -> list[Node]:
+    migration = [
+        Node("migrate-provision", "대상 환경 준비", "이전 도구"),
+        Node("migrate-deploy", "대상 배포", "이전 도구"),
+        Node("migrate-data", "데이터 복제", "이전 도구 · 비동기"),
+        *(Node(f"shift-{p}", f"대상 {p}%", "이전 도구 + delta-ai") for p in SHIFT_STEPS),
+        Node("migrate-cutover", "쓰기 전환", "사람 승인"),
+    ] if scenario.migrate else []
     return [
         Node("onprem-evidence", "온프레미스 증거", "수집기 · VM 200"),
         Node("onprem-judge", "이전·보안 판단", "delta-ai"),
@@ -61,6 +72,7 @@ def initial_nodes() -> list[Node]:
         Node("dast-judge", "DAST 판단", "delta-ai"),
         Node("deploy-prepare", "빌드·SAST·슬롯 배포", "Jenkins"),
         *(Node(f"canary-{p}", f"트래픽 {p}%", "Jenkins + delta-ai") for p in CANARY_STEPS),
+        *migration,
         Node("result", "결과", "시연 콘솔"),
     ]
 
@@ -93,6 +105,13 @@ def dast_request(run: Mapping[str, Any], *, assessment_id: str, target: str) -> 
             "evidence": {"dast": {"run_id": run["run_id"], "target": target, "results": results}}}
 
 
+def deployment_request(run_id: str, percent: int, measured: Mapping[str, Any]) -> dict[str, Any]:
+    return {"assessment_id": f"{run_id}-shift-{percent}", "kind": "deployment_gate", "service": {"service_id": "board"},
+            "evidence": {"deployment": {"stage": f"migrate-traffic-{percent}", "status": "succeeded", "target": "gcp",
+                                        "traffic_percent": percent, "log_tail": measured.get("log_tail", ""),
+                                        "metrics": list(measured.get("metrics", ()))}}}
+
+
 def stage_states(stages: Sequence[Mapping[str, Any]]) -> dict[str, str]:
     return {str(s.get("name")): str(s.get("status")) for s in stages}
 
@@ -106,7 +125,7 @@ class Board:
     def __init__(self, path: Path, options: Options, run_id: str) -> None:
         self._path, self._options, self._run_id = path, options, run_id
         self._lock = threading.Lock()
-        self._nodes = {node.id: node for node in initial_nodes()}
+        self._nodes = {node.id: node for node in initial_nodes(options.scenario)}
         self._outcome: str | None = None
         self._started_at = time.time()
         if path.is_file():
