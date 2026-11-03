@@ -27,7 +27,7 @@
 - AWS Workload: 사용자 `이렇게 만들고, public 노출없이 해` 지시로 Inception과 U1~U3 승인 및 구현/Review 완료. Workload mock Plan 26개 및 state bootstrap 보호 테스트 3개 통과. 별도 S3 state와 VPC `10.10.0.0/16`, `/24` Subnet 4개, 사설 EC2 `10.10.1.143` 및 EIC Endpoint 생성 완료. 초기 배포 때 공인 IP/IPv6, IGW/NAT/인터넷 Route 부재와 EIC 사설 SSH 성공을 확인했다. 후속 CloudFront root가 Client VPC에 IGW와 ALB 전용 Subnet/RT를 추가했으며 공인 주소/인터넷 Route는 추가하지 않았다.
 - AWS Server: 같은 Workload 계정의 별도 root/state에 VPC `10.20.0.0/16`, `/24` Subnet 4개, 사설 EC2 `10.20.1.10`와 EIC Endpoint/TGW Attachment를 생성했다. Server mock 31개/로컬 앱 1개, 중앙 회귀 34개, Client 회귀 26개와 기존 bootstrap 보호 3개 통과. 세 root 최종 Plan No changes와 실제 ANF 통신/로그 검증 완료. 구현/검증/배포 기록을 분할 커밋하고 origin/main 게시를 확인했다.
 - GCP: 현재 무료 크레딧 프로젝트 안의 사설 서버/HA VPN 코드와 운영 문서 구현/로컬 Review 완료. Google mock Plan 25개, 실제 입력 mock Plan 1개, 앱/전달 도구 7개 통과. Project `project-5bb650b3-9c21-4c8b-a16` / Number `120643807854`, ADC 접근 및 고정 Ubuntu 이미지 조회 확인. ignored tfvars/backend 작성 완료. 마지막 실제 조회에서 연결된 Billing 계정은 `open=false`, 프로젝트 `billingEnabled=false`, Compute/IAP/OS Login API DISABLED였다. GCS bucket/실제 Plan/Apply/VPN 통신은 미실행이다. 구현/검증/준비 기록을 분할 커밋하고 origin/main 게시를 확인했다.
-- 스테이징 도구: 관리 에이전트가 호출하는 파이프라인 스테이징 도구를 `services/delta-staging/`, AWS 기반을 `terraform/staging-aws/`에 추가했다. 2026-11-02 mock `terraform test` 11개와 도구 단위 테스트 29개 통과, Workload 계정 기본 VPC 대상 실제 Plan(25개 추가) 저장. Apply와 ECS 배포, GCP 구현은 미실행이다. [AI-DLC](ai-dlc/staging-tool.md)를 따른다.
+- 스테이징 도구: 관리 에이전트가 호출하는 파이프라인 스테이징 도구를 `services/delta-staging/`, AWS 기반을 `terraform/staging-aws/`에 추가했다. 2026-11-03 도구 단위 테스트 34개 통과, Apply 후 실제 ECS 배포 확인(첫 배포 56초, 이미지 교체 57초). GCP 구현은 미실행이다. [AI-DLC](ai-dlc/staging-tool.md)를 따른다.
 
 ## 문서
 
