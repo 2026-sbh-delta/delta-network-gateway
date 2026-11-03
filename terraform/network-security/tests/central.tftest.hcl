@@ -5,6 +5,107 @@ mock_provider "aws" {
   override_during = plan
 }
 
+run "bypass_keeps_firewall_and_directs_both_vpcs" {
+  command = plan
+  variables {
+    inspection_mode    = "bypass"
+    shared_account_ids = ["444455556666"]
+    spoke_attachments = {
+      client = {
+        account_id    = "444455556666", role = "Client", vpc_cidrs = ["10.10.0.0/16"]
+        attachment_id = "tgw-attach-00000000000000011", acceptance_mode = "accept", reported_state = "available"
+        az_ids        = ["apne2-az1", "apne2-az2"]
+      }
+      server = {
+        account_id    = "444455556666", role = "Backend", vpc_cidrs = ["10.20.0.0/16"]
+        attachment_id = "tgw-attach-00000000000000012", acceptance_mode = "accept", reported_state = "available"
+        az_ids        = ["apne2-az1", "apne2-az2"]
+      }
+    }
+  }
+  assert {
+    condition     = output.inspection_mode == "bypass" && length(output.inspection_route_targets) == 2 && output.inspection_route_targets["10.10.0.0/16"] == "tgw-attach-00000000000000011" && output.inspection_route_targets["10.20.0.0/16"] == "tgw-attach-00000000000000012"
+    error_message = "Bypass must route each destination directly to its owning VPC in both directions."
+  }
+  assert {
+    condition     = length(aws_networkfirewall_firewall.central) == 1 && !aws_networkfirewall_firewall.central[0].delete_protection && length(aws_route.to_firewall) == 4 && length(aws_networkfirewall_logging_configuration.central) == 1 && contains(keys(aws_ram_resource_association.central), "firewall")
+    error_message = "The staging mode must retain the firewall, endpoints, routes, logging and sharing while disabling delete protection."
+  }
+  assert {
+    condition     = length(aws_ec2_transit_gateway_vpc_attachment_accepter.spoke) == 2 && alltrue([for association in aws_ec2_transit_gateway_route_table_association.spoke : association.transit_gateway_route_table_id == aws_ec2_transit_gateway_route_table.spoke.id])
+    error_message = "Bypass must retain the existing attachment ownership and route-table associations."
+  }
+}
+
+run "disabled_removes_endpoints_preserves_foundation" {
+  command = plan
+  variables {
+    inspection_mode    = "disabled"
+    shared_account_ids = ["444455556666"]
+    spoke_attachments = {
+      client = {
+        account_id    = "444455556666", role = "Client", vpc_cidrs = ["10.10.0.0/16"]
+        attachment_id = "tgw-attach-00000000000000011", acceptance_mode = "accept", reported_state = "available"
+        az_ids        = ["apne2-az1", "apne2-az2"]
+      }
+      server = {
+        account_id    = "444455556666", role = "Backend", vpc_cidrs = ["10.20.0.0/16"]
+        attachment_id = "tgw-attach-00000000000000012", acceptance_mode = "accept", reported_state = "available"
+        az_ids        = ["apne2-az1", "apne2-az2"]
+      }
+    }
+  }
+  assert {
+    condition     = length(aws_networkfirewall_firewall.central) == 0 && length(aws_route.to_firewall) == 0 && length(aws_networkfirewall_logging_configuration.central) == 0 && !contains(keys(aws_ram_resource_association.central), "firewall") && output.firewall_arn == null && length(output.primary_endpoint_ids_by_az_id) == 0
+    error_message = "Disabled mode must remove all billed firewall endpoints and their logging, route and sharing references."
+  }
+  assert {
+    condition     = output.inspection_route_targets["10.10.0.0/16"] == "tgw-attach-00000000000000011" && output.inspection_route_targets["10.20.0.0/16"] == "tgw-attach-00000000000000012" && length(aws_ec2_transit_gateway_route.to_spoke) == 2 && length(aws_route.to_tgw) == 4
+    error_message = "Both VPC routes must stay direct while the inspection return routes remain available for restoration."
+  }
+  assert {
+    condition     = length(aws_subnet.inspection) == 4 && length(aws_route_table.tgw) == 2 && length(aws_route_table.firewall) == 2 && length(aws_cloudwatch_log_group.firewall) == 2 && length(aws_ram_resource_share.central) == 2 && length(aws_ram_principal_association.consumer) == 2 && contains(keys(aws_ram_resource_association.central), "tgw") && aws_networkfirewall_firewall_policy.central.name == "delta-lab-policy" && aws_networkfirewall_rule_group.central.name == "delta-lab-stateful"
+    error_message = "Keep the existing network, policies, rules, logs, shares and consumer permissions to support restoration."
+  }
+}
+
+run "disabled_without_spokes" {
+  command = plan
+  variables {
+    inspection_mode = "disabled"
+  }
+  assert {
+    condition     = length(aws_networkfirewall_firewall.central) == 0 && length(output.inspection_route_targets) == 0 && length(output.primary_endpoint_ids_by_az_id) == 0
+    error_message = "An unused central foundation must also support endpoint-free disabled mode."
+  }
+}
+
+run "reject_unknown_inspection_mode" {
+  command = plan
+  variables {
+    inspection_mode = "stop"
+  }
+  expect_failures = [var.inspection_mode]
+}
+
+run "reject_bypass_with_vpn_network" {
+  command = plan
+  variables {
+    inspection_mode = "bypass"
+    vpn_networks    = { onprem = { cidrs = ["10.90.0.0/16"], kind = "onprem" } }
+  }
+  expect_failures = [terraform_data.contract]
+}
+
+run "reject_disabled_with_vpn_network" {
+  command = plan
+  variables {
+    inspection_mode = "disabled"
+    vpn_networks    = { onprem = { cidrs = ["10.90.0.0/16"], kind = "onprem" } }
+  }
+  expect_failures = [terraform_data.contract]
+}
+
 run "same_account_client_server" {
   command = plan
   variables {
@@ -85,7 +186,7 @@ run "central_only" {
     error_message = "Two AZs need four dedicated subnets and four explicit route-table associations."
   }
   assert {
-    condition     = alltrue([for subnet in values(aws_subnet.inspection) : !subnet.map_public_ip_on_launch]) && length(aws_networkfirewall_firewall.central.subnet_mapping) == 2
+    condition     = alltrue([for subnet in values(aws_subnet.inspection) : !subnet.map_public_ip_on_launch]) && length(aws_networkfirewall_firewall.central[0].subnet_mapping) == 2
     error_message = "Dedicated subnets must not auto-assign public IPs and each AZ must have a primary endpoint."
   }
   assert {
@@ -97,7 +198,7 @@ run "central_only" {
     error_message = "Empty inputs must support a central-only foundation without example connections."
   }
   assert {
-    condition     = length(aws_ram_resource_share.central) == 2 && aws_ram_resource_association.central["firewall"].resource_arn == aws_networkfirewall_firewall.central.arn && !aws_ram_resource_share.central["firewall"].allow_external_principals
+    condition     = length(aws_ram_resource_share.central) == 2 && aws_ram_resource_association.central["firewall"].resource_arn == aws_networkfirewall_firewall.central[0].arn && !aws_ram_resource_share.central["firewall"].allow_external_principals
     error_message = "Share the firewall itself separately from the TGW; external sharing defaults off."
   }
   assert {
@@ -105,7 +206,7 @@ run "central_only" {
     error_message = "Endpoint identity must follow physical AZ IDs despite nonmatching AZ names and set order."
   }
   assert {
-    condition     = aws_networkfirewall_firewall.central.delete_protection && aws_networkfirewall_firewall.central.subnet_change_protection && aws_networkfirewall_firewall.central.firewall_policy_change_protection && alltrue([for group in values(aws_cloudwatch_log_group.firewall) : group.retention_in_days == 30 && group.skip_destroy])
+    condition     = aws_networkfirewall_firewall.central[0].delete_protection && aws_networkfirewall_firewall.central[0].subnet_change_protection && aws_networkfirewall_firewall.central[0].firewall_policy_change_protection && alltrue([for group in values(aws_cloudwatch_log_group.firewall) : group.retention_in_days == 30 && group.skip_destroy])
     error_message = "Protection and default log preservation must be enabled."
   }
   assert {
@@ -831,7 +932,7 @@ run "reject_wrong_az_region" {
 run "reject_missing_primary_endpoint" {
   command = plan
   override_resource {
-    target          = aws_networkfirewall_firewall.central
+    target          = aws_networkfirewall_firewall.central[0]
     override_during = plan
     values = {
       arn = "arn:aws:network-firewall:ap-northeast-2:111122223333:firewall/mock"
@@ -848,7 +949,7 @@ run "reject_missing_primary_endpoint" {
 run "reject_duplicate_primary_endpoint_id" {
   command = plan
   override_resource {
-    target          = aws_networkfirewall_firewall.central
+    target          = aws_networkfirewall_firewall.central[0]
     override_during = plan
     values = {
       arn = "arn:aws:network-firewall:ap-northeast-2:111122223333:firewall/mock"
