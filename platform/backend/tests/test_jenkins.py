@@ -12,6 +12,76 @@ from delta_platform.core.errors import Problem
 from delta_platform.worker.main import process_one
 
 
+def test_private_controller_tls_requires_trusted_certificate(tmp_path):
+    import base64
+    import ssl
+    import subprocess
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    cert, key = tmp_path / "cert.pem", tmp_path / "key.pem"
+    subprocess.run(
+        [
+            "openssl",
+            "req",
+            "-x509",
+            "-newkey",
+            "rsa:2048",
+            "-nodes",
+            "-days",
+            "1",
+            "-keyout",
+            str(key),
+            "-out",
+            str(cert),
+            "-subj",
+            "/CN=127.0.0.1",
+            "-addext",
+            "subjectAltName=IP:127.0.0.1",
+        ],
+        check=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b'{"verified":true}')
+
+        def log_message(self, *args):
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    tls = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    tls.load_cert_chain(cert, key)
+    server.socket = tls.wrap_socket(server.socket, server_side=True)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        settings = config().model_copy(
+            update={"jenkins_url": f"https://127.0.0.1:{server.server_port}"}
+        )
+        with pytest.raises(httpx.ConnectError):
+            JenkinsRunner(settings, ecr=object()).get("/api/json")
+        trusted = settings.model_copy(
+            update={"jenkins_ca_base64": base64.b64encode(cert.read_bytes()).decode()}
+        )
+        assert JenkinsRunner(trusted, ecr=object()).get("/api/json") == {"verified": True}
+        assert "ca_sha256" in build_target(trusted)
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def test_malformed_ca_is_a_configuration_error():
+    with pytest.raises(Problem) as exc:
+        build_target(config().model_copy(update={"jenkins_ca_base64": "invalid CA"}))
+    assert exc.value.code == "builder_config_invalid"
+
+
 def config():
     from pydantic import SecretStr
 

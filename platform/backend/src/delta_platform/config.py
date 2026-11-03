@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     jenkins_job: str = "delta-platform-image"
     jenkins_user: str = ""
     jenkins_token: SecretStr = SecretStr("")
+    jenkins_ca_base64: str = ""
     sandbox_target: str = ""
     sast_url: str = ""
     sast_token: SecretStr = SecretStr("")

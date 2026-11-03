@@ -23,3 +23,10 @@ run "reject_external_verification_role" {
   variables { verification_principal_arn = "arn:aws:iam::999999999999:role/admin" }
   expect_failures = [var.verification_principal_arn]
 }
+run "runtime_secrets_are_component_scoped" {
+  command = plan
+  assert {
+    condition     = alltrue([for component, policy in aws_iam_role_policy.runtime : jsondecode(policy.policy).Statement[2].Resource == "arn:aws:ssm:ap-northeast-2:111122223333:parameter/delta-platform/jenkins/${component}" && alltrue([for s in jsondecode(policy.policy).Statement : alltrue([for action in s.Action : !contains(["ssm:PutParameter", "ec2:RunInstances", "ecs:UpdateService", "iam:PassRole"], action)])])])
+    error_message = "각 VM은 자기 구성만 읽고 다른 플랫폼 자원을 조작하지 않아야 합니다."
+  }
+}

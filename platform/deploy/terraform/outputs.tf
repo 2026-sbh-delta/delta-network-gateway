@@ -38,3 +38,11 @@ output "account_id" {
   value       = var.account_id
   description = "허용한 AWS 계정"
 }
+output "jenkins_instances" {
+  value       = { for name, instance in aws_instance.jenkins : name => instance.id }
+  description = "Jenkins controller/agent의 SSM 배포 대상 VM ID"
+}
+output "jenkins_url" {
+  value       = "https://${aws_instance.jenkins["controller"].private_ip}"
+  description = "플랫폼과 전용 에이전트에서만 접근하는 사설 HTTPS 주소"
+}

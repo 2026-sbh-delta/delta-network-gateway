@@ -5,6 +5,7 @@
 ## 구성과 한계
 
 - 앱 `t4g.small`, NAT `t4g.micro`, AL2023 ARM64. 작은 팀의 U1 사용량을 기준으로 한 단일 AZ 구성이다. HA·자동 확장 구성은 아니다.
+- Jenkins 컨트롤러 `t3.small`과 전용 에이전트 `t3.medium`은 같은 사설 subnet의 `10.80.1.20/21`을 사용한다. 컨트롤러 이력은 별도 암호화 20 GiB EBS에 보존한다. 플랫폼/에이전트 SG만 컨트롤러 443에 접근한다. VM 역할은 [Jenkins IAM](../jenkins/identity/README.md)에서 먼저 준비한다.
 - CloudFront의 기본 HTTPS 도메인을 사용한다. API·로그인 응답은 캐시하지 않으며 세션 쿠키·Origin·CSRF·요청 키를 전달한다.
 - PostgreSQL은 별도 암호화 gp3 20 GiB에 저장한다. VM 교체와 데이터 디스크 수명을 분리하고 디스크에 `prevent_destroy`를 적용한다.
 - S3 비공개·암호화·버전 관리, DB 백업 7일 보관. 백업 실행·복원 검증 여부는 [AWS 배포 기록](../../../docs/ai-dlc/platform-aws.md)을 따른다.
@@ -24,6 +25,7 @@
 | `bootstrap_origin_access` | bool | false | 최초 Origin 생성용 prefix list 수신 허용 |
 | `instance_type` | string | t4g.small | 플랫폼 VM 크기, small/medium만 허용 |
 | `data_volume_size` | number | 20 | DB 디스크 용량 GiB |
+| `jenkins_ami_id` | string | ami-05becc39a92b78fa5 | 확인한 서울 AL2023 x86_64 AMI. 다른 리전은 해당 리전 이미지로 지정 |
 
 ## 출력 속성
 
@@ -39,6 +41,8 @@
 | `distribution_id` | CloudFront 배포 ID |
 | `region` | AWS 리전 |
 | `account_id` | 배포 계정 |
+| `jenkins_instances` | controller/agent별 SSM 대상 VM ID |
+| `jenkins_url` | 사설 컨트롤러 HTTPS 주소 |
 
 ## 검증과 적용
 

@@ -23,6 +23,7 @@ Jenkins API 계정은 읽기·빌드·중단만 허용한다. Job 수정·관리
 | `PLATFORM_JENKINS_JOB` | `delta-platform-image` |
 | `PLATFORM_JENKINS_USER` | `platform` |
 | `PLATFORM_JENKINS_TOKEN` | 해당 사용자 API 토큰. 채팅·Git·GitHub 일반 variable에 넣지 않음 |
+| `PLATFORM_JENKINS_CA_BASE64` | 선택. 사설 CA PEM을 base64로 저장. 미설정 시 기본 신뢰 저장소 사용 |
 | `PLATFORM_BUILD_REPOSITORY` | `616723161368.dkr.ecr.ap-northeast-2.amazonaws.com/delta-platform-builds` |
 | `PLATFORM_BUILD_REGION` | `ap-northeast-2` |
 
@@ -55,7 +56,7 @@ docker compose --profile agent up -d --build agent
 4. 위 7개 설정을 담은 ignored JSON 파일로 `configure-runtime.py --profile delta-platform --account-id 616723161368 --config <로컬 파일>`을 실행한다. 기존 작업을 마친 후 한 운영자가 순서대로 갱신한다. 도구는 감지한 동시 갱신을 거부하지만 SSM의 원자적 compare-and-swap은 아니다.
 5. 플랫폼 릴리스 후 실제 공개 저장소 빌드·digest·로그·ECS 실행 확인을 검증한다. Jenkins가 준비되기 전에 새 기본 설정만 배포하면 새 빌드는 503으로 차단된다.
 
-**현재 운영 AWS 플랫폼은 아직 기존 CodeBuild 설정이다.** Jenkins 코드·로컬 실제 검증과 운영 서버 배포를 구분한다. 이 작업에서 Jenkins EC2·운영 HTTPS endpoint를 생성하지 않았다. 상태와 실제 증거는 [AI-DLC](../../../docs/ai-dlc/platform-jenkins.md)를 따른다.
+로컬 구현/검증은 [이전 기록](../../../docs/ai-dlc/platform-jenkins.md), 후속 AWS 운영 배포는 [운영 안내](aws/README.md)와 [최신 기록](../../../docs/ai-dlc/platform-jenkins-aws.md)을 따른다. 구현 완료와 실제 운영 전환을 구분한다.
 
 ## 실패와 복구
 

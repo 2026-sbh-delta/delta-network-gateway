@@ -55,3 +55,12 @@ variable "data_volume_size" {
   default     = 20
   description = "DB 영속 gp3 디스크 용량 GiB"
 }
+variable "jenkins_ami_id" {
+  type        = string
+  default     = "ami-05becc39a92b78fa5"
+  description = "서울 리전의 확인한 AL2023 x86_64 AMI, Jenkins 전용 VM"
+  validation {
+    condition     = can(regex("^ami-[a-f0-9]{17}$", var.jenkins_ami_id))
+    error_message = "확인한 x86_64 AMI ID를 사용하세요."
+  }
+}

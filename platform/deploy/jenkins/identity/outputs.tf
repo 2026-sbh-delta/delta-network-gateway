@@ -10,3 +10,7 @@ output "repository_url" {
   value       = data.aws_ecr_repository.customer.repository_url
   description = "기존 고객 이미지 ECR URI"
 }
+output "controller_instance_profile" {
+  value       = aws_iam_instance_profile.controller.name
+  description = "컨트롤러 VM 전용 프로필 이름"
+}
