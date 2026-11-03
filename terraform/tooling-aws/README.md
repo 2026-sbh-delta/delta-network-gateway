@@ -4,7 +4,7 @@ SAST·DAST 상시 서비스를 올리는 EC2 1대와 이미지 저장소를 만�
 
 - 인스턴스: Amazon Linux 2023 arm64(Graviton). SSM 에이전트가 기본 설치돼 있다.
 - 접속: 보안 그룹 인바운드 0개. 작업실은 SSM 포트 포워딩으로 연다(SSH 미사용).
-- 출구 IP: 탄력적 IP로 고정한다. 스테이징 ALB에 DAST 실행기 /32로 허용한다.
+- 출구 IP: 기본은 인스턴스에 자동 할당되는 공인 IP다(멈췄다 켜면 바뀜). 스테이징 접근은 실행할 때마다 현재 IP를 확인해 /32로 연다(`scanner_ip: auto`). 고정이 필요하면 `elastic_ip = true`로 탄력적 IP를 붙인다.
 - 권한(인스턴스 역할):
   - SSM 관리(`AmazonSSMManagedInstanceCore`)
   - 두 ECR 저장소 이미지 받기
@@ -22,10 +22,11 @@ SAST·DAST 상시 서비스를 올리는 EC2 1대와 이미지 저장소를 만�
 | `region` | `string` | `ap-northeast-2` | Region |
 | `account_id` | `string` | 필수 | Provider가 허용할 계정 ID(12자리) |
 | `vpc_id` | `string` | 필수 | 호스트를 둘 기존 VPC |
-| `subnet_id` | `string` | 필수 | 인터넷 게이트웨이로 나가는 공개 서브넷. 출구는 탄력적 IP |
+| `subnet_id` | `string` | 필수 | 인터넷 게이트웨이로 나가는 공개 서브넷 |
 | `instance_type` | `string` | `t4g.large` | Graviton(arm64) 인스턴스 타입만 허용 |
 | `root_volume_gb` | `number` | `40` | 루트 EBS(gp3, 암호화) 크기. 이미지·점검 상태·DAST 증거 |
 | `parameter_path` | `string` | `/delta/tooling/` | 호스트가 읽을 Parameter Store 경로(슬래시로 시작·끝) |
+| `elastic_ip` | `bool` | `false` | 탄력적 IP로 출구 IP 고정. 끄면 자동 할당 공인 IP(멈췄다 켜면 바뀜) |
 | `enable_outbound_federation` | `bool` | `true` | 인스턴스 역할에 `sts:GetWebIdentityToken` 허용 |
 | `tags` | `map(string)` | `{}` | 공통 태그 추가/재정의 |
 
@@ -34,7 +35,7 @@ SAST·DAST 상시 서비스를 올리는 EC2 1대와 이미지 저장소를 만�
 | 속성명 | 역할 |
 | --- | --- |
 | `instance_id` | 호스트 인스턴스 ID(SSM 대상) |
-| `egress_ip` | 고정 출구 IP. 스테이징 ALB에 DAST 실행기 /32로 허용 |
+| `egress_ip` | 현재 출구 IP(탄력적 IP를 켜면 고정 IP, 아니면 자동 할당 공인 IP) |
 | `role_arn` | 호스트 IAM 역할. LLM API 페더레이션 규칙의 주체 |
 | `ecr_repository_urls` | `sast`, `dast` 이미지 저장소 주소 |
 | `port_forward_command` | 노트북에서 작업실(127.0.0.1:8765)을 여는 SSM 명령 |

@@ -61,6 +61,12 @@ variable "parameter_path" {
   }
 }
 
+variable "elastic_ip" {
+  description = "Attach an Elastic IP for a fixed egress IP. Off by default for tests: the instance gets an auto-assigned public IP that changes on stop/start."
+  type        = bool
+  default     = false
+}
+
 variable "enable_outbound_federation" {
   description = "Allow the host role to call sts:GetWebIdentityToken (AWS outbound identity federation for short-lived LLM credentials)."
   type        = bool

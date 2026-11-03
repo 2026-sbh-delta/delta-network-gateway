@@ -4,8 +4,8 @@ output "instance_id" {
 }
 
 output "egress_ip" {
-  description = "Fixed egress IP. Allow it as the DAST runner /32 on the staging ALB."
-  value       = aws_eip.host.public_ip
+  description = "Current egress IP (Elastic IP if enabled, otherwise the auto-assigned public IP that changes on stop/start)."
+  value       = var.elastic_ip ? aws_eip.host[0].public_ip : aws_instance.host.public_ip
 }
 
 output "role_arn" {

@@ -145,7 +145,7 @@ resource "aws_instance" "host" {
   subnet_id                   = var.subnet_id
   vpc_security_group_ids      = [aws_security_group.host.id]
   iam_instance_profile        = aws_iam_instance_profile.host.name
-  associate_public_ip_address = false
+  associate_public_ip_address = !var.elastic_ip
   user_data_replace_on_change = true
   user_data                   = file("${path.module}/user_data.sh")
 
@@ -167,8 +167,9 @@ resource "aws_instance" "host" {
   tags = { Name = "${local.prefix}-host" }
 }
 
-# Fixed egress IP: the staging ALB allows only this /32 for DAST.
+# Fixed egress IP (optional): the staging ALB allows only the DAST runner /32.
 resource "aws_eip" "host" {
+  count    = var.elastic_ip ? 1 : 0
   domain   = "vpc"
   instance = aws_instance.host.id
   tags     = { Name = "${local.prefix}-host" }
