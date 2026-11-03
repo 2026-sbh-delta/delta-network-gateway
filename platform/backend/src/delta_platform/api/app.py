@@ -36,6 +36,7 @@ from delta_platform.core.inputs import (
 )
 from delta_platform.core.store import Store
 from delta_platform.core.workflows import ApprovalInput, WorkflowInput, WorkflowStore
+from delta_platform.migration.tracking import MigrationTrackingStore
 
 logger = logging.getLogger("delta_platform")
 Limit = Annotated[int, Query(ge=1, le=100)]
@@ -48,6 +49,7 @@ def create_app(settings=None, engine=None, *, dashboard=None):
     auth, store = Auth(engine, settings), Store(engine)
     environments = EnvironmentStore(engine)
     workflows = WorkflowStore(engine)
+    migrations = MigrationTrackingStore(engine)
     dashboard = dashboard or DashboardReader(settings.observability_region)
 
     @asynccontextmanager
@@ -196,7 +198,9 @@ def create_app(settings=None, engine=None, *, dashboard=None):
         environment_id: UUID,
         minutes: Annotated[int, Query(ge=1, le=120)] = 15,
     ):
-        return dashboard.read(environments.get(service_id, environment_id), minutes)
+        result = dashboard.read(environments.get(service_id, environment_id), minutes)
+        result["migration"] = migrations.latest(service_id, environment_id)
+        return result
 
     @protected.post("/services/{service_id}/workflows")
     def workflow_create(service_id: UUID, body: WorkflowInput, request: Request):

@@ -23,6 +23,31 @@ const metricText = (metric: Metric) =>
   metric.status === "ok" && metric.value === null
     ? "값 없음"
     : statusText(metric.status, metric.message);
+const migrationStage: Record<
+  NonNullable<Observability["migration"]>["stage"],
+  string
+> = {
+  planned: "계획 생성",
+  preparing: "준비 중",
+  copying: "초기 복사 중",
+  synchronizing: "변경 동기화 중",
+  fencing_source: "원본 쓰기 차단 중",
+  source_fenced: "원본 쓰기 차단 완료",
+  validated: "대상 검증 완료",
+  promotion_pending: "대상 승격 대기",
+  promoted: "DB 대상 전환 완료",
+  cleaned: "DB 전환·복제 정리 완료",
+  aborted: "이전 작업 중단",
+};
+const migrationStatus: Record<
+  NonNullable<Observability["migration"]>["status"],
+  string
+> = {
+  ok: "상태 확인됨",
+  stale: "오래된 상태",
+  blocked: "차단됨",
+  completed: "실행 단계 완료",
+};
 const stamp = (value: string | null) =>
   value ? new Date(value).toLocaleString("ko-KR") : "시각 정보 없음";
 function MetricValue({
@@ -361,19 +386,33 @@ export function ObservabilityPanel() {
               </p>
               {snapshot.migration && (
                 <div className="obs-migration">
-                  <b>DB 이전</b>
-                  <span>
-                    단계: {snapshot.migration.stage} · 검증:{" "}
+                  <div className="obs-migration-head">
+                    <b>DB 이전</b>
+                    <span
+                      className={`obs-pill state-${snapshot.migration.status}`}
+                    >
+                      {migrationStatus[snapshot.migration.status]}
+                    </span>
+                  </div>
+                  <p>단계: {migrationStage[snapshot.migration.stage]}</p>
+                  <p>
+                    검증:{" "}
                     {snapshot.migration.validation === "passed"
                       ? "통과"
-                      : snapshot.migration.validation === "failed"
-                        ? "실패"
-                        : "대기"}
-                    {snapshot.migration.lag_seconds !== null
-                      ? ` · 지연 ${snapshot.migration.lag_seconds}초`
-                      : ""}
-                  </span>
+                      : "대기"}
+                    {" · "}
+                    미반영 WAL:{" "}
+                    {snapshot.migration.lag_bytes === null
+                      ? "정보 없음"
+                      : `${snapshot.migration.lag_bytes.toLocaleString("ko-KR")} 바이트`}
+                  </p>
+                  <small>
+                    마지막 갱신 {stamp(snapshot.migration.observed_at)}
+                  </small>
                 </div>
+              )}
+              {!snapshot.migration && (
+                <p className="obs-migration-none">DB 이전 실행 없음</p>
               )}
             </section>
             <section className="panel">

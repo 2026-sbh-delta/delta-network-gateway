@@ -84,7 +84,10 @@ def test_environment_rejects_cross_service_queries_and_unbounded_windows(engine,
         assert client.get(path + "&minutes=121").status_code == 422
         assert client.get(path.replace(str(service["id"]), str(other["id"]))).status_code == 404
         assert not seen
-        assert client.get(path + "&minutes=120").json() == {"bound": str(service["id"])}
+        assert client.get(path + "&minutes=120").json() == {
+            "bound": str(service["id"]),
+            "migration": None,
+        }
         assert len(seen) == 1 and seen[0][1] == 120
         # No public API can bind arbitrary provider resources.
         assert client.post(

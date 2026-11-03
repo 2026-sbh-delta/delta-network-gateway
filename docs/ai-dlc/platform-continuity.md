@@ -86,4 +86,17 @@
 
 - DB 이전 단위 커밋 전 회귀: `platform/backend`에서 `uv run pytest -q` → **158 passed, 1 deselected**. backend와 migration 도구 Ruff 검사·포맷, `git diff --check` 통과. 새 DB/전체 앱 CI 단계는 추가했으며 원격 실행 결과는 PR에서 확인한다.
 
-- PR #24 최초 CI: 기존 앱·브라우저·Terraform 7개 root와 PostgreSQL 통합 6개는 통과했지만 Linux 전체 앱 데모는 root 소유 0600 계획 파일을 runner 사용자가 읽지 못해 실패했다. Linux 컨테이너에서 같은 PermissionError를 재현했고, 동일 사용자 UID/GID로 journal 생성·읽기 및 0600 유지가 통과하는 것을 확인했다. 데모 실행기를 호출 사용자로 실행하고 미리 설치한 CLI를 사용한다. 실패 정리 중 브라우저 종료 대기가 원래 오류를 덮지 않도록 kill 후 정리한다. 전체 CI 재검증은 후속 실행 결과를 따른다.
+- PR #24 최초 CI: 기존 앱·브라우저·Terraform 7개 root와 PostgreSQL 통합 6개는 통과했지만 Linux 전체 앱 데모는 root 소유 0600 계획 파일을 runner 사용자가 읽지 못해 실패했다. Linux 컨테이너에서 같은 PermissionError를 재현했고, 동일 사용자 UID/GID로 journal 생성·읽기 및 0600 유지가 통과하는 것을 확인했다. 데모 실행기를 호출 사용자로 실행하고 미리 설치한 CLI를 사용한다. 실패 정리 중 브라우저 종료 대기가 원래 오류를 덮지 않도록 kill 후 정리한다. 수정 후 [CI 41697947449](https://github.com/2026-sbh-delta/delta-network-gateway/actions/runs/41697947449)의 전체 앱·DB·브라우저·Terraform 검사가 통과했고 PR #24를 main `c7eff30`에 병합했다.
+
+## DB 실행과 대시보드 연결 계획 (2026-11-04)
+
+- 기존 TODO의 실행 식별·승인·이전 요약 범위를 연결한다. 실제 DB 계획의 해시를 workflow action으로 등록하고, 웹에서 승인한 workflow·source/target·이미지와 운영 CLI의 계획을 대조한다. 임의 UUID만으로 고객 DB 작업을 실행하지 않는다.
+- 운영 CLI가 기존 workflow 실행 기록에 비밀값 없는 단계·WAL 위치 차이(bytes)·검증·오류 여부를 저장한다. 같은 계획의 재시도는 run ID를 유지한다. 연결/검증 오류는 차단 상태로 남기며 성공으로 바꾸지 않는다. 오래된 진행 상태는 화면에 표시한다.
+- 한 페이지 관측 API는 선택한 서비스·대상 환경의 최신 DB 이전 요약만 반환한다. 관측 원본 저장소와 분리하며 DB 승격 완료를 전체 앱 이전 완료로 표시하지 않는다. DB 접속값이나 원본 스키마·데이터는 공개 API에 추가하지 않는다.
+- 웹 버튼에 무검증 DB 실행을 붙이지 않는다. 이번 단위는 승인된 운영 CLI와 대시보드의 연결이며, 고객 VM·도메인 전환 자동화는 준비된 인프라와 별도 검증한다.
+- 검증: 다른 서비스/환경·승인 전 실행·변경된 계획 거부, 재시도·상태 역행·완료 결과 보존, 오래된 값 표시, 실제 PostgreSQL 회귀와 브라우저 표시를 확인한다. 구현/실행 결과는 아래에 별도로 기록한다.
+
+- 연결 구현: `platform-db-register`가 DB 계획 해시를 action으로 등록한다. `platform-db-move --platform`은 승인·출발/대상·입력·run ID를 대조한 뒤 명령 전후 상태를 저장한다. 공개 쓰기 API나 원본 DB 접속값 노출은 추가하지 않았다. 대시보드는 서비스/환경의 최신 실행만 조회하며 새 준비 실행을 과거 완료 결과로 대신하지 않는다.
+- 로컬 검증: backend 전체 **163 passed, 1 deselected**, 별도 PostgreSQL 통합 **6 passed**. 후속 최신 실행 선택 수정 후 tracking/observability **13 passed**. 프론트 독립 fixture **3 passed**, format/build/Ruff/diff 검사 통과. 같은 DB 이전기와 플랫폼 저장 계약을 각각 실제 PostgreSQL로 확인했으며, 실제 고객 클라우드 이전은 미실행이다.
+
+- 최종 웹 회귀: `platform/web`에서 `npm run test:e2e` → **15 passed**. 실제 테스트 DB를 쓰는 기존 로그인/빌드/검사와 API fixture 기반 관측/계획 화면을 함께 실행했다. 새 DB 진행 화면의 데스크톱·모바일 캡처도 시각 확인했다. 표시 시험의 값은 fixture이며 실제 고객 관측 수치가 아니다.

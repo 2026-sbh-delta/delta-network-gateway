@@ -23,6 +23,7 @@ platform-api = "delta_platform.api.app:main"
 platform-worker = "delta_platform.worker.main:main"
 platform-init = "delta_platform.config:initialize"
 platform-db-move = "delta_platform.migration.cli:main"
+platform-db-register = "delta_platform.migration.tracking:main"
 platform-environment = "delta_platform.core.environments:main"
 [build-system]
 requires = ["hatchling"]
