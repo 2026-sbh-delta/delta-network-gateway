@@ -7,6 +7,7 @@ from botocore.exceptions import BotoCoreError, ClientError
 
 from delta_platform.adapters.builds import BuildError, CodeBuildRunner
 from delta_platform.adapters.github import GitHubReader, SourceError
+from delta_platform.adapters.sandbox import SandboxError, SandboxRunner
 from delta_platform.config import Settings
 from delta_platform.core.auth import Auth
 from delta_platform.core.database import engine_for, ready
@@ -16,7 +17,7 @@ from delta_platform.core.store import Store
 logger = logging.getLogger("delta_platform.worker")
 
 
-def process_one(store, reader, builder=None):
+def process_one(store, reader, builder=None, sandbox=None):
     claim = store.claim()
     if claim is None:
         return False
@@ -43,12 +44,15 @@ def process_one(store, reader, builder=None):
         if claim["kind"] == "image_build":
             builder = builder or CodeBuildRunner(Settings())
             result = builder.execute(claim, store, progress)
+        elif claim["kind"] == "sandbox_check":
+            sandbox = sandbox or SandboxRunner(Settings())
+            result = sandbox.execute(claim, store, progress)
         else:
             result = reader.inspect(claim["input_snapshot"], claim["resolved_commit_sha"], progress)
         if lost.is_set():
             raise LeaseLost()
         store.finish(run_id, token, result=result)
-    except BuildError as exc:
+    except (BuildError, SandboxError) as exc:
         try:
             store.finish(run_id, token, error=exc.payload)
         except LeaseLost:

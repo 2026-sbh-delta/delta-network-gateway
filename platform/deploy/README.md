@@ -13,7 +13,7 @@ AWS 인증은 해당 터미널의 환경변수 또는 AWS 프로필에서 받는
 1. STS로 계정·역할을 확인하고 `terraform/terraform.tfvars.json`에 실제 계정, 리전, ARM64 AMI, AZ를 기록한다. 첫 Origin 생성 때만 `bootstrap_origin_access=true`다.
 2. `uv sync --project platform/deploy --frozen` 후 `scripts/bootstrap-state.py --account-id ...`로 전용 상태 버킷과 `backend.hcl`을 준비한다.
 3. Terraform `init -backend-config=backend.hcl`, `validate`, 저장 Plan 검토, `apply` 순서로 실행한다. 실제 값을 넣기 전 mock 시험을 먼저 수행한다. 기존 state·리소스를 가져오지 않는다.
-4. 저장소 루트에서 `docker build --platform linux/arm64 -t delta-platform:u1 -f platform/Dockerfile platform`으로 이미지를 만든다. 클라우드 관리 SDK는 별도 배포 가상환경에만 설치한다.
+4. 저장소 루트에서 `docker build --platform linux/arm64 -t delta-platform:u1 -f platform/Dockerfile .`으로 이미지를 만든다. 저장소 루트가 빌드 컨텍스트이며 Dockerfile.dockerignore로 필요한 코드만 포함한다. 플랫폼 Worker는 VM 역할로 CodeBuild·ECS를 호출한다.
 5. `scripts/publish-images.py --account-id ... --output platform/.runtime/published-images.json`으로 플랫폼·PostgreSQL 이미지를 ECR에 게시한다. 실제 명령은 배포 가상환경의 `uv run --project platform/deploy python ...`으로 실행한다.
 6. `terraform output -json` 결과를 Git에서 제외된 로컬 파일로 저장하고, `scripts/deploy-release.py --outputs ... --images ... --runtime-dir platform/.runtime`를 실행한다. VM의 SSM 접속과 `/opt/delta-platform/bootstrap-ready`가 먼저 준비돼야 한다.
 7. `bootstrap_origin_access=false`로 바꾸고 저장 Plan을 검토해 재적용한다. 최종 수신은 CloudFront 서비스 SG만 허용한다.

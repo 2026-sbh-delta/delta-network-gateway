@@ -112,7 +112,22 @@ class AwsEcsStaging:
         return Outcome(url=self.target.url, revision=revision, image_digest=digest, task_arn=task_arn,
                        scanner_ip=scanner_ip)
 
-    async def _register(self, req: DeployRequest) -> str:
+    async def register_image(self, req: DeployRequest, container_port: int) -> str:
+        """Prepare a revision without starting it; durable callers persist it before activation."""
+        self.check_request(req)
+        if not 1 <= container_port <= 65535:
+            raise StagingError("앱 포트가 올바르지 않다")
+        return await self._register(req, container_port=container_port)
+
+    async def verify_revision(self, revision: str, expected_digest: str) -> Outcome:
+        """Observe the exact revision, including digest and exclusive target health."""
+        task_arn, digest, ip = await self._new_task(revision)
+        if digest != expected_digest:
+            raise StagingError("실행 중인 이미지 digest가 요청과 다르다")
+        await self._wait_healthy(ip)
+        return Outcome(self.target.url, revision, digest, task_arn)
+
+    async def _register(self, req: DeployRequest, container_port: int | None = None) -> str:
         current = (await self._call("ecs", "describe_task_definition", taskDefinition=self.target.task_family))["taskDefinition"]
         spec = {key: current[key] for key in _REGISTER_KEYS if key in current}
         containers = []
@@ -123,6 +138,8 @@ class AwsEcsStaging:
                 env = {item["name"]: item["value"] for item in container.get("environment", [])}
                 env.update(req.env)
                 env.update({"DELTA_RUN_ID": req.run_id, **({"DELTA_COMMIT": req.commit} if req.commit else {})})
+                if container_port is not None:
+                    container = {**container, "portMappings": [{"containerPort": container_port, "protocol": "tcp"}]}
                 container = {**container, "image": req.image,
                              "environment": [{"name": k, "value": v} for k, v in sorted(env.items())]}
             containers.append(container)

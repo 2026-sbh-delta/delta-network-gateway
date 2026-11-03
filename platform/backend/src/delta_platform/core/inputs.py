@@ -43,6 +43,15 @@ class BuildInput(StrictInput):
         return str(UUID(value))
 
 
+class SandboxInput(StrictInput):
+    build_id: str = Field(min_length=36, max_length=36)
+
+    @field_validator("build_id")
+    @classmethod
+    def valid_id(cls, value):
+        return str(UUID(value))
+
+
 class ServiceInput(StrictInput):
     name: str = Field(min_length=1, max_length=80)
     repository_url: str = Field(max_length=512)

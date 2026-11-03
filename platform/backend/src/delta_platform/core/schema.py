@@ -59,6 +59,7 @@ runs = sa.Table(
     col("status", sa.String(16), nullable=False),
     col("current_step", sa.String(40)),
     col("resolved_commit_sha", sa.String(40)),
+    col("cancel_requested", sa.Boolean, nullable=False, server_default=sa.false()),
     col("external_id", sa.String(255)),
     col("submission", JSONB(none_as_null=True)),
     col("attempt", sa.Integer, nullable=False, server_default="0"),
@@ -71,7 +72,9 @@ runs = sa.Table(
     timestamp("started_at"),
     timestamp("finished_at"),
     sa.UniqueConstraint("service_id", "kind", "request_key", name="run_request_unique"),
-    sa.CheckConstraint("kind IN ('source_preflight', 'image_build')", name="run_kind"),
+    sa.CheckConstraint(
+        "kind IN ('source_preflight', 'image_build', 'sandbox_check')", name="run_kind"
+    ),
     sa.CheckConstraint("attempt >= 0", name="run_attempt"),
     sa.CheckConstraint("status IN ('queued','running','succeeded','failed')", name="run_status"),
     sa.CheckConstraint(
@@ -101,4 +104,13 @@ events = sa.Table(
     col("message", sa.Text, nullable=False),
     col("details", JSONB(none_as_null=True), nullable=False),
     timestamp("created_at", nullable=False, server_default=sa.func.now()),
+)
+
+sa.Index(
+    "one_active_sandbox_slot",
+    runs.c.kind,
+    unique=True,
+    postgresql_where=sa.and_(
+        runs.c.kind == "sandbox_check", runs.c.status.in_(["queued", "running"])
+    ),
 )
