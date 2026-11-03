@@ -1,5 +1,6 @@
 # 입력이 비었을 때 쓰는 임시 기본값. 실제 확인이 아니며 결과의 assumptions 와 출처 default 로 드러난다.
 region: asia-northeast3
+source_region: ap-northeast-2  # 비용 비교에만 쓴다
 cidr_pool: 10.60.0.0/16
 subnet_prefix: 24
 reserved_cidrs:

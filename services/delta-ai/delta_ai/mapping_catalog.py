@@ -39,6 +39,24 @@ GCP_INSTANCES: dict[str, InstanceSpec] = {
     "e2-standard-2": InstanceSpec(2, 8, "x86_64"),
     "e2-standard-4": InstanceSpec(4, 16, "x86_64"),
 }
+# 비용 비교용 온디맨드 시간당 단가(USD). 표에 없는 리전은 다른 리전 값으로 추정하지 않는다.
+# 출처: aws.amazon.com/ec2/pricing/on-demand 의 Linux 가격 데이터, cloud.google.com/products/compute/pricing/general-purpose 의 Default 열
+PRICED_ON = "2026-11-02"
+HOURS_PER_MONTH = 730
+AWS_HOURLY_USD: dict[str, dict[str, float]] = {
+    "ap-northeast-2": {
+        "t4g.nano": 0.0052, "t4g.micro": 0.0104, "t4g.small": 0.0208, "t4g.medium": 0.0416, "t4g.large": 0.0832,
+        "t4g.xlarge": 0.1664, "t3.micro": 0.013, "t3.small": 0.026, "t3.medium": 0.052, "t3.large": 0.104,
+        "t3.xlarge": 0.208,
+    },
+}
+GCP_HOURLY_USD: dict[str, dict[str, float]] = {
+    "asia-northeast3": {
+        "e2-micro": 0.010745715, "e2-small": 0.02149143, "e2-medium": 0.04298286, "e2-standard-2": 0.08596572,
+        "e2-standard-4": 0.17193144,
+    },
+}
+COST_EXCLUDES = ("디스크", "네트워크 전송·NAT·공인 IP", "OS 라이선스", "보안 도구(Security Command Center 등)", "약정·Spot·무료 등급 할인")
 OS_SAME = frozenset({"ubuntu", "debian", "rhel", "rocky"})
 OS_APPROXIMATE: dict[str, str] = {"amazon_linux": "RHEL 계열 (RHEL 또는 Rocky Linux)"}
 AWS_ACTION_ROLES: dict[str, str] = {

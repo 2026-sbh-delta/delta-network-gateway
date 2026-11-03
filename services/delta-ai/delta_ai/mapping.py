@@ -42,6 +42,7 @@ from delta_ai.mapping_catalog import (
     SCC_SERVICES,
     InstanceSpec,
 )
+from delta_ai.mapping_cost import estimate_cost
 from delta_ai.parity import CheckOutcome
 from delta_ai.resources import data_dir
 
@@ -199,9 +200,14 @@ def _size_notes(server: SourceServer, spec: InstanceSpec, chosen: str) -> tuple[
     return tuple(notes)
 
 
+def _target_type(server: SourceServer) -> str | None:
+    spec = AWS_INSTANCES.get(server.instance_type or "")
+    return _smallest_target(spec, spec.memory_gib) if spec else None
+
+
 def _map_compute(server: SourceServer) -> _Part:
     spec = AWS_INSTANCES.get(server.instance_type or "")
-    chosen = _smallest_target(spec, spec.memory_gib) if spec else None
+    chosen = _target_type(server)
     if chosen is None:
         row = _row("MAP-CMP-001", "compute", f"{server.name}: {server.instance_type}", None, "unknown", server.origin)
         return _graded(row, f"대응표에 없는 서버 타입: {server.instance_type}")
@@ -334,9 +340,13 @@ def check_mapping(config: MappingInput) -> CheckOutcome:
     network, cidr_notes = _map_network(config, occupied, defaults)
     security = _map_security(config.security, config) if config.security else _Part()
     result = _merge((network, *(_map_server(i, s) for i, s in enumerate(config.servers)), security))
-    assumptions = cidr_notes if config.region else (f"region {defaults['region']}", *cidr_notes)
-    mapping = MappingResult(region=config.region or defaults["region"], network_mode=config.network_mode,
-                            rows=result.rows, assumptions=assumptions)
+    region = config.region or defaults["region"]
+    source_region = config.source_region or defaults["source_region"]
+    cost = estimate_cost([(s, _target_type(s)) for s in config.servers], source_region, region)
+    assumptions = (*(() if config.region else (f"region {region}",)),
+                   *(() if config.source_region or cost is None else (f"출발 리전 {source_region}",)), *cidr_notes)
+    mapping = MappingResult(region=region, network_mode=config.network_mode, rows=result.rows, assumptions=assumptions,
+                            cost=cost)
     return CheckOutcome(findings=result.findings, checks=mapping_checks(result.findings, result.rows), mapping=mapping)
 
 

@@ -2,12 +2,18 @@
 
 ## 현재 상태
 
-- 기준일: 2026-11-02 (Asia/Seoul)
+- 기준일: 2026-11-03 (Asia/Seoul)
 - 파이프라인 그래프: 콘솔 흐름을 `services/delta-pipeline` 의 고정 전이 LangGraph 그래프로 옮겼다. 2026-11-02 테스트 32개, 로컬 스택 3개 시나리오·강제 종료 재개 확인. 브랜치 `feat/pipeline-graph` 까지 푸시했고(PR 전) AWS·GCP 이전은 없다. [기록](ai-dlc/pipeline-graph.md)
-- AWS → GCP 매핑 판단: [`migration_mapping`](ai-dlc/migration-mapping.md) 로컬 구현(미커밋). 실제 AWS state 로 대조했고 GCP 생성은 안 함. 앞단은 HAProxy 기각, AWS 기능 사용 방향(ADR-AI-37), 값의 기준은 Terraform(ADR-AI-38), GCP 담당은 동규 님(2026-11-02 사용자 전달).
-- 통합 시연: `deploy/demo-console/` 에서 온프레미스 증거·DAST·AI 판단·Jenkins 카나리를 한 흐름과 화면으로 돌린다. 2026-11-02 로컬 리허설 3개 시나리오 확인, 로컬 브랜치 `feat/demo-integration` 까지 커밋했고 푸시·서버 배포는 안 함. 배포는 Mac Docker 대역이고 AWS·GCP 는 미연결. [기록](ai-dlc/demo-integration.md)
+- AWS → GCP 매핑 판단: [`migration_mapping`](ai-dlc/migration-mapping.md) 구현 완료. 실제 AWS state 로 대조했고 GCP 생성은 안 함. 앞단은 HAProxy 기각, AWS 기능 사용 방향(ADR-AI-37), 값의 기준은 Terraform(ADR-AI-38), GCP 담당은 동규 님(2026-11-02 사용자 전달).
+- 통합 시연: `deploy/demo-console/` 에서 온프레미스 증거·DAST·AI 판단·Jenkins 카나리를 한 흐름과 화면으로 돌린다. 2026-11-02 로컬 리허설 3개 시나리오 확인, 브랜치 `feat/demo-integration` 에 커밋·푸시했고 서버 배포는 안 함. 배포는 Mac Docker 대역이고 AWS·GCP 는 미연결. [기록](ai-dlc/demo-integration.md)
 - Jenkins 배포·AI 판단: `deploy/jenkins-local/`에서 카나리 승격·자동 롤백·사람 확인을 로컬 시나리오로 확인했다. main 병합 후 2026-11-02 delta-ai `.venv/bin/pytest -q` 85개, 파이프라인 스크립트 51개 통과, 병합 후 Jenkins 빌드 #53~65(가짜 LLM)로 사전 확인과 시나리오 경로 확인. 커밋은 로컬 브랜치 `feat/jenkins-on-main` 까지이고 푸시·AWS 배포는 안 했다. [기록](ai-dlc/jenkins-local.md)
+- 플랫폼 OIDC 연결(2026-11-03): `feat/platform-oidc`에서 Free/private 저장소에 맞춰 Environment 없이 main 전용 OIDC와 역할 3개를 구성했다. AWS CLI/SSO 인증으로 업무 계정의 IAM 기반 11개 추가를 적용했고, 정책 검증·권한 시뮬레이션 19개·최종 Plan No changes를 확인했다. 후속 권한 보완까지 로컬 배포 도구 테스트 17개·IAM mock 7개가 통과했다. GitHub 변수 9개는 사용자가 등록했고 값 일치를 확인했다. 구현 `a0714e8`을 푸시하고 PR #8의 CI 전체 성공 후 main에 병합했다(`6b404fc`). 사용자가 CI를 활성화했다. 실제 OIDC Plan에서 발견한 CloudFront prefix list 조회 권한을 해당 목록에만 추가했고, 재실행은 리소스 변경 없이 성공했다. 실제 GitHub Release도 성공했고 HTTPS·기존 로그인·기존 서비스 기록과 새 Worker 작업을 검증했다. [설정값](../platform/deploy/GITHUB.md) · [진행 기록](ai-dlc/platform-oidc.md)
+- 플랫폼 CI 수정(2026-11-03): PR #7의 앱 테스트는 통과했고 Terraform은 Linux용 Provider 검증값 누락으로 실패했다. 깨끗한 Linux 환경에서 재현한 뒤 lock 파일에 해당 검증값을 추가해 `init`·`validate`·mock 3개 통과를 확인했다. 최종 PR Checks는 모두 성공했고 PR #7은 병합됐다. [원인·검증 기록](ai-dlc/platform-aws.md#ci의-linux-검증값-수정)
+- 플랫폼 U1(2026-11-03): 사용자 구현 승인 후 고정 로그인·공개 GitHub 소스 확인·PostgreSQL 상태/이력·API/Worker·웹을 구현했다. 실제 PostgreSQL 통합 56개, 실제 GitHub 1개, 브라우저 3개를 통과했고 ARM64 이미지의 실제 검사·재시작 후 상태 보존도 확인했다. 추가 지시에 따라 AWS 업무 계정 616723161368/서울에 별도 기반을 배포했다. HTTPS 로그인·실제 GitHub 확인·재시작·S3 백업의 임시 DB 복원·브라우저를 검증했고 최종 Plan은 No changes다. GitHub 워크플로 3개를 게시했고 PR 테스트 실행을 시작했다. AWS OIDC 연결·GitHub를 통한 실제 배포는 미실행이다. 구현 커밋 `5390c63`을 `feat/platform`에 푸시하고 [PR #7](https://github.com/2026-sbh-delta/delta-network-gateway/pull/7)을 열었다. 최종 GitHub 테스트 상태는 PR Checks를 따른다. [U1 기록](ai-dlc/platform-u1.md) · [AWS 배포](ai-dlc/platform-aws.md)
+- 플랫폼 작업 시작(2026-11-02): 로컬 `feat/platform` 브랜치와 전용 `platform/` 디렉터리를 준비했다. 웹, 백엔드 API/Worker, 계약, VM 배포 자동화, HTML 설명을 분리한다. 당시 U0는 구조·설계 문서 단계였고 기능 구현·테스트·배포는 수행하지 않았다. 현재 U1 상태는 위 항목을 따른다. 구조·링크·ignore 규칙 검증 후 사용자에게 Conventional Commit 메시지를 제시했고 로컬 커밋 승인을 받았다. U0 커밋은 `0567762`이며 이후 U1과 함께 PR #7에 게시했다. 후속 커밋도 사전에 알린다. [작업 영역](../platform/README.md) · [설계/진행 기록](ai-dlc/platform.md)
 - AI 판단 서비스 SAST 경로 제거(2026-11-02): `services/delta-ai/`에서 코드 보안 판단(`code_security`, SARIF 입력, 코드 패치)을 뺐다. SAST는 별도 서비스가 SARIF와 코드 흐름으로 다시 설계한다. 환경 차이 판단과 피드백 규칙 후보·승인 API는 유지하며, 승인 규칙을 적용할 코드 검사는 아직 없다. 같은 날 `.venv/bin/pytest -q` 66개 통과, `scripts/demo.py fake` 실행 완료.
+- SAST 점검 서비스(설계): 빠른 모드(파이프라인, Opengrep 위치 표시 + 자체 AST 경로 + 애매한 경로만 LLM)와 전체 LLM 검증 모드(파이프라인 밖)를 둘 다 두는 설계 초안을 작성했다(2026-11-02). 구현은 미착수다. [설계](ai-dlc/sast.md)를 따른다.
+- 스테이징 도구(설계·검증 기록): 관리 에이전트가 호출하는 파이프라인 스테이징 도구와 AWS 기반 모듈은 `feat/add-staging-tool` 브랜치에 있고 main에는 아직 병합하지 않았다. 2026-11-02 mock `terraform test` 11개와 도구 단위 테스트 29개 통과, Workload 계정 기본 VPC 대상 실제 Plan(25개 추가) 저장. Apply와 ECS 배포는 미실행이다. [설계/검증 기록](ai-dlc/staging-tool.md)을 따른다.
 - AI 판단 서비스: `services/delta-ai/`에 `2026-sbh-delta/delta-ai` `007d1c6`을 subtree로 추가했다. 2026-11-01 `.venv/bin/pytest -q` 98개 통과, `scripts/demo.py fake` 실행 완료. Terraform 변경은 없고, Dockerfile/배포/다른 서비스와의 실제 연동은 미구현이다. [실행 안내](../services/delta-ai/README.md)를 따른다.
 - AI DAST 점검 서비스: `services/delta-dast/`에 추가했다. SAST 결과를 받아 스테이징에서 저장형 XSS를 재현·판정하고 수정안·보고서를 만든다. 2026-11-02 기존 가상환경으로 주요 모듈 import와 `compileall` 성공을 확인했다. 자동 테스트는 아직 없다. 컨테이너 이미지/배포/delta-ai 연동은 미구현이다. [실행 안내](../services/delta-dast/README.md)와 [API 계약](../services/delta-dast/docs/API.md)을 따른다.
 - CloudFront ANF 웹: 사용자 지시로 private S3/OAC의 두 버튼 페이지와 Client VPC internal ALB/ALB VPC Origin을 배포했다. URL은 https://d228fpdue5s0by.cloudfront.net/ 이다. API는 ALB→TGW→중앙 ANF→기존 사설 Server로 연결한다. 웹200/허용8080 HTTP200/차단8081 HTTP504와 SID9000000 blocked/drop, 허용 마커 SID2000001 및 양방향 FLOW를 실제 대조했다. 새 경로 mock21개/중앙 회귀35개 통과. 직접 Origin/Server IGW/임시 ingress 정리와 검증 JSON 게시, 네 root No changes까지 확인했다. 브라우저 차단 버튼 완료 화면 재확인은 도구 오류로 미검증이며 사용자 지시로 이번 변경을 분할 커밋하고 origin/main 게시 성공을 확인했다. [승인/실제 결과](ai-dlc/cloudfront-anf-demo.md)를 따른다.
@@ -35,6 +41,13 @@
 - [파이프라인 고정 전이 그래프](ai-dlc/pipeline-graph.md)
 - [AWS → GCP 매핑 판단](ai-dlc/migration-mapping.md)
 - [Jenkins 배포와 AI 판단 로컬 검증](ai-dlc/jenkins-local.md)
+- [개발자용 플랫폼 설계·구현 단위](ai-dlc/platform.md)
+- [플랫폼 U1: 구현·검증 기록](ai-dlc/platform-u1.md)
+- [플랫폼 AWS 배포·운영 기록](ai-dlc/platform-aws.md)
+- [플랫폼 GitHub OIDC 연결](ai-dlc/platform-oidc.md)
+- [플랫폼 구성 설명 HTML](../platform/docs/overview.ko.html)
+- [SAST 점검 서비스 설계(빠른 모드·전체 모드)](ai-dlc/sast.md)
+- [파이프라인 스테이징 도구 설계/검증 상태](ai-dlc/staging-tool.md)
 - [CloudFront 웹의 중앙 ANF 허용/차단 시험](ai-dlc/cloudfront-anf-demo.md)
 - [CloudFront 직접 EC2 VPC Origin](ai-dlc/cloudfront-server.md)
 - [CloudFront 실행 및 전체 입력/출력](../terraform/cloudfront-server/README.md)
@@ -50,6 +63,8 @@
 - [GCP와 AWS VPN 연결/관제 검증](../terraform/gcp-server/RUNBOOK.md)
 
 ## 다음 작업
+
+플랫폼 U1은 고정 로그인 → 서비스 등록 → 공개 GitHub 사전 검사 → 결과 조회까지 구현했고 [AWS 배포](ai-dlc/platform-aws.md)와 PR #7 병합을 완료했다. 현재 `feat/platform-oidc`에서 GitHub 배포 연결을 마무리한다. IAM 기반 적용과 사용자 변수 등록은 완료했다. PR #8의 main 반영을 완료했다. 실제 OIDC Plan·Release와 배포 후 기능 검증을 완료했다. 이후 U2 공개 소스 격리 빌드로 진행한다. ECS 연동은 후속 단위에서 해당 도구의 실제 병합·실행 상태를 확인한 뒤 연결한다.
 
 CloudFront 두 버튼 웹의 실제 ANF 허용/차단 대조는 확인했다. 직접 EC2 Origin/Server IGW와 SG rule/임시 ALB ingress 정리와 실제 검증 JSON 게시를 마쳤고 네 root 최종 Plan은 No changes다. 남은 화면 검증은 UI 도구가 안정된 환경에서 차단 버튼 완료 화면/최종 검증 문구를 확인하는 것이다. 페이지 하단 검증 기록은 배포 당시 로그 대조 결과이며 개별 요청의 실시간 관제 판정은 아니다.
 

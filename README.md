@@ -7,6 +7,7 @@ AWS Network / Security 계정의 Inspection VPC, Transit Gateway, 공유 Network
 - [AWS 사설 Workload 클라이언트](terraform/workload-client/README.md)
 - [검증, 장애 대응, 해체 Runbook](terraform/network-security/RUNBOOK.md)
 - [프로젝트 상태와 AI-DLC](docs/README.md)
+- [개발자용 플랫폼 작업 영역](platform/README.md)
 - [AI 판단 서비스](services/delta-ai/README.md)
 - [AI DAST 점검 서비스](services/delta-dast/README.md)
 

@@ -1,0 +1,71 @@
+name: delta-platform
+services:
+  db:
+    image: ${POSTGRES_IMAGE:?고정 PostgreSQL 이미지 digest 필요}
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: platform
+      POSTGRES_DB: platform
+      POSTGRES_PASSWORD: ${PLATFORM_DB_PASSWORD:?필수}
+    volumes:
+      - /srv/delta-platform/postgres:/var/lib/postgresql/data
+    command: ["postgres", "-c", "max_connections=40", "-c", "shared_buffers=128MB"]
+    mem_limit: 512m
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U platform -d platform"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+  migrate:
+    image: ${PLATFORM_IMAGE:?고정 플랫폼 이미지 digest 필요}
+    profiles: ["migration"]
+    env_file:
+      - path: /etc/delta-platform/app.env
+        format: raw
+    command: ["alembic", "upgrade", "head"]
+    depends_on:
+      db: {condition: service_healthy}
+    read_only: true
+    tmpfs: [/tmp]
+  api:
+    image: ${PLATFORM_IMAGE:?고정 플랫폼 이미지 digest 필요}
+    restart: unless-stopped
+    env_file:
+      - path: /etc/delta-platform/app.env
+        format: raw
+    ports: ["8088:8088"]
+    depends_on:
+      db: {condition: service_healthy}
+    mem_limit: 384m
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8088/health/ready', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+  worker:
+    image: ${PLATFORM_IMAGE:?고정 플랫폼 이미지 digest 필요}
+    restart: unless-stopped
+    env_file:
+      - path: /etc/delta-platform/app.env
+        format: raw
+    command: ["python", "-c", "from delta_platform.worker.main import main; main()"]
+    depends_on:
+      db: {condition: service_healthy}
+    mem_limit: 256m
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
