@@ -1,0 +1,241 @@
+// 스캔 → 사람 확인 → 재발 확인 → 카나리 → 승격 또는 자동 롤백.
+// 판단 서비스는 판정만 내고, 실행은 이 파이프라인이 한다 (ADR-AI-05).
+// 기준을 넘은 지표의 롤백은 판단 응답을 기다리지 않는다. 승격은 pass 를 받아야만 한다.
+
+def scripts() { return '/pipelines/pipeline/scripts' }
+
+def canaryLogLines() { return 50 }
+
+def canaryHoldSeconds() { return 8 }
+
+def computeReleaseId() {
+    return sh(returnStdout: true, script: "python3 ${scripts()}/releases.py id --root app --extra FAIL_RATE=${env.CANARY_FAIL_RATE}").trim()
+}
+
+def logged(String stage, String command) {
+    env.CURRENT_STAGE = stage
+    sh "#!/bin/bash\n${scripts()}/run_logged.sh ${stage} ${command}"
+}
+
+def gate(String args) {
+    return sh(returnStatus: true, script: "python3 ${scripts()}/gate.py ${args}")
+}
+
+def humanGate(String message) {
+    timeout(time: 10, unit: 'MINUTES') {
+        input id: 'HumanGate', message: message
+    }
+}
+
+def setSplit(String stable, String canary, int percent) {
+    sh "python3 ${scripts()}/haproxy_ctl.py split --stable ${stable} --canary ${canary} --percent ${percent}"
+}
+
+// 새 슬롯으로 가는 트래픽을 끊고 컨테이너를 지운다. 여러 번 불려도 안전하다.
+def rollback() {
+    if (env.ROLLOUT_ACTIVE != 'true') {
+        return
+    }
+    if (env.STABLE_SLOT) {
+        setSplit(env.STABLE_SLOT, env.CANARY_SLOT, 0)
+    }
+    // 컨테이너를 지우면 로그도 사라지므로 원인 분석에 쓸 수 있게 먼저 남긴다
+    sh "docker logs --tail ${canaryLogLines()} demo-${env.CANARY_SLOT} > logs/canary-app.log 2>&1 || true"
+    sh "docker rm -f demo-${env.CANARY_SLOT} >/dev/null 2>&1 || true"
+    env.ROLLOUT_ACTIVE = 'false'
+    echo "롤백 완료: 안정 슬롯=${env.STABLE_SLOT ?: '없음'}"
+}
+
+// SAST 판단 서비스가 정해지기 전까지 탐지 결과는 AI 없이 사람이 본다. 읽지 못한 결과는 통과로 보지 않는다.
+def reviewSast() {
+    int code = sh(returnStatus: true, script: "python3 ${scripts()}/sast_findings.py sast.sarif")
+    if (code == 0) {
+        return
+    }
+    if (code != 20) {
+        error('SAST 결과를 읽지 못했다: 통과로 보지 않는다')
+    }
+    env.GATE_ALREADY_REPORTED = 'true'  // 사람이 중단하면 단계 실패가 아니므로 다시 분석하지 않는다
+    humanGate('Semgrep 이 코드를 지목했다. sast.sarif 를 보고 진행 여부를 정한다')
+    env.GATE_ALREADY_REPORTED = 'false'
+}
+
+def promoteStep(int percent) {
+    if (env.STABLE_SLOT) {
+        setSplit(env.STABLE_SLOT, env.CANARY_SLOT, percent)
+        // 측정은 1초 안에 끝난다. 시연 화면에서 비율이 보이도록 잠시 유지한다
+        sleep(time: canaryHoldSeconds(), unit: 'SECONDS')
+    }
+    int status = sh(returnStatus: true, script: "#!/bin/bash\n${scripts()}/run_logged.sh traffic-${percent} python3 ${scripts()}/traffic.py --url http://haproxy/api/hello --version ${BUILD_NUMBER} --requests ${env.TRAFFIC_REQUESTS} --max-p95-ms ${env.MAX_P95_MS} --out metrics-${percent}.json")
+    env.CURRENT_STAGE = "traffic-${percent}"
+    if (status == 3) {
+        rollback()
+        // 기록 실패가 빌드 결과를 바꾸지는 않지만 재발 차단이 빠지므로 드러낸다
+        sh "python3 ${scripts()}/releases.py record --state ${env.RELEASE_STATE} --release ${env.RELEASE_ID} --build ${BUILD_NUMBER} --reason traffic-${percent}-metric-breach || echo '재발 기록 실패'"
+        error("트래픽 ${percent}% 에서 지표 기준 초과: 자동 롤백했다")
+    }
+    if (status != 0) {
+        rollback()
+        error("트래픽 ${percent}% 측정 실패: 롤백했다")
+    }
+    int code = gate("deployment_gate --id build-${BUILD_NUMBER}-traffic-${percent} --stage traffic-${percent} --target aws --traffic ${percent} --metrics metrics-${percent}.json --out gate-${percent}.json")
+    if (code == 20) {
+        humanGate("트래픽 ${percent}% 판단이 사람 확인을 요구한다. gate-${percent}.json 을 본다")
+    } else if (code != 0) {
+        env.GATE_ALREADY_REPORTED = 'true'
+        rollback()
+        error("트래픽 ${percent}% 판단을 통과하지 못했다(code=${code}): 롤백했다")
+    }
+}
+
+pipeline {
+    agent any
+    options {
+        disableConcurrentBuilds()
+        timestamps()
+        timeout(time: 30, unit: 'MINUTES')
+        buildDiscarder(logRotator(numToKeepStr: '20'))
+    }
+    parameters {
+        choice(name: 'SCENARIO', choices: ['good', 'vulnerable-code', 'failing-test', 'bad-canary', 'gate-down', 'low-traffic'],
+               description: '시험할 상황')
+    }
+    environment {
+        DELTA_API_TOKEN = credentials('delta-api-token')
+        DELTA_URL = "${params.SCENARIO == 'gate-down' ? 'http://delta-ai:1' : 'http://delta-ai:8090'}"
+        CANARY_FAIL_RATE = "${params.SCENARIO == 'bad-canary' ? '0.5' : '0'}"
+        // 10% 단계의 표본이 판단 최소치(20건)에 못 미치게 해 사람 확인 경로를 시험한다
+        TRAFFIC_REQUESTS = "${params.SCENARIO == 'low-traffic' ? '100' : '400'}"
+        // 노트북 메모리 압박에서 정상 빌드의 p95 가 544ms 까지 나와 되돌려졌다(#76). 서버 기준이 아니라 시험대 값이다
+        MAX_P95_MS = '2000'
+        DOCKER_BUILDKIT = '0'
+        RELEASE_STATE = '/var/jenkins_home/delta-state/failed-releases.json'
+    }
+    stages {
+        stage('준비') {
+            steps {
+                deleteDir()
+                sh '''
+                    cp -r /pipelines/demo-app app
+                    mv app/scenarios scenarios
+                '''
+                script {
+                    if (params.SCENARIO == 'vulnerable-code') {
+                        sh 'cp scenarios/vulnerable.py scenarios/test_ping_contract.py app/'
+                    }
+                    if (params.SCENARIO == 'failing-test') {
+                        sh 'cp scenarios/test_broken.py app/'
+                    }
+                    env.RELEASE_ID = computeReleaseId()
+                }
+            }
+        }
+        stage('판단 서비스 확인') {
+            steps {
+                script {
+                    env.CURRENT_STAGE = 'gate-ready'
+                    if (sh(returnStatus: true, script: "python3 ${scripts()}/gate_ready.py") != 0) {
+                        env.GATE_ALREADY_REPORTED = 'true'  // 분석도 같은 서비스가 하므로 호출하지 않는다
+                        error('판단 서비스에 닿지 못했다: 트래픽을 주기 전에 중단한다')
+                    }
+                }
+            }
+        }
+        stage('테스트') {
+            steps {
+                script { logged('test', 'python3 -m unittest discover -s app -v') }
+            }
+        }
+        stage('SAST') {
+            steps {
+                script {
+                    logged('sast', 'semgrep scan --config app/.semgrep.yml --sarif --output sast.sarif --metrics=off --disable-version-check app')
+                    reviewSast()
+                }
+            }
+        }
+        stage('재발 확인') {
+            steps {
+                script {
+                    int seen = sh(returnStatus: true, script: "python3 ${scripts()}/releases.py check --state ${env.RELEASE_STATE} --release ${env.RELEASE_ID}")
+                    if (seen == 4) {
+                        humanGate('이 릴리스는 전에 지표 기준을 넘어 롤백됐다. 콘솔의 이전 실패를 보고 다시 트래픽을 줄지 정한다')
+                    } else if (seen != 0) {
+                        error('실패 기록을 읽지 못했다: 재발 여부를 모르면 배포하지 않는다')
+                    }
+                }
+            }
+        }
+        stage('이미지 빌드') {
+            steps {
+                script { logged('build', "docker build -q -t delta-demo:${BUILD_NUMBER} app") }
+            }
+        }
+        stage('새 슬롯 배포') {
+            steps {
+                script {
+                    String active = sh(returnStdout: true, script: "python3 ${scripts()}/haproxy_ctl.py active").trim()
+                    boolean running = sh(returnStatus: true, script: "docker ps --format '{{.Names}}' | grep -qx demo-${active}") == 0
+                    env.STABLE_SLOT = running ? active : ''
+                    env.CANARY_SLOT = running ? (active == 'blue' ? 'green' : 'blue') : active
+                    env.ROLLOUT_ACTIVE = 'true'
+                    logged('deploy', """bash -c 'docker rm -f demo-${env.CANARY_SLOT} >/dev/null 2>&1; docker run -d --name demo-${env.CANARY_SLOT} --network delta-local --label delta.build=${BUILD_NUMBER} -e APP_VERSION=${BUILD_NUMBER} -e FAIL_RATE=${env.CANARY_FAIL_RATE} delta-demo:${BUILD_NUMBER}'""")
+                    logged('smoke', "python3 ${scripts()}/haproxy_ctl.py wait-up --slot ${env.CANARY_SLOT}")
+                }
+            }
+        }
+        stage('단계적 전환') {
+            steps {
+                script {
+                    // 안정 슬롯이 없는 첫 배포는 나눌 트래픽이 없다
+                    List steps = env.STABLE_SLOT ? [10, 50, 100] : [100]
+                    for (int percent in steps) {
+                        promoteStep(percent)
+                    }
+                }
+            }
+        }
+        stage('승격 완료') {
+            steps {
+                script {
+                    if (env.STABLE_SLOT) {
+                        // 처리 중인 요청을 끊지 않도록 SIGTERM 으로 끝낸다
+                        sh "docker stop -t 5 demo-${env.STABLE_SLOT} >/dev/null && docker rm demo-${env.STABLE_SLOT} >/dev/null"
+                    }
+                    env.ROLLOUT_ACTIVE = 'false'
+                    sh "python3 ${scripts()}/releases.py clear --state ${env.RELEASE_STATE} --release ${env.RELEASE_ID}"
+                    echo "운영 슬롯=${env.CANARY_SLOT} 버전=${BUILD_NUMBER}"
+                }
+            }
+        }
+    }
+    // Declarative post 는 always → failure → cleanup 순서로 돈다.
+    // 롤백이 분석보다 먼저여야 해서 always 에 두고, 산출물은 분석 결과까지 담도록 cleanup 에서 올린다.
+    post {
+        always {
+            script {
+                if (currentBuild.currentResult != 'SUCCESS') {
+                    rollback()
+                }
+            }
+        }
+        failure {
+            script {
+                // 원인 분석은 롤백 뒤에 한다. 판단 서비스가 죽어 있어도 빌드 결과는 이미 실패다.
+                if (env.GATE_ALREADY_REPORTED == 'true') {
+                    return
+                }
+                String stage = env.CURRENT_STAGE ?: 'unknown'
+                String exitFile = "logs/${stage}.exit"
+                String exitArg = fileExists(exitFile) ? "--exit-code ${readFile(exitFile).trim()}" : ''
+                String metricsFile = stage.startsWith('traffic-') ? "metrics-${stage.substring(8)}.json" : ''
+                String metricsArg = metricsFile && fileExists(metricsFile) ? "--metrics ${metricsFile}" : ''
+                String appLogArg = fileExists('logs/canary-app.log') ? '--log logs/canary-app.log' : ''
+                gate("deployment_gate --id build-${BUILD_NUMBER}-failure --stage ${stage} --status failed --target aws ${exitArg} ${metricsArg} --log logs/${stage}.log ${appLogArg} --out failure-analysis.json")
+            }
+        }
+        cleanup {
+            archiveArtifacts artifacts: 'logs/**, *.json, *.sarif, events.jsonl', allowEmptyArchive: true
+        }
+    }
+}

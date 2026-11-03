@@ -46,3 +46,9 @@ cases:
     base: parity-ok.json
     patch: {source_env: {network: {gateway: haproxy}}, target_env: {network: {gateway: haproxy}}}
     expect: [pass]
+  - {name: mapping-workload-server, base: mapping-workload-server.json, expect: [pass], rules: [MAP-CMP-001, MAP-CMP-002, MAP-OS-001, MAP-NET-001]}
+  - name: mapping-guardduty-without-scc-tier
+    base: mapping-workload-server.json
+    patch: {evidence: {mapping: {security: {guardduty_enabled: true}}}}
+    expect: [needs_human]
+    rules: [MAP-SEC-001]

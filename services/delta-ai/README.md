@@ -16,6 +16,10 @@ DELTA_API_TOKEN=<임의의 값> DELTA_LLM=fake .venv/bin/uvicorn delta_ai.api:ap
 
 `DELTA_LLM` 은 `none`(기본)·`fake`·`claude` 이다. `claude` 는 `ANTHROPIC_API_KEY` 가 필요하다. `fake` 는 분석을 하지 않는 고정 응답이라 연동 확인용이다.
 
+`DELTA_LLM_TIMEOUT_SECONDS`(기본 60)로 LLM 호출 시간 제한을 정한다. 재시도는 1회다.
+
+컨테이너 실행은 [Dockerfile](Dockerfile) 로 하며 8090 포트, 비루트 사용자로 돈다. Jenkins 연동 예시는 [deploy/jenkins-local](../../deploy/jenkins-local/README.md) 에 있다.
+
 ## API
 
 모든 요청에 `Authorization: Bearer <DELTA_API_TOKEN>` 이 필요하다(`/healthz` 제외).
@@ -34,8 +38,22 @@ curl -s -X POST localhost:8090/v1/assessments -H "Authorization: Bearer $DELTA_A
 
 | `kind` | 호출 시점 | 필요한 입력 |
 |---|---|---|
+| `migration_mapping` | 이전 전, 대상 자원을 만들기 전 | `evidence.mapping` (서브넷·서버·보안 도구). `scripts/extract_terraform.py` 로 만들 수 있다. 결과의 `mapping.cost` 는 서버 월 예상 비용 참고 값이다 |
 | `migration_parity` | 이전 직전, 샌드박스 시험 후 | `source_env`, `target_env`, `evidence.attack_results` |
 | `feedback_ingest` | 긴 리뷰·모의해킹 완료 후 | `evidence.report` |
+| `deployment_gate` | 배포 단계·트래픽 단계 후 | `evidence.deployment` |
+| `dast_verification` | DAST 점검이 끝난 뒤, 트래픽을 옮기기 전 | `evidence.dast` (점검 서비스가 관측한 항목별 상태) |
+| `runtime_security` | 배포 후 주기적으로 | `evidence.image_vulnerabilities`, `cluster_checks`, `log_signals`, `network_posture` 중 하나 이상 |
+
+`migration_parity` 는 `evidence.reachability`(실제 연결 시험)와 `target_env.network.firewall_rules` 도 받는다. 보내면 `PAR-NET-002`, `PAR-NET-003` 을 점검한다. 응답의 `verified_controls` 는 막혔다고 실측된 통제다.
+
+`network_posture` 를 보내면 응답의 `posture` 가 네트워크·노드·클러스터 계층을 실측으로 나눠 `isolated`, `partial`, `open`, `unknown` 으로 판정하고, `upstream_firewall` 에 따라 할 수 있는 조치만 제안한다. 상위 방화벽을 관리할 수 없는 환경에는 VLAN 변경을 제안하지 않는다. 제안은 자동으로 적용하지 않는다.
+
+온프레미스 노드에서 증거를 모아 보내려면 [수집기](scripts/collect_onprem.py)를 쓴다. 설정 형식은 [예시](scripts/collect_onprem.example.json)를 보고, 실제 주소가 든 설정은 저장소 밖에 둔다. 방화벽 접근이 없으면 `firewall_ssh` 를 빼고 `upstream_firewall` 을 `unmanaged` 로 둔다. 연결 시험은 설정한 대상과 `probe_default_gateway` 로 켠 기본 게이트웨이에만 보내며 주변 기기를 찾아 스캔하지 않는다. 노드를 격리로 인정받으려면 `vantage_ssh` 와 `inbound_probes` 로 노드 밖 지점에서 시험한다. 읽기 전용이지만 시험 공격 요청과 스캔용 파드는 만든다.
+
+```bash
+python scripts/collect_onprem.py --config <설정.json> --out <결과 폴더> --dry-run
+```
 
 ## 판정
 

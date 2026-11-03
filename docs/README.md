@@ -3,6 +3,9 @@
 ## 현재 상태
 
 - 기준일: 2026-11-03 (Asia/Seoul)
+- AWS → GCP 매핑 판단: [`migration_mapping`](ai-dlc/migration-mapping.md) 구현 완료. 실제 AWS state 로 대조했고 GCP 생성은 안 함. 앞단은 HAProxy 기각, AWS 기능 사용 방향(ADR-AI-37), 값의 기준은 Terraform(ADR-AI-38), GCP 담당은 동규 님(2026-11-02 사용자 전달).
+- 통합 시연: `deploy/demo-console/` 에서 온프레미스 증거·DAST·AI 판단·Jenkins 카나리를 한 흐름과 화면으로 돌린다. 2026-11-02 로컬 리허설 3개 시나리오 확인, 브랜치 `feat/demo-integration` 에 커밋·푸시했고 서버 배포는 안 함. 배포는 Mac Docker 대역이고 AWS·GCP 는 미연결. [기록](ai-dlc/demo-integration.md)
+- Jenkins 배포·AI 판단: `deploy/jenkins-local/`에서 카나리 승격·자동 롤백·사람 확인을 로컬 시나리오로 확인했다. main 병합 후 2026-11-02 delta-ai `.venv/bin/pytest -q` 85개, 파이프라인 스크립트 51개 통과, 병합 후 Jenkins 빌드 #53~65(가짜 LLM)로 사전 확인과 시나리오 경로 확인. 커밋은 로컬 브랜치 `feat/jenkins-on-main` 까지이고 푸시·AWS 배포는 안 했다. [기록](ai-dlc/jenkins-local.md)
 - 플랫폼 OIDC 연결(2026-11-03): `feat/platform-oidc`에서 Free/private 저장소에 맞춰 Environment 없이 main 전용 OIDC와 역할 3개를 구성했다. AWS CLI/SSO 인증으로 업무 계정의 IAM 기반 11개 추가를 적용했고, 정책 검증·권한 시뮬레이션 19개·최종 Plan No changes를 확인했다. 후속 권한 보완까지 로컬 배포 도구 테스트 17개·IAM mock 7개가 통과했다. GitHub 변수 9개는 사용자가 등록했고 값 일치를 확인했다. 구현 `a0714e8`을 푸시하고 PR #8의 CI 전체 성공 후 main에 병합했다(`6b404fc`). 사용자가 CI를 활성화했다. 실제 OIDC Plan에서 발견한 CloudFront prefix list 조회 권한을 해당 목록에만 추가했고, 재실행은 리소스 변경 없이 성공했다. 실제 GitHub Release도 성공했고 HTTPS·기존 로그인·기존 서비스 기록과 새 Worker 작업을 검증했다. [설정값](../platform/deploy/GITHUB.md) · [진행 기록](ai-dlc/platform-oidc.md)
 - 플랫폼 CI 수정(2026-11-03): PR #7의 앱 테스트는 통과했고 Terraform은 Linux용 Provider 검증값 누락으로 실패했다. 깨끗한 Linux 환경에서 재현한 뒤 lock 파일에 해당 검증값을 추가해 `init`·`validate`·mock 3개 통과를 확인했다. 최종 PR Checks는 모두 성공했고 PR #7은 병합됐다. [원인·검증 기록](ai-dlc/platform-aws.md#ci의-linux-검증값-수정)
 - 플랫폼 U1(2026-11-03): 사용자 구현 승인 후 고정 로그인·공개 GitHub 소스 확인·PostgreSQL 상태/이력·API/Worker·웹을 구현했다. 실제 PostgreSQL 통합 56개, 실제 GitHub 1개, 브라우저 3개를 통과했고 ARM64 이미지의 실제 검사·재시작 후 상태 보존도 확인했다. 추가 지시에 따라 AWS 업무 계정 616723161368/서울에 별도 기반을 배포했다. HTTPS 로그인·실제 GitHub 확인·재시작·S3 백업의 임시 DB 복원·브라우저를 검증했고 최종 Plan은 No changes다. GitHub 워크플로 3개를 게시했고 PR 테스트 실행을 시작했다. AWS OIDC 연결·GitHub를 통한 실제 배포는 미실행이다. 구현 커밋 `5390c63`을 `feat/platform`에 푸시하고 [PR #7](https://github.com/2026-sbh-delta/delta-network-gateway/pull/7)을 열었다. 최종 GitHub 테스트 상태는 PR Checks를 따른다. [U1 기록](ai-dlc/platform-u1.md) · [AWS 배포](ai-dlc/platform-aws.md)
@@ -34,6 +37,8 @@
 
 ## 문서
 
+- [AWS → GCP 매핑 판단](ai-dlc/migration-mapping.md)
+- [Jenkins 배포와 AI 판단 로컬 검증](ai-dlc/jenkins-local.md)
 - [개발자용 플랫폼 설계·구현 단위](ai-dlc/platform.md)
 - [플랫폼 U1: 구현·검증 기록](ai-dlc/platform-u1.md)
 - [플랫폼 AWS 배포·운영 기록](ai-dlc/platform-aws.md)

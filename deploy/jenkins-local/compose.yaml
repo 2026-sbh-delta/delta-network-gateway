@@ -1,0 +1,50 @@
+# 로컬 시험 전용. docker.sock 을 Jenkins 에 주므로 AWS·공용 서버에 그대로 쓰지 않는다.
+name: delta-jenkins-local
+
+services:
+  jenkins:
+    build: ./jenkins
+    user: root  # docker.sock 접근용
+    environment:
+      JENKINS_ADMIN_PASSWORD: ${JENKINS_ADMIN_PASSWORD:?up.sh 로 실행한다}
+      DELTA_API_TOKEN: ${DELTA_API_TOKEN:?up.sh 로 실행한다}
+      CASC_JENKINS_CONFIG: /pipelines/casc.yaml
+      JAVA_OPTS: -Djenkins.install.runSetupWizard=false -Xmx1g
+    ports:
+      - "127.0.0.1:18080:8080"
+    volumes:
+      - jenkins-home:/var/jenkins_home
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./jenkins/casc.yaml:/pipelines/casc.yaml:ro
+      - ./pipeline:/pipelines/pipeline:ro
+      - ./demo-app:/pipelines/demo-app:ro
+    depends_on:
+      delta-ai:
+        condition: service_healthy
+
+  delta-ai:
+    build: ../../services/delta-ai
+    environment:
+      DELTA_API_TOKEN: ${DELTA_API_TOKEN:?up.sh 로 실행한다}
+      DELTA_LLM: ${DELTA_LLM:-fake}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    ports:
+      - "127.0.0.1:18090:8090"  # 시연 콘솔·온프레미스 수집기가 호출한다
+    volumes:
+      - delta-ai-var:/app/var
+
+  # 동규 님 HAProxy 가 나오기 전까지 쓰는 대역. 가중치 조절 방식만 시험한다.
+  haproxy:
+    image: haproxy:3.0-alpine
+    ports:
+      - "127.0.0.1:18081:80"
+    volumes:
+      - ./haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+
+networks:
+  default:
+    name: delta-local
+
+volumes:
+  jenkins-home:
+  delta-ai-var:

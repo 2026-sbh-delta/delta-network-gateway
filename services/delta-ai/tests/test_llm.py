@@ -38,3 +38,21 @@ def test_claude_client_without_key_is_unavailable(monkeypatch):
 
     with pytest.raises(LlmUnavailable):
         ClaudeLLM(output=LlmOutput)
+
+
+def test_claude_client_gets_explicit_timeout_and_retry_limit(monkeypatch):
+    from delta_ai import api
+
+    captured = {}
+
+    class _Spy:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    monkeypatch.setenv("DELTA_LLM", "claude")
+    monkeypatch.setenv("DELTA_LLM_TIMEOUT_SECONDS", "12")
+    monkeypatch.setattr(api, "ClaudeLLM", _Spy)
+
+    api._llm_from_env()
+
+    assert captured["client_options"] == {"timeout": 12.0, "max_retries": 1}

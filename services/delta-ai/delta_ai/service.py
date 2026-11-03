@@ -1,4 +1,4 @@
-"""assess() — 두 호출(환경 차이·피드백)이 같은 순서를 따른다: 규칙 → 근거 → LLM → 코드 판정."""
+"""assess() — 다섯 호출(환경 차이·피드백·배포 단계·런타임 보안·DAST)이 같은 순서를 따른다: 규칙 → 근거 → LLM → 코드 판정."""
 
 from __future__ import annotations
 
@@ -17,11 +17,15 @@ from delta_ai.contract import (
     SpecOp,
     WafRule,
 )
+from delta_ai.dast import check_dast, dast_checks
+from delta_ai.deployment import check_deployment, deployment_checks
 from delta_ai.feedback import candidate_id, detector_error, regression_check, report_findings
 from delta_ai.judge import PROMPT_VERSION, JudgeOutcome, judge
 from delta_ai.knowledge import Chunk, load_chunks
 from delta_ai.llm import LlmClient
-from delta_ai.parity import check_parity, parity_checks
+from delta_ai.mapping import check_mapping, mapping_checks
+from delta_ai.parity import check_parity, evaluated_network_rules, parity_checks
+from delta_ai.runtime import check_runtime, evaluated_runtime_rules, runtime_checks
 from delta_ai.store import RuleStore
 from delta_ai.verdict import decide
 
@@ -53,14 +57,32 @@ def _meta(outcome: JudgeOutcome, started: float) -> Meta:
                 usage=outcome.usage, duration_ms=int((time.monotonic() - started) * 1000))
 
 
-async def _assess_parity(req: AssessmentRequest, llm: LlmClient | None, started: float) -> AssessmentResult:
-    outcome = check_parity(req.source_env, req.target_env, req.evidence.attack_results)
+async def _assess_checks(req: AssessmentRequest, llm: LlmClient | None, started: float) -> AssessmentResult:
+    if req.kind == "deployment_gate":
+        outcome = check_deployment(req.evidence.deployment)
+        rebuild_checks = deployment_checks
+    elif req.kind == "dast_verification":
+        outcome = check_dast(req.evidence.dast)
+        rebuild_checks = dast_checks
+    elif req.kind == "migration_mapping":
+        outcome = check_mapping(req.evidence.mapping)
+        rebuild_checks = lambda findings: mapping_checks(findings, outcome.mapping.rows)
+    elif req.kind == "runtime_security":
+        outcome = check_runtime(req.evidence)
+        evaluated = evaluated_runtime_rules(req.evidence)
+        rebuild_checks = lambda findings: runtime_checks(findings, evaluated)
+    else:
+        outcome = check_parity(req.source_env, req.target_env, req.evidence.attack_results, req.evidence.reachability)
+        evaluated = evaluated_network_rules(req.target_env, req.evidence.reachability)
+        rebuild_checks = lambda findings: parity_checks(findings, evaluated)
     docs = _retrieve(outcome.findings)
     judged = await judge(req.kind, _with_doc_flags(outcome.findings, docs), docs, llm)
     verdict, reasons = decide(judged.findings, judged.reasons)
     return AssessmentResult(assessment_id=req.assessment_id, kind=req.kind, verdict=verdict, reasons=reasons,
-                            findings=judged.findings, checks=parity_checks(judged.findings),
-                            remediation=_remediation(judged.findings), meta=_meta(judged, started))
+                            findings=judged.findings, checks=rebuild_checks(judged.findings),
+                            verified_controls=outcome.verified, posture=outcome.posture,
+                            mapping=outcome.mapping, remediation=_remediation(judged.findings),
+                            meta=_meta(judged, started))
 
 
 def _candidate(item, source: str, literals: tuple[str, ...]) -> RuleCandidate:
@@ -103,7 +125,7 @@ async def assess(req: AssessmentRequest, *, llm: LlmClient | None, store: RuleSt
     started = time.monotonic()
     if req.kind == "feedback_ingest":
         return await _assess_feedback(req, llm, store, started)
-    return await _assess_parity(req, llm, started)
+    return await _assess_checks(req, llm, started)
 
 
 def result_json(result: AssessmentResult) -> str:

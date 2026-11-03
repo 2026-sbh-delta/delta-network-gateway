@@ -47,6 +47,195 @@
       "title": "AttackResult",
       "type": "object"
     },
+    "ClusterCheck": {
+      "additionalProperties": false,
+      "properties": {
+        "check_id": {
+          "minLength": 1,
+          "title": "Check Id",
+          "type": "string"
+        },
+        "title": {
+          "default": "",
+          "title": "Title",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "fail",
+            "false_positive"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "verification": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Verification"
+        }
+      },
+      "required": [
+        "check_id",
+        "status"
+      ],
+      "title": "ClusterCheck",
+      "type": "object"
+    },
+    "DastEvidence": {
+      "additionalProperties": false,
+      "description": "점검 서비스가 관측한 결과. 재현 여부만 받고 배포 여부는 판단 서비스가 정한다.",
+      "properties": {
+        "run_id": {
+          "minLength": 1,
+          "title": "Run Id",
+          "type": "string"
+        },
+        "target": {
+          "minLength": 1,
+          "title": "Target",
+          "type": "string"
+        },
+        "results": {
+          "items": {
+            "$ref": "#/$defs/DastResult"
+          },
+          "minItems": 1,
+          "title": "Results",
+          "type": "array"
+        }
+      },
+      "required": [
+        "run_id",
+        "target",
+        "results"
+      ],
+      "title": "DastEvidence",
+      "type": "object"
+    },
+    "DastResult": {
+      "additionalProperties": false,
+      "properties": {
+        "finding_id": {
+          "minLength": 1,
+          "title": "Finding Id",
+          "type": "string"
+        },
+        "title": {
+          "default": "",
+          "title": "Title",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "REPRODUCED",
+            "NOT_REPRODUCED",
+            "BLOCKED",
+            "INCONCLUSIVE"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "message": {
+          "default": "",
+          "title": "Message",
+          "type": "string"
+        }
+      },
+      "required": [
+        "finding_id",
+        "status"
+      ],
+      "title": "DastResult",
+      "type": "object"
+    },
+    "DeploymentEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "stage": {
+          "minLength": 1,
+          "title": "Stage",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "succeeded",
+            "failed"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "target": {
+          "anyOf": [
+            {
+              "enum": [
+                "aws",
+                "gcp",
+                "onprem"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target"
+        },
+        "traffic_percent": {
+          "anyOf": [
+            {
+              "maximum": 100,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Traffic Percent"
+        },
+        "exit_code": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Exit Code"
+        },
+        "log_tail": {
+          "default": "",
+          "maxLength": 100000,
+          "title": "Log Tail",
+          "type": "string"
+        },
+        "metrics": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/MetricObservation"
+          },
+          "title": "Metrics",
+          "type": "array"
+        }
+      },
+      "required": [
+        "stage",
+        "status"
+      ],
+      "title": "DeploymentEvidence",
+      "type": "object"
+    },
     "EnvInventory": {
       "additionalProperties": false,
       "properties": {
@@ -101,7 +290,9 @@
           "default": {
             "gateway": null,
             "inspected": null,
-            "l7_visible": null
+            "l7_visible": null,
+            "gateway_addresses": [],
+            "firewall_rules": null
           }
         }
       },
@@ -122,6 +313,14 @@
           "title": "Attack Results",
           "type": "array"
         },
+        "reachability": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ReachabilityProbe"
+          },
+          "title": "Reachability",
+          "type": "array"
+        },
         "report": {
           "anyOf": [
             {
@@ -132,9 +331,186 @@
             }
           ],
           "default": null
+        },
+        "deployment": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DeploymentEvidence"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "dast": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DastEvidence"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "image_vulnerabilities": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/PackageVulnerability"
+              },
+              "maxItems": 50,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Image Vulnerabilities"
+        },
+        "cluster_checks": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/ClusterCheck"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cluster Checks"
+        },
+        "log_signals": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/LogSignal"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Log Signals"
+        },
+        "network_posture": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NetworkPosture"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "mapping": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MappingInput"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         }
       },
       "title": "Evidence",
+      "type": "object"
+    },
+    "ExistingSubnet": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "cidr": {
+          "title": "Cidr",
+          "type": "string"
+        },
+        "tier": {
+          "anyOf": [
+            {
+              "enum": [
+                "public",
+                "private"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tier"
+        }
+      },
+      "required": [
+        "name",
+        "cidr"
+      ],
+      "title": "ExistingSubnet",
+      "type": "object"
+    },
+    "FirewallRule": {
+      "additionalProperties": false,
+      "description": "위에서 아래로 평가되는 실효 룰 한 줄. 점검할 인터페이스의 룰만 보낸다.",
+      "properties": {
+        "interface": {
+          "title": "Interface",
+          "type": "string"
+        },
+        "action": {
+          "enum": [
+            "pass",
+            "block"
+          ],
+          "title": "Action",
+          "type": "string"
+        },
+        "protocol": {
+          "default": "any",
+          "title": "Protocol",
+          "type": "string"
+        },
+        "source": {
+          "default": "any",
+          "title": "Source",
+          "type": "string"
+        },
+        "destination": {
+          "title": "Destination",
+          "type": "string"
+        },
+        "port": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Port"
+        }
+      },
+      "required": [
+        "interface",
+        "action",
+        "destination"
+      ],
+      "title": "FirewallRule",
       "type": "object"
     },
     "IdentityInventory": {
@@ -202,6 +578,62 @@
       "title": "IngressInventory",
       "type": "object"
     },
+    "LogSignal": {
+      "additionalProperties": false,
+      "description": "원본 로그가 아니라 수집기가 센 신호다. samples 는 신뢰하지 않는 데이터로 다룬다.",
+      "properties": {
+        "source": {
+          "minLength": 1,
+          "title": "Source",
+          "type": "string"
+        },
+        "signal": {
+          "enum": [
+            "firewall_block",
+            "attack_request_allowed",
+            "attack_request_blocked",
+            "http_5xx"
+          ],
+          "title": "Signal",
+          "type": "string"
+        },
+        "count": {
+          "minimum": 0,
+          "title": "Count",
+          "type": "integer"
+        },
+        "total": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Total"
+        },
+        "samples": {
+          "default": [],
+          "items": {
+            "maxLength": 300,
+            "type": "string"
+          },
+          "maxItems": 5,
+          "title": "Samples",
+          "type": "array"
+        }
+      },
+      "required": [
+        "source",
+        "signal",
+        "count"
+      ],
+      "title": "LogSignal",
+      "type": "object"
+    },
     "LoggingInventory": {
       "additionalProperties": false,
       "properties": {
@@ -231,6 +663,174 @@
         }
       },
       "title": "LoggingInventory",
+      "type": "object"
+    },
+    "MappingInput": {
+      "additionalProperties": false,
+      "description": "이전 전에 무엇을 만들지 정하는 입력. 지금은 AWS → GCP 만 다룬다.",
+      "properties": {
+        "network_mode": {
+          "default": "create",
+          "enum": [
+            "create",
+            "reuse"
+          ],
+          "title": "Network Mode",
+          "type": "string"
+        },
+        "region": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Region"
+        },
+        "source_region": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Region"
+        },
+        "subnets": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/SourceSubnet"
+          },
+          "title": "Subnets",
+          "type": "array"
+        },
+        "servers": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/SourceServer"
+          },
+          "title": "Servers",
+          "type": "array"
+        },
+        "security": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceSecurity"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "existing_subnets": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/ExistingSubnet"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Existing Subnets"
+        },
+        "reserved_cidrs": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Reserved Cidrs",
+          "type": "array"
+        },
+        "scc_tier": {
+          "anyOf": [
+            {
+              "enum": [
+                "standard",
+                "premium"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Scc Tier"
+        },
+        "accepted_gaps": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Accepted Gaps",
+          "type": "array"
+        }
+      },
+      "title": "MappingInput",
+      "type": "object"
+    },
+    "MetricObservation": {
+      "additionalProperties": false,
+      "description": "값이 threshold 를 넘으면 실패다. 값·기준·표본 수 중 하나라도 모르면 통과로 보지 않는다.",
+      "properties": {
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Value"
+        },
+        "threshold": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Threshold"
+        },
+        "samples": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Samples"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "MetricObservation",
       "type": "object"
     },
     "NetworkInventory": {
@@ -276,9 +876,252 @@
           ],
           "default": null,
           "title": "L7 Visible"
+        },
+        "gateway_addresses": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Gateway Addresses",
+          "type": "array"
+        },
+        "firewall_rules": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/FirewallRule"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Firewall Rules"
         }
       },
       "title": "NetworkInventory",
+      "type": "object"
+    },
+    "NetworkPosture": {
+      "additionalProperties": false,
+      "description": "격리 상태를 판정할 실측값. None 은 측정하지 못했다는 뜻이며 안전으로 읽지 않는다.",
+      "properties": {
+        "upstream_firewall": {
+          "anyOf": [
+            {
+              "enum": [
+                "managed",
+                "unmanaged"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Upstream Firewall"
+        },
+        "node_public_ip": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Node Public Ip"
+        },
+        "host_firewall": {
+          "anyOf": [
+            {
+              "enum": [
+                "default_deny",
+                "permissive"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Host Firewall"
+        },
+        "exposed_ports": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Exposed Ports"
+        },
+        "network_probes": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ReachabilityProbe"
+          },
+          "title": "Network Probes",
+          "type": "array"
+        },
+        "inbound_probes": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ReachabilityProbe"
+          },
+          "title": "Inbound Probes",
+          "type": "array"
+        },
+        "cluster_probes": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ReachabilityProbe"
+          },
+          "title": "Cluster Probes",
+          "type": "array"
+        },
+        "namespaces_without_policy": {
+          "anyOf": [
+            {
+              "items": {
+                "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$",
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Namespaces Without Policy"
+        }
+      },
+      "title": "NetworkPosture",
+      "type": "object"
+    },
+    "PackageVulnerability": {
+      "additionalProperties": false,
+      "description": "이미지의 패키지 하나에 묶은 취약점. 호출자가 CVE 단위 결과를 묶어서 보낸다.",
+      "properties": {
+        "image": {
+          "minLength": 1,
+          "title": "Image",
+          "type": "string"
+        },
+        "package": {
+          "minLength": 1,
+          "title": "Package",
+          "type": "string"
+        },
+        "installed_version": {
+          "default": "",
+          "title": "Installed Version",
+          "type": "string"
+        },
+        "severity": {
+          "enum": [
+            "critical",
+            "high",
+            "medium",
+            "low",
+            "unknown"
+          ],
+          "title": "Severity",
+          "type": "string"
+        },
+        "fixed_versions": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Fixed Versions",
+          "type": "array"
+        },
+        "vulnerability_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Vulnerability Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "image",
+        "package",
+        "severity"
+      ],
+      "title": "PackageVulnerability",
+      "type": "object"
+    },
+    "ReachabilityProbe": {
+      "additionalProperties": false,
+      "description": "실제 연결 시험 결과. 설정이 아니라 실측이다.",
+      "properties": {
+        "environment": {
+          "enum": [
+            "aws",
+            "gcp",
+            "onprem"
+          ],
+          "title": "Environment",
+          "type": "string"
+        },
+        "source": {
+          "minLength": 1,
+          "title": "Source",
+          "type": "string"
+        },
+        "target": {
+          "minLength": 1,
+          "title": "Target",
+          "type": "string"
+        },
+        "port": {
+          "maximum": 65535,
+          "minimum": 1,
+          "title": "Port",
+          "type": "integer"
+        },
+        "expected": {
+          "enum": [
+            "open",
+            "closed"
+          ],
+          "title": "Expected",
+          "type": "string"
+        },
+        "observed": {
+          "enum": [
+            "open",
+            "closed",
+            "unknown"
+          ],
+          "title": "Observed",
+          "type": "string"
+        }
+      },
+      "required": [
+        "environment",
+        "source",
+        "target",
+        "port",
+        "expected",
+        "observed"
+      ],
+      "title": "ReachabilityProbe",
       "type": "object"
     },
     "Report": {
@@ -445,6 +1288,223 @@
       "title": "ServiceRef",
       "type": "object"
     },
+    "SourceSecurity": {
+      "additionalProperties": false,
+      "properties": {
+        "guardduty_enabled": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Guardduty Enabled"
+        },
+        "guardduty_plans": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Guardduty Plans",
+          "type": "array"
+        },
+        "other_tools": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Other Tools",
+          "type": "array"
+        },
+        "origin": {
+          "default": "operator",
+          "enum": [
+            "terraform",
+            "default",
+            "operator"
+          ],
+          "title": "Origin",
+          "type": "string"
+        }
+      },
+      "title": "SourceSecurity",
+      "type": "object"
+    },
+    "SourceServer": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "instance_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Instance Type"
+        },
+        "os": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Os"
+        },
+        "multi_arch_image": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Multi Arch Image"
+        },
+        "instance_profile": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Instance Profile"
+        },
+        "permissions": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Permissions"
+        },
+        "peak_memory_percent": {
+          "anyOf": [
+            {
+              "maximum": 100,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Peak Memory Percent"
+        },
+        "origin": {
+          "default": "operator",
+          "enum": [
+            "terraform",
+            "default",
+            "operator"
+          ],
+          "title": "Origin",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "SourceServer",
+      "type": "object"
+    },
+    "SourceSubnet": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "cidr": {
+          "title": "Cidr",
+          "type": "string"
+        },
+        "tier": {
+          "anyOf": [
+            {
+              "enum": [
+                "public",
+                "private"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tier"
+        },
+        "zone": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Zone"
+        },
+        "target_cidr": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Cidr"
+        },
+        "origin": {
+          "default": "operator",
+          "enum": [
+            "terraform",
+            "default",
+            "operator"
+          ],
+          "title": "Origin",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "cidr"
+      ],
+      "title": "SourceSubnet",
+      "type": "object"
+    },
     "WafInventory": {
       "additionalProperties": false,
       "properties": {
@@ -518,7 +1578,11 @@
     "kind": {
       "enum": [
         "migration_parity",
-        "feedback_ingest"
+        "feedback_ingest",
+        "deployment_gate",
+        "runtime_security",
+        "dast_verification",
+        "migration_mapping"
       ],
       "title": "Kind",
       "type": "string"
@@ -552,7 +1616,15 @@
       "$ref": "#/$defs/Evidence",
       "default": {
         "attack_results": [],
-        "report": null
+        "reachability": [],
+        "report": null,
+        "deployment": null,
+        "dast": null,
+        "image_vulnerabilities": null,
+        "cluster_checks": null,
+        "log_signals": null,
+        "network_posture": null,
+        "mapping": null
       }
     }
   },

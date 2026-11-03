@@ -1,0 +1,365 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Delta 시연 콘솔</title>
+<style>
+:root {
+  --bg: #f6f7f9; --panel: #ffffff; --line: #d9dee5; --text: #18202b; --muted: #5d6877;
+  --accent: #2456c9; --accent-soft: #e6edfb;
+  --pass: #137a4b; --pass-soft: #e2f4ea; --wait: #9a5b00; --wait-soft: #fdf0d8;
+  --fail: #b3261e; --fail-soft: #fbe7e5; --idle: #8a94a3; --idle-soft: #eef0f3;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #11151b; --panel: #1a2029; --line: #2e3744; --text: #e8ecf1; --muted: #9ba7b6;
+  --accent: #7ea2f2; --accent-soft: #1e2b45;
+  --pass: #58c896; --pass-soft: #15301f; --wait: #e8b35c; --wait-soft: #35290f;
+  --fail: #f0857d; --fail-soft: #3a1b19; --idle: #7c8795; --idle-soft: #222934;
+} }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text);
+  font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif; }
+header { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center; padding: 14px 24px;
+  background: var(--panel); border-bottom: 1px solid var(--line); }
+h1 { font-size: 18px; margin: 0; }
+h2 { font-size: 15px; margin: 0 0 10px; }
+h3 { font-size: 14px; margin: 18px 0 8px; }
+.health { display: flex; gap: 12px; font-size: 13px; color: var(--muted); margin-left: auto; flex-wrap: wrap; }
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--idle); margin-right: 5px; }
+.dot.on { background: var(--pass); } .dot.off { background: var(--fail); }
+main { padding: 18px 24px 40px; max-width: 1500px; margin: 0 auto; }
+.controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: stretch; margin-bottom: 16px; }
+.scenario { flex: 1 1 240px; text-align: left; padding: 10px 14px; border: 1px solid var(--line); border-radius: 8px;
+  background: var(--panel); color: inherit; font: inherit; cursor: pointer; }
+.scenario[aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); background: var(--accent-soft); }
+.scenario b { display: block; } .scenario small { color: var(--muted); }
+.side-controls { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--muted); justify-content: center; }
+select { font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 3px 6px; }
+button.primary, button.secondary { font: inherit; font-weight: 600; border-radius: 8px; padding: 10px 18px; cursor: pointer; border: 1px solid transparent; }
+button.primary { background: var(--accent); color: var(--panel); }
+button.secondary { background: var(--panel); color: var(--text); border-color: var(--line); }
+button:disabled { opacity: .5; cursor: not-allowed; }
+.graph { display: grid; grid-template-columns: 2fr 2fr 4.4fr 1fr; gap: 10px; margin-bottom: 16px; }
+.lane { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px; min-width: 0; }
+.lane > div:first-child { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+.nodes { display: flex; gap: 6px; }
+.node { flex: 1 1 0; min-width: 0; padding: 9px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--idle-soft);
+  text-align: left; color: inherit; font: inherit; cursor: pointer; }
+.node b { display: block; font-size: 14px; word-break: keep-all; }
+.node small { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; }
+.node .state { font-size: 12px; font-weight: 600; margin-top: 5px; }
+.node.selected { outline: 2px solid var(--accent); outline-offset: 1px; }
+.node.running { background: var(--accent-soft); } .node.running .state { color: var(--accent); }
+.node.pass { background: var(--pass-soft); } .node.pass .state { color: var(--pass); }
+.node.waiting { background: var(--wait-soft); } .node.waiting .state { color: var(--wait); }
+.node.fail { background: var(--fail-soft); } .node.fail .state { color: var(--fail); }
+.node.skipped { opacity: .55; }
+.columns { display: grid; grid-template-columns: minmax(0, 2.2fr) minmax(280px, 1fr); gap: 14px; align-items: start; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-bottom: 14px; min-width: 0; }
+.decision { border-color: var(--wait); background: var(--wait-soft); }
+.decision p { margin: 0 0 10px; font-weight: 600; }
+.decision .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.muted { color: var(--muted); }
+.small { font-size: 13px; }
+.verdict { display: inline-block; padding: 2px 10px; border-radius: 999px; font-weight: 700; font-size: 13px; }
+.verdict.pass { background: var(--pass-soft); color: var(--pass); }
+.verdict.needs_human { background: var(--wait-soft); color: var(--wait); }
+.verdict.fix { background: var(--fail-soft); color: var(--fail); }
+.tag { display: inline-block; font-size: 12px; padding: 0 7px; border-radius: 5px; border: 1px solid var(--line); color: var(--muted); margin-right: 4px; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+th, td { text-align: left; padding: 5px 8px 5px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--muted); font-weight: 600; }
+td.num { font-variant-numeric: tabular-nums; }
+details { border-top: 1px solid var(--line); padding: 7px 0; }
+summary { cursor: pointer; }
+.finding { padding: 7px 0 7px 12px; border-left: 3px solid var(--line); margin: 7px 0; font-size: 13px; }
+.finding.fail { border-left-color: var(--fail); } .finding.unknown { border-left-color: var(--wait); }
+.finding .why { margin: 4px 0 0; }
+.finding .ev { margin: 4px 0 0; color: var(--muted); overflow-wrap: anywhere; }
+.shots { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; margin-top: 8px; }
+.shots img { width: 100%; border: 1px solid var(--line); border-radius: 6px; display: block; }
+.bar { display: flex; height: 22px; border-radius: 6px; overflow: hidden; background: var(--idle-soft); }
+.bar span { display: block; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 13px; margin-top: 6px; }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; }
+.big { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.scope td:first-child { white-space: nowrap; font-weight: 600; }
+.real { color: var(--pass); font-weight: 600; white-space: nowrap; } .stand { color: var(--wait); font-weight: 600; white-space: nowrap; }
+.outcome { font-size: 16px; font-weight: 700; }
+@media (max-width: 1000px) {
+  .graph, .columns { grid-template-columns: minmax(0, 1fr); }
+  .nodes { flex-wrap: wrap; } .node { flex: 1 1 130px; }
+  header, main { padding-left: 16px; padding-right: 16px; }
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>Delta 시연 콘솔</h1>
+  <span class="muted small">온프레미스 증거 · 보안 실측 · AI 판단 · 카나리 배포를 한 흐름으로</span>
+  <div class="health" id="health"></div>
+</header>
+<main>
+  <div class="controls" id="controls"></div>
+  <div class="graph" id="graph"></div>
+  <div class="columns">
+    <div>
+      <div id="decision"></div>
+      <div class="panel" id="detail"></div>
+    </div>
+    <div>
+      <div class="panel" id="traffic"></div>
+      <div class="panel" id="onprem"></div>
+      <div class="panel" id="scope"></div>
+    </div>
+  </div>
+</main>
+<script>
+"use strict";
+// 판단 문구와 로그는 신뢰하지 않는 데이터다. 항상 글자로만 넣는다.
+function h(tag, attrs, ...children) {
+  const el = document.createElement(tag);
+  for (const [key, value] of Object.entries(attrs || {})) {
+    if (key === "class") el.className = value;
+    else if (key.startsWith("on")) el.addEventListener(key.slice(2), value);
+    else if (value !== null && value !== undefined && value !== false) el.setAttribute(key, value === true ? "" : value);
+  }
+  for (const child of children.flat()) {
+    if (child === null || child === undefined || child === false) continue;
+    el.append(child.nodeType ? child : document.createTextNode(String(child)));
+  }
+  return el;
+}
+const STATE = { pending: "대기", running: "진행 중", pass: "통과", waiting: "사람 확인", fail: "중단", skipped: "건너뜀" };
+const VERDICT = { pass: "통과", needs_human: "사람 확인", fix: "수정 필요" };
+const OUTCOME = { deployed: "배포 완료", rolled_back: "자동 롤백 · 안정 버전 유지", stopped: "배포 전 중단" };
+const KIND = { runtime_security: "런타임 보안", migration_parity: "이전 환경 차이", dast_verification: "DAST 판정", deployment_gate: "배포 게이트" };
+const REASON = { AUTOFIX_FORBIDDEN: "자동 수정 금지 항목", EVIDENCE_UNKNOWN: "확인 못 한 근거", NO_EVIDENCE_DOC: "근거 문서 없음", PATCH_MISSING: "수정안 없음" };
+const LAYER = { network: "네트워크", node: "노드", cluster: "클러스터" };
+const POSTURE = { isolated: "격리", partial: "일부", open: "개방", unknown: "확인 불가" };
+const LANES = [
+  { title: "온프레미스 (홈랩 VM)", ids: ["onprem-evidence", "onprem-judge"] },
+  { title: "보안 실측 (준우 님 DAST)", ids: ["dast-run", "dast-judge"] },
+  { title: "배포 (Jenkins + 게이트)", ids: ["deploy-prepare", "canary-10", "canary-50", "canary-100"] },
+  { title: "결과", ids: ["result"] },
+];
+const VERSION_COLORS = ["var(--idle)", "var(--accent)", "var(--pass)", "var(--wait)"];
+
+let scenario = "normal";
+let planner = "reviewed";
+let rejudge = false;
+let selected = null;
+let userSelected = false;
+let last = null;
+let lastKey = "";
+
+async function post(path, body) {
+  const response = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json", "X-Console": "1" }, body: JSON.stringify(body || {}) });
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    alert(data.detail || "요청 실패");
+  }
+  return refresh();
+}
+
+function renderControls(state) {
+  const box = document.getElementById("controls");
+  box.replaceChildren(
+    ...state.scenarios.map(s => h("button", { class: "scenario", "aria-pressed": s.id === scenario, disabled: state.running,
+      onclick: () => { scenario = s.id; render(); } }, h("b", {}, s.label), h("small", {}, s.description))),
+    h("div", { class: "side-controls" },
+      h("label", {}, "DAST 방식 ", h("select", { disabled: state.running, onchange: e => { planner = e.target.value; } },
+        h("option", { value: "reviewed", selected: planner === "reviewed" }, "등록 경로 (LLM 없음)"),
+        h("option", { value: "agent", selected: planner === "agent" }, "AI 에이전트 (화면 조작)"))),
+      h("label", {}, h("input", { type: "checkbox", checked: rejudge, disabled: state.running, onchange: e => { rejudge = e.target.checked; } }), " 온프레미스 다시 판단 (약 50초)")),
+    h("button", { class: "primary", disabled: state.running, onclick: () => { userSelected = false; post("/api/start", { scenario, planner, rejudge }); } },
+      state.running ? "진행 중" : "시연 시작"));
+}
+
+function nodeById(run, id) { return run ? run.nodes.find(n => n.id === id) : null; }
+
+function renderGraph(state) {
+  const run = state.run;
+  document.getElementById("graph").replaceChildren(...LANES.map(lane => h("div", { class: "lane" },
+    h("div", {}, lane.title),
+    h("div", { class: "nodes" }, lane.ids.map(id => {
+      const node = nodeById(run, id) || { id, label: id === "result" ? "결과" : id, owner: "", state: "pending" };
+      const text = id === "result" && run && run.outcome ? (OUTCOME[run.outcome] || run.outcome) : STATE[node.state];
+      return h("button", { class: `node ${node.state} ${selected === id ? "selected" : ""}`, onclick: () => { selected = id; userSelected = true; render(); } },
+        h("b", {}, node.label), h("small", {}, node.owner), h("div", { class: "state" }, text));
+    })))));
+}
+
+function currentNode(run) {
+  if (!run) return null;
+  const order = ["waiting", "running"];
+  for (const state of order) {
+    const found = run.nodes.find(n => n.state === state);
+    if (found) return found.id;
+  }
+  if (run.outcome) {
+    const failed = run.nodes.find(n => n.state === "fail" && n.id !== "result");
+    return failed ? failed.id : "result";
+  }
+  return null;
+}
+
+function renderDecision(run) {
+  const waiting = run && run.nodes.find(n => n.decision);
+  const box = document.getElementById("decision");
+  if (!waiting) { box.replaceChildren(); return; }
+  box.replaceChildren(h("div", { class: "panel decision" },
+    h("p", {}, waiting.decision.prompt),
+    h("div", { class: "actions" }, waiting.decision.options.map((option, i) =>
+      h("button", { class: i === 0 ? "primary" : "secondary", onclick: () => { userSelected = false; post("/api/answer", { value: option.value }); } }, option.label)))));
+}
+
+function renderResult(kind, result) {
+  const groups = new Map();
+  for (const finding of result.findings) {
+    const key = finding.rule_id;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(finding);
+  }
+  const reasons = result.reasons.map(r => h("span", { class: "tag" }, REASON[r] || r));
+  const llm = result.llm && result.llm.used ? `${result.llm.model} 설명 · ${Math.round(result.llm.duration_ms / 100) / 10}초` : "LLM 설명 없음";
+  return h("div", {},
+    h("h3", {}, KIND[kind] || kind, " ", h("span", { class: `verdict ${result.verdict}` }, VERDICT[result.verdict] || result.verdict)),
+    h("div", { class: "small muted" }, reasons, " ", `항목 ${result.finding_count}건 · 실측 통제 ${result.verified_controls.length}건 · ${llm}`),
+    result.posture ? renderPosture(result.posture) : null,
+    [...groups.entries()].map(([rule, items]) => h("details", { open: groups.size <= 3 },
+      h("summary", {}, h("b", {}, rule), ` ${items[0].title} · ${items.length}건`),
+      items.map(f => h("div", { class: `finding ${f.status}` },
+        h("div", {}, h("span", { class: "tag" }, f.severity), h("span", { class: "tag" }, f.status)),
+        f.why ? h("p", { class: "why" }, f.why) : null,
+        h("p", { class: "ev" }, f.evidence))))),
+    result.verified_controls.length ? h("details", {},
+      h("summary", {}, `막혔다고 실측된 통제 ${result.verified_controls.length}건`),
+      h("table", {}, h("tbody", {}, result.verified_controls.map(c => h("tr", {}, h("td", {}, c.rule_id), h("td", {}, c.subject), h("td", {}, c.observed)))))) : null);
+}
+
+function renderPosture(posture) {
+  return h("table", { style: "margin-top:10px" },
+    h("thead", {}, h("tr", {}, h("th", { style: "white-space:nowrap" }, `격리 태세: ${POSTURE[posture.overall] || posture.overall}`), h("th", {}, "상태"), h("th", {}, "근거"))),
+    h("tbody", {}, posture.layers.map(l => h("tr", {}, h("td", {}, LAYER[l.layer] || l.layer), h("td", {}, POSTURE[l.state] || l.state), h("td", {}, l.basis)))));
+}
+
+function renderDetail(run) {
+  const box = document.getElementById("detail");
+  const node = nodeById(run, selected);
+  if (!run) { box.replaceChildren(h("h2", {}, "시나리오를 고르고 시작하세요"), h("p", { class: "muted" }, "각 단계의 판정과 근거가 여기에 나옵니다.")); return; }
+  if (!node) { box.replaceChildren(h("p", { class: "muted" }, "단계를 고르세요.")); return; }
+  const d = node.detail || {};
+  const parts = [h("h2", {}, `${node.label} · ${STATE[node.state]}`), node.summary ? h("p", { class: "small" }, node.summary) : null];
+  if (node.id === "result" && run.outcome) parts.push(h("p", { class: "outcome" }, OUTCOME[run.outcome]));
+  if (d.collected_at) parts.push(h("p", { class: "small muted" }, `수집 시각 ${new Date(d.collected_at * 1000).toLocaleString("ko-KR")}`));
+  if (d.counts) parts.push(h("table", {}, h("tbody", {},
+    h("tr", {}, h("td", {}, "이미지 취약 패키지"), h("td", { class: "num" }, d.counts.image_packages)),
+    h("tr", {}, h("td", {}, "CIS 점검 결과"), h("td", { class: "num" }, d.counts.cluster_checks)),
+    h("tr", {}, h("td", {}, "로그 신호"), h("td", { class: "num" }, d.counts.log_signals)))));
+  if (d.network_posture) {
+    const probes = [...(d.network_posture.network_probes || []), ...(d.network_posture.inbound_probes || []), ...(d.network_posture.cluster_probes || [])];
+    parts.push(h("h3", {}, `실제 연결 시험 ${probes.length}건`), h("table", {},
+      h("thead", {}, h("tr", {}, ["출발", "목적지", "포트", "기대", "관측"].map(t => h("th", {}, t)))),
+      h("tbody", {}, probes.map(p => h("tr", {}, h("td", {}, p.source), h("td", {}, p.target), h("td", { class: "num" }, p.port), h("td", {}, p.expected),
+        h("td", { style: p.expected === p.observed ? "" : "color:var(--fail);font-weight:600" }, p.observed))))));
+  }
+  if (d.cached !== undefined) parts.push(h("p", { class: "small muted" }, d.cached ? "저장된 판단을 썼습니다. 다시 판단하려면 시작 전에 체크하세요." : "지금 판단했습니다."));
+  if (d.results && node.id === "dast-run") parts.push(h("h3", {}, "브라우저 관측 결과"), d.results.map(r => h("div", { class: "finding" },
+    h("b", {}, r.status), ` ${r.title}`, h("p", { class: "ev" }, r.message),
+    (r.screenshots || []).length ? h("div", { class: "shots" }, r.screenshots.map(src => h("img", { src: src.replace("/api/artifacts/", "/dast-artifacts/"), alt: "점검 화면", loading: "lazy" }))) : null)));
+  if (d.before) parts.push(h("h3", {}, "수정 전 판정"), renderResult("dast_verification", d.before));
+  if (d.results && node.id !== "dast-run") parts.push(Object.entries(d.results).map(([kind, result]) => renderResult(kind, result)));
+  if (d.stages) parts.push(h("h3", {}, "Jenkins 단계"), h("table", {}, h("tbody", {}, d.stages.map(s => h("tr", {}, h("td", {}, s.name), h("td", {}, s.status))))));
+  if (d.url) parts.push(h("p", { class: "small" }, h("a", { href: d.url, target: "_blank", rel: "noopener" }, `Jenkins 빌드 #${d.build} 열기`)));
+  if (d.metrics) parts.push(h("h3", {}, "측정 지표"), h("table", {},
+    h("thead", {}, h("tr", {}, ["지표", "값", "기준", "표본"].map(t => h("th", {}, t)))),
+    h("tbody", {}, d.metrics.map(m => h("tr", {}, h("td", {}, m.name), h("td", { class: "num", style: m.value > m.threshold ? "color:var(--fail);font-weight:600" : "" }, m.value), h("td", { class: "num" }, m.threshold), h("td", { class: "num" }, m.samples))))));
+  box.replaceChildren(...parts.filter(Boolean).flat());
+}
+
+function renderTraffic(traffic) {
+  const entries = Object.entries(traffic.versions).sort(([a], [b]) => a.localeCompare(b, "ko", { numeric: true }));
+  const total = traffic.recent || 1;
+  const rate = traffic.total ? (traffic.failed / traffic.total * 100).toFixed(2) : "0.00";
+  document.getElementById("traffic").replaceChildren(
+    h("h2", {}, "실시간 트래픽 (최근 8초)"),
+    h("div", { class: "bar" }, entries.map(([version, count], i) => {
+      const span = h("span", {});
+      span.style.width = `${count / total * 100}%`;
+      span.style.background = VERSION_COLORS[i % VERSION_COLORS.length];
+      return span;
+    })),
+    h("div", { class: "legend" }, entries.map(([version, count], i) => {
+      const swatch = h("i", {});
+      swatch.style.background = VERSION_COLORS[i % VERSION_COLORS.length];
+      return h("span", {}, swatch, `${version === "?" || version === "응답 없음" ? version : "v" + version} ${Math.round(count / total * 100)}%`);
+    })),
+    h("h3", {}, "이번 시연 누적"),
+    h("div", {}, h("span", { class: "big" }, traffic.failed), h("span", { class: "muted small" }, ` 실패 / ${traffic.total} 요청 (${rate}%)`)),
+    h("p", { class: "small muted" }, "시험 요청을 0.1초 간격으로 보내 게이트웨이에서 측정합니다."));
+}
+
+function renderOnprem(collect, running) {
+  const label = { idle: "", running: "수집 중 (약 2분)", done: "수집 완료", partial: "일부 항목 수집 실패", failed: "수집 실패" }[collect.state] || "";
+  document.getElementById("onprem").replaceChildren(...[
+    h("h2", {}, "온프레미스 증거"),
+    h("button", { class: "secondary", disabled: collect.state === "running" || running, onclick: () => post("/api/collect") }, "VM 200 에서 다시 수집"),
+    label ? h("p", { class: "small" }, label) : null,
+    (collect.errors || []).length ? h("ul", { class: "small muted" }, collect.errors.map(e => h("li", {}, e))) : null].filter(Boolean));
+}
+
+function renderScope() {
+  const rows = [
+    ["온프레미스 증거", "실측", "홈랩 VM 200 의 k3s·방화벽·Trivy·kube-bench"],
+    ["AI 판단", "실제", "delta-ai. 판정은 규칙이, 설명은 Claude 가"],
+    ["DAST", "실제", "Chrome 재현. 대상은 준우 님 실습 게시판"],
+    ["출발 환경 값", "선언값", "AWS 측 인벤토리는 설정 파일 값"],
+    ["배포·트래픽", "대역", "Mac Docker 의 Jenkins·HAProxy 대역"],
+    ["AWS·GCP·VPN", "미연결", "실제 클라우드 간 이전은 포함하지 않음"],
+  ];
+  document.getElementById("scope").replaceChildren(h("h2", {}, "시연 범위"), h("table", { class: "scope" }, h("tbody", {},
+    rows.map(([name, kind, text]) => h("tr", {}, h("td", {}, name), h("td", { class: kind === "실측" || kind === "실제" ? "real" : "stand" }, kind), h("td", { class: "muted" }, text))))));
+}
+
+function render() {
+  if (!last) return;
+  const current = currentNode(last.run);
+  if (!userSelected && current) selected = current;
+  renderControls(last);
+  renderGraph(last);
+  renderDecision(last.run);
+  renderDetail(last.run);
+  renderOnprem(last.collect, last.running);
+}
+
+async function refresh() {
+  const state = await fetch("/api/state").then(r => r.json());
+  last = state;
+  renderTraffic(state.traffic);
+  // 값이 바뀔 때만 다시 그려 펼친 항목과 스크롤을 지킨다
+  const key = JSON.stringify([state.run, state.running, state.collect]);
+  if (key !== lastKey) {
+    lastKey = key;
+    render();
+  }
+  const current = currentNode(state.run);
+  if (current && current !== selected && !userSelected) render();
+}
+
+async function refreshHealth() {
+  const health = await fetch("/api/health").then(r => r.json()).catch(() => null);
+  if (!health) return;
+  const items = [["판단 서비스", health.delta_ai], ["DAST", health.dast], ["Jenkins", health.jenkins]];
+  document.getElementById("health").replaceChildren(...items.map(([name, ok]) => h("span", {}, h("span", { class: `dot ${ok ? "on" : "off"}` }), name)));
+}
+
+renderScope();
+refresh();
+refreshHealth();
+setInterval(refresh, 1000);
+setInterval(refreshHealth, 8000);
+</script>
+</body>
+</html>

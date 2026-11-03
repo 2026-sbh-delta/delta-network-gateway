@@ -1,6 +1,7 @@
 """HTTP 진입점. uvicorn delta_ai.api:app 으로 띄운다.
 
-환경 변수: DELTA_API_TOKEN(필수), DELTA_LLM=none|fake|claude(기본 none), DELTA_RULE_STORE(기본 var/rule_candidates.json).
+환경 변수: DELTA_API_TOKEN(필수), DELTA_LLM=none|fake|claude(기본 none), DELTA_RULE_STORE(기본 var/rule_candidates.json),
+DELTA_LLM_TIMEOUT_SECONDS(기본 60).
 """
 
 from __future__ import annotations
@@ -23,6 +24,8 @@ from delta_ai.service import assess
 from delta_ai.store import CandidateNotFound, CandidateNotReady, RuleStore
 
 MAX_BODY_BYTES = 10_000_000
+DEFAULT_LLM_TIMEOUT_SECONDS = "60"
+LLM_MAX_RETRIES = 1  # SDK 기본 2회면 시간 초과까지 재시도해 호출자가 오래 매달린다
 logger = logging.getLogger(__name__)
 
 
@@ -79,7 +82,8 @@ def _llm_from_env() -> LlmClient | None:
     if mode == "fake":
         return FakeLLM()
     if mode == "claude":
-        return ClaudeLLM(output=LlmOutput)
+        timeout = float(os.environ.get("DELTA_LLM_TIMEOUT_SECONDS", DEFAULT_LLM_TIMEOUT_SECONDS))
+        return ClaudeLLM(output=LlmOutput, client_options={"timeout": timeout, "max_retries": LLM_MAX_RETRIES})
     raise ValueError(f"DELTA_LLM 값이 잘못됐다: {mode}")
 
 

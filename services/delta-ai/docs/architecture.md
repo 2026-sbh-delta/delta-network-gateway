@@ -7,9 +7,10 @@
 
 | 구분 | 내용 |
 |---|---|
-| 동작함 | 판단 API 2종, 규칙 후보 승인 API, 환경 차이 규칙 7개 |
-| 검증함 | 테스트 66개 통과(2026-11-02, 코드 보안 경로 제거 후) |
-| 아직 없음 | 샌드박스 적용 주체, 컨테이너 이미지, 진행 그래프 화면, 승인 규칙을 적용할 코드 검사 |
+| 동작함 | 판단 API 3종(환경 차이·피드백·배포 단계), 규칙 후보 승인 API, 환경 차이 규칙 7개, 배포 규칙 3개 |
+| 검증함 | 테스트 통과 기록은 [docs/README](../../../docs/README.md) 참고 |
+| 아직 없음 | 샌드박스 적용 주체, 진행 그래프 화면, 승인 규칙을 적용할 코드 검사 |
+| 로컬에서만 시험 | 컨테이너 이미지, Jenkins 게이트 호출([deploy/jenkins-local](../../../deploy/jenkins-local/README.md)) |
 | 예시로만 있음 | 인벤토리, 공격 결과, 보고서 입력. 손으로 쓴 값이고 팀 실제 형식이 아니다 |
 
 코드 보안 판단(`code_security`, SARIF 입력, 코드 패치)은 2026-11-02에 뺐다. SAST는 별도 서비스가 SARIF와 코드 흐름으로 다시 설계한다.
@@ -100,7 +101,7 @@ flowchart TB
 
 ## 3. 판단 한 번의 처리 순서
 
-두 `kind`가 같은 순서를 따른다. LLM은 판정을 정하지 않으며, 출력이 틀리면 전체를 버린다.
+네 `kind`가 같은 순서를 따른다. LLM은 판정을 정하지 않으며, 출력이 틀리면 전체를 버린다.
 
 ```mermaid
 flowchart TD
@@ -249,6 +250,7 @@ sequenceDiagram
 | `migration_parity` | `source_env`, `target_env` | 출발·대상 환경의 WAF, 권한, 시크릿, 로그, TLS, 네트워크 | 미정 |
 | | `evidence.attack_results` | 필수는 아니다. 없으면 차단 여부를 모르는 것으로 판정한다 | 미정 |
 | `feedback_ingest` | `evidence.report` | 항목별 CWE, 위치, 설명, 취약·안전 예시 | 미정 |
+| `runtime_security` | `evidence.image_vulnerabilities`, `cluster_checks`, `log_signals`, `network_posture` 중 하나 이상 | 패키지별 취약점, 오탐 표시한 클러스터 점검, 집계한 로그 신호, 격리 실측값 | `scripts/collect_onprem.py` 또는 호출자 |
 
 ### 요청 예시
 
@@ -314,7 +316,7 @@ sequenceDiagram
     ]
   },
   "rule_candidates": [],
-  "meta": { "llm_used": true, "model": "fake-llm", "prompt_version": "delta-judge-v4", "duration_ms": 5 }
+  "meta": { "llm_used": true, "model": "fake-llm", "prompt_version": "delta-judge-v7", "duration_ms": 5 }
 }
 ```
 
