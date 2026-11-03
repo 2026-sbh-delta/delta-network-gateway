@@ -17,7 +17,9 @@ STAGED_PARAMETER = "/delta-platform/sast/connection"
 RUNTIME_PARAMETER = "/delta-platform/runtime"
 
 
-def settings(connection, expected_url):
+def settings(connection, expected_url, service="SAST"):
+    if service not in ("SAST", "DAST"):
+        raise ValueError("Unsupported scanner")
     if connection["url"] != expected_url or not connection["token"]:
         raise ValueError("SAST connection identity mismatch")
     url = urlsplit(expected_url)
@@ -29,22 +31,22 @@ def settings(connection, expected_url):
         cadata=base64.b64decode(connection["ca_base64"], validate=True).decode("ascii")
     )
     values = {
-        "PLATFORM_SAST_URL": connection["url"],
-        "PLATFORM_SAST_TOKEN": connection["token"],
-        "PLATFORM_SAST_CA_BASE64": connection["ca_base64"],
+        f"PLATFORM_{service}_URL": connection["url"],
+        f"PLATFORM_{service}_TOKEN": connection["token"],
+        f"PLATFORM_{service}_CA_BASE64": connection["ca_base64"],
     }
     if any(not isinstance(v, str) or "\n" in v or "\r" in v for v in values.values()):
         raise ValueError("Invalid SAST settings")
     return values
 
 
-def merge(current, values):
-    if set(values) != {
-        "PLATFORM_SAST_URL",
-        "PLATFORM_SAST_TOKEN",
-        "PLATFORM_SAST_CA_BASE64",
+def merge(current, values, service="SAST"):
+    if service not in ("SAST", "DAST") or set(values) != {
+        f"PLATFORM_{service}_URL",
+        f"PLATFORM_{service}_TOKEN",
+        f"PLATFORM_{service}_CA_BASE64",
     }:
-        raise ValueError("Only SAST connection fields may change")
+        raise ValueError("Only scanner connection fields may change")
     return {**current, "app_env": {**current["app_env"], **values}}
 
 
@@ -78,7 +80,13 @@ def main():
     p.add_argument("operation", choices=["install", "stage", "activate"])
     p.add_argument("--profile", required=True)
     p.add_argument("--outputs", type=Path, required=True)
+    p.add_argument("--service", choices=["SAST", "DAST"], default="SAST")
     args = p.parse_args()
+    parameter = (
+        STAGED_PARAMETER
+        if args.service == "SAST"
+        else "/delta-platform/dast/connection"
+    )
     outputs = {
         key: value["value"]
         for key, value in json.loads(args.outputs.read_text()).items()
@@ -113,30 +121,47 @@ def main():
         output = command(
             ssm,
             instance,
-            [shlex.join(["python3", remote, "--ip", ip, "--export-connection"])],
+            [
+                shlex.join(
+                    [
+                        "python3",
+                        remote,
+                        "--ip",
+                        ip,
+                        "--export-connection",
+                        "--service",
+                        args.service,
+                    ]
+                )
+            ],
         )
         connection = json.loads(output)
-        settings(connection, outputs["sast_url"])
+        settings(connection, outputs["sast_url"], args.service)
         ssm.put_parameter(
-            Name=STAGED_PARAMETER,
+            Name=parameter,
             Type="SecureString",
             Value=json.dumps(connection),
             Overwrite=True,
         )
-        print("SAST connection staged in SecureString; platform runtime unchanged")
+        print(
+            args.service
+            + " connection staged in SecureString; platform runtime unchanged"
+        )
         return
     # Run only once the CA-capable application is in main and ready for Release.
     connection = json.loads(
-        ssm.get_parameter(Name=STAGED_PARAMETER, WithDecryption=True)["Parameter"][
-            "Value"
-        ]
+        ssm.get_parameter(Name=parameter, WithDecryption=True)["Parameter"]["Value"]
     )
-    values = settings(connection, outputs["sast_url"])
+    values = settings(connection, outputs["sast_url"], args.service)
     original = ssm.get_parameter(Name=RUNTIME_PARAMETER, WithDecryption=True)[
         "Parameter"
     ]
     current = json.loads(original["Value"])
-    merged = merge(current, values)
+    if args.service == "DAST":
+        sandbox = json.loads(current["app_env"]["PLATFORM_SANDBOX_TARGET"])
+        if connection.get("sandbox_url") != sandbox["url"]:
+            raise ValueError("DAST registered target differs from platform sandbox")
+    merged = merge(current, values, args.service)
     if current == merged:
         print("Runtime unchanged")
         return
@@ -162,7 +187,8 @@ def main():
         Overwrite=True,
     )
     print(
-        "SAST fields merged; login/DB/Jenkins preserved. GitHub Release is the next step."
+        args.service
+        + " fields merged; login/DB/Jenkins preserved. GitHub Release is the next step."
     )
 
 

@@ -426,7 +426,7 @@ class Store:
             )
             if not row:
                 return None
-            if row["attempt"] >= 3 and row["kind"] != "sandbox_check":
+            if row["attempt"] >= 3 and row["kind"] not in ("sandbox_check", "dast_check"):
                 conn.execute(
                     runs.update()
                     .where(runs.c.id == row["id"])
@@ -457,7 +457,7 @@ class Store:
                         if row["kind"] == "image_build"
                         else (
                             "sandbox_queued"
-                            if row["kind"] == "sandbox_check"
+                            if row["kind"] in ("sandbox_check", "dast_check")
                             else (
                                 "security_queued"
                                 if row["kind"] == "security_check"
@@ -481,7 +481,7 @@ class Store:
                     if row["kind"] == "image_build"
                     else (
                         "샌드박스 실행 확인을 시작했습니다."
-                        if row["kind"] == "sandbox_check"
+                        if row["kind"] in ("sandbox_check", "dast_check")
                         else "소스 확인을 시작했습니다."
                     )
                 ),
@@ -501,7 +501,11 @@ class Store:
             or row["lease_token"] != token
             or row["lease_expires_at"] <= instant
             or row["started_at"]
-            + timedelta(seconds=1800 if row["kind"] in ("image_build", "sandbox_check") else 120)
+            + timedelta(
+                seconds=1800
+                if row["kind"] in ("image_build", "sandbox_check", "dast_check")
+                else 120
+            )
             <= instant
         ):
             raise LeaseLost()
@@ -514,7 +518,9 @@ class Store:
                 instant + timedelta(seconds=60),
                 row["started_at"]
                 + timedelta(
-                    seconds=1800 if row["kind"] in ("image_build", "sandbox_check") else 120
+                    seconds=1800
+                    if row["kind"] in ("image_build", "sandbox_check", "dast_check")
+                    else 120
                 ),
             )
             if expiry <= instant:
@@ -537,7 +543,11 @@ class Store:
     def finish(self, run_id, token, *, result=None, error=None, retry=False):
         with self.engine.begin() as conn:
             row, instant = self._owned(conn, run_id, token)
-            if row["kind"] == "sandbox_check" and row["cancel_requested"] and not error:
+            if (
+                row["kind"] in ("sandbox_check", "dast_check")
+                and row["cancel_requested"]
+                and not error
+            ):
                 result, error = (
                     None,
                     {"code": "sandbox_cancelled", "message": "샌드박스를 중단하고 정리했습니다."},
@@ -571,9 +581,13 @@ class Store:
                             "샌드박스 실행 확인과 정리를 완료했습니다. 보안 검사는 아직 하지 않았습니다."
                             if row["kind"] == "sandbox_check"
                             else (
-                                "SAST 결과를 확인했습니다. 운영 배포 승인은 별도입니다."
-                                if row["kind"] == "security_check"
-                                else "소스 확인을 완료했습니다."
+                                "DAST 결과를 확인하고 검사 앱을 정리했습니다. 운영 배포 승인은 별도입니다."
+                                if row["kind"] == "dast_check"
+                                else (
+                                    "SAST 결과를 확인했습니다. 운영 배포 승인은 별도입니다."
+                                    if row["kind"] == "security_check"
+                                    else "소스 확인을 완료했습니다."
+                                )
                             )
                         )
                     )
@@ -672,8 +686,17 @@ class Store:
             append_event(conn, row["id"], "queued", "빌드한 커밋의 SAST 검사를 접수했습니다.")
             return select_fields(row, RUN_FIELDS), True
 
-    def enqueue_sandbox(self, service_id, build_id, key, target):
-        request_hash = digest({"build_id": str(build_id)})
+    def enqueue_sandbox(
+        self, service_id, build_id, key, target, *, security_check_id=None, dast_target=None
+    ):
+        kind = "dast_check" if security_check_id else "sandbox_check"
+        request_hash = digest(
+            {
+                "build_id": str(build_id),
+                **({"security_check_id": str(security_check_id)} if security_check_id else {}),
+            }
+        )
+        extra = {}
         with self.engine.begin() as conn:
             # Serialize admission to the one configured sandbox across all services.
             conn.execute(sa.text("SELECT pg_advisory_xact_lock(72401031)"))
@@ -686,7 +709,7 @@ class Store:
                 conn.execute(
                     sa.select(runs).where(
                         runs.c.service_id == service_id,
-                        runs.c.kind == "sandbox_check",
+                        runs.c.kind == kind,
                         runs.c.request_key == key,
                     )
                 )
@@ -716,7 +739,10 @@ class Store:
             active = conn.scalar(
                 sa.select(runs.c.id).where(
                     runs.c.status.in_(["queued", "running"]),
-                    sa.or_(runs.c.service_id == service_id, runs.c.kind == "sandbox_check"),
+                    sa.or_(
+                        runs.c.service_id == service_id,
+                        runs.c.kind.in_(("sandbox_check", "dast_check")),
+                    ),
                 )
             )
             if active:
@@ -737,13 +763,44 @@ class Store:
                     "샌드박스에 전달할 빌드 정보를 확인할 수 없습니다.",
                     409,
                 )
+            if security_check_id:
+                security = (
+                    conn.execute(
+                        sa.select(runs).where(
+                            runs.c.id == security_check_id,
+                            runs.c.service_id == service_id,
+                            runs.c.kind == "security_check",
+                            runs.c.status == "succeeded",
+                        )
+                    )
+                    .mappings()
+                    .first()
+                )
+                if (
+                    not security
+                    or not dast_target
+                    or security["result"].get("build_id") != str(build_id)
+                    or security["resolved_commit_sha"] != build["resolved_commit_sha"]
+                    or security["result"].get("image_digest") != result["image_digest"]
+                    or not security["result"].get("evidence_sha256")
+                ):
+                    raise Problem(
+                        "dast_source_mismatch", "같은 빌드의 완료된 SAST 검사가 필요합니다.", 409
+                    )
+                extra = {
+                    "security_check_id": str(security_check_id),
+                    "sast_evidence_sha256": security["result"]["evidence_sha256"],
+                    "security_target": security["input_snapshot"]["security_target"],
+                    "repository_url": security["input_snapshot"]["repository_url"],
+                    "dast_target": dast_target,
+                }
             row = (
                 conn.execute(
                     runs.insert()
                     .values(
                         id=uuid4(),
                         service_id=service_id,
-                        kind="sandbox_check",
+                        kind=kind,
                         status="queued",
                         input_snapshot={
                             "build_id": str(build_id),
@@ -752,6 +809,7 @@ class Store:
                             "container_port": build["input_snapshot"]["container_port"],
                             "healthcheck_path": build["input_snapshot"]["healthcheck_path"],
                             "sandbox_target": target,
+                            **extra,
                         },
                         resolved_commit_sha=build["resolved_commit_sha"],
                         request_key=key,
@@ -763,7 +821,12 @@ class Store:
                 .one()
             )
             append_event(
-                conn, row["id"], "queued", "빌드한 이미지의 샌드박스 실행 확인을 접수했습니다."
+                conn,
+                row["id"],
+                "queued",
+                "앱 실행 및 DAST 검사를 접수했습니다."
+                if security_check_id
+                else "빌드한 이미지의 샌드박스 실행 확인을 접수했습니다.",
             )
             return select_fields(row, RUN_FIELDS), True
 
@@ -805,12 +868,12 @@ class Store:
                 if acquired:
                     conn.execute(sa.text("SELECT pg_advisory_unlock(72401032)"))
 
-    def cancel_sandbox(self, run_id):
+    def cancel_sandbox(self, run_id, kind="sandbox_check"):
         with self.engine.begin() as conn:
             row = (
                 conn.execute(
                     sa.select(runs)
-                    .where(runs.c.id == run_id, runs.c.kind == "sandbox_check")
+                    .where(runs.c.id == run_id, runs.c.kind == kind)
                     .with_for_update()
                 )
                 .mappings()

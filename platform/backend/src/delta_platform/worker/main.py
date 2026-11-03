@@ -6,19 +6,20 @@ import time
 from botocore.exceptions import BotoCoreError, ClientError
 
 from delta_platform.adapters.builds import BuildError, build_runner
+from delta_platform.adapters.dast import DastRunner
 from delta_platform.adapters.github import GitHubReader, SourceError
 from delta_platform.adapters.sandbox import SandboxError, SandboxRunner
 from delta_platform.adapters.security import SecurityRunner
 from delta_platform.config import Settings
 from delta_platform.core.auth import Auth
 from delta_platform.core.database import engine_for, ready
-from delta_platform.core.errors import LeaseLost
+from delta_platform.core.errors import LeaseLost, Problem
 from delta_platform.core.store import Store
 
 logger = logging.getLogger("delta_platform.worker")
 
 
-def process_one(store, reader, builder=None, sandbox=None, security=None):
+def process_one(store, reader, builder=None, sandbox=None, security=None, dast=None):
     claim = store.claim()
     if claim is None:
         return False
@@ -48,6 +49,16 @@ def process_one(store, reader, builder=None, sandbox=None, security=None):
         elif claim["kind"] == "security_check":
             security = security or SecurityRunner(Settings())
             result = security.execute(claim, store, progress)
+        elif claim["kind"] == "dast_check":
+            try:
+                dast = dast or DastRunner(Settings())
+            except (SandboxError, Problem):
+                progress(
+                    "dast_cleanup_wait",
+                    "검사 연결 설정을 복원해야 합니다. 기존 실행 공간은 잠금 상태로 유지합니다.",
+                )
+                raise LeaseLost() from None
+            result = dast.execute(claim, store, progress)
         elif claim["kind"] == "sandbox_check":
             sandbox = sandbox or SandboxRunner(Settings())
             result = sandbox.execute(claim, store, progress)

@@ -1,9 +1,9 @@
 # 플랫폼 SAST 결과 연결
 
-- 기준일: 2026-11-03. Jenkins 전환에 이어 사용자의 다음 작업 구현 지시를 수행한다.
+- 기준일: 2026-11-04. Jenkins 전환에 이어 사용자의 다음 작업 구현·배포 지시를 수행한다.
 - 목적: 성공한 이미지 빌드의 고정 커밋을 기존 SAST 서비스에 검사시키고 근거·발견 사항을 플랫폼에서 확인한다.
 - 범위: API/DB 작업 이력·Worker·SAST HTTP 어댑터·화면·계약/회귀 검증. DAST/AI 수정/운영 배포 승인은 포함하지 않는다.
-- 상태: 구현·로컬 API/DB/브라우저·실제 SAST HTTP 연결 검증 완료. 새 스키마는 `0004`. PR #18 병합 후 Jenkins 운영 릴리스에서 DB `0004`와 공개 UI/API를 배포했다. 운영 SAST URL·토큰 연결과 공개 플랫폼의 실제 SAST 검증은 아직이다. [Jenkins AWS 기록](platform-jenkins-aws.md)을 따른다.
+- 상태: PR #20 병합 후 SAST 설정을 활성화하고 GitHub Release를 완료했다. 공개 웹에서 실제 SAST 요청·결과·같은 커밋/이미지 연결과 데스크톱·모바일·새로고침을 검증했다. 기존 DB `0004`와 로그인·Jenkins·서비스 기록을 보존했다. DAST·AI 수정·운영 배포는 후속 범위다. 아래 운영 릴리스 기록과 [Jenkins AWS 기록](platform-jenkins-aws.md)을 따른다.
 
 ## 설계와 기준
 
@@ -45,7 +45,7 @@ DB migration `0004`는 실행 종류를 추가한다. 보안 검사 기록이 �
 
 API·결과 필드·설정·롤백은 [검사 계약](../../platform/contracts/security-checks.md)을 따른다.
 
-## AWS 운영 연결 (2026-11-04 진행)
+## AWS 운영 연결 (2026-11-04)
 
 사용자가 main pull 후 다음 작업 진행을 승인했다. 기준은 main `cc1b1c3`, 작업 브랜치는 `feat/platform-sast-aws`다. 이전 Jenkins 권한 수정과 운영 기록은 작업 트리에 보존한다.
 
@@ -63,7 +63,7 @@ API·결과 필드·설정·롤백은 [검사 계약](../../platform/contracts/s
 - 기존 도구 호스트에 사설 HTTPS 설치 완료. 인증서 검증한 `/healthz` 200, 토큰 없는 상태 조회 401, `/v1/tools`·DAST 경로 404를 확인했다. 외부 8790/8765/8766 포트는 계속 loopback이다.
 - SAST는 같은 이미지·기존 상태/모델 설정으로 재시작했다. 모델 backend `api`와 기존 모델 값, DAST 컨테이너 ID/시작 시각은 그대로다. `stage`로 연결 정보를 SecureString에 저장했고 공개 플랫폼의 runtime은 아직 바꾸지 않았다.
 
-### 실제 사설 경로 검증
+### 공개 릴리스 전 실제 사설 경로 검증
 
 - 새 `SecurityRunner`로 실제 AWS SAST에 접속했다. 임시 SSM 원격 포워딩을 **플랫폼 VM**에서 도구 VM `172.31.25.180:443`으로 연결하고, 원래 대상 IP의 인증서를 그대로 검증했다. 신뢰하지 않은 인증서는 거부됐고 등록 CA로는 정상 접속했다. 검증 후 임시 세션은 종료했다.
 - 실제 검사 ID `fb0dddb8-6c5d-4b9e-8272-b94a1c2f7615`. 기존 공개 Jenkins 빌드 `0f95caa8-ae33-4159-84e9-20190f255311`의 `docker/welcome-to-docker` 고정 커밋과 ECR digest를 입력으로 검사했고, SARIF 근거 해시 `a5103e0c25d9f28e77cd8f5f2a06b675b0d05918d74a2b8ae48ed2d5cb792734`를 대조했다.
@@ -72,7 +72,7 @@ API·결과 필드·설정·롤백은 [검사 계약](../../platform/contracts/s
 - 활성화 설정의 dry run에서 기존 로그인·DB·Jenkins·샌드박스 필드가 모두 유지되는 것을 확인했다. `/delta-platform/runtime`은 버전 4로 유지되며 아직 SAST 값이 없다. 연결 토큰/CA는 별도 SecureString에만 준비됐다.
 - ignored 근거: `platform/.runtime/sast-private-live-result.json`, `sast-host-verification.json`, `sast-denied-source.json`, `sast-network-plan.json`, `sast-network-final-plan.log`.
 
-현재 구현·로컬 회귀·실제 네트워크/서버 설치·인증/검사 검증은 완료했다. **main 반영 → SAST 설정 activate → GitHub Platform release → 공개 웹 SAST 검증은 아직**이다. 기존 main 전용 OIDC와 사용자의 PR 병합 절차를 유지한다. 사용자가 `Go.`로 커밋·푸시·PR 생성을 승인했다. 기존 Jenkins 권한 보완은 `42bbe5b`로 분리했고 SAST 연결은 별도 기능 커밋으로 묶는다.
+PR 게시 당시에는 구현·로컬 회귀·실제 네트워크/서버 설치·인증/검사 검증까지 완료했고 main 반영·activate·Release·공개 웹 검증은 남아 있었다. 기존 main 전용 OIDC와 사용자의 PR 병합 절차를 유지했다. 사용자가 `Go.`로 커밋·푸시·PR 생성을 승인했다. 기존 Jenkins 권한 보완은 `42bbe5b`로 분리했고 SAST 연결은 별도 기능 커밋으로 묶었다.
 
 - 마무리 확인: 공개 플랫폼 readiness·기존 ID/PW 로그인·기존 Jenkins 성공 결과가 유지됐다. 임시 포워딩 세션은 AWS 이력에서도 `Terminated`를 확인했다. 사용자 승인 후 원격 게시와 PR 생성을 완료했다. main 병합과 공개 SAST 활성화는 별도 단계다.
 
@@ -82,4 +82,22 @@ API·결과 필드·설정·롤백은 [검사 계약](../../platform/contracts/s
 
 - 2026-11-04: `42bbe5b`(SG 규칙 생성 권한), `aa9598d`(SAST 사설 HTTPS 연결)을 `feat/platform-sast-aws`에 푸시하고 [PR #20](https://github.com/2026-sbh-delta/delta-network-gateway/pull/20)을 열었다. 시스템 Python의 배포 도구 29개와 Ruff/형식 재검증도 통과했다.
 - GitHub CI는 PR에서 실행한다. 최신 커밋의 결과는 PR Checks를 따른다. 이 문서의 실제 AWS 검사 기록은 공개 플랫폼 활성화와 구분한다.
-- PR은 사용자가 병합한다. main 반영 뒤 `connect.py activate`와 GitHub Platform release를 실행하고 공개 웹에서 같은 빌드의 SAST 결과를 검증한다. 아직 활성화·Release·공개 웹 SAST 검증은 수행하지 않았다.
+- PR 게시 시 다음 단계는 사용자 병합, `connect.py activate`, GitHub Platform release, 공개 웹 검사였다. 아래 기록에서 실제 수행 결과를 구분한다.
+
+### 공개 플랫폼 활성화·릴리스 완료
+
+2026-11-04 (KST), 사용자의 `Merged. Go ahead.` 지시로 수행했다.
+
+- PR #20 병합 커밋 `d4200f75f241447df3f7e63d522536152aba3832`를 확인했다. `connect.py activate --profile delta-platform --outputs platform/.runtime/sast-network-outputs.json`으로 런타임을 버전 4 → 5로 변경했다. SAST 세 필드 외 기존 값 전체가 동일한 것을 실제 파라미터 버전 비교로 검증했다. 비밀값은 출력하지 않았다.
+- `gh workflow run platform-release.yml --ref main`: [실행 41666361286](https://github.com/2026-sbh-delta/delta-network-gateway/actions/runs/41666361286)의 백엔드·브라우저·배포 경계·Terraform 6개 root 검사 및 배포가 모두 성공했다. 실제 SSM 배포도 `Success`다.
+- 릴리스 artifact와 실행 중인 API·Worker 이미지 digest `sha256:0d3bdba02ef845b3daa756abae4db5e31783390be1ba602454068e02e4df3a27`이 일치했다. API/DB health, Worker 실행과 SAST 설정 주입을 확인했다. PostgreSQL 이미지는 이전 digest를 유지했다.
+- 초기 공개 검증 중 공용 SAST/DAST VM이 중지된 것을 발견했다. CloudTrail `StopInstances` 시각은 `2026-11-03T15:47:00Z`(11월 4일 00:47 KST), 웹 콘솔 호출이다. 이번 배포 작업에서는 중지하지 않았다. 첫 플랫폼 검사 `23774e14-0098-4286-acf4-0c891e4c7edd`는 연결 불가로 3회 시도 후 실패했다. 성공 검사로 기록하지 않는다.
+- 사용자에게 중지 상태를 알리고 재가동 답변을 받은 뒤 `aws ec2 start-instances`로 기존 `i-020c3bb90804b736c`를 재가동했다. 사설 IP, SAST/DAST 컨테이너·데이터를 유지했다. 재부팅 후 HTTPS 서비스 자동 기동·CA 검증 health 200·제한 경로 404와 DAST 기존 컨테이너 ID를 확인했다. 재부팅이므로 컨테이너 시작 시각은 바뀌었다.
+- `node platform/.runtime/public-sast-ui.cjs`: 공개 [플랫폼](https://d3udcz0zch0on.cloudfront.net)에 기존 ID/PW로 로그인하고 **Jenkins AWS 연결 검증 → 이 빌드의 코드 검사** 버튼을 눌렀다. 실제 API·DB·Worker·사설 HTTPS·팀 SAST·공개 GitHub를 모두 사용했다. 새 검사 `76af64b7-6f62-4791-8512-645395616410`는 01:00:57~01:01:07 KST에 성공했다.
+- 기존 Jenkins 빌드 `0f95caa8-ae33-4159-84e9-20190f255311`, 커밋 `68c1b9f87c41fb3fef2667e27149865c2f42d1eb`, 이미지 digest `sha256:1ee930a1a62209e2e2b273ac1f2c0244fa02b02290a1e4029ca0b9dff6b0c5a7`과 검사 결과를 대조했다. SARIF 해시는 `48d78b0a85b8ab5c906dda56089b17e84baa576bea311f87e8db798e38ae293a`다.
+- 데스크톱·390px 모바일 스크린샷을 검토했다. 가로 넘침·브라우저 예외 없이 근거·이미지·결과가 표시됐고 새로고침 뒤에도 유지됐다. 기존 서비스 2개도 보존됐다.
+- 발견 사항은 0건이다. JavaScript 중심 예제이며 현재 검사기의 지원 범위만 확인한 것이므로 전체 보안 통과를 뜻하지 않는다. 결과의 `deployment_approved=false`, `dast_check=not_run`, `coverage=configured_scanner_rules_only`를 검증했다.
+
+ignored 근거: `sast-release-activation.json`, `sast-release-github.json`, `sast-release-artifact/`, `sast-release-runtime-verification.json`, `sast-tooling-stop-event.json`, `sast-public-unavailable-run.json`, `sast-restarted-host-verification.json`, `sast-public-run.json`, `sast-public-{desktop,mobile}.png` (모두 `platform/.runtime/`).
+
+이번 작업은 이미 병합한 코드를 배포한 것이다. 운영 기록은 `chore/platform-sast-release`의 로컬 문서 변경으로 남겼으며 추가 커밋·푸시는 하지 않았다. 다음은 기존 `services/delta-dast`를 검사 수명·네트워크·고정 이미지·결과·정리 계약에 맞춰 플랫폼에 연결하는 작업이다. 스캐너 중지 시 현재 화면에는 재시도 후 일반 실패가 표시되므로, 후속 작업에서 검사 서버 연결 실패 안내도 개선할 수 있다.
