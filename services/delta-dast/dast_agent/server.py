@@ -24,6 +24,7 @@ from .orchestrator import orchestrate
 from .chat import ChatStore, ask as ask_chat, chat_context
 from .fixer import create_pr, propose_fix, repo_source
 from . import projects
+from . import sast_link
 from .report import build as build_report
 from .computer_use import investigate as investigate_computer_use
 from .planner import DEFAULT_MODEL, plan
@@ -407,6 +408,17 @@ def create_app(port: int = 8765, target_port: int = 8766,
             except OSError:
                 run["status"] = "error"
                 run["error"] = "실행 증거 파일을 저장하지 못했습니다."
+            if run.get("sast_run_id") and run["results"]:
+                try:
+                    outcomes = await asyncio.to_thread(sast_link.feedback, run["sast_run_id"], run["results"])
+                    if outcomes:
+                        run["sast_feedback"] = outcomes
+                        tally_text = ", ".join(f"{k} {v}" for k, v in sorted(
+                            {o["outcome"]: sum(1 for x in outcomes if x["outcome"] == o["outcome"])
+                             for o in outcomes}.items()))
+                        await publish({"type": "log", "message": "SAST에 재현 결과를 보냈습니다: " + tally_text})
+                except sast_link.SastUnavailable as exc:
+                    await publish({"type": "log", "message": "SAST 피드백을 보내지 못했습니다: " + str(exc)})
             await publish({"type": "done", **summary(run)})
             if run["planner"] in {"agent", "computer_use"} and (output / "report.json").is_file():
                 schedule_report(run["run_id"], auto_fix=run.get("auto_fix", True))
@@ -503,6 +515,28 @@ def create_app(port: int = 8765, target_port: int = 8766,
     async def models():
         return {"models": await asyncio.to_thread(model_statuses)}
 
+    @app.get("/api/sast/status")
+    async def sast_status():
+        return await asyncio.to_thread(sast_link.status)
+
+    @app.post("/api/sast/scans")
+    async def sast_start():
+        try:
+            return await asyncio.to_thread(sast_link.start)
+        except sast_link.SastUnavailable as exc:
+            raise HTTPException(502, str(exc)) from None
+
+    @app.get("/api/sast/scans/{sast_run_id}")
+    async def sast_poll(sast_run_id: str):
+        if not re.fullmatch(r"[A-Za-z0-9._-]{1,64}", sast_run_id):
+            raise HTTPException(404, "SAST 점검을 찾지 못했습니다.")
+        try:
+            return await asyncio.to_thread(sast_link.poll, sast_run_id)
+        except sast_link.SastUnavailable as exc:
+            raise HTTPException(502, str(exc)) from None
+        except (KeyError, ValueError):
+            raise HTTPException(502, "SAST 결과를 DAST 입력으로 바꾸지 못했습니다.") from None
+
     @app.post("/api/runs")
     async def start_run(request: Request):
         if request.headers.get("content-type", "").split(";")[0].strip() != "application/json":
@@ -533,7 +567,7 @@ def create_app(port: int = 8765, target_port: int = 8766,
         run_id = str(uuid4())
         run = {"run_id": run_id, "status": "running", "scenario": args.scenario,
                "planner": args.planner, "concurrency": args.concurrency, "impact": args.impact,
-               "auto_fix": args.auto_fix, "results": [], "duration_ms": 0,
+               "auto_fix": args.auto_fix, "sast_run_id": args.sast_run_id, "results": [], "duration_ms": 0,
                "events": deque(maxlen=2000), "sequence": 0, "changed": asyncio.Event(),
                "report": args.report, "started_at": time.time(), **(extra or {}), "project_id": project_id}
         runs[run_id] = run

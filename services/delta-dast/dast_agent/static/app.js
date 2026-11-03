@@ -818,13 +818,61 @@
       showViewing(viewing);
     }catch{}
   }
-  async function run(reportOverride) {
+  // ---------- 1단계 SAST ----------
+  let sastRunId=null, sastReport=null;
+  const SAST_BY={rule:'규칙',cache:'캐시',llm:'AI'};
+  const SAST_VERDICT={candidate:'후보',vulnerable:'취약',safe:'양호',uncertain:'확인 필요'};
+  function cell(text,cls){const td=document.createElement('td');td.textContent=text;if(cls)td.className=cls;return td;}
+  function renderSast(rows){
+    const body=q('sast-rows');
+    if(!rows.length){const tr=document.createElement('tr');tr.append(cell('탐지된 결과가 없습니다.'));tr.firstChild.colSpan=6;body.replaceChildren(tr);return;}
+    body.replaceChildren(...rows.map(r=>{
+      const tr=document.createElement('tr');tr.dataset.kind=r.kind;
+      const verdict=(SAST_BY[r.by]||r.by||'')+' · '+(SAST_VERDICT[r.verdict]||r.verdict||'');
+      const flow=cell(r.flow||'');
+      if(r.actions&&r.actions.length){const ul=document.createElement('ul');ul.className='sast-actions-list';
+        r.actions.forEach(a=>{const li=document.createElement('li');li.textContent=a;ul.append(li);});
+        if(r.owner){const li=document.createElement('li');li.textContent='담당자: '+r.owner;ul.append(li);}
+        flow.append(ul);}
+      const judged=cell(verdict,'sast-v-'+(r.verdict||''));judged.title=r.reason||'';
+      tr.append(cell(r.label),cell(r.where),flow,cell(r.context||''),judged,cell(r.dast?'대상':'—'));
+      return tr;}));
+  }
+  async function sastPoll(id){
+    for(;;){
+      const res=await fetch('/api/sast/scans/'+encodeURIComponent(id));const data=await res.json();
+      if(!res.ok)throw new Error(typeof data.detail==='string'?data.detail:'SAST 결과를 읽지 못했습니다.');
+      const scan=data.scan, last=(scan.steps||[]).slice(-1)[0];
+      q('sast-state').textContent={running:'점검 중',done:'완료',failed:'실패'}[scan.state]||scan.state;
+      if(scan.state==='running'){q('sast-summary').textContent='진행: '+(last?last.name+(last.detail?' · '+last.detail:''):'시작');await new Promise(r=>setTimeout(r,800));continue;}
+      if(scan.state==='failed')throw new Error(scan.error||'SAST 점검이 실패했습니다.');
+      return data;
+    }
+  }
+  async function sastStart(){
+    if(busy)return;
+    q('sast-run').disabled=true;q('sast-to-dast').disabled=true;sastReport=null;
+    q('sast-state').textContent='점검 중';q('sast-summary').textContent='SAST 점검을 시작합니다.';
+    try{
+      const res=await fetch('/api/sast/scans',{method:'POST',headers:{'X-DAST-Token':config.csrf_token}});const scan=await res.json();
+      if(!res.ok)throw new Error(typeof scan.detail==='string'?scan.detail:'SAST를 시작하지 못했습니다.');
+      sastRunId=scan.run_id;log('SAST 점검: '+sastRunId);
+      const data=await sastPoll(sastRunId);
+      renderSast(data.rows||[]);
+      const s=data.scan.summary||{}, t=s.timings||{}, n=(data.rows||[]).filter(r=>r.dast).length;
+      q('sast-summary').textContent='결과 '+(data.rows||[]).length+'건 · DAST 대상 '+n+'건 · LLM 호출 '+((s.llm||{}).llm_calls||0)+'회 · '+(t.total!=null?t.total+'초':'');
+      sastReport=data.dast_report;q('sast-to-dast').disabled=!sastReport;
+      if(sastReport){useReport(structuredClone(sastReport));q('activity').textContent='SAST 결과를 DAST 입력으로 불러왔습니다. "이 결과로 DAST 시작"을 누르세요.';}
+    }catch(err){q('sast-state').textContent='실패';q('sast-summary').textContent=err.message;log(err.message);}
+    finally{q('sast-run').disabled=false;}
+  }
+  async function run(reportOverride, extra={}) {
     try {
       if(reportOverride) useReport(reportOverride);
       useReport(JSON.parse(q('report-input').value));
       resetView();
       phase('planning','SAST 입력과 등록된 검사 경로를 확인합니다.');
-      const response=await fetch('/api/runs',{method:'POST',headers:{'Content-Type':'application/json','X-DAST-Token':config.csrf_token},body:JSON.stringify({scenario:q('scenario').value,planner:q('planner').value,report,concurrency:Number(q('concurrency').value),impact:q('impact').checked,project_id:projectId})});
+      const response=await fetch('/api/runs',{method:'POST',headers:{'Content-Type':'application/json','X-DAST-Token':config.csrf_token},body:JSON.stringify({scenario:q('scenario').value,planner:q('planner').value,report,concurrency:Number(q('concurrency').value),impact:q('impact').checked,project_id:projectId,...extra})});
       const data=await response.json();
       if(!response.ok) throw new Error(typeof data.detail==='string'?data.detail:JSON.stringify(data.detail || data));
       log('점검 세션: '+data.run_id);loadSessions();
@@ -838,6 +886,14 @@
   try{const saved=localStorage.getItem('dast-concurrency');if(saved)q('concurrency').value=saved;}catch{}
   q('concurrency').addEventListener('change',()=>{try{localStorage.setItem('dast-concurrency',q('concurrency').value);}catch{}});
   q('run').addEventListener('click',()=>run());
+  q('sast-run').addEventListener('click',sastStart);
+  q('sast-to-dast').addEventListener('click',()=>{if(sastReport&&!busy)run(structuredClone(sastReport),{sast_run_id:sastRunId});});
+  fetch('/api/sast/status').then(r=>r.json()).then(s=>{
+    q('sast-repo').textContent=s.repo?'· 소스 '+s.repo:'';
+    if(!s.configured){q('sast-summary').textContent='SAST 연결이 설정되지 않았습니다(DELTA_SAST_TOKEN).';return;}
+    if(!s.reachable){q('sast-summary').textContent='SAST 서버에 연결하지 못했습니다.';return;}
+    q('sast-run').disabled=false;q('sast-summary').textContent='소스를 정적 점검한 뒤 결과를 DAST로 넘깁니다.';
+  }).catch(()=>{q('sast-summary').textContent='SAST 상태를 확인하지 못했습니다.';});
   q('rerun').addEventListener('click',()=>{if(report)run(structuredClone(report));});
   q('project').addEventListener('change',()=>selectProject(q('project').value));
   q('tab-dashboard').addEventListener('click',()=>showView('dashboard'));

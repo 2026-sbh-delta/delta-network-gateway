@@ -398,3 +398,19 @@ footer{color:#6f7a86}
 .chat-form textarea:focus{outline:none;border-color:var(--blue)}
 .chat-form button{padding:0 20px;font-size:14px;font-weight:700;background:var(--accent);border-color:var(--accent);color:#0b0d0f}
 .chat-form button:disabled{opacity:.5}
+
+/* 1단계 SAST 패널 */
+.sast-panel{margin:12px 0 4px}
+.sast-panel .section-head{padding:10px 12px 0}
+.sast-panel h2 small{color:var(--muted);font-weight:400;margin-left:6px}
+.sast-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:6px 12px 10px}
+.sast-actions #sast-run{background:var(--blue);color:#fff;border-color:var(--blue)}
+.sast-actions #sast-summary{color:var(--muted);font-size:12px}
+.sast-panel td{padding:7px 12px;border-bottom:1px solid var(--line);vertical-align:top;overflow-wrap:anywhere}
+.sast-panel tr[data-kind="fail"] td:first-child{color:var(--red);font-weight:600}
+.sast-panel tr[data-kind="review"] td:first-child{color:var(--amber);font-weight:600}
+.sast-panel tr[data-kind="pass"] td,.sast-panel tr[data-kind="informational"] td{color:var(--muted)}
+.sast-actions-list{margin:6px 0 0;padding-left:16px;font-size:11px;color:var(--muted)}
+.sast-v-vulnerable,.sast-v-candidate{color:var(--red)}
+.sast-v-uncertain{color:var(--amber)}
+.sast-v-safe{color:var(--green)}

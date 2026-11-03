@@ -66,6 +66,8 @@ class RunRequest(StrictModel):
     project_id: str | None = Field(default=None, pattern=r"^[A-Za-z0-9_-]{1,64}$")
     # 취약 항목의 조치 권장 코드(수정안)를 점검 직후 자동으로 만든다. PR은 항상 사용자 승인 후 생성한다.
     auto_fix: bool = True
+    # 작업실에서 SAST 점검 결과로 시작한 경우의 SAST run_id. 끝나면 재현 결과를 SAST로 되돌린다.
+    sast_run_id: str | None = Field(default=None, pattern=r"^[A-Za-z0-9._-]{1,64}$")
 
 
 class Decision(StrictModel):

@@ -49,6 +49,11 @@
       <div class="scans-head"><b>점검 회차</b><span id="scan-trend"></span></div>
       <div id="scan-strip" class="scan-strip"><span class="scan-empty">아직 점검이 없습니다.</span></div>
     </section>
+    <section class="vulns sast-panel" aria-label="SAST 정적 점검">
+      <div class="section-head"><h2>1단계 · SAST 정적 점검 <small id="sast-repo"></small></h2><span class="pill" id="sast-state">대기</span></div>
+      <div class="sast-actions"><button type="button" id="sast-run" disabled>SAST 실행</button><button type="button" id="sast-to-dast" disabled>이 결과로 DAST 시작 →</button><span id="sast-summary">SAST 서버 연결을 확인하고 있습니다.</span></div>
+      <div class="sessions-scroll"><table><thead><tr><th>유형</th><th>위치</th><th>입력 → 출력 · 이름</th><th>맥락</th><th>판정</th><th>DAST</th></tr></thead><tbody id="sast-rows"><tr><td colspan="6">SAST를 실행하면 결과가 여기에 표시됩니다.</td></tr></tbody></table></div>
+    </section>
     <div class="settings">
       <label>테스트 대상<select id="scenario"><option value="vulnerable">취약 게시판</option><option value="fixed">수정 게시판</option><option value="csp">CSP 적용 게시판</option></select></label>
       <label>DAST 계획<select id="planner"><option value="agent">AI 에이전트 · Agent SDK (로그인 인증)</option><option value="computer_use">AI 에이전트 · 공식 Computer Use (API 키 필요)</option><option value="claude">Claude 매핑 · 등록 경로 실행</option><option value="reviewed">수동 검토 계획 · 모델 호출 없음</option></select></label>
