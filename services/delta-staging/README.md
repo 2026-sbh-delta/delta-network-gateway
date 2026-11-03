@@ -47,7 +47,7 @@ AWS 자격 증명은 boto3 기본 경로(`AWS_PROFILE` 등)를 쓴다. 이 도�
 |---|---|---|
 | `staging_deploy` | `POST /v1/staging/deployments` | 이미지를 스테이징에 띄운다. 바로 `202`, `state=deploying` |
 | `staging_status` | `GET /v1/staging/deployments/{run_id}` | 상태와 단계 기록. `ready`면 `url`을 DAST에 넘긴다 |
-| `staging_stop` | `POST /v1/staging/deployments/{run_id}/stop` | 점검 뒤 태스크를 0개로 내린다 |
+| `staging_stop` | `POST /v1/staging/deployments/{run_id}/stop` | 태스크를 0개로 내린다. 상시 운영이라 시연·작업 세션을 마칠 때만 부른다 |
 
 모든 요청에 `Authorization: Bearer <DELTA_STAGING_TOKEN>`이 필요하다(`/healthz` 제외).
 
@@ -75,7 +75,7 @@ AWS 자격 증명은 boto3 기본 경로(`AWS_PROFILE` 등)를 쓴다. 이 도�
 | `deploying` | 배포 중. `steps`에 진행 단계가 쌓인다 |
 | `ready` | 헬스 체크 통과. `url`이 채워진다 |
 | `failed` | `error`에 사유. 서비스를 0개로 내린다 |
-| `stopped` | 점검 뒤 내렸다 |
+| `stopped` | 내렸다(세션 종료) |
 | `replaced` | 다른 실행이 스테이징을 가져갔다 |
 
 `steps`는 `accepted → (scanner_allowed) → task_definition → service_updated → rollout_completed → image_digest → healthy` 순서다. `scanner_ip`를 준 실행은 응답의 `scanner_ip`에 허용한 IP가 남는다.
