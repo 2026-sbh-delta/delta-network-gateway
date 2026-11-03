@@ -162,6 +162,7 @@
       const card=document.createElement('li');card.className='qi';card.dataset.state='PENDING';
       card.title=f.description || '';
       card.dataset.file=f.source_file || f.codeLocations?.[0]?.filePath || '';card.dataset.line=f.line || f.codeLocations?.[0]?.lineStart || '';
+      card.sastFlow=Array.isArray(f.code_flow)?f.code_flow:null;
       const icon=document.createElement('span');icon.className='qi-icon';
       const body=document.createElement('div');body.className='qi-body';
       const title=document.createElement('strong');title.textContent=f.title || f.name || id;
@@ -368,9 +369,10 @@
     const ROLE={source:['source','원인 라인'],propagation:['prop','연관 라인'],sink:['sink','탐지 라인']};
     let items=(trace || []).filter(t=>t.file && t.line);
     if(!items.length){
-      // 수정안(코드 추적)이 아직 없으면 SAST가 알려준 위치 하나만 보여준다.
+      // AI 수정안의 코드 추적이 아직 없으면 SAST 경로(codeFlows)를 바로 보여준다. 그것도 없으면 SAST 위치 하나.
       const card=cards.get(id);
-      if(card && card.dataset.file && card.dataset.line) items=[{role:'sink',file:card.dataset.file,line:+card.dataset.line,code:'',note:'SAST 탐지 위치 · AI 추적 전'}];
+      if(card && card.sastFlow && card.sastFlow.length) items=card.sastFlow.map(s=>({...s,code:'',note:(s.note||'')+' · SAST 경로'}));
+      else if(card && card.dataset.file && card.dataset.line) items=[{role:'sink',file:card.dataset.file,line:+card.dataset.line,code:'',note:'SAST 탐지 위치 · AI 추적 전'}];
     }
     const nodes=items.map(t=>{
       const [cls,label]=ROLE[t.role] || ROLE.propagation;

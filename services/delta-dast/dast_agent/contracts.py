@@ -29,6 +29,14 @@ class TriggerHint(StrictModel):
     payload_id: str | None = Field(default=None, pattern=ID_PATTERN)
 
 
+class CodeStep(StrictModel):
+    """SAST가 알려준 코드 경로 한 단계. 화면의 코드 흐름(원인 → 연관 → 탐지)에 바로 쓴다."""
+    role: Literal["source", "propagation", "sink"]
+    file: str = Field(min_length=1, max_length=300)
+    line: int = Field(ge=1, le=10_000_000)
+    note: str = Field(default="", max_length=200)
+
+
 class Finding(StrictModel):
     id: str = Field(pattern=ID_PATTERN)
     title: str = Field(min_length=1, max_length=200)
@@ -39,6 +47,7 @@ class Finding(StrictModel):
     line: int = Field(ge=1, le=10_000_000)
     trigger: TriggerHint | None = None
     payload: str | None = Field(default=None, max_length=8192)
+    code_flow: list[CodeStep] | None = Field(default=None, max_length=12)
 
 
 class Report(StrictModel):

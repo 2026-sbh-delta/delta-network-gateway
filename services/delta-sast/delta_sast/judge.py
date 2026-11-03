@@ -26,6 +26,7 @@ from .model import Flow, Judgment, Loc
 PAYLOADS = yaml.safe_load((Path(__file__).parent / "rules" / "payloads.yaml").read_text(encoding="utf-8"))
 ALL_TEMPLATES = sorted({t for items in PAYLOADS.values() for t in items})
 DEFAULT_MODEL = os.environ.get("SAST_LLM_MODEL", "claude-sonnet-5-5")
+WIF_OR_KEY_ENV = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_FEDERATION_RULE_ID")
 MAX_TOKENS = 2000
 MAX_CODE_LINES = 400
 
@@ -161,8 +162,9 @@ class ClaudeClient:
         import anthropic
 
         if client is None:
-            if not os.environ.get("ANTHROPIC_API_KEY"):
-                raise LlmUnavailable("ANTHROPIC_API_KEY가 없다")
+            # API 키, 단기 토큰, 워크로드 아이덴티티 페더레이션(OIDC → 단기 토큰) 중 하나가 있으면 SDK가 알아서 인증한다
+            if not any(os.environ.get(k) for k in WIF_OR_KEY_ENV):
+                raise LlmUnavailable("API 키·토큰·페더레이션 설정이 없다")
             client = anthropic.AsyncAnthropic(timeout=timeout, max_retries=2)
         self._a = anthropic
         self._client = client

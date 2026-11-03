@@ -69,6 +69,38 @@ def _steps(result: dict, limit: int = 10) -> list[str]:
     return lines
 
 
+KEY_NOTES = ("입력", "저장", "읽기", "필터", "출력", "싱크")
+MAX_FLOW = 8
+
+
+def code_flow(result: dict) -> list[dict]:
+    """SARIF codeFlows → 화면용 흐름. 처음(원인)·끝(탐지)과 저장·읽기·필터 같은 핵심 단계만 남긴다."""
+    flows = result.get("codeFlows") or []
+    locations = flows[0]["threadFlows"][0]["locations"] if flows else []
+    steps = []
+    for item in locations:
+        phys = item["location"]["physicalLocation"]
+        steps.append({"file": phys["artifactLocation"]["uri"][:300], "line": phys["region"]["startLine"],
+                      "note": item["location"].get("message", {}).get("text", "")[:200]})
+    if not steps:
+        return []
+    keep = [steps[0]] + [s for s in steps[1:-1] if s["note"].startswith(KEY_NOTES)] + [steps[-1]]
+    out, seen = [], set()
+    for s in keep:
+        key = (s["file"], s["line"])
+        if key in seen:
+            if out and (out[-1]["file"], out[-1]["line"]) == key:
+                out[-1]["note"] = (out[-1]["note"] + " · " + s["note"])[:200]
+            continue
+        seen.add(key)
+        out.append(dict(s))
+    if len(out) > MAX_FLOW:
+        out = out[:MAX_FLOW - 1] + [out[-1]]
+    for i, s in enumerate(out):
+        s["role"] = "source" if i == 0 else "sink" if i == len(out) - 1 else "propagation"
+    return out
+
+
 def sarif_targets(raw: dict) -> list[dict]:
     """DAST가 공격할 결과만. kind가 fail·review이고, DAST로 재현 가능하고, 지금 DAST가 다루는 XSS인 것."""
     out = []
@@ -117,6 +149,7 @@ def from_sarif(raw: dict) -> dict:
             "line": sink["region"]["startLine"],
             "trigger": None,
             "payload": None,
+            "code_flow": code_flow(result) or None,
         })
     run_id = (run.get("properties") or {}).get("run_id", "")
     return {"source": "delta-sast", "source_label": f"Delta SAST SARIF {run_id}".strip()[:200],

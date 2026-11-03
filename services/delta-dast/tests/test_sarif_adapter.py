@@ -55,3 +55,13 @@ def test_pass_unverifiable_and_non_xss_results_are_skipped(sarif):
 def test_internal_and_aws_formats_are_untouched():
     internal = {"source": "ai-sast", "source_label": "x", "findings": [{"id": "a"}]}
     assert not is_sarif(internal) and normalize_report(internal) is internal
+
+
+def test_sarif_code_flow_is_passed_for_the_ui(sarif):
+    report = Report.model_validate(normalize_report(sarif))
+    body = next(f for f in report.findings if "form.body" in f.title)
+    roles = [s.role for s in body.code_flow]
+    assert roles[0] == "source" and roles[-1] == "sink" and set(roles[1:-1]) <= {"propagation"}
+    assert (body.code_flow[0].file, body.code_flow[-1].file, body.code_flow[-1].line) == ("app/board.py", "app/board.py", 52)
+    assert any(s.file == "app/store.py" and s.note.startswith("저장") for s in body.code_flow)
+    assert len(body.code_flow) <= 8
