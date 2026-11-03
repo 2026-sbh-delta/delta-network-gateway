@@ -100,3 +100,19 @@
 - 로컬 검증: backend 전체 **163 passed, 1 deselected**, 별도 PostgreSQL 통합 **6 passed**. 후속 최신 실행 선택 수정 후 tracking/observability **13 passed**. 프론트 독립 fixture **3 passed**, format/build/Ruff/diff 검사 통과. 같은 DB 이전기와 플랫폼 저장 계약을 각각 실제 PostgreSQL로 확인했으며, 실제 고객 클라우드 이전은 미실행이다.
 
 - 최종 웹 회귀: `platform/web`에서 `npm run test:e2e` → **15 passed**. 실제 테스트 DB를 쓰는 기존 로그인/빌드/검사와 API fixture 기반 관측/계획 화면을 함께 실행했다. 새 DB 진행 화면의 데스크톱·모바일 캡처도 시각 확인했다. 표시 시험의 값은 fixture이며 실제 고객 관측 수치가 아니다.
+
+
+## 병합·릴리스·공개 검증 완료 (2026-11-04)
+
+- PostgreSQL 실행기 커밋 `fbe1a0b`, Linux CI 파일 소유권 수정 `2f36da8`은 PR #24로 main `c7eff30`에 병합했다. 승인/진행 상태 커밋 `5ef611f`는 [PR #25](https://github.com/2026-sbh-delta/delta-network-gateway/pull/25)의 전체 CI 통과 후 main `5d97f87`에 병합했다. 병합 과정에서는 문서에 함께 추가된 CI 수정과 연결 검증 기록을 모두 보존했다.
+- [AWS Release 41700029642](https://github.com/2026-sbh-delta/delta-network-gateway/actions/runs/41700029642)는 `5d97f871b917bf4e30eff034dfa4ed47cae6e42e`에서 **success**다. 배포 전 전체 앱/브라우저/실제 DB 복제·세션 데모/Terraform 7개 root 검사, ARM64 이미지 배포, HTTPS readiness가 통과했다. 기존 DB·로그인·Jenkins/SAST/DAST 런타임을 유지했다. 이번 DB 상태 연결에는 새 업무 DB 스키마나 Terraform Apply가 필요하지 않았다.
+- 공개 주소: https://d3udcz0zch0on.cloudfront.net . 실제 HTTPS 재로그인200, 기존 서비스2개 및 이전 빌드·SAST·DAST 기록을 API/UI에서 대조했다. 새 JS bundle `index-BolBCrJ5.js`의 이전 상태 화면 반영을 확인했다. 데스크톱/모바일 가로 넘침0, JS/예상 밖 console 오류0, 로그인 외 쓰기 요청0. 검증 자료는 ignored `platform/.runtime/continuity-public-proof.json`, `migration-release-before.json`, `migration-release-after.json`, `continuity-*.png`다.
+- 현재 실제 고객 환경 등록은 **0개**다. 공개 대시보드는 환경 없음으로 표시하고 시험 값을 실제 관측값처럼 채우지 않는다. OTel 실제 수집 검증은 위 로컬 앱→AWS 증거, 상태 표시 검증은 별도 fixture와 실제 플랫폼 PostgreSQL 통합 테스트를 따른다.
+- 별도 로컬 DB 통합 테스트 컨테이너/임시 네트워크는 제거했고 전체 앱 이전 데모와 증거는 보존했다. 고객용 클라우드 VM·DB를 임의 생성하지 않았으며 기존 팀 공용 VM을 중지하지 않았다.
+
+### 남은 연결 작업
+
+1. 인프라 팀이 준비할 고객 VM·DB와 사설 연결의 대상 정보를 확정한다. 실제 빌드한 앱 이미지·서비스·환경을 등록하고 해당 VM의 OTel/VM 지표를 대시보드로 연결한다. 준비 주체를 사용자에게 확인한 상태이며 답변을 가정하지 않는다.
+2. 준비된 AWS→GCP 및 온프레미스 환경에서 프론트/백엔드·DB·도메인 전환을 검증한다. 현재 DB 실행기는 PostgreSQL17 전용 구성의 운영 CLI이며, VM/도메인 자동 전환 Worker까지 완성된 것은 아니다. 관리형 DB의 권한·복제 제약도 실제 대상에서 확인해야 한다.
+3. GCP/온프레미스 샌드박스와 별도 테스트 DB를 연결하고, 실제 지원 XSS 후보에 대한 플랫폼 DAST 재현을 검증한다. 현재 공개 파이프라인은 후보0건을 `not_run`/사람 검토 필요로 기록한 증거다.
+4. 팀 AI 서버의 실제 운영 URL·인증·배포를 연결한다. context/승인 계약과 실제 팀 API 통합 검사는 완료했지만 외부 LLM에 의한 실환경 수정·적용 검증을 완료로 표시하지 않는다.
