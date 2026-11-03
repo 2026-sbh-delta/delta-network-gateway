@@ -23,6 +23,7 @@
       const keyText=model.key_present?(model.state==='available'?'있음 · 실호출 확인':'있음 · 미검증'):'없음';
       const sessionText=model.login_present?(model.login_scope || '별도 CLI 세션')+' · '+(model.login_method || '확인됨'):'없음';
       const rows=[
+        ...(model.auth_label?[['쓰는 인증',model.auth_label]]:[]),
         ['API 키',keyText],
         ['별도 로그인',sessionText],
         ...(Object.hasOwn(model,'oauth_present')?[['ChatGPT OAuth',model.oauth_present?(model.state==='available'?'실호출 확인':'토큰 있음 · 미검증'):'없음']]:[]),
@@ -147,7 +148,8 @@
   }
   const MODES={agent:'AI 에이전트 · Agent SDK',computer_use:'AI 에이전트 · Computer Use',claude:'Claude 매핑',reviewed:'수동 검토'};
   function modeLabel(value) {
-    return value==='reviewed'?MODES.reviewed:MODES[value]+' · '+((config&&config.claude_model) || '모델 지정');
+    const rt=config&&config.llm_runtime;
+    return value==='reviewed'?MODES.reviewed:MODES[value]+' · '+((config&&config.claude_model) || '모델 지정')+(rt?' · '+rt.location_label+' · '+rt.auth_label:'');
   }
   const ACTIONS={plan:'가설',type_marker:'필터링 확인 표식',type_canary:'검사 문자열',type_impact:'영향 시연',think:'생각',click:'클릭',left_click:'클릭',double_click:'더블클릭',triple_click:'트리플클릭',type:'입력',key:'키',type_text:'입력',type_probe:'검사 문자열 입력',press_key:'키',scroll:'스크롤',navigate:'이동',new_session:'새 세션',finish:'종료'};
   function setMapping(id,mapping) {
@@ -933,6 +935,16 @@
   fetch('/api/config').then(r=>{if(!r.ok)throw new Error('서버 설정을 읽지 못했습니다.');return r.json();}).then(c=>{
     config=c;sample=c.sample_report;useReport(structuredClone(sample));
     renderModels(c.models);
+    // 서버(OIDC)인지 로컬(Claude 로그인)인지 화면에서 바로 구분한다
+    const rt=c.llm_runtime;
+    if(rt){
+      const label=rt.location_label+' · '+rt.auth_label;
+      q('planner').querySelector('option[value="agent"]').textContent='AI 에이전트 · Agent SDK ('+label+')';
+      if(rt.auth!=='api_key'){const cu=q('planner').querySelector('option[value="computer_use"]');cu.disabled=true;cu.textContent='AI 에이전트 · 공식 Computer Use (API 키 필요 · 지금 사용 불가)';}
+      const pill=q('llm-runtime');pill.hidden=false;pill.dataset.location=rt.location;
+      pill.textContent=(rt.location==='server'?'서버':'로컬')+' · '+({oidc:'OIDC',api_key:'API 키',token:'토큰',login:'Claude 로그인',none:'인증 없음'}[rt.auth] || rt.auth);
+      pill.title='LLM 실행 위치와 인증 방식. 서버는 보안 도구 호스트에서 OIDC 단기 토큰, 로컬은 이 컴퓨터의 Claude 로그인을 쓴다';
+    }
     q('planner').value=c.default_planner || 'agent';
     q('plan-mode').textContent=modeLabel(q('planner').value);
     q('target-origin').textContent=c.target_origin || 'http://127.0.0.1:8766';

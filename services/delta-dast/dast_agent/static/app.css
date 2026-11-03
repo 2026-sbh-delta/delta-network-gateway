@@ -37,3 +37,4 @@
 @keyframes alertPulse{0%,100%{box-shadow:0 10px 30px #bc254066}50%{box-shadow:0 10px 40px #bc2540b3}}
 @media(prefers-reduced-motion:reduce){.qi,#queue-bar-fill{transition:none}.qi[data-state="RUNNING"] .qi-icon,#execution-alert{animation:none}}
 .queue-head h2{white-space:nowrap}.queue-head .pill{min-width:0;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#llm-runtime[data-location="server"]{background:#e6f6ec;color:#17733f}#llm-runtime[data-location="local"]{background:#fff3e0;color:#9a5b00}
