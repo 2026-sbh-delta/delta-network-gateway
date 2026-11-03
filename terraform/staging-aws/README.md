@@ -23,6 +23,7 @@ DAST는 앱 자체를 점검하므로 이 경로는 WAF를 거치지 않는다. 
 | `subnet_ids` | `set(string)` | 필수 | `vpc_id` 안의 서로 다른 AZ Subnet 2개 이상. 태스크는 Subnet 기본값과 상관없이 공인 IP를 받지 않음 |
 | `route_table_ids` | `set(string)` | `[]` | S3 게이트웨이 엔드포인트를 붙일 `subnet_ids`의 Route Table. 엔드포인트 생성 시 필수 |
 | `create_vpc_endpoints` | `bool` | `true` | ECR API/DKR·Logs 인터페이스와 S3 게이트웨이 엔드포인트 생성 |
+| `endpoint_client_security_group_ids` | `set(string)` | `[]` | 같은 VPC에서 ECR·Logs를 쓰는 다른 호스트(툴링 호스트 등) 보안 그룹. 엔드포인트의 private DNS가 VPC 전체에 적용되므로 허용해야 연결된다 |
 | `scanner_cidrs` | `set(string)` | `[]` | 내부 ALB에 접근할 DAST 실행기 사설 CIDR. 정규화된 RFC1918만 |
 | `scanner_security_group_ids` | `set(string)` | `[]` | ALB에 접근할 DAST 실행기 보안 그룹. 내부 모드에서는 `scanner_cidrs`와 합쳐 1개 이상 필수 |
 | `alb_internet_facing` | `bool` | `false` | ALB를 인터넷용으로 둔다. 실행기 IP는 도구가 배포 때 /32로 허용 |

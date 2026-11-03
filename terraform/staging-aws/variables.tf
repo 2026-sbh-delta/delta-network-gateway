@@ -67,6 +67,16 @@ variable "create_vpc_endpoints" {
   default     = true
 }
 
+variable "endpoint_client_security_group_ids" {
+  description = "Security groups of other hosts in the VPC that reach ECR and Logs; private DNS sends them to the endpoints."
+  type        = set(string)
+  default     = []
+  validation {
+    condition     = alltrue([for id in var.endpoint_client_security_group_ids : can(regex("^sg-[0-9a-f]{8,17}$", id))])
+    error_message = "endpoint_client_security_group_ids must contain security group IDs."
+  }
+}
+
 variable "scanner_cidrs" {
   description = "Private CIDRs of the DAST runner allowed to reach the internal ALB."
   type        = set(string)

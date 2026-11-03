@@ -92,6 +92,17 @@ resource "aws_vpc_security_group_ingress_rule" "endpoints_from_service" {
   to_port                      = 443
   description                  = "Staging tasks"
 }
+# Private DNS on these endpoints applies to the whole VPC, so other hosts in it (e.g. the tooling host pulling
+# its images from ECR) resolve ECR and Logs to the endpoints too and must be allowed here.
+resource "aws_vpc_security_group_ingress_rule" "endpoints_from_vpc_clients" {
+  for_each                     = var.create_vpc_endpoints ? var.endpoint_client_security_group_ids : toset([])
+  security_group_id            = aws_security_group.endpoints[0].id
+  referenced_security_group_id = each.value
+  ip_protocol                  = "tcp"
+  from_port                    = 443
+  to_port                      = 443
+  description                  = "Other hosts in the VPC"
+}
 
 resource "aws_vpc_endpoint" "interface" {
   for_each            = local.interface_endpoints
