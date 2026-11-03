@@ -89,6 +89,9 @@ def main():
         "github_subject_prefix": oidc["sub_claim_prefix"],
         "create_oidc_provider": create_provider,
         "state_bucket": bucket,
+        "cloudfront_prefix_list_id": resources[
+            "aws_ec2_managed_prefix_list.cloudfront"
+        ]["id"],
         "origin_request_policy_id": resources[
             "aws_cloudfront_origin_request_policy.platform"
         ]["id"],

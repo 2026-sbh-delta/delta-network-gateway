@@ -61,6 +61,7 @@ class IdentityPreparationTests(unittest.TestCase):
                     ("aws_subnet", "public", "subnet-public"),
                     ("aws_subnet", "private", "subnet-private"),
                     ("aws_cloudfront_origin_request_policy", "platform", "policy-test"),
+                    ("aws_ec2_managed_prefix_list", "cloudfront", "pl-cloudfront"),
                 ]
             ],
         }
@@ -116,6 +117,9 @@ class IdentityPreparationTests(unittest.TestCase):
 
     def test_owned_provider_remains_managed_on_rerun(self):
         self.assertTrue(self.prepare(owns_provider=True)["create_oidc_provider"])
+
+    def test_cloudfront_prefix_list_is_reused_from_platform_state(self):
+        self.assertEqual(self.prepare()["cloudfront_prefix_list_id"], "pl-cloudfront")
 
     def test_missing_provider_is_selected_for_creation(self):
         self.iam.get_open_id_connect_provider.side_effect = MissingProvider
