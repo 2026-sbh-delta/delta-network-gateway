@@ -33,7 +33,12 @@ SAST·DAST를 보안 도구 호스트(EC2 1대)에 상시 서비스로 올린다
    AWS_PROFILE=sb aws ssm describe-instance-information --query 'InstanceInformationList[].[InstanceId,PingStatus]' --output table
    ```
 
-4. (선택) LLM 인증. 서버는 Parameter Store의 `/delta/tooling/anthropic_api_key`(SecureString)가 있으면 API 키로 쓴다. 없으면 SAST는 규칙·캐시까지만 판정하고, DAST는 모델이 필요 없는 "수동 검토 계획"만 쓸 수 있다. 값은 콘솔에서 직접 넣는다(명령 기록에 남기지 않는다). 아웃바운드 페더레이션(단기 자격 증명)으로 바꾸면 이 단계는 없어진다.
+4. (선택) LLM 인증. 서버는 API 키 없이 OIDC(워크로드 아이덴티티 페더레이션)로 인증한다.
+   - 준비: AWS 계정의 아웃바운드 웹 아이덴티티 페더레이션 켜기, Anthropic 콘솔에 발급자·규칙·서비스 계정 등록.
+   - Parameter Store(String)에 ID 네 개를 넣는다: `anthropic_federation_rule_id`, `anthropic_organization_id`, `anthropic_service_account_id`, `anthropic_workspace_id`(`/delta/tooling/` 아래). 식별자라 비밀값이 아니다.
+   - 배포하면 서버가 AWS 신원 토큰(15분)을 5분마다 `/opt/delta/wif/token`에 새로 받고(`delta-wif-refresh.timer`), SAST는 SDK 환경 변수, DAST 에이전트는 같은 값의 페더레이션 프로필로 단기 토큰을 받아 호출한다.
+   - DAST는 항목마다 에이전트를 따로 띄워 같은 토큰을 여러 번 교환하므로, Anthropic 발급자 설정에서 일회용 토큰(JTI) 검사를 끈다.
+   - ID가 없으면 `/delta/tooling/anthropic_api_key`(SecureString)를 API 키로 쓰고, 그것도 없으면 SAST는 규칙·캐시까지만, DAST는 모델이 필요 없는 수동 검토 계획만 쓴다.
 
 ## 배포
 
@@ -80,4 +85,5 @@ sudo docker logs --tail 100 delta-sast
 | `/opt/delta/dast-runs` | DAST 점검 증거(스크린샷, report.json·html·pdf) |
 | `/opt/delta/dast-data` | DAST 프로젝트 데이터 |
 | `/opt/delta/sources` | SAST가 점검할 소스(지금은 실습 게시판과 같은 코드인 sample-target) |
-| `/opt/delta/secrets.env`, `/opt/delta/llm.env` | 내부 토큰, LLM 인증(root 전용) |
+| `/opt/delta/secrets.env`, `/opt/delta/llm.env` | 내부 토큰, LLM 인증 설정(root 전용) |
+| `/opt/delta/wif/` | AWS 신원 토큰(컨테이너 사용자만 읽기), DAST 에이전트용 페더레이션 프로필 |
