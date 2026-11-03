@@ -103,10 +103,16 @@ docker cp "$tmp:/app/sample-target" "$base/sources/sample-target"
 docker rm "$tmp" >/dev/null
 chmod -R a+rX "$base/sources"
 
+# Preserve the repository policy configured by the platform connection.
+sast_runtime=()
+if [ -f "$base/sast-runtime.env" ]; then
+  sast_runtime=(--env-file "$base/sast-runtime.env")
+fi
+
 docker rm -f delta-sast delta-dast >/dev/null 2>&1 || true
 docker run -d --name delta-sast --restart unless-stopped --network host \
   --env-file "$base/secrets.env" --env-file "$base/llm.env" \
-  -e SAST_LLM_BACKEND="$backend" -e SAST_LOCAL_ROOTS=/srv/sources \
+  "${sast_runtime[@]}" -e SAST_LLM_BACKEND="$backend" -e SAST_LOCAL_ROOTS=/srv/sources \
   -v "$base/sast-state:/var/lib/delta-sast" -v "$base/sources:/srv/sources:ro" "${llm_mounts[@]}" \
   "$SAST_IMAGE" >/dev/null
 docker run -d --name delta-dast --restart unless-stopped --network host --shm-size=1g \

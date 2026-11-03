@@ -252,3 +252,84 @@ def test_security_records_block_unsafe_downgrade(store, data, engine):
     with pytest.raises(RuntimeError, match="자동 downgrade"):
         command.downgrade(Config("alembic.ini"), "0003")
     assert ready(engine) and store.run(run["id"])["kind"] == "security_check"
+
+
+def test_private_sast_tls_requires_trusted_certificate(tmp_path):
+    import base64
+    import ssl
+    import subprocess
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    cert, key = tmp_path / "cert.pem", tmp_path / "key.pem"
+    subprocess.run(
+        [
+            "openssl",
+            "req",
+            "-x509",
+            "-newkey",
+            "rsa:2048",
+            "-nodes",
+            "-days",
+            "1",
+            "-keyout",
+            str(key),
+            "-out",
+            str(cert),
+            "-subj",
+            "/CN=127.0.0.1",
+            "-addext",
+            "subjectAltName=IP:127.0.0.1",
+        ],
+        check=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b'{"verified":true}')
+
+        def log_message(self, *args):
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    tls = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    tls.load_cert_chain(cert, key)
+    server.socket = tls.wrap_socket(server.socket, server_side=True)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        settings = config().model_copy(
+            update={"sast_url": f"https://127.0.0.1:{server.server_port}"}
+        )
+        with pytest.raises(httpx.ConnectError):
+            SecurityRunner(settings).request("GET", "/healthz")
+        trusted = settings.model_copy(
+            update={"sast_ca_base64": base64.b64encode(cert.read_bytes()).decode()}
+        )
+        assert SecurityRunner(trusted).request("GET", "/healthz") == {"verified": True}
+        assert "ca_sha256" in security_target(trusted)
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+@pytest.mark.parametrize("value", ["invalid CA", "YQ==", "a" * 32769])
+def test_bad_sast_ca_is_a_configuration_error(value):
+    with pytest.raises(Problem) as exc:
+        security_target(config().model_copy(update={"sast_ca_base64": value}))
+    assert exc.value.code == "security_config_invalid"
+
+
+def test_changed_sast_trust_does_not_continue_an_old_run():
+    from delta_platform.adapters.builds import BuildError
+
+    current = SecurityRunner(config())
+    claim = {"input_snapshot": {"security_target": {**current.target, "ca_sha256": "old"}}}
+    with pytest.raises(BuildError) as exc:
+        current.execute(claim, None, None)
+    assert exc.value.payload["code"] == "security_target_changed"

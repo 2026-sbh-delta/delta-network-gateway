@@ -87,3 +87,14 @@ run "reject_wildcard_subject" {
   variables { github_subject_prefix = "repo:example/*" }
   expect_failures = [var.github_subject_prefix]
 }
+run "new_rule_permission_does_not_bypass_parent_security_group_scope" {
+  command = plan
+  assert {
+    condition = (
+      jsondecode(aws_iam_role_policy.apply_rule_creation.policy).Statement[0].Resource == "arn:aws:ec2:ap-northeast-2:111122223333:security-group-rule/*" &&
+      jsondecode(aws_iam_role_policy.apply_rule_creation.policy).Statement[0].Condition.StringEquals["aws:RequestTag/Project"] == "delta-platform" &&
+      toset(jsondecode(aws_iam_role_policy.apply_rule_creation.policy).Statement[0].Action) == toset(["ec2:AuthorizeSecurityGroupIngress", "ec2:AuthorizeSecurityGroupEgress"])
+    )
+    error_message = "새 규칙 ARN과 요청 태그만 허용하며 다른 부모 SG를 허용하면 안 됩니다."
+  }
+}

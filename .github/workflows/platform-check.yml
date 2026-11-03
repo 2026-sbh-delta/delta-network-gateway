@@ -52,8 +52,8 @@ jobs:
       - name: Deployment boundaries
         run: |
           python3 -m unittest discover -s platform/deploy/tests -v
-          uv run --project platform/backend ruff check platform/deploy/scripts platform/deploy/tests platform/deploy/builds platform/deploy/sandbox platform/deploy/jenkins
-          uv run --project platform/backend ruff format --check platform/deploy/scripts platform/deploy/tests platform/deploy/builds platform/deploy/sandbox platform/deploy/jenkins
+          uv run --project platform/backend ruff check platform/deploy/scripts platform/deploy/tests platform/deploy/builds platform/deploy/sandbox platform/deploy/jenkins platform/deploy/sast/aws
+          uv run --project platform/backend ruff format --check platform/deploy/scripts platform/deploy/tests platform/deploy/builds platform/deploy/sandbox platform/deploy/jenkins platform/deploy/sast/aws
       - name: Browser
         working-directory: platform/web
         run: |
@@ -66,7 +66,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        root: [platform/deploy/terraform, platform/deploy/identity, platform/deploy/builds, platform/deploy/sandbox, platform/deploy/jenkins/identity]
+        root: [platform/deploy/terraform, platform/deploy/identity, platform/deploy/builds, platform/deploy/sandbox, platform/deploy/jenkins/identity, platform/deploy/sast/network]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:

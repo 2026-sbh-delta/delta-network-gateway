@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     sandbox_target: str = ""
     sast_url: str = ""
     sast_token: SecretStr = SecretStr("")
+    sast_ca_base64: str = ""
 
     @model_validator(mode="after")
     def validate_settings(self):

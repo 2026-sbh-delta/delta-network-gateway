@@ -49,6 +49,7 @@ AWS_PROFILE=sb deploy/tooling/deploy.sh
 
 - 이미지 태그는 커밋 SHA다. 커밋하지 않은 변경이 있으면 `-dirty-<시각>`이 붙는다(저장소가 태그 덮어쓰기를 막는다).
 - 끝나면 서버 결과(`ok: …`, 컨테이너 목록)와 작업실 접속 명령을 출력한다.
+- 플랫폼용 사설 HTTPS 연결을 추가한 경우 `/opt/delta/sast-runtime.env`의 저장소 정책을 SAST 재배포에도 유지한다. [플랫폼 연결 안내](../../platform/deploy/sast/README.md)를 따른다.
 - SAST·DAST 내부 토큰은 서버에서 처음 한 번 만들어 `/opt/delta/secrets.env`(root 전용)에 둔다. 이미지와 저장소에는 비밀값이 없다.
 
 ## 작업실 열기
