@@ -14,6 +14,7 @@ import {
 } from "./api";
 import "./style.css";
 import { BuildPanel } from "./BuildPanel";
+import { ObservabilityPanel } from "./ObservabilityPanel";
 
 const labels = {
   queued: "확인 대기",
@@ -564,6 +565,7 @@ function Workspace({
   const [cursor, setCursor] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [register, setRegister] = useState(false);
+  const [dashboard, setDashboard] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   async function load(more = false) {
@@ -606,6 +608,27 @@ function Workspace({
         >
           <span>δ</span> DELTA <small>Platform</small>
         </a>
+        <nav className="primary-nav" aria-label="주요 메뉴">
+          <button
+            className={dashboard ? "nav-active" : ""}
+            onClick={() => {
+              setDashboard(true);
+              setSelected(null);
+              setRegister(false);
+            }}
+          >
+            대시보드
+          </button>
+          <button
+            className={!dashboard ? "nav-active" : ""}
+            onClick={() => {
+              setDashboard(false);
+              setSelected(null);
+            }}
+          >
+            서비스
+          </button>
+        </nav>
         <div className="account">
           <span>{session.login_id} · 공통 작업 공간</span>
           <button onClick={logout}>로그아웃</button>
@@ -613,7 +636,9 @@ function Workspace({
       </header>
       <main className="workspace">
         <ErrorBox error={error} />
-        {selected ? (
+        {dashboard ? (
+          <ObservabilityPanel />
+        ) : selected ? (
           <Detail
             key={selected}
             id={selected}

@@ -24,7 +24,11 @@ if __name__ == "__main__":
     assert engine.url.database == "platform_test" and engine.url.host == "127.0.0.1"
     command.upgrade(Config("alembic.ini"), "head")
     with engine.begin() as conn:
-        conn.execute(sa.text("TRUNCATE sessions, auth_rate_limits, run_events, runs, services"))
+        conn.execute(
+            sa.text(
+                "TRUNCATE sessions, auth_rate_limits, run_events, runs, service_environments, services"
+            )
+        )
     child = subprocess.Popen([sys.executable, str(Path(__file__).with_name("e2e_worker.py"))])
     try:
         uvicorn.run(

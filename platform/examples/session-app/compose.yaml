@@ -1,0 +1,45 @@
+name: delta-session-demo
+services:
+  db:
+    image: postgres:17-alpine
+    command: [postgres, -c, wal_level=logical, -c, max_replication_slots=5, -c, max_wal_senders=5]
+    environment:
+      POSTGRES_DB: app
+      POSTGRES_USER: delta_admin
+      POSTGRES_PASSWORD: ${DB_ADMIN_PASSWORD:?set DB_ADMIN_PASSWORD}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?set APP_DB_PASSWORD}
+    ports: ["127.0.0.1:55436:5432"]
+    volumes:
+      - app-data:/var/lib/postgresql/data
+      - ./init-db.sh:/docker-entrypoint-initdb.d/10-app-role.sh:ro
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U delta_admin -d app]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+  collector:
+    image: otel/opentelemetry-collector-contrib:0.164.0@sha256:340c9ca6a36617084c6661bdc4f0fe92b7cda5a805d61673ec8db375fddc522b
+    command: [--config=/config.yaml]
+    env_file: [.runtime/collector.env]
+    volumes: ["../../observability/collector.yaml:/config.yaml:ro"]
+    mem_limit: 192m
+  app:
+    build: .
+    environment:
+      DATABASE_URL: postgresql://app:${APP_DB_PASSWORD}@db:5432/app
+      APP_SECRET_KEY: ${APP_SECRET_KEY:?set APP_SECRET_KEY}
+      APP_ENVIRONMENT: local-source
+      APP_VERSION: session-demo-v1
+      APP_ALLOWED_HOSTS: localhost,127.0.0.1
+      APP_SECURE_COOKIES: "false"
+      OTEL_ENABLED: "true"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://collector:4318
+      OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE: DELTA
+      OTEL_SEMCONV_STABILITY_OPT_IN: http
+    ports: ["127.0.0.1:8096:8080"]
+    depends_on:
+      db: {condition: service_healthy}
+      collector: {condition: service_started}
+    mem_limit: 256m
+volumes:
+  app-data:

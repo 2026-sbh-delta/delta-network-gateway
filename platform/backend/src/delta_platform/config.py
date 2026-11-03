@@ -42,6 +42,7 @@ class Settings(BaseSettings):
     dast_url: str = ""
     dast_token: SecretStr = SecretStr("")
     dast_ca_base64: str = ""
+    observability_region: str = "ap-northeast-2"
 
     @model_validator(mode="after")
     def validate_settings(self):

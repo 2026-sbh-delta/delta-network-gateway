@@ -49,6 +49,23 @@ jobs:
           uv run pytest -q
       - name: Staging library
         run: uv run --project platform/backend --with pytest-asyncio pytest -q -c services/delta-staging/pyproject.toml services/delta-staging/tests
+      - name: Session example and OTel configuration
+        env:
+          DATABASE_URL: postgresql://platform_test:local-test-only@127.0.0.1:55433/platform_test
+          APP_SECRET_KEY: isolated-ci-test-key-at-least-32-characters
+          APP_SECURE_COOKIES: 'false'
+          AWS_REGION: ap-northeast-2
+          AWS_ACCESS_KEY_ID: validation-only
+          AWS_SECRET_ACCESS_KEY: validation-only
+          AWS_EC2_METADATA_DISABLED: 'true'
+          DELTA_PROJECT_ID: 496562be-f67b-5f7e-a16b-929fd347b9ad
+          DELTA_SERVICE_ID: 00000000-0000-0000-0000-000000000001
+          DELTA_ENVIRONMENT_ID: 00000000-0000-0000-0000-000000000002
+        run: |
+          cd platform/examples/session-app
+          uv run --frozen python manage.py test demo.notes --noinput
+          cd ../../..
+          docker run --rm -e AWS_REGION -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -e AWS_EC2_METADATA_DISABLED -e DELTA_PROJECT_ID -e DELTA_SERVICE_ID -e DELTA_ENVIRONMENT_ID -v "$PWD/platform/observability/collector.yaml:/config.yaml:ro" otel/opentelemetry-collector-contrib:0.164.0@sha256:340c9ca6a36617084c6661bdc4f0fe92b7cda5a805d61673ec8db375fddc522b validate --config=/config.yaml
       - name: DAST platform contract
         run: uv run --project services/delta-dast --python 3.12 --frozen --with pytest --with pytest-asyncio --with httpx python -m pytest -q services/delta-dast/tests/test_platform_api.py services/delta-dast/tests/test_sarif_adapter.py services/delta-dast/tests/test_llm_runtime.py
       - name: Platform to team DAST integration
@@ -71,7 +88,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        root: [platform/deploy/terraform, platform/deploy/identity, platform/deploy/builds, platform/deploy/sandbox, platform/deploy/jenkins/identity, platform/deploy/sast/network]
+        root: [platform/deploy/terraform, platform/deploy/identity, platform/deploy/builds, platform/deploy/sandbox, platform/deploy/jenkins/identity, platform/deploy/sast/network, platform/deploy/observability/identity]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:

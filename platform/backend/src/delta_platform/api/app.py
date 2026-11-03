@@ -17,11 +17,13 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from delta_platform.adapters.builds import BuildError, build_runner, build_target
 from delta_platform.adapters.dast import dast_target
+from delta_platform.adapters.observability import DashboardReader
 from delta_platform.adapters.sandbox import sandbox_target
 from delta_platform.adapters.security import security_target
 from delta_platform.config import Settings
 from delta_platform.core.auth import COOKIE, Auth
 from delta_platform.core.database import engine_for, ready
+from delta_platform.core.environments import EnvironmentStore
 from delta_platform.core.errors import Problem
 from delta_platform.core.inputs import (
     BuildInput,
@@ -38,11 +40,13 @@ logger = logging.getLogger("delta_platform")
 Limit = Annotated[int, Query(ge=1, le=100)]
 
 
-def create_app(settings=None, engine=None):
+def create_app(settings=None, engine=None, *, dashboard=None):
     settings = settings or Settings()
     owned_engine = engine is None
     engine = engine or engine_for(settings)
     auth, store = Auth(engine, settings), Store(engine)
+    environments = EnvironmentStore(engine)
+    dashboard = dashboard or DashboardReader(settings.observability_region)
 
     @asynccontextmanager
     async def lifespan(app):
@@ -179,6 +183,18 @@ def create_app(settings=None, engine=None):
     @protected.get("/services/{service_id}")
     def service_detail(service_id: UUID):
         return store.service(service_id)
+
+    @protected.get("/services/{service_id}/environments")
+    def service_environments(service_id: UUID):
+        return environments.list(service_id)
+
+    @protected.get("/services/{service_id}/observability")
+    def service_observability(
+        service_id: UUID,
+        environment_id: UUID,
+        minutes: Annotated[int, Query(ge=1, le=120)] = 15,
+    ):
+        return dashboard.read(environments.get(service_id, environment_id), minutes)
 
     @protected.post("/services/{service_id}/source-checks")
     def source_check(service_id: UUID, body: EmptyInput, request: Request):
