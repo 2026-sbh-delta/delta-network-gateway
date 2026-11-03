@@ -2,7 +2,7 @@
 
 - 기준일: 2026-11-03. `feat/platform-jenkins`, 별도 worktree, main `fa05807` 기준.
 - 승인: 사용자가 빌드 실행기를 Jenkins로 정정하고 다음 작업 구현을 지시했다. Jenkins가 아직 없어 구성도 준비하도록 확인했다.
-- 상태: 구현·로컬 실제 Jenkins/ECR/ECS 검증 완료. 빌드 전용 IAM 기반 적용 완료. GCP 네트워크 작업은 기존 worktree에 보존했다. Jenkins 운영 EC2·HTTPS·공개 플랫폼 전환·푸시는 미실행이다. 사용자가 `feat(platform): integrate Jenkins builds and SAST checks` 메시지의 로컬 커밋을 승인했다.
+- 상태: 구현·로컬 실제 Jenkins/ECR/ECS 검증 완료. 빌드 전용 IAM 기반 적용 완료. GCP 네트워크 작업은 기존 worktree에 보존했다. 구현 `337b0ec`을 사용자 승인으로 커밋·푸시하고 [PR #18](https://github.com/2026-sbh-delta/delta-network-gateway/pull/18)을 열었다. Jenkins 운영 EC2·HTTPS·공개 플랫폼 전환은 미실행이다.
 
 ## 목적과 범위
 
@@ -51,3 +51,7 @@ Jenkins와 전용 빌드 에이전트를 준비하고 제한된 API 계정/토�
 ### 운영에 남은 작업
 
 IAM `delta-platform-jenkins-agent`는 적용했지만 VM에 연결하지 않았다. 최종 trust는 `ec2.amazonaws.com`만 허용한다. 운영 EC2/전용 에이전트·HTTPS·토큰 설정, 플랫폼 Release와 공개 웹 실제 검증은 남아 있다. 기존 `/delta-platform/runtime`, CodeBuild, 운영 DB는 이번 작업에서 전환하지 않았다. 커밋/PR 후 운영 연결 순서와 복구는 [실행 안내](../../platform/deploy/jenkins/README.md)를 따른다.
+
+## GitHub 게시
+
+2026-11-03 `git push -u origin feat/platform-jenkins`와 `gh pr create`가 성공했다. 최신 main과 충돌이 없으며 PR #18의 Platform checks를 시작했다. 병합·운영 배포는 수행하지 않았다. 최신 CI 결과는 PR의 Checks를 따른다.
