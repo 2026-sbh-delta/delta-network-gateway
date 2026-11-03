@@ -101,6 +101,8 @@ def create_app(port: int = 8765, target_port: int = 8766,
         codex = _codex_auth()
         anthropic_key = bool(os.environ.get("ANTHROPIC_API_KEY"))
         anthropic_token = bool(os.environ.get("ANTHROPIC_AUTH_TOKEN"))
+        # OIDC(워크로드 아이덴티티 페더레이션): 서버 역할의 신원 토큰을 단기 토큰으로 바꿔 쓴다
+        federation = bool(os.environ.get("ANTHROPIC_FEDERATION_RULE_ID"))
         openai_key = bool(os.environ.get("OPENAI_API_KEY"))
         openai_oauth = bool(os.environ.get("OPENAI_ACCESS_TOKEN"))
         claude_model = os.environ.get("DAST_CLAUDE_MODEL", DEFAULT_MODEL)
@@ -111,7 +113,7 @@ def create_app(port: int = 8765, target_port: int = 8766,
                 "model": claude_model, "key_present": anthropic_key,
                 "login_present": claude["logged_in"], "login_method": claude["method"],
                 "login_scope": "Claude Code 세션",
-                "credential_present": anthropic_key or anthropic_token or claude["logged_in"],
+                "credential_present": anthropic_key or anthropic_token or federation or claude["logged_in"],
                 **model_runtime["claude_agent"],
             },
             {
