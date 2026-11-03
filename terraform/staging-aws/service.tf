@@ -131,6 +131,8 @@ resource "aws_lb_listener" "http" {
 }
 
 # The staging tool swaps the image with a new task definition revision per run. Terraform owns only the base.
+# min 0 / max 200: on a swap ECS starts the new task (image pull included) while the old one stops, instead of
+# waiting for the old task to finish stopping first. The tool reports ready only once the new task alone is healthy.
 resource "aws_ecs_service" "app" {
   name                               = local.prefix
   cluster                            = aws_ecs_cluster.staging.id
@@ -138,7 +140,7 @@ resource "aws_ecs_service" "app" {
   desired_count                      = 0
   launch_type                        = "FARGATE"
   deployment_minimum_healthy_percent = 0
-  deployment_maximum_percent         = 100
+  deployment_maximum_percent         = 200
   enable_execute_command             = false
   network_configuration {
     subnets          = sort(tolist(var.subnet_ids))

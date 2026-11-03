@@ -42,7 +42,7 @@ async def _deploy(args: argparse.Namespace) -> int:
     while True:
         steps = registry.get(req.run_id).steps
         for step in steps[printed:]:
-            print(f"[{step.at:%H:%M:%S}] {step.name} {step.detail}", file=sys.stderr)
+            print(f"[{step.at:%H:%M:%S} +{step.elapsed_seconds:.0f}s] {step.name} {step.detail}", file=sys.stderr)
         printed = len(steps)
         if task.done():
             break

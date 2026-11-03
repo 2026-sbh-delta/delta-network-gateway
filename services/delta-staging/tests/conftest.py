@@ -9,6 +9,7 @@ from delta_staging.config import AwsTarget
 
 ECR = "444455556666.dkr.ecr.ap-northeast-2.amazonaws.com/"
 IMAGE = ECR + "demo-app@sha256:" + "a" * 64
+NEW_IP = "10.0.1.20"
 
 
 class FakeEcs:
@@ -56,7 +57,8 @@ class FakeEcs:
         self.calls.append(("describe_tasks", kwargs))
         digest = self.running_digest or (self.image.rsplit("@", 1)[1] if "@sha256:" in self.image else "sha256:" + "b" * 64)
         return {"tasks": [{"taskArn": kwargs["tasks"][0], "taskDefinitionArn": self.current, "lastStatus": "RUNNING",
-                           "containers": [{"name": "app", "imageDigest": digest}]}]}
+                           "containers": [{"name": "app", "imageDigest": digest,
+                                           "networkInterfaces": [{"privateIpv4Address": NEW_IP}]}]}]}
 
     def describe_services(self, **kwargs: Any) -> dict[str, Any]:
         self.calls.append(("describe_services", kwargs))
@@ -68,12 +70,19 @@ class FakeEcs:
 
 
 class FakeElb:
-    def __init__(self, states: list[str] | None = None) -> None:
+    """대상 그룹 흉내. states 는 새 태스크 상태, old 는 같은 시점의 이전 태스크 상태(None 이면 대상에서 빠짐)."""
+
+    def __init__(self, states: list[str] | None = None, old: list[str | None] | None = None) -> None:
         self.states = states or ["initial", "healthy"]
+        self.old = old or [None]
 
     def describe_target_health(self, **kwargs: Any) -> dict[str, Any]:
         state = self.states.pop(0) if len(self.states) > 1 else self.states[0]
-        return {"TargetHealthDescriptions": [{"TargetHealth": {"State": state}}]}
+        old = self.old.pop(0) if len(self.old) > 1 else self.old[0]
+        targets = [{"Target": {"Id": NEW_IP}, "TargetHealth": {"State": state}}]
+        if old:
+            targets.append({"Target": {"Id": "10.0.1.10"}, "TargetHealth": {"State": old}})
+        return {"TargetHealthDescriptions": targets}
 
 
 class FakeEc2:

@@ -32,8 +32,8 @@ async def test_deploy_swaps_image_and_reports_internal_url(target):
     assert "taskDefinitionArn" not in registered and "status" not in registered
     update = next(kwargs for name, kwargs in ecs.calls if name == "update_service")
     assert update["desiredCount"] == 1 and update["taskDefinition"] == done.revision
-    assert [s.name for s in done.steps] == ["accepted", "task_definition", "service_updated", "rollout_completed",
-                                            "image_digest", "healthy"]
+    assert [s.name for s in done.steps] == ["accepted", "task_definition", "service_updated", "image_digest", "healthy"]
+    assert done.steps[0].elapsed_seconds == 0 and all(s.elapsed_seconds >= 0 for s in done.steps)
     assert done.image_digest == "sha256:" + "a" * 64 and done.task_arn.endswith("/abc")
 
 
@@ -75,6 +75,36 @@ async def test_rollout_failure_marks_failed_and_scales_down(target):
 
     assert done.state == "failed" and "tasks failed to start" in done.error and done.url is None
     assert ecs.calls[-1] == ("update_service", {"cluster": target.cluster, "service": target.service, "desiredCount": 0})
+
+
+async def test_ready_waits_until_old_task_stops_serving(target):
+    elb = FakeElb(states=["healthy"], old=["healthy", "healthy", "draining"])
+    registry = StagingRegistry({"aws": make_provider(target, elb=elb)})
+
+    await registry.start(_req())
+    done = await registry.wait("run-1")
+
+    assert done.state == "ready" and elb.old == ["draining"]  # 이전 태스크가 트래픽에서 빠진 뒤에야 ready
+
+
+async def test_ready_does_not_wait_for_ecs_completed_mark(target):
+    ecs = FakeEcs(rollout=["IN_PROGRESS"])
+    registry = StagingRegistry({"aws": make_provider(target, ecs=ecs)})
+
+    await registry.start(_req())
+    done = await registry.wait("run-1")
+
+    assert done.state == "ready"
+
+
+async def test_old_task_still_serving_times_out(target):
+    elb = FakeElb(states=["healthy"], old=["healthy"])
+    registry = StagingRegistry({"aws": make_provider(target, elb=elb, health_timeout=0)})
+
+    await registry.start(_req())
+    done = await registry.wait("run-1")
+
+    assert done.state == "failed" and "10.0.1.10=healthy" in done.error
 
 
 async def test_unhealthy_target_times_out(target):

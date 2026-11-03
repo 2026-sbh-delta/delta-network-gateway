@@ -117,7 +117,9 @@ class StagingRegistry:
 
     def _step(self, run_id: str, name: str, detail: str = "") -> None:
         current = self._deployments[run_id]
-        self._put(current.model_copy(update={"steps": (*current.steps, Step(name=name, at=_now(), detail=detail))}))
+        at = _now()
+        step = Step(name=name, at=at, elapsed_seconds=round((at - current.started_at).total_seconds(), 1), detail=detail)
+        self._put(current.model_copy(update={"steps": (*current.steps, step)}))
 
     async def _run(self, req: DeployRequest, provider: Provider) -> None:
         try:

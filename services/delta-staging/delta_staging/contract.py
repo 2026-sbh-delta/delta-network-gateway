@@ -69,6 +69,7 @@ class DeployRequest(_Model):
 class Step(_Model):
     name: str
     at: datetime
+    elapsed_seconds: float = Field(default=0, description="배포 요청을 받은 뒤 이 단계까지 걸린 시간")
     detail: str = ""
 
 

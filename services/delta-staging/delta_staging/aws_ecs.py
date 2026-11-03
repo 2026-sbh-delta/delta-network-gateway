@@ -1,7 +1,8 @@
 """AWS ECS 스테이징. 기반(클러스터·서비스·내부 ALB)은 Terraform 이 만들고, 여기서는 이미지만 바꾼다.
 
-순서: 계정 확인 → 태스크 정의 새 개정판(이미지·env 교체) → 서비스 갱신(1개) → 배포 완료 대기
-→ 실행 중인 태스크의 이미지 digest 확인 → 대상 그룹 healthy 대기.
+순서: 계정 확인 → 태스크 정의 새 개정판(이미지·env 교체) → 서비스 갱신(1개) → 새 태스크 실행·digest 확인
+→ 대상 그룹에 새 태스크만 healthy 로 남을 때 ready.
+ECS 의 배포 완료 표시는 헬스 체크 통과 뒤에도 수십 초 늦게 붙어서 기다리지 않는다.
 """
 
 from __future__ import annotations
@@ -102,13 +103,11 @@ class AwsEcsStaging:
         await self._call("ecs", "update_service", cluster=self.target.cluster, service=self.target.service,
                          taskDefinition=revision, desiredCount=1, forceNewDeployment=True)
         report("service_updated", f"{self.target.service} desired=1")
-        await self._wait_rollout(revision)
-        report("rollout_completed", revision)
-        task_arn, digest = await self._running_digest(revision)
+        task_arn, digest, ip = await self._new_task(revision)
         if "@sha256:" in req.image and req.image.rsplit("@", 1)[1] != digest:
             raise StagingError(f"실행 중인 이미지 digest가 요청과 다르다: {digest}")
         report("image_digest", digest)
-        await self._wait_healthy()
+        await self._wait_healthy(ip)
         report("healthy", self.target.url)
         return Outcome(url=self.target.url, revision=revision, image_digest=digest, task_arn=task_arn,
                        scanner_ip=scanner_ip)
@@ -134,48 +133,46 @@ class AwsEcsStaging:
                                       tags=tags)
         return registered["taskDefinition"]["taskDefinitionArn"]
 
-    async def _wait_rollout(self, revision: str) -> None:
+    async def _rollout_failed(self, revision: str) -> None:
+        services = (await self._call("ecs", "describe_services", cluster=self.target.cluster,
+                                     services=[self.target.service]))["services"]
+        deployment = next((d for d in services[0]["deployments"] if d["taskDefinition"] == revision), None)
+        if deployment is not None and deployment.get("rolloutState") == "FAILED":
+            raise StagingError(f"ECS 배포 실패: {deployment.get('rolloutStateReason', '사유 없음')}")
+
+    async def _new_task(self, revision: str) -> tuple[str, str, str]:
+        """새 개정판으로 실행 중인 태스크와 ECS가 실제로 받은 이미지 digest(요청 값이 아니다), 태스크 IP."""
         deadline = time.monotonic() + self.rollout_timeout
         while True:
-            services = (await self._call("ecs", "describe_services", cluster=self.target.cluster,
-                                         services=[self.target.service]))["services"]
-            deployment = next((d for d in services[0]["deployments"] if d["taskDefinition"] == revision), None)
-            if deployment is not None:
-                if deployment.get("rolloutState") == "FAILED":
-                    raise StagingError(f"ECS 배포 실패: {deployment.get('rolloutStateReason', '사유 없음')}")
-                if deployment.get("rolloutState") == "COMPLETED" and deployment.get("runningCount", 0) >= 1:
-                    return
-            if time.monotonic() >= deadline:
-                raise StagingError(f"ECS 배포가 {int(self.rollout_timeout)}초 안에 끝나지 않았다")
-            await asyncio.sleep(self.poll_seconds)
-
-    async def _running_digest(self, revision: str) -> tuple[str, str]:
-        """새 개정판으로 실행 중인 태스크에서 ECS가 실제로 받은 이미지 digest를 읽는다(요청 값이 아니다)."""
-        deadline = time.monotonic() + self.health_timeout
-        while True:
+            await self._rollout_failed(revision)
             arns = (await self._call("ecs", "list_tasks", cluster=self.target.cluster, serviceName=self.target.service,
                                      desiredStatus="RUNNING"))["taskArns"]
             tasks = (await self._call("ecs", "describe_tasks", cluster=self.target.cluster, tasks=arns))["tasks"] if arns else []
             for task in tasks:
                 if task.get("taskDefinitionArn") != revision or task.get("lastStatus") != "RUNNING":
                     continue
-                container = next((c for c in task.get("containers", []) if c.get("name") == self.target.container_name), None)
-                digest = (container or {}).get("imageDigest", "")
-                if DIGEST.match(digest):
-                    return task["taskArn"], digest
+                container = next((c for c in task.get("containers", []) if c.get("name") == self.target.container_name), {})
+                digest = container.get("imageDigest", "")
+                ip = next((n.get("privateIpv4Address") for n in container.get("networkInterfaces", [])), None)
+                if DIGEST.match(digest) and ip:
+                    return task["taskArn"], digest, ip
             if time.monotonic() >= deadline:
-                raise StagingError("실행 중인 태스크에서 이미지 digest를 확인하지 못했다")
+                raise StagingError(f"새 태스크가 {int(self.rollout_timeout)}초 안에 실행되지 않았다")
             await asyncio.sleep(self.poll_seconds)
 
-    async def _wait_healthy(self) -> None:
+    async def _wait_healthy(self, ip: str) -> None:
+        """새 태스크가 healthy 이고 다른 태스크는 트래픽을 받지 않을 때까지. DAST 가 이전 버전을 보지 않게 한다."""
         deadline = time.monotonic() + self.health_timeout
         while True:
             targets = (await self._call("elbv2", "describe_target_health",
                                         TargetGroupArn=self.target.target_group_arn))["TargetHealthDescriptions"]
-            if any(t["TargetHealth"]["State"] == "healthy" for t in targets):
+            new = [t for t in targets if t.get("Target", {}).get("Id") == ip]
+            old = [t for t in targets if t.get("Target", {}).get("Id") != ip and t["TargetHealth"]["State"] == "healthy"]
+            if any(t["TargetHealth"]["State"] == "healthy" for t in new) and not old:
                 return
             if time.monotonic() >= deadline:
-                states = ", ".join(t["TargetHealth"]["State"] for t in targets) or "대상 없음"
+                states = ", ".join(f"{t.get('Target', {}).get('Id', '?')}={t['TargetHealth']['State']}"
+                                   for t in targets) or "대상 없음"
                 raise StagingError(f"헬스 체크가 {int(self.health_timeout)}초 안에 통과하지 않았다 ({states})")
             await asyncio.sleep(self.poll_seconds)
 
