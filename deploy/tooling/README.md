@@ -38,6 +38,7 @@ SAST·DAST를 보안 도구 호스트(EC2 1대)에 상시 서비스로 올린다
    - Parameter Store(String)에 ID 네 개를 넣는다: `anthropic_federation_rule_id`, `anthropic_organization_id`, `anthropic_service_account_id`, `anthropic_workspace_id`(`/delta/tooling/` 아래). 식별자라 비밀값이 아니다.
    - 배포하면 서버가 AWS 신원 토큰(15분)을 5분마다 `/opt/delta/wif/token`에 새로 받고(`delta-wif-refresh.timer`), SAST는 SDK 환경 변수, DAST 에이전트는 같은 값의 페더레이션 프로필로 단기 토큰을 받아 호출한다.
    - DAST는 항목마다 에이전트를 따로 띄워 같은 토큰을 여러 번 교환하므로, Anthropic 발급자 설정에서 일회용 토큰(JTI) 검사를 끈다.
+   - 모델은 `sast_llm_model`, `dast_llm_model`(String)로 바꾼다. 없으면 각 서비스 기본값(Sonnet)을 쓴다.
    - ID가 없으면 `/delta/tooling/anthropic_api_key`(SecureString)를 API 키로 쓰고, 그것도 없으면 SAST는 규칙·캐시까지만, DAST는 모델이 필요 없는 수동 검토 계획만 쓴다.
 
 ## 배포
