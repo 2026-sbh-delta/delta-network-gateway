@@ -3,7 +3,7 @@
 ## 현재 상태
 
 - 기준일: 2026-11-03 (Asia/Seoul)
-- 플랫폼 U2: 사용자가 CodeBuild 선택을 승인했다. `feat/platform-builds`에서 빌드 API·Worker·웹·별도 빌드 기반을 구현했다. PostgreSQL 71개·브라우저 5개·빌드 기반 mock 1개·배포 도구 19개 통과. AWS 빌드 기반 6개 추가 후 실제 공개 저장소 이미지 빌드·ECR digest·API 결과/로그 조회·최종 No changes를 확인했다. 사용자가 로컬 커밋을 승인했다. 앱 운영 배포·푸시는 아직 하지 않았다. [기록](ai-dlc/platform-u2.md)
+- 플랫폼 U2: 사용자가 CodeBuild 선택을 승인했다. `feat/platform-builds`에서 빌드 API·Worker·웹·별도 빌드 기반을 구현했다. PostgreSQL 71개·브라우저 5개·빌드 기반 mock 1개·배포 도구 19개 통과. AWS 빌드 기반 6개 추가 후 실제 공개 저장소 이미지 빌드·ECR digest·API 결과/로그 조회·최종 No changes를 확인했다. 구현 `d0d3154`를 게시하고 [PR #14](https://github.com/2026-sbh-delta/delta-network-gateway/pull/14)를 열었다. CI 실행 중이며 병합은 사용자가 진행한다. 앱 운영 배포는 아직 하지 않았다. [기록](ai-dlc/platform-u2.md)
 - ANF 비용 절감(2026-11-03 17:08 KST): **최종 disabled 적용 완료**. Firewall/엔드포인트 2개를 제거했고 ALB/사설 Client의 두 포트 HTTP 200과 중앙 Plan No changes를 확인했다. 실제 ANF 재생성과 검사 경로/삭제 보호 원복, 허용/차단/양방향 로그까지 검증한 뒤 다시 꺼뒀다. 정책/규칙/기존 로그와 네트워크는 보존했다. 최신 main pull 후에도 중앙 mock 41개와 helper 테스트 11개 통과. 구현/테스트/운영 문서 3개 서명 커밋을 origin/main에 게시했고 원격 `fae8ca04` 일치를 확인했다. 이 게시 확인 기록은 후속 문서 커밋으로 남긴다. [기록](ai-dlc/anf-cost-mode.md)
 - AWS → GCP 매핑 판단: [`migration_mapping`](ai-dlc/migration-mapping.md) 구현 완료. 실제 AWS state 로 대조했고 GCP 생성은 안 함. 앞단은 HAProxy 기각, AWS 기능 사용 방향(ADR-AI-37), 값의 기준은 Terraform(ADR-AI-38), GCP 담당은 동규 님(2026-11-02 사용자 전달).
 - 통합 시연: `deploy/demo-console/` 에서 온프레미스 증거·DAST·AI 판단·Jenkins 카나리를 한 흐름과 화면으로 돌린다. 2026-11-02 로컬 리허설 3개 시나리오 확인, 브랜치 `feat/demo-integration` 에 커밋·푸시했고 서버 배포는 안 함. 배포는 Mac Docker 대역이고 AWS·GCP 는 미연결. [기록](ai-dlc/demo-integration.md)

@@ -9,7 +9,7 @@
 - 로그인은 사용자 정정에 따라 고정 ID·비밀번호 한 쌍과 공통 작업 공간으로 시작한다. U1에 회원가입·계정 관리·소셜 로그인·개인별 권한은 없다.
 - 문서는 한국어로 작성하고 코드 주석은 필요하면 영어로 작성한다.
 - 구현 전 작업 범위를 공유한다. 추가 지시 `Dont forget to tell me before you commit.`에 따라 커밋 전에 변경 내용·검증 결과를 알린다. 푸시는 별도 지시 범위다.
-- U1과 GitHub OIDC 연결·실제 Plan/Release 검증을 완료했다. U2는 사용자가 CodeBuild 선택을 승인해 `feat/platform-builds`에서 구현·실제 AWS 빌드 검증을 완료했다. 사용자가 로컬 커밋을 승인했다. 앱 운영 배포·푸시는 아직 하지 않았다. [U2 기록](platform-u2.md)을 따른다.
+- U1과 GitHub OIDC 연결·실제 Plan/Release 검증을 완료했다. U2는 사용자가 CodeBuild 선택을 승인해 `feat/platform-builds`에서 구현·실제 AWS 빌드 검증을 완료했다. 구현 `d0d3154`를 게시하고 [PR #14](https://github.com/2026-sbh-delta/delta-network-gateway/pull/14)를 열었다. CI 실행 중이며 병합은 사용자가 진행한다. 앱 운영 배포는 아직 하지 않았다. [U2 기록](platform-u2.md)을 따른다.
 
 ## Ideation
 

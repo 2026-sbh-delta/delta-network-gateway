@@ -2,7 +2,7 @@
 
 - 기준일: 2026-11-03. 브랜치 `feat/platform-builds`.
 - 승인: 사용자의 `Let's do next jobs.`에 따라 U2를 시작했고, CodeBuild 비교 후 `Then I will follow your decision.`으로 실행기 선택을 승인받았다. 구현 범위를 사전에 공유했다.
-- 상태: 구현·로컬 검증·AWS 빌드 기반 Apply·실제 이미지 빌드 완료. 백엔드·브라우저 최종 재검증 완료. 사용자가 로컬 커밋을 승인했다. 앱 운영 배포·푸시는 아직 하지 않았다.
+- 상태: 구현·로컬 검증·AWS 빌드 기반 Apply·실제 이미지 빌드 완료. 백엔드·브라우저 최종 재검증 완료. 구현 커밋 `d0d3154`를 게시하고 [PR #14](https://github.com/2026-sbh-delta/delta-network-gateway/pull/14)를 생성했다. GitHub CI 실행 중이며 병합은 사용자가 진행한다. 앱 운영 배포는 아직 하지 않았다.
 
 ## Ideation / Inception
 
@@ -91,10 +91,12 @@
 - `platform/deploy/terraform`의 app VM IMDSv2 hop limit 2는 코드 변경이며 아직 Apply하지 않았다. 게시 후 기존 GitHub Infra Plan/Apply로 적용하고 Release로 U2를 배포한다.
 - 스키마 `0002`는 빌드 종류·외부 실행 정보를 추가한다. Release는 기존 API/Worker를 멈추고 S3 DB 백업 후 migration을 실행한다. 구버전 Worker와 새 작업 종류가 섞이지 않게 한다. 단일 VM이므로 이 배포 구간에는 중단이 있다.
 - U1 바이너리는 schema `0001`을 요구한다. U2를 쓴 뒤 단순히 U1 이미지로 돌리면 readiness가 실패한다. 수정 릴리스나 DB 백업 복구가 필요하며 빌드 기록이 있는 상태의 downgrade는 거절한다.
-- AWS 자원 추가와 앱 운영 배포를 구분한다. Conventional Commit 메시지와 검증 결과를 공유했고 사용자의 `Commit.` 지시로 로컬 커밋을 승인받았다. 푸시·PR·main 반영·앱 Release는 아직 하지 않았다.
+- AWS 자원 추가와 앱 운영 배포를 구분한다. Conventional Commit 메시지와 검증 결과를 공유했고 사용자의 `Commit.` 지시로 로컬 커밋을 승인받았다. 구현 커밋을 푸시하고 [PR #14](https://github.com/2026-sbh-delta/delta-network-gateway/pull/14)를 열었다. main 병합은 사용자가 진행하며 앱 Release는 아직 하지 않았다.
 
 ## Git 기록
 
 - 사용자 `Commit.` 지시에 따른 로컬 커밋: `feat(platform): add public repository image builds with CodeBuild`.
 - 대상 브랜치: `feat/platform-builds`, 기준 main: `23aa0b1` (PR #12).
 - 실제 설정·state·Plan·실행 로그·자격 증명 파일은 커밋에서 제외한다. 원격 게시·배포 승인은 이 로컬 커밋과 구분한다.
+
+- 2026-11-03 사용자 `Open PR. I'll merge it.` 지시로 `git push -u origin feat/platform-builds`와 PR 생성을 완료했다. [PR #14](https://github.com/2026-sbh-delta/delta-network-gateway/pull/14)는 OPEN·MERGEABLE이며 GitHub Platform checks가 시작됐다. CI 최종 결과는 PR Checks를 따른다. 병합·배포는 실행하지 않았다.
