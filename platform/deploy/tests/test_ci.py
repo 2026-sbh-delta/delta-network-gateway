@@ -3,6 +3,7 @@
 import io
 import json
 import os
+import re
 import runpy
 import shutil
 import sys
@@ -37,6 +38,7 @@ class CIConfigTests(unittest.TestCase):
             "PLATFORM_STATE_BUCKET": "test-platform-state",
             "AWS_REGION": "ap-northeast-2",
             "AWS_ACCOUNT_ID": "123456789012",
+            "AWS_ROLE_ARN": "arn:aws:iam::123456789012:role/delta-platform-github-plan",
         } | overrides
         with patch.dict(os.environ, env):
             runpy.run_path(str(self.root / "scripts/ci-config.py"))
@@ -56,9 +58,35 @@ class CIConfigTests(unittest.TestCase):
         with self.assertRaises(SystemExit):
             self.configure()
 
+    def test_role_from_other_account_rejected(self):
+        with self.assertRaises(SystemExit):
+            self.configure(AWS_ROLE_ARN="arn:aws:iam::999999999999:role/platform")
+
     def test_backend_injection_rejected(self):
         with self.assertRaises(SystemExit):
             self.configure(PLATFORM_STATE_BUCKET='bucket"\nkey="another-state')
+
+
+class GitHubVariableContractTests(unittest.TestCase):
+    def test_published_variables_cover_both_deployment_workflows(self):
+        root = SCRIPTS.parents[2]
+        values = json.loads((SCRIPTS.parent / "github-variables.json").read_text())
+        referenced = set()
+        for name in ("platform-infra.yml", "platform-release.yml"):
+            workflow = (root / ".github/workflows" / name).read_text()
+            referenced.update(re.findall(r"\bvars\.([A-Z_]+)", workflow))
+            self.assertNotRegex(workflow, r"(?m)^\s*environment:")
+        self.assertEqual(set(values), referenced)
+        self.assertEqual(values["PLATFORM_CI_ENABLED"], "false")
+        inputs = json.loads(values["PLATFORM_TF_INPUTS"])
+        self.assertEqual(inputs["account_id"], values["AWS_ACCOUNT_ID"])
+        self.assertEqual(inputs["region"], values["AWS_REGION"])
+        self.assertFalse(inputs["bootstrap_origin_access"])
+        for operation in ("PLAN", "APPLY", "RELEASE"):
+            self.assertEqual(
+                values[f"AWS_{operation}_ROLE_ARN"],
+                f"arn:aws:iam::{values['AWS_ACCOUNT_ID']}:role/delta-platform-github-{operation.lower()}",
+            )
 
 
 class PlanProvenanceTests(unittest.TestCase):

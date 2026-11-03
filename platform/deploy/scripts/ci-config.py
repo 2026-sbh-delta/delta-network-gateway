@@ -9,8 +9,11 @@ config = json.loads(os.environ["PLATFORM_TF_INPUTS"])
 account = config["account_id"]
 region = config["region"]
 bucket = os.environ["PLATFORM_STATE_BUCKET"]
+role = os.environ["AWS_ROLE_ARN"]
 if not re.fullmatch(r"[0-9]{12}", account) or account != os.environ["AWS_ACCOUNT_ID"]:
     raise SystemExit("잘못된 AWS 계정")
+if not re.fullmatch(rf"arn:aws:iam::{account}:role/[A-Za-z0-9_+=,.@/-]+", role):
+    raise SystemExit("배포 계정에 속한 AWS 역할 ARN이 필요합니다.")
 if region != os.environ["AWS_REGION"] or not re.fullmatch(r"[a-z0-9-]+", region):
     raise SystemExit("AWS 리전 불일치")
 if not re.fullmatch(r"[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]", bucket):

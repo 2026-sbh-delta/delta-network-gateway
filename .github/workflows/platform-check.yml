@@ -61,6 +61,10 @@ jobs:
           npx playwright install --with-deps chromium
           npm run test:e2e
   terraform:
+    strategy:
+      fail-fast: false
+      matrix:
+        root: [platform/deploy/terraform, platform/deploy/identity]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -70,7 +74,7 @@ jobs:
       - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
         with:
           terraform_version: '1.16.4'
-      - working-directory: platform/deploy/terraform
+      - working-directory: ${{ matrix.root }}
         run: |
           terraform fmt -check -recursive
           terraform init -backend=false -lockfile=readonly

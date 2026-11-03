@@ -24,7 +24,6 @@ jobs:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 60
-    environment: ${{ inputs.operation == 'apply' && 'platform-infra' || 'platform-plan' }}
     permissions:
       contents: read
       actions: read
@@ -36,6 +35,7 @@ jobs:
       PLATFORM_STATE_BUCKET: ${{ vars.PLATFORM_STATE_BUCKET }}
       AWS_REGION: ${{ vars.AWS_REGION }}
       AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+      AWS_ROLE_ARN: ${{ inputs.operation == 'apply' && vars.AWS_APPLY_ROLE_ARN || vars.AWS_PLAN_ROLE_ARN }}
       PLAN_RUN_ID: ${{ inputs.plan_run_id }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -44,7 +44,7 @@ jobs:
       - name: Validate CI configuration
         env:
           CI_ENABLED: ${{ vars.PLATFORM_CI_ENABLED }}
-          ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
+          ROLE_ARN: ${{ env.AWS_ROLE_ARN }}
         run: |
           test "$CI_ENABLED" = true
           test -n "$ROLE_ARN"
@@ -55,7 +55,7 @@ jobs:
           terraform_wrapper: false
       - uses: aws-actions/configure-aws-credentials@61815dcd50bd041e203e49132bacad1fd04d2708 # v5
         with:
-          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
           allowed-account-ids: ${{ vars.AWS_ACCOUNT_ID }}
           role-session-name: platform-infra-${{ github.run_id }}

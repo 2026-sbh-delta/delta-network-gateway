@@ -1,67 +1,28 @@
 # GitHub에서 플랫폼 배포하기
 
-인프라는 **GitHub Actions → OIDC 임시 인증 → Terraform → AWS**, 앱은 **테스트 → ARM64 이미지 → ECR → SSM → 사설 VM**으로 배포한다. 웹 서버가 자기 인프라의 Terraform을 실행하지 않는다.
+인프라는 **GitHub Actions → OIDC 임시 인증 → Terraform → AWS**, 앱은 **테스트 → ARM64 이미지 → ECR → SSM → 사설 VM**으로 배포한다. 터미널의 AWS 키를 GitHub에 저장하지 않는다.
 
-현재 AWS 최초 배포는 로컬에서 수행했다. 워크플로를 [PR #7](https://github.com/2026-sbh-delta/delta-network-gateway/pull/7)에 게시하고 원격 테스트 실행을 시작했다. 최종 테스트 결과는 PR Checks를 따른다. **OIDC 역할·Environment는 아직 연결하지 않았으며 GitHub를 통한 AWS 배포 성공으로 표시하지 않는다.**
+현재 플랫폼은 AWS에 배포돼 있고 PR #7도 병합됐다. 이번 OIDC 연결의 실제 진행 상태는 [작업 기록](../../docs/ai-dlc/platform-oidc.md)을 따른다. IAM 코드 준비와 GitHub에서 실제 배포 성공은 별개다.
 
-## 세 가지 실행
+## 사용자가 입력할 변수
 
-| 워크플로 | 시점 | 하는 일 |
-| --- | --- | --- |
-| `platform-check.yml` | PR·main/feat/platform push·수동 | 실제 시험 DB, API/Worker·브라우저 검사, Terraform mock 검사. AWS 인증 없음 |
-| `platform-infra.yml` | main에서 수동 `plan` → 검토 후 수동 `apply` | 같은 커밋의 저장 Plan만 적용. S3 state·잠금 유지 |
-| `platform-release.yml` | main에서 수동 | 같은 커밋의 테스트를 통과한 플랫폼을 배포. 인프라 Apply 없음 |
+[저장소 Actions 변수 설정](https://github.com/2026-sbh-delta/delta-network-gateway/settings/variables/actions)에서 **Variables → Repository variables → New repository variable**로 아래 9개를 등록한다. Secrets가 아니다. 현재 Free/private 저장소에서는 Environment를 사용하지 않는다.
 
-최초 state 버킷·OIDC 신뢰 설정은 관리자가 준비하는 부트스트랩이다. 이후에는 로컬 관리자 세션을 일상적인 배포 경로로 쓰지 않는다. 기존 `delta-platform-tf-616723161368/platform/terraform.tfstate`를 그대로 이어받으므로 리소스를 다시 만들거나 import할 필요가 없다.
-
-## GitHub와 AWS의 연결 준비
-
-1. AWS IAM에 `https://token.actions.githubusercontent.com` OIDC provider가 있는지 확인하고, 없으면 추가한다. Audience는 `sts.amazonaws.com`이다.
-2. 아래 세 GitHub Environment를 **미리** 만든다. 배포 가능한 branch를 `main`으로 제한한다. `platform-infra`와 `platform-release`에는 지원되는 요금제에서 required reviewer를 설정한다. 이 private 저장소에서 해당 보호 기능을 쓸 수 있는지 먼저 확인한다.
-3. 각 Environment마다 별도 AWS 역할을 연결한다. 신뢰 정책은 이 저장소·Environment에만 한정한다. `repo:*`와 관리자 전체 권한을 사용하지 않는다.
-4. 아래 변수와 권한을 검토한 뒤 Environment 변수 `PLATFORM_CI_ENABLED=true`를 설정한다. 미설정이면 AWS 인증 전에 중단한다. 이 플래그 자체가 승인 기능을 대신하지는 않는다.
-5. main 보호 규칙과 PR 검토를 적용하고, 승인받아 코드를 푸시·병합한 다음 `plan`부터 실행한다.
-
-| Environment | 역할의 용도 | 필요한 권한 범위 |
-| --- | --- | --- |
-| `platform-plan` | 인프라 조회·Plan | 해당 state 읽기, 해당 `.tflock` 쓰기/삭제, 플랫폼 Terraform 리소스의 조회·태그 읽기. 리소스 변경 권한 없음 |
-| `platform-infra` | 검토한 Plan 적용 | 플랫폼 VPC·EC2·CloudFront·ECR·S3·앱/NAT 역할 관리와 state 쓰기. `iam:PassRole`은 두 플랫폼 VM 역할 및 EC2 서비스만 허용 |
-| `platform-release` | 이미지 게시·앱 배포 | state 읽기, `delta-platform` ECR push/read, 릴리스 S3 경로 쓰기, 특정 플랫폼 VM의 `AWS-RunShellScript` 실행·결과 조회, SSM 파라미터 메타데이터 조회 |
-
-정책은 인프라 담당자가 실제 ARN과 생성 작업별 조건에 맞춰 설정한다. 이 문서는 IAM 정책 배포 완료를 뜻하지 않는다. 조회 API 중 Resource 제한을 지원하지 않는 작업과 생성 시 태그 조건이 필요한 작업을 분리한다. Release 역할에는 Terraform 변경·SSM 비밀값 조회·DB 백업 읽기 권한을 부여하지 않는다. SSM 명령은 VM의 운영 권한이므로 이 역할도 운영 배포 권한으로 취급한다.
-
-신뢰 정책 예시(`platform-release` 역할):
-
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [{
-    "Effect": "Allow",
-    "Principal": {"Federated": "arn:aws:iam::616723161368:oidc-provider/token.actions.githubusercontent.com"},
-    "Action": "sts:AssumeRoleWithWebIdentity",
-    "Condition": {"StringEquals": {
-      "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
-      "token.actions.githubusercontent.com:sub": "repo:2026-sbh-delta/delta-network-gateway:environment:platform-release"
-    }}
-  }]
-}
-```
-
-Environment를 사용하면 OIDC의 `sub`에는 branch 대신 Environment 이름이 들어간다. 따라서 **Environment의 main 제한과 코드의 main 조건을 함께 유지**한다. 기존 터미널의 AWS 키·세션 토큰을 GitHub secrets에 복사하지 않는다. [GitHub OIDC 안내](https://docs.github.com/en/actions/how-tos/secure-your-work/security-harden-deployments/oidc-in-aws), [Environment 보호와 요금제](https://docs.github.com/en/actions/reference/workflows-and-actions/deployments-and-environments).
-
-## Environment 변수
-
-세 Environment에 공통 값을 넣고 `AWS_ROLE_ARN`만 각 역할로 구분한다. 이 값들은 비밀번호가 아니다.
-
-| 이름 | 현재 값·용도 |
+| Name | Value |
 | --- | --- |
-| `AWS_ROLE_ARN` | 해당 Environment 전용 역할 ARN, 아직 생성·연결 전 |
 | `AWS_ACCOUNT_ID` | `616723161368` |
 | `AWS_REGION` | `ap-northeast-2` |
+| `AWS_PLAN_ROLE_ARN` | `arn:aws:iam::616723161368:role/delta-platform-github-plan` |
+| `AWS_APPLY_ROLE_ARN` | `arn:aws:iam::616723161368:role/delta-platform-github-apply` |
+| `AWS_RELEASE_ROLE_ARN` | `arn:aws:iam::616723161368:role/delta-platform-github-release` |
 | `PLATFORM_STATE_BUCKET` | `delta-platform-tf-616723161368` |
-| `PLATFORM_TF_INPUTS` | 아래 JSON, 세 환경에서 같은 값 사용 |
-| `PLATFORM_CI_ENABLED` | 보호 규칙·권한 검토 완료 후 `true` |
-| `PLATFORM_POSTGRES_IMAGE` | release에만 필요. 검증한 기존 PostgreSQL ECR digest |
+| `PLATFORM_TF_INPUTS` | 아래 JSON 전체 |
+| `PLATFORM_POSTGRES_IMAGE` | 아래 이미지 주소 전체 |
+| `PLATFORM_CI_ENABLED` | 먼저 `false`, AWS 역할 생성과 새 워크플로의 main 반영을 확인한 뒤 `true` |
+
+2026-11-03 위 역할 3개를 AWS에 생성하고 신뢰 정책·권한 시뮬레이션을 확인했다. GitHub에서 실제 OIDC 인증·배포는 새 워크플로 main 반영 후 검증한다. 모든 값의 복사용 원본은 [github-variables.json](github-variables.json)에 있다.
+
+`PLATFORM_TF_INPUTS`:
 
 ```json
 {
@@ -73,25 +34,69 @@ Environment를 사용하면 OIDC의 `sub`에는 branch 대신 Environment 이름
 }
 ```
 
-현재 PostgreSQL digest는 다음과 같다. 앱 배포와 DB 이미지 업그레이드를 분리하기 위해 고정한다.
+`PLATFORM_POSTGRES_IMAGE`:
 
 ```text
 616723161368.dkr.ecr.ap-northeast-2.amazonaws.com/delta-platform@sha256:a78d9af300151935bbc4dfaf00aae291d12abaea3037c636e43603cc1675684e
 ```
 
-## Plan 검토와 적용
+PostgreSQL 이미지는 기존 검증 버전으로 고정한다. 앱 배포 때 DB 이미지까지 함께 업그레이드하지 않는다. `AWS_ROLE_ARN`이라는 별도 변수나 AWS access key·secret key는 등록할 필요가 없다.
 
-1. main의 **Platform infrastructure**를 `operation=plan`으로 실행한다.
-2. 변경 목록과 `platform-plan` artifact의 `plan.txt`를 검토하고 실행의 run ID를 기록한다.
-3. `operation=apply`, `plan_run_id=<검토한 실행 ID>`로 실행한다. Environment 승인 기능이 설정돼 있다면 담당자 승인 후 시작한다.
-4. 워크플로·main·커밋·성공 상태·artifact 체크섬을 확인한 뒤 저장된 Plan을 적용한다. 새 Plan으로 몰래 바꿔 적용하지 않는다.
+## 세 가지 실행
 
-검토 이후 main 커밋이나 state가 바뀌면 새 Plan이 필요하다. Plan artifact는 3일 보관하며 저장소 권한이 있는 사람만 취급한다. Terraform Plan에는 민감한 인프라 정보가 들어갈 수 있으므로 공개 링크로 전달하지 않는다. 인프라와 앱 배포는 같은 concurrency group으로 직렬화한다.
+| 워크플로 | 시점 | 하는 일 |
+| --- | --- | --- |
+| `platform-check.yml` | PR·main/feat/platform push·수동 | API/Worker·브라우저·Terraform mock 검사. AWS 인증 없음 |
+| `platform-infra.yml` | main에서 수동 `plan` → 검토 후 수동 `apply` | Plan 역할로 조회하고 Apply 역할로 같은 커밋의 저장 Plan 적용 |
+| `platform-release.yml` | main에서 수동 | 테스트를 통과한 플랫폼 이미지를 Release 역할로 배포. 인프라 Apply 없음 |
 
-## 앱 배포와 한계
+기존 `delta-platform-tf-616723161368/platform/terraform.tfstate`를 이어받는다. 기존 리소스를 다시 만들거나 import하지 않는다. 인프라와 앱 배포는 같은 concurrency group으로 직렬화한다.
 
-`Platform release`는 테스트 후 이미지를 빌드해 ECR digest로 고정하고 SSM으로 설치한다. CI는 기존 `/delta-platform/runtime` SecureString의 존재만 확인한다. 실제 비밀값은 VM이 자기 역할로 읽는다. 파라미터가 없으면 실패하며 새 로그인이나 DB 비밀번호를 자동 생성하지 않는다.
+## AWS 연결과 권한
 
-CloudFront를 교체해 주소가 달라진 경우에는 운영자가 SSM의 `PLATFORM_PUBLIC_ORIGIN`도 새 주소로 갱신해야 한다. 로그인 정보는 CI artifact에 포함하지 않는다. 배포 후 HTTPS 준비 상태를 확인하지만, 이것만으로 로그인·Worker·고객 서비스 배포까지 검증했다고 판단하지 않는다.
+관리자가 [identity Terraform](identity/README.md)으로 OIDC provider와 세 역할을 준비한다. 별도 `platform/identity.tfstate`를 사용하며, 일반 GitHub Apply 역할은 IAM 역할·정책이나 이 state 내용을 수정할 수 없다.
 
-현재 단일 VM의 Compose 재시작 배포이므로 짧은 중단이 발생할 수 있다. 무중단 배포·자동 롤백은 구현하지 않았다. 고객 공개 저장소의 코드는 이 관리자 권한 CI에서 실행하지 않으며, 후속 U2의 격리 빌드 경로를 사용한다.
+최초 설정·복구 등 로컬 작업에는 **AWS CLI v2의 SSO 프로필**을 사용한다. Access Portal에서 복사한 임시 키는 자동 갱신되지 않으므로 반복해서 전달하지 않는다.
+
+```bash
+# 최초 한 번: Access Portal의 SSO 주소 또는 Issuer URL과 SSO 리전을 입력
+aws configure sso --profile delta-platform
+
+# 로그인 세션이 만료됐을 때
+aws sso login --profile delta-platform
+
+# 업무 계정 616723161368인지 확인
+aws sts get-caller-identity --profile delta-platform
+```
+
+SSO 리전과 서비스 배포 리전은 별개다. 이 프로젝트의 배포 리전은 `ap-northeast-2`다. 로컬 Python·Terraform은 `AWS_PROFILE=delta-platform`으로 실행하고, 이전에 export한 `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`은 먼저 해제한다. SSO 설정은 로컬 `~/.aws/config`에 저장하며 로그인 캐시를 저장소에 넣지 않는다. 로그인 세션이 유효한 동안 SDK가 임시 인증을 갱신한다. GitHub 배포는 이 개인 SSO 세션 대신 위 OIDC 역할을 사용한다. [AWS SSO 설정 안내](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-sso.html).
+
+| 역할 | 용도 |
+| --- | --- |
+| Plan | 기존 플랫폼 설정 조회, 앱 state 읽기와 잠금 |
+| Apply | 기존 플랫폼 인프라 변경, 앱 state 저장. IAM 기반 변경은 관리자 작업 |
+| Release | 지정 ECR 이미지 게시, 릴리스 S3 업로드, 플랫폼 앱 VM에 SSM 배포 |
+
+신뢰 정책의 audience는 `sts.amazonaws.com`이다. 저장소 API로 확인한 아래 subject와 **정확히 일치하는 main 실행**만 허용한다.
+
+```text
+repo:2026-sbh-delta@350740329/delta-network-gateway@1441419092:ref:refs/heads/main
+```
+
+세 역할은 같은 main을 신뢰한다. 역할을 나눴다고 별도 승인자가 강제되는 것은 아니다. main 코드를 변경할 수 있는 사람의 권한을 배포 권한으로 취급한다. `PLATFORM_CI_ENABLED`도 배포 활성화 스위치이며 승인 기능은 아니다. [GitHub OIDC 안내](https://docs.github.com/en/actions/how-tos/secure-your-work/security-harden-deployments/oidc-in-aws) · [immutable subject](https://docs.github.com/en/actions/reference/security/oidc#immutable-subject-claims) · [Environment 지원 범위](https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/manage-environments).
+
+## 설정 후 실행 순서
+
+1. AWS 역할 생성과 이 변경의 main 반영을 확인한 뒤 `PLATFORM_CI_ENABLED=true`로 바꾼다.
+2. main의 **Platform infrastructure**를 `operation=plan`으로 실행한다.
+3. 변경 목록과 `platform-plan` artifact의 `plan.txt`를 검토한다. 변경이 없다면 Apply는 필요 없다.
+4. 변경이 필요하면 `operation=apply`, `plan_run_id=<검토한 실행 ID>`로 실행한다. 워크플로·main·커밋·성공 상태·artifact 체크섬을 확인한 뒤 저장 Plan을 적용한다.
+5. 앱을 갱신할 때 **Platform release**를 main에서 실행한다. 완료 후 HTTPS 화면과 readiness를 확인한다.
+
+검토 이후 main 커밋이나 state가 바뀌면 새 Plan이 필요하다. Plan artifact는 3일 보관한다. 저장 Plan에는 민감한 인프라 정보가 포함될 수 있으므로 공개 링크로 전달하지 않는다.
+
+## 앱 배포의 범위
+
+CI는 기존 `/delta-platform/runtime` SecureString의 존재만 확인한다. 실제 로그인·DB 비밀값은 VM이 자기 역할로 읽는다. 파라미터가 없으면 실패하며 새 비밀번호를 생성하지 않는다. Release 역할의 SSM 명령은 VM의 root 권한이므로 앱 운영 권한으로 취급한다.
+
+CloudFront 주소를 바꾸면 SSM의 `PLATFORM_PUBLIC_ORIGIN`도 갱신해야 한다. 현재 단일 VM의 Compose 재시작 배포이므로 짧은 중단이 발생할 수 있다. 무중단 배포·자동 롤백은 아직 구현하지 않았다. 고객 공개 저장소의 코드는 이 관리자 CI에서 실행하지 않으며 후속 U2의 격리 빌드 경로를 사용한다.
