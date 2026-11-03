@@ -2,6 +2,8 @@
 
 서로 다른 VPC의 기존 플랫폼 VM과 도구 VM을 연결한다. VM·LB를 새로 만들지 않는다. VPC peering 1개, 두 VM의 `/32` 왕복 Route 2개, 플랫폼 SG만 허용하는 HTTPS ingress 1개를 관리한다. NAT/TGW 기본 경로는 수정하지 않는다.
 
+`dast_sandbox`를 설정하면 같은 peering으로 도구 VM → 기존 플랫폼 내부 ALB를 연결한다. ALB 두 서브넷까지 가는 경로, 기존 `/32`와 중복되지 않는 반환 경로, 도구 SG → ALB TCP 80만 추가한다. ECS 태스크에 직접 접근하거나 인터넷에 공개하지 않는다. ALB 이름·VPC·서브넷·Route Table 연결을 검증한다. 이 확장은 코드·mock 검증만 완료했으며 실제 적용은 아직 하지 않았다.
+
 이 root는 두 기존 VPC의 연결 설정을 소유한다. 각 VPC/VM 자체의 Terraform state와 분리해 `platform/sast-network.tfstate`에 저장한다. 기존 플랫폼 CI의 IAM은 다른 팀 VPC 변경을 허용하지 않으므로, 최초 연결은 업무 계정 SSO로 저장 Plan을 검토한 뒤 적용한다. 테스트는 GitHub CI에도 포함한다. 이후 VM 교체로 사설 IP가 달라지면 새 Plan, TLS 인증서, 플랫폼 URL을 함께 갱신한다.
 
 ```bash
@@ -26,6 +28,14 @@ AWS_PROFILE=delta-platform terraform apply reviewed.tfplan
 | `tooling_route_table_id` | string | 필수 | 도구 VM 서브넷에 적용된 Route Table |
 | `platform_security_group_id` | string | 필수 | 플랫폼 VM에 연결된 SG |
 | `tooling_security_group_id` | string | 필수 | 도구 VM에 연결된 SG |
+| `dast_sandbox` | object 또는 null | `null` | 기존 플랫폼 샌드박스 연결. null은 DAST 네트워크 추가 없음 |
+
+### `dast_sandbox` 내부 속성
+
+| 속성명 | 타입 | 기본값 | 역할 |
+| --- | --- | --- | --- |
+| `alb_arn` | string | 필수 | 플랫폼 전용 내부 Application LB ARN |
+| `subnet_route_tables` | map(string) | 필수 | ALB의 두 subnet ID → 각 subnet에 명시적으로 연결된 route table ID |
 
 ## 출력 속성
 
@@ -37,3 +47,4 @@ AWS_PROFILE=delta-platform terraform apply reviewed.tfplan
 | `region` | 운영 스크립트용 리전 |
 | `account_id` | 운영 스크립트의 계정 확인 |
 | `peering_id` | 전용 VPC peering ID |
+| `dast_sandbox_url` | DAST 등록용 내부 ALB HTTP origin. 미설정 시 null |

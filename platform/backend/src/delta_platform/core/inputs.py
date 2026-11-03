@@ -52,6 +52,15 @@ class ImageCheckInput(StrictInput):
         return str(UUID(value))
 
 
+class DastCheckInput(ImageCheckInput):
+    security_check_id: str = Field(min_length=36, max_length=36)
+
+    @field_validator("security_check_id")
+    @classmethod
+    def valid_security_id(cls, value):
+        return str(UUID(value))
+
+
 class ServiceInput(StrictInput):
     name: str = Field(min_length=1, max_length=80)
     repository_url: str = Field(max_length=512)

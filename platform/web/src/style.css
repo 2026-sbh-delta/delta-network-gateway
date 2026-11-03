@@ -694,3 +694,15 @@ footer {
   margin: 10px 0;
   line-height: 1.6;
 }
+
+.dast-panel code {
+  overflow-wrap: anywhere;
+}
+.dast-environment {
+  margin: 12px 0;
+  color: #526372;
+  font-size: 13px;
+}
+.dast-result {
+  margin-top: 16px;
+}

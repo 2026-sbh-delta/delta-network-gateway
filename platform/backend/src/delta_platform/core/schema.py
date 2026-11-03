@@ -73,7 +73,7 @@ runs = sa.Table(
     timestamp("finished_at"),
     sa.UniqueConstraint("service_id", "kind", "request_key", name="run_request_unique"),
     sa.CheckConstraint(
-        "kind IN ('source_preflight', 'image_build', 'sandbox_check', 'security_check')",
+        "kind IN ('source_preflight', 'image_build', 'sandbox_check', 'security_check', 'dast_check')",
         name="run_kind",
     ),
     sa.CheckConstraint("attempt >= 0", name="run_attempt"),
@@ -109,9 +109,9 @@ events = sa.Table(
 
 sa.Index(
     "one_active_sandbox_slot",
-    runs.c.kind,
+    sa.case((runs.c.kind.in_(("sandbox_check", "dast_check")), 1), else_=0),
     unique=True,
     postgresql_where=sa.and_(
-        runs.c.kind == "sandbox_check", runs.c.status.in_(["queued", "running"])
+        runs.c.kind.in_(("sandbox_check", "dast_check")), runs.c.status.in_(["queued", "running"])
     ),
 )

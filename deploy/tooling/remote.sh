@@ -108,6 +108,11 @@ sast_runtime=()
 if [ -f "$base/sast-runtime.env" ]; then
   sast_runtime=(--env-file "$base/sast-runtime.env")
 fi
+dast_runtime=()
+if [ -f "$base/dast-platform.env" ]; then
+  test -s "$base/platform-sandbox.json"
+  dast_runtime=(--env-file "$base/dast-platform.env" -v "$base/platform-sandbox.json:/app/dast_agent/targets/platform-sandbox.json:ro")
+fi
 
 docker rm -f delta-sast delta-dast >/dev/null 2>&1 || true
 docker run -d --name delta-sast --restart unless-stopped --network host \
@@ -117,6 +122,7 @@ docker run -d --name delta-sast --restart unless-stopped --network host \
   "$SAST_IMAGE" >/dev/null
 docker run -d --name delta-dast --restart unless-stopped --network host --shm-size=1g \
   --env-file "$base/secrets.env" --env-file "$base/llm.env" \
+  "${dast_runtime[@]}" \
   -e DELTA_RUNTIME=server -e DELTA_SAST_URL=http://127.0.0.1:8790 -e DELTA_SAST_REPO=/srv/sources/sample-target \
   -v "$base/dast-runs:/app/runs" -v "$base/dast-data:/app/data" "${llm_mounts[@]}" \
   "$DAST_IMAGE" >/dev/null

@@ -16,6 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy.exc import SQLAlchemyError
 
 from delta_platform.adapters.builds import BuildError, build_runner, build_target
+from delta_platform.adapters.dast import dast_target
 from delta_platform.adapters.sandbox import sandbox_target
 from delta_platform.adapters.security import security_target
 from delta_platform.config import Settings
@@ -24,6 +25,7 @@ from delta_platform.core.database import engine_for, ready
 from delta_platform.core.errors import Problem
 from delta_platform.core.inputs import (
     BuildInput,
+    DastCheckInput,
     EmptyInput,
     ImageCheckInput,
     LoginInput,
@@ -253,6 +255,37 @@ def create_app(settings=None, engine=None):
     ):
         store.run(run_id, "security_check")
         return store.run_events(run_id, after_sequence, limit)
+
+    @protected.post("/services/{service_id}/dast-checks")
+    def dast_check(service_id: UUID, body: DastCheckInput, request: Request):
+        result, created = store.enqueue_sandbox(
+            service_id,
+            UUID(body.build_id),
+            request_key(request.headers.get("Idempotency-Key")),
+            sandbox_target(settings),
+            security_check_id=UUID(body.security_check_id),
+            dast_target=dast_target(settings),
+        )
+        return JSONResponse(jsonable_encoder(result), status_code=202 if created else 200)
+
+    @protected.get("/services/{service_id}/dast-checks")
+    def dast_list(service_id: UUID, limit: Limit = 50, cursor: str | None = None):
+        return store.list_runs(service_id, limit, cursor, "dast_check")
+
+    @protected.get("/dast-checks/{run_id}")
+    def dast_detail(run_id: UUID):
+        return store.run(run_id, "dast_check")
+
+    @protected.get("/dast-checks/{run_id}/events")
+    def dast_events(
+        run_id: UUID, after_sequence: Annotated[int, Query(ge=0)] = 0, limit: Limit = 100
+    ):
+        store.run(run_id, "dast_check")
+        return store.run_events(run_id, after_sequence, limit)
+
+    @protected.post("/dast-checks/{run_id}/cancel")
+    def dast_cancel(run_id: UUID, body: EmptyInput):
+        return store.cancel_sandbox(run_id, "dast_check")
 
     @protected.post("/services/{service_id}/sandbox-checks")
     def sandbox_check(service_id: UUID, body: ImageCheckInput, request: Request):

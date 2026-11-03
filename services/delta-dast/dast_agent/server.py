@@ -104,6 +104,7 @@ def create_app(port: int = 8765, target_port: int = 8766,
     token = secrets.token_urlsafe(32)
     runs: dict[str, dict] = {}
     tasks: set[asyncio.Task] = set()
+    platform_tasks: dict[str, asyncio.Task] = {}
     model_runtime = {
         "claude_agent": {"state": "not_tested", "checked_at": None, "detail": "실호출 전"},
         "claude_computer": {"state": "not_tested", "checked_at": None, "detail": "실호출 전"},
@@ -176,7 +177,13 @@ def create_app(port: int = 8765, target_port: int = 8766,
                 or (origin is not None and origin != f"http://{host}")
                 or request.headers.get("sec-fetch-site") == "cross-site"):
             return JSONResponse({"detail": "허용되지 않은 요청 출처입니다."}, status_code=403)
-        if request.method not in {"GET", "HEAD"} and not secrets.compare_digest(
+        if request.url.path.startswith("/api/platform/"):
+            platform_token = os.environ.get("DAST_PLATFORM_TOKEN", "")
+            if not platform_token or not secrets.compare_digest(
+                request.headers.get("authorization", ""), "Bearer " + platform_token,
+            ):
+                return JSONResponse({"detail": "플랫폼 인증이 필요합니다."}, status_code=401)
+        elif request.method not in {"GET", "HEAD"} and not secrets.compare_digest(
             request.headers.get("x-dast-token", ""), token,
         ):
             return JSONResponse({"detail": "제어 토큰이 유효하지 않습니다."}, status_code=403)
@@ -290,7 +297,16 @@ def create_app(port: int = 8765, target_port: int = 8766,
                 except HTTPException:
                     pass
 
-        await asyncio.gather(*(check(finding) for finding in report.findings))
+        checks = [asyncio.create_task(check(finding)) for finding in report.findings]
+        try:
+            await asyncio.gather(*checks)
+        finally:
+            # A cancelled queued finding can finish before an active browser closes.
+            # Drain every child before reporting the staging target as released.
+            for task in checks:
+                if not task.done() and not task.cancelling():
+                    task.cancel()
+            await asyncio.gather(*checks, return_exceptions=True)
         order = {finding.id: index for index, finding in enumerate(report.findings)}
         run["results"].sort(key=lambda item: order.get(item["finding_id"], 0))
         run["status"] = "done"
@@ -445,7 +461,7 @@ def create_app(port: int = 8765, target_port: int = 8766,
                 except sast_link.SastUnavailable as exc:
                     await publish({"type": "log", "message": "SAST 피드백을 보내지 못했습니다: " + str(exc)})
             await publish({"type": "done", **summary(run)})
-            if run["planner"] in {"agent", "computer_use"} and (output / "report.json").is_file():
+            if not run.get("platform_binding") and run["planner"] in {"agent", "computer_use"} and (output / "report.json").is_file():
                 schedule_report(run["run_id"], auto_fix=run.get("auto_fix", True))
 
     report_jobs: dict[str, str] = {}
@@ -578,7 +594,7 @@ def create_app(port: int = 8765, target_port: int = 8766,
             raise HTTPException(422, "scenario·planner·report 요청 형식을 확인하세요.") from None
         return {"run_id": launch(args)}
 
-    def launch(args: RunRequest, extra: dict | None = None) -> str:
+    def launch(args: RunRequest, extra: dict | None = None, *, run_id: str | None = None) -> str:
         project_id = args.project_id or (extra or {}).get("project_id") or DEFAULT_PROJECT
         project = projects.get_project(project_id)
         if not project:
@@ -594,7 +610,7 @@ def create_app(port: int = 8765, target_port: int = 8766,
             if finished is None:
                 break
             runs.pop(finished)
-        run_id = str(uuid4())
+        run_id = run_id or str(uuid4())
         run = {"run_id": run_id, "status": "running", "scenario": args.scenario,
                "planner": args.planner, "concurrency": args.concurrency, "impact": args.impact,
                "auto_fix": args.auto_fix, "sast_run_id": args.sast_run_id, "results": [], "duration_ms": 0,
@@ -606,10 +622,42 @@ def create_app(port: int = 8765, target_port: int = 8766,
             # 로컬 실습 대상은 매 점검을 같은 초기 상태에서 시작한다.
             # 병렬 점검 중에는 다른 점검의 글이 사라지지 않도록 초기화하지 않는다.
             on_run_start()
-        task = asyncio.create_task(execute(run, args.report))
+        work = execute(run, args.report)
+        task = asyncio.create_task(asyncio.wait_for(work, 900) if run.get("platform_binding") else work)
+        if run.get("platform_binding"):
+            platform_tasks[run_id] = task
+            def finished_platform(completed):
+                platform_tasks.pop(run_id, None)
+                # Retrieve timeout errors and handle cancellation before execute started.
+                if not completed.cancelled():
+                    completed.exception()
+                if run["status"] == "running":
+                    run["status"] = "error"
+                    run["error"] = "실행이 중단되었습니다."
+            task.add_done_callback(finished_platform)
         tasks.add(task)
         task.add_done_callback(tasks.discard)
         return run_id
+
+    from .platform_api import PlatformRuns, install as install_platform_api
+
+    def observe_platform(run_id):
+        return summary(runs[run_id]) if run_id in runs else disk_run(run_id)
+
+    async def cancel_platform(run_id):
+        task = platform_tasks.get(run_id)
+        if task and not task.done():
+            if not task.cancelling():
+                task.cancel()
+            try:
+                await asyncio.wait_for(asyncio.shield(task), timeout=10)
+            except asyncio.CancelledError:
+                pass
+            except TimeoutError:
+                raise HTTPException(409, "브라우저 종료를 기다리고 있습니다.") from None
+
+    install_platform_api(app, PlatformRuns(output_root, catalog, launch,
+                                          observe_platform, cancel_platform, target_port))
 
     fix_jobs: dict[tuple[str, str], dict] = {}
 

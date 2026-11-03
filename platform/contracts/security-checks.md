@@ -43,8 +43,10 @@ SAST의 `fast`·`preset` 모드를 사용한다. 저장소·40자리 커밋·요
 | `PLATFORM_SAST_TOKEN` | SAST 서버의 `DELTA_SAST_TOKEN`과 같은 Bearer 토큰 |
 | `PLATFORM_SAST_CA_BASE64` | 사설 검사 서버 CA의 PEM을 Base64로 인코딩. 미설정은 기본 신뢰 저장소 사용 |
 
-토큰은 서버의 비밀 설정에만 보관한다. 브라우저나 Git에 넣지 않는다. 운영 SSM `/delta-platform/runtime`에 기존 로그인·DB·빌드 값을 보존하며 두 값을 추가해야 한다. Jenkins의 `configure-runtime.py`는 Jenkins 설정 전용이므로 SAST 값을 받지 않는다. SAST 쪽 `SAST_REPO_PREFIXES`도 실제 검사할 공개 저장소 범위에 맞춘다. 설정 URL의 리다이렉트는 따라가지 않는다.
+토큰은 서버의 비밀 설정에만 보관한다. 브라우저나 Git에 넣지 않는다. 운영 SSM `/delta-platform/runtime`에 기존 로그인·DB·빌드 값을 보존하며 연결 값을 추가해야 한다. 사설 CA를 쓰는 현재 구성은 위 세 값을 모두 설정한다. Jenkins의 `configure-runtime.py`는 Jenkins 설정 전용이므로 SAST 값을 받지 않는다. SAST 쪽 `SAST_REPO_PREFIXES`도 실제 검사할 공개 저장소 범위에 맞춘다. 설정 URL의 리다이렉트는 따라가지 않는다.
 
 DB migration `0004`를 앱 시작 전에 적용한다. 기존 소스 확인·빌드·샌드박스 이력은 유지한다. SAST 미설정 환경에서는 다른 기능이 계속 동작한다. 보안 검사 이력이 생긴 뒤에는 `0003`으로 자동 downgrade하지 않는다. 롤백은 배포 전 백업 또는 스키마 호환 코드로 진행한다.
 
-2026-11-04: 플랫폼 UI/API와 DB `0004`는 운영 배포됐다. 사설 HTTPS·CA 지원·운영 연결은 [적용 안내](../deploy/sast/README.md)와 [검증 기록](../../docs/ai-dlc/platform-security.md)을 따른다. 공개 SAST 활성화와 새 코드 릴리스 상태를 구분한다.
+2026-11-04: PR #20 병합 후 사설 HTTPS·CA 설정을 활성화하고 GitHub Release를 완료했다. 공개 웹에서 실제 SAST 요청·결과·빌드 연결을 검증했다. DB `0004`와 기존 기록을 유지했다. [적용 안내](../deploy/sast/README.md)와 [검증 기록](../../docs/ai-dlc/platform-security.md)을 따른다. DAST는 아직 플랫폼에 연결하지 않았다.
+
+후속 DAST 연결은 [별도 계약](dast-checks.md)을 따른다. 같은 빌드의 원본 SARIF 해시를 확인하며, SAST 완료와 DAST 결과·운영 배포 승인을 구분한다.

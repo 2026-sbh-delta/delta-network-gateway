@@ -2,10 +2,10 @@ name: Platform checks
 
 on:
   pull_request:
-    paths: ['platform/**', 'services/delta-staging/**', '.github/workflows/platform-*.yml']
+    paths: ['platform/**', 'services/delta-staging/**', 'services/delta-dast/**', '.github/workflows/platform-*.yml']
   push:
     branches: [main, feat/platform]
-    paths: ['platform/**', 'services/delta-staging/**', '.github/workflows/platform-*.yml']
+    paths: ['platform/**', 'services/delta-staging/**', 'services/delta-dast/**', '.github/workflows/platform-*.yml']
   workflow_call:
   workflow_dispatch:
 
@@ -49,11 +49,16 @@ jobs:
           uv run pytest -q
       - name: Staging library
         run: uv run --project platform/backend --with pytest-asyncio pytest -q -c services/delta-staging/pyproject.toml services/delta-staging/tests
+      - name: DAST platform contract
+        run: uv run --project services/delta-dast --python 3.12 --frozen --with pytest --with pytest-asyncio --with httpx python -m pytest -q services/delta-dast/tests/test_platform_api.py services/delta-dast/tests/test_sarif_adapter.py services/delta-dast/tests/test_llm_runtime.py
+      - name: Platform to team DAST integration
+        working-directory: platform/backend
+        run: uv run --with-editable ../../services/delta-dast pytest -q tests/integration_dast.py
       - name: Deployment boundaries
         run: |
           python3 -m unittest discover -s platform/deploy/tests -v
-          uv run --project platform/backend ruff check platform/deploy/scripts platform/deploy/tests platform/deploy/builds platform/deploy/sandbox platform/deploy/jenkins platform/deploy/sast/aws
-          uv run --project platform/backend ruff format --check platform/deploy/scripts platform/deploy/tests platform/deploy/builds platform/deploy/sandbox platform/deploy/jenkins platform/deploy/sast/aws
+          uv run --project platform/backend ruff check platform/deploy/scripts platform/deploy/tests platform/deploy/builds platform/deploy/sandbox platform/deploy/jenkins platform/deploy/sast/aws platform/deploy/dast
+          uv run --project platform/backend ruff format --check platform/deploy/scripts platform/deploy/tests platform/deploy/builds platform/deploy/sandbox platform/deploy/jenkins platform/deploy/sast/aws platform/deploy/dast
       - name: Browser
         working-directory: platform/web
         run: |

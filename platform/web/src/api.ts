@@ -6,7 +6,12 @@ export type Session = {
 export type Run = {
   id: string;
   service_id: string;
-  kind: "source_preflight" | "image_build" | "sandbox_check" | "security_check";
+  kind:
+    | "source_preflight"
+    | "image_build"
+    | "sandbox_check"
+    | "security_check"
+    | "dast_check";
   cancel_requested?: boolean;
   external_id: string | null;
   status: "queued" | "running" | "succeeded" | "failed";
@@ -16,6 +21,17 @@ export type Run = {
   created_at: string;
   result: {
     requires_review?: boolean;
+    dast_check?: string;
+    dast_reason?: string | null;
+    execution_cloud?: string;
+    environment_check?: string;
+    security_check_id?: string;
+    dast_evidence_sha256?: string;
+    dast_findings?: {
+      finding_id: string;
+      status: string;
+      evidence_sha256: string;
+    }[];
     counts?: Record<string, number>;
     findings?: {
       rule: string;

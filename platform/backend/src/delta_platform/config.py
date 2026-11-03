@@ -39,6 +39,9 @@ class Settings(BaseSettings):
     sast_url: str = ""
     sast_token: SecretStr = SecretStr("")
     sast_ca_base64: str = ""
+    dast_url: str = ""
+    dast_token: SecretStr = SecretStr("")
+    dast_ca_base64: str = ""
 
     @model_validator(mode="after")
     def validate_settings(self):

@@ -66,6 +66,17 @@ http {{
       limit_except GET {{ deny all; }}
       proxy_pass http://127.0.0.1:8790;
     }}
+    location ~ ^/api/platform/runs/[a-f0-9-]+$ {{
+      limit_except GET PUT {{ deny all; }}
+      client_max_body_size 2m;
+      proxy_set_header Host 127.0.0.1:8765;
+      proxy_pass http://127.0.0.1:8765;
+    }}
+    location ~ ^/api/platform/runs/[a-f0-9-]+/cancel$ {{
+      limit_except POST {{ deny all; }}
+      proxy_set_header Host 127.0.0.1:8765;
+      proxy_pass http://127.0.0.1:8765;
+    }}
     location / {{ return 404; }}
   }}
 }}
@@ -269,6 +280,7 @@ def main():
         default="https://github.com/2026-sbh-delta/,https://github.com/docker/",
     )
     p.add_argument("--export-connection", action="store_true")
+    p.add_argument("--service", choices=["SAST", "DAST"], default="SAST")
     args = p.parse_args()
     ip = ipaddress.IPv4Address(args.ip)
     if not ip.is_private:
@@ -279,18 +291,33 @@ def main():
         if "=" in line
     )
     if args.export_connection:
-        # Operator wrapper captures this in memory, never in CI or terminal output.
-        print(
-            json.dumps(
-                {
-                    "url": "https://" + str(ip),
-                    "token": secrets["DELTA_SAST_TOKEN"],
-                    "ca_base64": base64.b64encode(
-                        (ROOT / "ca.crt").read_bytes()
-                    ).decode(),
-                }
+        connection = {
+            "url": "https://" + str(ip),
+            "token": secrets["DELTA_SAST_TOKEN"],
+            "ca_base64": base64.b64encode((ROOT / "ca.crt").read_bytes()).decode(),
+        }
+        if args.service == "DAST":
+            values = dict(
+                line.split("=", 1)
+                for line in (BASE / "dast-platform.env").read_text().splitlines()
+                if line
             )
-        )
+            connection["token"] = values["DAST_PLATFORM_TOKEN"]
+            request = urllib.request.Request(
+                "http://127.0.0.1:8765/api/platform/target",
+                headers={"Authorization": "Bearer " + connection["token"]},
+            )
+            with urllib.request.urlopen(request, timeout=10) as response:
+                registered = json.load(response)
+            configured = json.loads((BASE / "platform-sandbox.json").read_text())
+            if registered != {
+                "target_id": "platform-sandbox",
+                "target_url": configured["origin"],
+            }:
+                raise ValueError("Redeploy DAST to load the configured platform target")
+            connection["sandbox_url"] = registered["target_url"]
+        # Operator wrapper captures this in memory, never in CI or terminal output.
+        print(json.dumps(connection))
         return
     os.umask(0o077)
     ROOT.mkdir(mode=0o700, exist_ok=True)

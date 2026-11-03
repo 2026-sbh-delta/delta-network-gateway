@@ -1,5 +1,65 @@
 import { test, expect, type Page } from "@playwright/test";
 
+for (const mode of ["재현", "없음", "중단"]) {
+  test(`빌드·SAST → DAST ${mode} → 결과 유지`, async ({ page }, info) => {
+    await login(page);
+    const name = `DAST ${mode} 서비스`;
+    await register(page, name);
+    await page.getByRole("button", { name: "소스 확인", exact: true }).click();
+    await expect(
+      page.getByRole("button", { name: "이 커밋 빌드" }),
+    ).toBeEnabled({ timeout: 15000 });
+    await page.getByRole("button", { name: "이 커밋 빌드" }).click();
+    await expect(
+      page.getByRole("button", { name: "이 빌드의 코드 검사" }),
+    ).toBeEnabled({ timeout: 15000 });
+    await page.getByRole("button", { name: "이 빌드의 코드 검사" }).click();
+    const panel = page.locator(".dast-panel");
+    await expect(panel).toContainText("현재 검사 환경: AWS ECS 샌드박스");
+    await expect(panel).toContainText(
+      "GCP·온프레미스 대상은 연결되지 않았으며",
+    );
+    await expect(
+      panel.getByRole("button", { name: "이 빌드의 DAST 검사" }),
+    ).toBeEnabled({ timeout: 15000 });
+    await panel.getByRole("button", { name: "이 빌드의 DAST 검사" }).click();
+    const expected =
+      mode === "중단"
+        ? "sandbox_cancelled"
+        : mode === "없음"
+          ? "DAST 미실행"
+          : "취약점 재현";
+    if (mode === "중단")
+      await panel.getByRole("button", { name: "검사 중단" }).click();
+    await expect(panel).toContainText(expected, { timeout: 15000 });
+    if (mode !== "중단") {
+      await expect(panel).toContainText("현재 선택한 빌드와 코드 검사 결과");
+      await expect(panel).toContainText("실행 위치 AWS ECS");
+    }
+    await page.reload();
+    await page.getByRole("button", { name: new RegExp(name) }).click();
+    await expect(panel).toContainText(expected);
+    if (mode !== "중단") {
+      await panel.getByText("DAST 검사 근거", { exact: true }).click();
+      await expect(panel).toContainText("DAST 근거 SHA-256");
+    }
+    await page.screenshot({
+      path: info.outputPath("dast-desktop.png"),
+      fullPage: true,
+    });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.screenshot({
+      path: info.outputPath("dast-mobile.png"),
+      fullPage: true,
+    });
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+  });
+}
+
 async function login(page: Page) {
   await page.goto("/");
   await page.getByLabel("아이디", { exact: true }).fill("test-team");

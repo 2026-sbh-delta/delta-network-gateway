@@ -1,6 +1,6 @@
 # Delta Platform
 
-개발자용 플랫폼의 웹·API·Worker를 관리한다. 현재 운영 경로는 **고정 로그인 → 공개 GitHub 등록 → 소스 확인 → Jenkins 이미지 빌드 → ECS 실행 검사 → 결과·로그 조회**다. [Jenkins AWS 운영 기록](../docs/ai-dlc/platform-jenkins-aws.md)에서 배포와 실제 기능 검증 상태를 확인한다. 빌드 성공은 실행 검사나 배포 성공을 뜻하지 않는다.
+개발자용 플랫폼의 웹·API·Worker를 관리한다. 현재 운영 경로는 **고정 로그인 → 공개 GitHub 등록 → 소스 확인 → Jenkins 이미지 빌드 → ECS 실행 검사·SAST → 결과·로그 조회**다. [Jenkins AWS 운영 기록](../docs/ai-dlc/platform-jenkins-aws.md)에서 배포와 실제 기능 검증 상태를 확인한다. 빌드 성공은 실행 검사나 배포 성공을 뜻하지 않는다.
 
 - [구현 범위·검증 기록](../docs/ai-dlc/platform-u1.md)
 - [전체 방향과 후속 단위](../docs/ai-dlc/platform.md) · [한국어 구성 설명](docs/overview.ko.html)
@@ -45,7 +45,8 @@ uv run platform-worker
 3. **소스 확인**을 누른다. 공개 여부, 커밋, 빌드 디렉터리, Dockerfile의 위치·유형을 검사한다.
 4. 빌드 실행기를 연결한 환경에서는 성공한 소스 검사 아래 **이 커밋 빌드**를 누른다. 성공 시 이미지 digest를, 실패 시 원인과 빌드 로그를 확인한다.
 5. U3 실행기를 연결한 환경에서는 성공한 빌드 아래 **이 이미지 실행 확인**을 누른다. ECS에서 실제 이미지·앱 응답을 확인하고 태스크를 정리한다. 진행 기록·실패 이유·중단 요청을 확인할 수 있다.
-6. SAST 서비스를 연결한 환경에서는 **이 빌드의 코드 검사**로 같은 커밋의 발견 사항과 근거를 확인한다. 검사 완료는 보안 통과나 운영 배포 승인이 아니다. DAST·AI 수정·운영 배포는 후속 단계다. [검사 계약과 설정](contracts/security-checks.md)을 따른다.
+6. SAST 서비스를 연결한 환경에서는 **이 빌드의 코드 검사**로 같은 커밋의 발견 사항과 근거를 확인한다. 검사 완료는 보안 통과나 운영 배포 승인이 아니다. AI 수정·운영 배포는 후속 단계다. [검사 계약과 설정](contracts/security-checks.md)을 따른다.
+7. 이번 브랜치에는 **이 빌드의 DAST 검사**를 추가했다. AWS ECS에서 같은 이미지를 실행해 팀 DAST로 XSS 후보를 확인한 후 앱을 종료한다. 운영 연결·릴리스는 아직 하지 않았다. [DAST 계약](contracts/dast-checks.md) · [운영 연결](deploy/dast/README.md). GCP·온프레미스 검사 결과와 구분한다.
 
 GitHub 무인증 조회 한도에 도달하면 실패 사유를 표시한다. 검사는 소스 코드를 실행하지 않는다. 파일 존재 확인과 빌드·보안 검사를 구분한다. U3 샌드박스는 등록한 앱 포트·헬스 체크 경로를 사용한다. 소스 확인 단계는 앱을 실행하지 않는다.
 
@@ -56,7 +57,7 @@ GitHub 무인증 조회 한도에 도달하면 실패 사유를 표시한다. �
 | `web/` | React·TypeScript 화면, API 연결, 브라우저 테스트 |
 | `backend/src/delta_platform/api/` | 고정 계정 로그인, 요청 검증, 서비스·작업 조회 |
 | `backend/src/delta_platform/core/` | 인증, PostgreSQL 저장, 중복 요청·작업 소유권·상태 전이 |
-| `backend/src/delta_platform/adapters/` | GitHub 소스 확인·Jenkins 빌드·ECS 실행 확인·SAST 결과 연결. 과거 CodeBuild 호환 유지 |
+| `backend/src/delta_platform/adapters/` | GitHub 소스 확인·Jenkins 빌드·ECS 실행 확인·SAST/DAST 결과 연결. 과거 CodeBuild 호환 유지 |
 | `backend/src/delta_platform/worker/` | 작업 선점, 검사, 재시도·중단 후 복구 |
 | `backend/migrations/` | Alembic DB 변경 이력 |
 | `contracts/` | [HTTP 규격](contracts/u1-http.md), [데이터 구조](contracts/u1-data.md) |
