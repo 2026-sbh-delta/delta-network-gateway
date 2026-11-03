@@ -31,7 +31,7 @@ def pending_clean(result):
 def test_llm_judges_only_pending_and_keeps_allowed_payload(fixtures):
     client = FakeClient({CLEAN: vulnerable()})
     result = run(fixtures / "misc", client, RuleCache())
-    assert client.calls == 1  # 규칙으로 판정된 경로는 LLM에 가지 않는다
+    assert client.calls == 2  # 경로 1건(직접 만든 필터) + 비밀값 1건(규칙으로 판정 안 됨). 규칙 판정 경로는 안 감
     flow, judgment = pending_clean(result)
     assert (judgment.by, judgment.verdict, judgment.payload) == ("llm", "vulnerable", "img_onerror")
     assert judgment.cache_key == cache_key(flow)
@@ -71,7 +71,7 @@ def test_second_run_makes_no_llm_call_and_same_sarif(fixtures, tmp_path):
     cache.save()
     second_client = FakeClient({CLEAN: vulnerable()})
     second = run(fixtures / "misc", second_client, RuleCache(cache_path))
-    assert (first_client.calls, second_client.calls) == (1, 0)
+    assert (first_client.calls, second_client.calls) == (2, 0)
     a = first.sarif(run_id="r1")["runs"][0]["results"]
     b = second.sarif(run_id="r1")["runs"][0]["results"]
     assert json.dumps(a, sort_keys=True) == json.dumps(b, sort_keys=True)

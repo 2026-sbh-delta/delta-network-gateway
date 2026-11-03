@@ -21,6 +21,8 @@ from .judge import LlmClient, judge_all
 from .locate import LocateError
 from .sarif import annotate_baseline
 from .scan import scan
+from .secret_judge import attach_actions
+from .secret_judge import judge_all as judge_secrets
 from .source import SourceError, SourcePolicy, SourceRejected, fetch, scan_root
 
 logger = logging.getLogger(__name__)
@@ -153,8 +155,10 @@ class SastRegistry:
                 pending = sum(1 for _, j in result.findings if j.by == "pending")
                 self._step(req.run_id, "judge", f"LLM 판단 대상 {pending}개")
                 judge_started = time.perf_counter()
-                result.llm = await judge_all(result.findings, result.project, self.client_factory(), self.cache,
-                                             req.payload_mode)
+                client = self.client_factory()
+                result.llm = await judge_all(result.findings, result.project, client, self.cache, req.payload_mode)
+                result.llm |= await judge_secrets(result.secrets, result.project, client, self.cache)
+                attach_actions(result.secrets, root)
                 result.timings["judge"] = round(time.perf_counter() - judge_started, 3)
                 result.timings["total"] = round(time.perf_counter() - started, 3)
                 sarif = result.sarif(run_id=req.run_id, commit=req.commit, mode=req.mode,

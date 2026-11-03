@@ -7,7 +7,6 @@
 from __future__ import annotations
 
 import os
-import shutil
 import subprocess
 import tarfile
 from dataclasses import dataclass
@@ -68,7 +67,7 @@ def fetch(repo: str, commit: str | None, dest: Path, policy: SourcePolicy) -> tu
         _git("init", "-q", cwd=dest)
         _git("fetch", "-q", "--depth", "1", repo, commit, cwd=dest)
         _git("checkout", "-q", "FETCH_HEAD", cwd=dest)
-        shutil.rmtree(dest / ".git", ignore_errors=True)
+        # .git은 담당자 확인(커밋 작성자)에 쓰고, 점검이 끝나면 작업 폴더와 함께 지운다
         return dest, True
 
     path = Path(repo).resolve()

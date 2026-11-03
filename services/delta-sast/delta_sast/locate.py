@@ -8,6 +8,7 @@ import subprocess
 from pathlib import Path
 
 from .model import Loc, Mark, Secret
+from .secret_judge import features as secret_features
 
 RULES = Path(__file__).parent / "rules" / "locate.yaml"
 # Opengrep 기본 무시 목록(tests, test 등)과 맞춘다. AST 쪽도 같은 목록을 쓴다.
@@ -56,6 +57,15 @@ def _string_value(text: str | None) -> str | None:
     return None
 
 
+def _matched_text(path: Path, item: dict) -> str:
+    """정규식 규칙처럼 메타변수가 없는 결과는 파일에서 매치 구간을 직접 읽는다."""
+    try:
+        data = path.read_bytes()
+    except OSError:
+        return ""
+    return data[item["start"]["offset"]:item["end"]["offset"]].decode("utf-8", errors="replace")
+
+
 def redact(value: str) -> str:
     keep = value[:4] if len(value) > 8 else ""
     return f"{keep}{'*' * 8}"
@@ -78,8 +88,14 @@ def parse(report: dict, root: Path) -> tuple[list[Mark], list[Secret]]:
         loc = _loc(rel, item["start"], item["end"])
         role = meta.get("role")
         if role == "secret":
-            value = (metavars.get("$VAL") or {}).get("abstract_content") or extra.get("lines", "")
-            secrets.append(Secret(rule_id, meta.get("kind", ""), loc, redact(value.strip())))
+            val = metavars.get("$VAL")
+            value = (val or {}).get("abstract_content") or _matched_text(path, item) or ""
+            name = _string_value((metavars.get("$NAME") or {}).get("abstract_content")) or \
+                (metavars.get("$NAME") or {}).get("abstract_content", "")
+            value_loc = _loc(rel, val["start"], val["end"]) if val else loc
+            kind = meta.get("kind", "")
+            secrets.append(Secret(rule_id, kind, loc, redact(value.strip()), name=name, value_loc=value_loc,
+                                  features=secret_features(value.strip(), name, kind)))
             continue
         if role not in ("source", "sink"):
             continue

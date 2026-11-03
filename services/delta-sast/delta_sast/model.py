@@ -148,10 +148,20 @@ class Flow:
 
 @dataclass
 class Secret:
+    """하드코딩 비밀값 후보. 원문은 담지 않고 가린 미리보기와 특징만 담는다."""
+
     rule_id: str
-    kind: str
+    kind: str  # assignment | env_default | token
     loc: Loc
     preview: str  # 앞부분만 남기고 가린 값
+    name: str = ""  # 변수·키 이름
+    value_loc: Loc | None = None  # 값 문자열 위치(LLM에 보낼 때 이 자리를 가린다)
+    features: dict = field(default_factory=dict)
+    verdict: str = ""  # placeholder | test_context | env_default | known_token | runtime_secret | needs_review
+    by: str = ""  # rule | llm
+    reason: str = ""
+    owner: dict | None = None  # {"name", "commit", "source": blame|commit}
+    actions: list[str] = field(default_factory=list)
 
 
 @dataclass

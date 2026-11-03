@@ -108,9 +108,24 @@ rules:
           regex: (?i).*(password|passwd|pwd|secret|token|api_?key|access_?key|private_?key).*
       - metavariable-regex:
           metavariable: $VAL
-          regex: ^.{8,}$
+          regex: ^.+$
     metadata:
       delta: {role: secret, kind: assignment}
+
+  - id: delta-secret-env-default
+    languages: [python]
+    severity: WARNING
+    message: 환경 변수가 없을 때 쓰는 비밀값 기본값을 코드에 둠
+    patterns:
+      - pattern-either:
+          - pattern: os.environ.get($NAME, "$VAL")
+          - pattern: os.getenv($NAME, "$VAL")
+          - pattern: os.environ.setdefault($NAME, "$VAL")
+      - metavariable-regex:
+          metavariable: $NAME
+          regex: (?i).*(password|passwd|pwd|secret|token|api_?key|access_?key|private_?key).*
+    metadata:
+      delta: {role: secret, kind: env_default}
 
   - id: delta-secret-token
     languages: [python]

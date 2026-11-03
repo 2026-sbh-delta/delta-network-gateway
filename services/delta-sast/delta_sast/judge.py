@@ -248,9 +248,11 @@ class FakeClient:
         self.answers = answers
         self.model = model
         self.calls = 0
+        self.prompts: list[str] = []
 
     async def ask(self, system: str, user: str, schema: dict) -> dict:
         self.calls += 1
+        self.prompts.append(user)
         for name, answer in self.answers.items():
             if f"- {name} (" in user:
                 if isinstance(answer, BaseException):

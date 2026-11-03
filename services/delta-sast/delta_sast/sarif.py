@@ -138,19 +138,40 @@ def flow_result(flow: Flow, judgment: Judgment, ordinals: dict, cols: Columns, m
     }
 
 
+# 비밀값 판정 → (kind, level, judgment.verdict, 화면 문구)
+SECRET_LEVELS = {
+    "known_token": ("fail", "error", "candidate", "알려진 형식의 키"),
+    "runtime_secret": ("fail", "error", "vulnerable", "실제 키로 판단된 비밀값"),
+    "env_default": ("fail", "warning", "candidate", "환경 변수 기본값으로 둔 비밀값"),
+    "needs_review": ("review", "error", "uncertain", "확인이 필요한 비밀값"),
+    "test_context": ("informational", "note", "safe", "테스트·예시 값"),
+    "placeholder": ("informational", "note", "safe", "자리표시 값"),
+}
+
+
 def secret_result(secret: Secret, cols: Columns, mode: str) -> dict:
+    """비밀값 결과. 원문은 담지 않는다. DAST로 재현할 수 없어 SAST 판정이 최종이다."""
+    kind, level, verdict, label = SECRET_LEVELS.get(secret.verdict or "needs_review", SECRET_LEVELS["needs_review"])
+    name = f" `{secret.name}`" if secret.name else ""
     return {
         "ruleId": "delta.secret",
-        "kind": "fail",
-        "level": "error",
-        "message": {"text": f"비밀값으로 보이는 문자열이 코드에 있다(값 {secret.preview})."},
+        "kind": kind,
+        "level": level,
+        "message": {"text": f"{label}{name}(값 {secret.preview}). {secret.reason}"
+                            + (" 담당자 알림과 키 로테이션이 필요하다." if secret.verdict in ("known_token", "runtime_secret") else "")},
         "locations": [{"physicalLocation": physical(secret.loc, cols)}],
         "partialFingerprints": {"deltaFlow/v1": hashlib.sha256(
-            f"secret|{secret.loc.path}|{secret.rule_id}|{secret.preview}".encode()).hexdigest()[:32]},
+            f"secret|{secret.loc.path}|{secret.rule_id}|{secret.name}|{secret.preview}".encode()).hexdigest()[:32]},
         "properties": {
             "dast": {"verifiable": False},
-            "judgment": {"by": "rule", "verdict": "candidate", "reason": "웹 요청으로 재현할 수 없어 SAST 판정이 최종이다",
-                         "cache_key": None, "mode": mode, "cited": []},
+            "secret": {"verdict": secret.verdict or "needs_review", "kind": secret.kind, "name": secret.name,
+                       "features": {k: v for k, v in secret.features.items() if k != "placeholder"}
+                       | {"placeholder": bool(secret.features.get("placeholder"))},
+                       "owner": secret.owner, "actions": secret.actions,
+                       "notify_owner": secret.verdict in ("known_token", "runtime_secret", "needs_review")},
+            "judgment": {"by": secret.by or "rule", "verdict": verdict, "reason": secret.reason,
+                         "cache_key": None, "mode": mode, "cited": [],
+                         "needs_human": verdict == "uncertain"},
         },
     }
 
