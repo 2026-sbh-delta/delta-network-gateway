@@ -65,3 +65,39 @@ def test_sarif_code_flow_is_passed_for_the_ui(sarif):
     assert (body.code_flow[0].file, body.code_flow[-1].file, body.code_flow[-1].line) == ("app/board.py", "app/board.py", 52)
     assert any(s.file == "app/store.py" and s.note.startswith("저장") for s in body.code_flow)
     assert len(body.code_flow) <= 8
+
+
+def test_sast_input_keeps_entry_route_and_field(sarif):
+    body = next(f for f in Report.model_validate(normalize_report(sarif)).findings if "form.body" in f.title)
+    assert body.sast_input.model_dump() == {"method": "POST", "path": "/posts", "field": "body", "stored": True}
+
+
+def test_staging_target_fills_complete_hint_only_for_registered_route(sarif):
+    from dast_agent.planner import apply_target
+    from dast_agent.registry import load_catalog
+
+    report = apply_target(Report.model_validate(normalize_report(sarif)), load_catalog(), "staging-aws", "vulnerable")
+    hints = {f.title.split(": ", 1)[1].split(" ")[0]: f.trigger.model_dump() for f in report.findings}
+    assert hints["form.body"] == {"target_id": "staging-aws", "route_id": "board-post", "field": "body",
+                                  "payload_id": "visual_svg_v1"}
+    # 댓글은 등록된 route가 없어 대상만 정해진다(에이전트 모드가 화면을 보고 찾는다)
+    assert hints["form.comment"] == {"target_id": "staging-aws", "route_id": None, "field": None, "payload_id": None}
+
+
+async def test_reviewed_plan_verifies_registered_route_without_model(sarif):
+    from dast_agent.planner import apply_target, plan
+    from dast_agent.registry import load_catalog
+
+    catalog = load_catalog()
+    report = apply_target(Report.model_validate(normalize_report(sarif)), catalog, "staging-aws", "vulnerable")
+    decisions = {d.finding_id: d.decision for d in (await plan(report, "reviewed", catalog)).decisions}
+    body = next(f.id for f in report.findings if "form.body" in f.title)
+    assert decisions[body] == "verify" and list(decisions.values()).count("verify") == 1
+
+
+def test_no_target_leaves_findings_untouched(sarif):
+    from dast_agent.planner import apply_target
+    from dast_agent.registry import load_catalog
+
+    report = Report.model_validate(normalize_report(sarif))
+    assert apply_target(report, load_catalog(), None, "vulnerable") is report

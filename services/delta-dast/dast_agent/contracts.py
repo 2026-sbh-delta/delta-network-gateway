@@ -29,6 +29,14 @@ class TriggerHint(StrictModel):
     payload_id: str | None = Field(default=None, pattern=ID_PATTERN)
 
 
+class SastInput(StrictModel):
+    """SAST가 찾은 입력 위치. 점검 대상에 등록된 route와 맞춰 실행 힌트를 채운다."""
+    method: str = Field(pattern=r"^[A-Z]{3,7}$")
+    path: str = Field(min_length=1, max_length=300)
+    field: str | None = Field(default=None, pattern=ID_PATTERN)
+    stored: bool = False
+
+
 class CodeStep(StrictModel):
     """SAST가 알려준 코드 경로 한 단계. 화면의 코드 흐름(원인 → 연관 → 탐지)에 바로 쓴다."""
     role: Literal["source", "propagation", "sink"]
@@ -48,6 +56,7 @@ class Finding(StrictModel):
     trigger: TriggerHint | None = None
     payload: str | None = Field(default=None, max_length=8192)
     code_flow: list[CodeStep] | None = Field(default=None, max_length=12)
+    sast_input: SastInput | None = None
 
 
 class Report(StrictModel):
@@ -77,6 +86,8 @@ class RunRequest(StrictModel):
     auto_fix: bool = True
     # 작업실에서 SAST 점검 결과로 시작한 경우의 SAST run_id. 끝나면 재현 결과를 SAST로 되돌린다.
     sast_run_id: str | None = Field(default=None, pattern=r"^[A-Za-z0-9._-]{1,64}$")
+    # 점검할 대상(registry target). 비우면 프로젝트에 묶인 대상을 쓴다.
+    target_id: str | None = Field(default=None, pattern=ID_PATTERN)
 
 
 class Decision(StrictModel):
