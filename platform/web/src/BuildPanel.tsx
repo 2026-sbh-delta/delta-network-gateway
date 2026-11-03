@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { SandboxPanel } from "./SandboxPanel";
+import { SecurityPanel } from "./SecurityPanel";
 import { api, message, type Page, type Run } from "./api";
 
 const labels = {
@@ -212,7 +213,10 @@ export function BuildPanel({
             {run.external_id && (
               <>
                 <p className="muted">
-                  CodeBuild 실행: <code>{run.external_id}</code>
+                  {run.external_id.startsWith("jenkins:")
+                    ? "Jenkins"
+                    : "CodeBuild"}{" "}
+                  실행: <code>{run.external_id}</code>
                 </p>
                 <button disabled={busy} onClick={readLogs}>
                   {showLogs ? "로그 새로고침" : "빌드 로그 보기"}
@@ -268,6 +272,11 @@ export function BuildPanel({
         )}
       </section>
       <SandboxPanel key={serviceId} serviceId={serviceId} build={run} />
+      <SecurityPanel
+        key={`security-${serviceId}`}
+        serviceId={serviceId}
+        build={run}
+      />
     </>
   );
 }

@@ -11,6 +11,7 @@ from alembic.config import Config
 from build_fixture import BrowserBuilder
 from support import configure_env
 from test_sandbox import config as sandbox_config
+from test_security import config as security_config
 
 import delta_platform.api.app as app_module
 from delta_platform.api.app import create_app
@@ -18,8 +19,11 @@ from delta_platform.core.database import engine_for
 
 if __name__ == "__main__":
     configure_env()
-    config = sandbox_config()
-    app_module.CodeBuildRunner = BrowserBuilder
+    security = security_config()
+    config = sandbox_config().model_copy(
+        update={"sast_url": security.sast_url, "sast_token": security.sast_token}
+    )
+    app_module.build_runner = lambda settings, run: BrowserBuilder(settings)
     engine = engine_for(config)
     assert engine.url.database == "platform_test" and engine.url.host == "127.0.0.1"
     command.upgrade(Config("alembic.ini"), "head")

@@ -1,5 +1,7 @@
 # U2 이미지 빌드 계약
 
+새 기본 실행기는 **Jenkins**다. 기존 CodeBuild 이력은 해당 실행기의 조회 경로로 보존한다. 운영 전환 상태는 [Jenkins 작업 기록](../../docs/ai-dlc/platform-jenkins.md)을 따른다.
+
 U1의 인증·CSRF·요청 크기·Idempotency-Key 규칙을 그대로 사용한다. 모든 경로는 `/api/v1` 기준이다. 공개 GitHub 소스의 성공한 검사 결과가 있어야 한다.
 
 | 메서드·경로 | 입력 | 결과 |
@@ -7,12 +9,23 @@ U1의 인증·CSRF·요청 크기·Idempotency-Key 규칙을 그대로 사용한
 | POST `/services/{id}/builds` | `{ "source_check_id": "UUID" }`, Idempotency-Key | 최초 202, 동일 요청 재전송 200 |
 | GET `/services/{id}/builds` | limit·cursor | 이 서비스의 빌드 이력만 반환 |
 | GET `/builds/{id}` | 없음 | 상태·단계·고정 커밋·외부 실행 ID·결과/오류 |
-| GET `/builds/{id}/events` | after_sequence·limit | 접수·시작·CodeBuild 단계·종료 이력 |
+| GET `/builds/{id}/events` | after_sequence·limit | 접수·시작·빌드 단계·종료 이력 |
 | GET `/builds/{id}/logs` | 없음 | 최근 빌드 로그 텍스트·available·truncated |
 
 기존 `/source-checks`는 소스 검사만 반환한다. 서로 다른 종류의 ID로 조회하면 404다. `GET /services/{id}`에는 `latest_build`가 추가된다.
 
-## 저장과 복구
+## Jenkins 저장과 복구
+
+- `build_target` snapshot은 `provider=jenkins`, controller URL, Job, ECR repository/region을 고정한다. 사용자/토큰은 snapshot이나 HTTP 응답에 넣지 않는다.
+- `submission`은 POST 전 요청 파라미터와 접수 의도를 저장한다. 고객 입력은 `DELTA_RUN_ID`, `DELTA_SOURCE`, `DELTA_COMMIT`, `DELTA_CONTEXT`, `DELTA_DOCKERFILE`로 전달하고 관리자 소유 Job만 실행한다.
+- `external_id`는 `jenkins:queue:<번호>`에서 `jenkins:build:<번호>`로 한 번 전환한다. 같은 Worker 임대 소유자만 전환할 수 있다.
+- 응답 유실 시 같은 요청 ID의 최근 200개 빌드/큐를 검색한다. 결과를 확정하지 못하면 `build_submission_uncertain`으로 실패하며 자동 재접수하지 않는다. 기록 보존 기간을 넘긴 실행도 같은 원칙을 따른다.
+- Job 성공 뒤 `result.json`의 schema_version/run_id/commit_sha/platform/image/image_digest와 ECR의 `run-<UUID>` tag를 비교한다. 결과가 다르면 성공으로 저장하지 않는다.
+- 로그는 크기를 제한한 텍스트이며 redirect를 따르지 않는다. HTTP API에는 private snapshot·접수 intent·인증 정보가 반환되지 않는다.
+- Job 30분, Worker 접수부터 35분 제한. 제한 초과 시 요청 소유권을 검증한 실행만 중단 요청한다. 실제 중단 완료까지 검증했다는 의미는 아니다.
+- Jenkins 연결 설정이 없는 새 요청은 503이며 CodeBuild로 자동 전환하지 않는다. `PLATFORM_BUILD_PROVIDER=codebuild`는 명시적인 이전 실행기 선택용이다.
+
+## 기존 CodeBuild 저장과 복구
 
 - `runs.kind`: 기존 `source_preflight` + 새 `image_build`. 동일 서비스의 활성 작업은 종류에 관계없이 하나다.
 - 빌드 입력 snapshot: 성공한 소스 검사의 등록 정보·source_check_id·실행기 대상(project/repository/region). `resolved_commit_sha`는 그 검사에서 복사한다.

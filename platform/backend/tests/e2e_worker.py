@@ -6,6 +6,7 @@ import httpx
 from build_fixture import BrowserBuilder
 from github_fixture import handler
 from sandbox_fixture import BrowserSandbox
+from security_fixture import BrowserSecurity
 from support import settings
 
 from delta_platform.adapters.github import GitHubReader
@@ -18,7 +19,9 @@ if __name__ == "__main__":
     reader = GitHubReader(httpx.Client(transport=httpx.MockTransport(handler)))
     try:
         while True:
-            if not process_one(Store(engine), reader, BrowserBuilder(), BrowserSandbox()):
+            if not process_one(
+                Store(engine), reader, BrowserBuilder(), BrowserSandbox(), BrowserSecurity()
+            ):
                 time.sleep(0.2)
     finally:
         reader.client.close()

@@ -2,7 +2,7 @@
 
 - 기준일: 2026-11-03. 브랜치 `feat/platform-sandbox`, 기준 main `febabd8`(PR #15 병합).
 - 승인: 공개 플랫폼에서 성공한 빌드 → ECS 실행 → 실제 이미지·헬스 확인 → 결과 표시와 충돌·정리를 제안했고 사용자가 `Go ahead.`로 구현을 승인했다. 구현 시작과 커밋 전 메시지 공유를 안내했다.
-- 상태: 실행 확인 API·Worker·화면과 전용 AWS 기반 구현·검증 완료. 로컬 플랫폼 API/Worker에서 실제 GitHub → CodeBuild → ECS 실행·정리까지 확인했다. AWS 기반 Apply·SSM 설정 병합 완료. 기능 커밋 `652fb93`을 origin에 푸시하고 [PR #16](https://github.com/2026-sbh-delta/delta-network-gateway/pull/16)을 열었다. 공개 웹 U3 Release와 main 병합은 아직 수행하지 않았다.
+- 상태: 구현·AWS 기반 Apply·실제 검증 후 사용자가 PR #16을 병합했다. main `35aff4a`의 GitHub Release와 공개 웹/실제 VM 역할의 전체 실행 확인·정리 검증까지 완료했다. 아래 최초 로컬 검증과 후속 운영 검증을 구분한다.
 
 ## 목적과 범위
 
@@ -58,7 +58,7 @@
 - ECS `delta-platform-sandbox:2`, 태스크 `c549cb06ed8744909a2864b45ab61f7f`. 20:33:25 KST 헬스 확인, 20:34:14 KST 정리 완료. `runtime_check=passed`, `security_check=not_run`, `cleanup=stopped`.
 - 종료 후 desired/running/pending 모두 0. 기존 `delta-lab-staging:8`은 desired/running=1 유지.
 - AWS에 새 내부 ALB·전용 태스크 공간이 남는다. 태스크 비용은 종료됐으나 ALB·저장 비용은 남는다. 플랫폼 VM·NAT의 크기는 변경하지 않았다.
-- SSM `/delta-platform/runtime` 버전 3에 실행기 공개 설정만 병합했다. 로그인·DB·기존 빌드 설정은 보존했다. 실행 중인 공개 웹은 아직 U2 버전이다.
+- SSM `/delta-platform/runtime` 버전 3에 실행기 공개 설정만 병합했다. 로그인·DB·기존 빌드 설정은 보존했다. 당시 공개 웹은 U2였으며, 후속 U3 Release 결과는 아래에 기록한다.
 
 검증 중 수정:
 
@@ -68,7 +68,7 @@
 
 검증 한계와 다음 단계:
 
-- 실제 워크플로는 **로컬 시험 DB/API/Worker + SSO 권한으로 AWS 호출**했다. 공개 웹의 U3 동작과 VM 역할로 전체 실행하는 Release 검증은 PR 병합 후 수행한다. 역할 시뮬레이터와 VM의 읽기 호출 검증을 전체 운영 흐름 검증으로 표현하지 않는다.
+- 최초 실제 워크플로는 **로컬 시험 DB/API/Worker + SSO 권한으로 AWS 호출**했다. 후속 공개 웹/VM 역할 검증은 아래 별도 기록을 따른다. 역할 시뮬레이터와 읽기 호출만을 전체 운영 흐름 검증으로 표현하지 않는다.
 - SAST·DAST·AI 보안 판정, 고객 운영 VM 배포, 다중 고객 격리·고가용성·부하 검증은 미실행이다.
 - DB schema는 `0003`이며 기존 U2 앱으로 이미지 롤백만 하면 readiness에 실패한다. 배포 전 백업 또는 스키마 호환 수정 릴리스가 필요하다.
 - `feat(platform): add ECS sandbox runtime checks` 메시지를 제시했고 사용자의 `Go ahead.`로 커밋·푸시·PR 생성·CI 확인을 승인받았다. 게시 결과는 아래에 기록하며 사용자가 PR을 병합한다.
@@ -79,4 +79,19 @@
 
 `gh pr create`로 [PR #16](https://github.com/2026-sbh-delta/delta-network-gateway/pull/16)을 열었으며 충돌 없이 병합 가능한 상태를 확인했다. GitHub Platform checks의 앱 시험과 네 Terraform root 검증 결과는 PR Checks를 따른다. `docs(platform): record sandbox PR publication` 후속 커밋은 이 게시 기록을 추가한다.
 
-사용자가 병합한 뒤 GitHub Release와 공개 웹의 전체 흐름을 검증한다. PR 생성·기반 Apply를 공개 웹 U3 배포 완료로 표현하지 않는다.
+사용자가 PR #16을 병합한 뒤 아래 Release를 수행했다. PR 생성·기반 Apply와 실제 웹 배포를 구분한다.
+
+## 공개 플랫폼 Release·실제 VM 역할 검증
+
+2026-11-03 사용자의 “run release” 요청에 따라 main `35aff4a759e72a09d7dd14d81ef512d1e13b59ea`에서 [Release #41630547475](https://github.com/2026-sbh-delta/delta-network-gateway/actions/runs/41630547475)를 실행했다. 앱/브라우저와 네 Terraform root 검증, 이미지 빌드·SSM 배포·HTTPS 확인이 모두 성공했다. 배포 artifact의 status는 `Success`다.
+
+- 공개 주소: https://d3udcz0zch0on.cloudfront.net
+- 기존 고정 로그인·서비스 `f886dfba-2dba-4026-aa38-8acc222a75d2`·성공한 빌드 `690c0fc9-84d8-4080-93ee-f4d93fe29d4b`를 그대로 조회했다. 새 CodeBuild 빌드를 중복 실행하지 않았다.
+- ignored `.runtime/u3-https-check.py`가 공개 API로 실행을 접수했다. 실제 ECS 변경은 배포된 Worker의 VM 역할이 수행했고 로컬 SSO는 결과 조회에만 사용했다. 동일 Idempotency-Key의 중복 요청은 같은 실행을 반환했다.
+- 실행 `fda2aef0-cd67-41a2-8287-2d5ce38e8a6f`, ECS 개정판 `delta-platform-sandbox:3`, 태스크 `3dc05aa2e0a6485182614fcd3d07b099`.
+- 기존 빌드와 실제 태스크의 digest `sha256:3ea49729362e9a272631eba09718e8f56be797865d8b644bf75a0aadae0709c7` 일치. 21:01:05 KST 헬스 확인, 21:01:47 KST 종료 확인. `runtime_check=passed`, `security_check=not_run`, `cleanup=stopped`.
+- 실행 종료 후 전용 ECS desired/running/pending 모두 0. 기존 팀 서비스 `delta-lab-staging:8`은 실행 전후 desired/running=1 유지.
+- `.runtime/u3-browser.cjs`로 실제 HTTPS의 로그인·기존 서비스·빌드 digest·샌드박스 결과·종료 표시를 검증했다. 1440px 데스크톱/390px 모바일 캡처를 확인했고 가로 화면 넘침과 브라우저 page error는 없었다. 최초 시험 helper의 선택자가 빌드·샌드박스 결과 두 개에 일치해 실패하여 helper 범위만 수정한 뒤 통과했다.
+- 실제 운영 환경의 취소/재시작/고부하 경로는 이번 Release 검증에 포함하지 않았다. SAST·DAST·AI 보안 검사와 운영 VM 배포도 아직 연결하지 않았다.
+
+후속 작업은 보안 검사 결과와 증거를 플랫폼 작업 이력·배포 조건에 연결하는 것이다. 이번 배포/GCP 네트워크 기록은 `feat/customer-gcp-network`의 미커밋 문서 변경이며 추가 앱 코드 커밋·푸시·PR은 하지 않았다.

@@ -207,3 +207,58 @@ for (const cancel of [false, true]) {
     },
   );
 }
+
+for (const mismatch of [false, true]) {
+  test(
+    mismatch
+      ? "SAST 커밋 불일치는 결과로 인정하지 않는다"
+      : "SAST 발견 사항·근거를 표시하고 보안 통과로 과장하지 않는다",
+    async ({ page }, info) => {
+      await login(page);
+      await register(
+        page,
+        mismatch ? "검사 불일치 서비스" : "코드 보안 검사 서비스",
+      );
+      await page
+        .getByRole("button", { name: "소스 확인", exact: true })
+        .click();
+      await expect(
+        page.getByRole("button", { name: "이 커밋 빌드" }),
+      ).toBeEnabled({ timeout: 15000 });
+      await page.getByRole("button", { name: "이 커밋 빌드" }).click();
+      await expect(
+        page.getByRole("button", { name: "이 빌드의 코드 검사" }),
+      ).toBeEnabled({ timeout: 15000 });
+      await page.getByRole("button", { name: "이 빌드의 코드 검사" }).click();
+      const panel = page.locator(".security-panel");
+      if (mismatch) {
+        await expect(panel).toContainText("security_identity_mismatch", {
+          timeout: 15000,
+        });
+        await expect(panel.locator(".security-result")).toHaveCount(0);
+      } else {
+        await expect(panel).toContainText("조치 대상 1건 · 확인 필요 1건", {
+          timeout: 15000,
+        });
+        await expect(panel).toContainText("app.py:12");
+        await expect(panel).toContainText("운영 배포 승인을 뜻하지 않습니다");
+        await panel.getByText("검사 근거", { exact: true }).click();
+        await expect(panel).toContainText("SARIF SHA-256");
+        await page.screenshot({
+          path: info.outputPath("security-desktop.png"),
+          fullPage: true,
+        });
+        await page.setViewportSize({ width: 390, height: 844 });
+        await page.screenshot({
+          path: info.outputPath("security-mobile.png"),
+          fullPage: true,
+        });
+        expect(
+          await page.evaluate(
+            () => document.documentElement.scrollWidth <= innerWidth,
+          ),
+        ).toBe(true);
+      }
+    },
+  );
+}

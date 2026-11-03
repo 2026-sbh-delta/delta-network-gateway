@@ -5,9 +5,10 @@ import time
 
 from botocore.exceptions import BotoCoreError, ClientError
 
-from delta_platform.adapters.builds import BuildError, CodeBuildRunner
+from delta_platform.adapters.builds import BuildError, build_runner
 from delta_platform.adapters.github import GitHubReader, SourceError
 from delta_platform.adapters.sandbox import SandboxError, SandboxRunner
+from delta_platform.adapters.security import SecurityRunner
 from delta_platform.config import Settings
 from delta_platform.core.auth import Auth
 from delta_platform.core.database import engine_for, ready
@@ -17,7 +18,7 @@ from delta_platform.core.store import Store
 logger = logging.getLogger("delta_platform.worker")
 
 
-def process_one(store, reader, builder=None, sandbox=None):
+def process_one(store, reader, builder=None, sandbox=None, security=None):
     claim = store.claim()
     if claim is None:
         return False
@@ -42,8 +43,11 @@ def process_one(store, reader, builder=None, sandbox=None):
     beat.start()
     try:
         if claim["kind"] == "image_build":
-            builder = builder or CodeBuildRunner(Settings())
+            builder = builder or build_runner(Settings(), claim)
             result = builder.execute(claim, store, progress)
+        elif claim["kind"] == "security_check":
+            security = security or SecurityRunner(Settings())
+            result = security.execute(claim, store, progress)
         elif claim["kind"] == "sandbox_check":
             sandbox = sandbox or SandboxRunner(Settings())
             result = sandbox.execute(claim, store, progress)

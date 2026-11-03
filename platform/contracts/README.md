@@ -21,3 +21,5 @@ Terraform 전체 state를 웹에 전달하지 않는다. 비밀값은 실제 값
 - [DAST API](../../services/delta-dast/docs/API.md): 로컬 토큰 흐름은 플랫폼 사용자 인증이 아니다. 서비스 간 인증·호출 범위는 연동 시 설계한다.
 
 - [U2 이미지 빌드 API·상태·결과 계약](u2-builds.md)
+- [U3 ECS 실행 확인](u3-sandbox.md)
+- [SAST 코드 검사·근거·연결 설정](security-checks.md)

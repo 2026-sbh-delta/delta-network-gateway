@@ -6,7 +6,7 @@ export type Session = {
 export type Run = {
   id: string;
   service_id: string;
-  kind: "source_preflight" | "image_build" | "sandbox_check";
+  kind: "source_preflight" | "image_build" | "sandbox_check" | "security_check";
   cancel_requested?: boolean;
   external_id: string | null;
   status: "queued" | "running" | "succeeded" | "failed";
@@ -15,6 +15,17 @@ export type Run = {
   resolved_commit_sha: string | null;
   created_at: string;
   result: {
+    requires_review?: boolean;
+    counts?: Record<string, number>;
+    findings?: {
+      rule: string;
+      kind: string;
+      file: string;
+      line: number | null;
+    }[];
+    findings_truncated?: boolean;
+    scanner_run_id?: string;
+    evidence_sha256?: string;
     runtime_check?: string;
     security_check?: string;
     build_id?: string;

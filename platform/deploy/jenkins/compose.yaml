@@ -1,0 +1,45 @@
+# Local verification only. Run the agent on a dedicated disposable VM in AWS.
+name: delta-platform-jenkins
+services:
+  controller:
+    build:
+      context: .
+      dockerfile: controller/Dockerfile
+    environment:
+      JENKINS_ADMIN_PASSWORD: ${JENKINS_ADMIN_PASSWORD:?run prepare-local.py}
+      JENKINS_PLATFORM_PASSWORD: ${JENKINS_PLATFORM_PASSWORD:?run prepare-local.py}
+    ports: ["127.0.0.1:18081:8080"]
+    volumes: ["jenkins-home:/var/jenkins_home"]
+    mem_limit: 1536m
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+  agent:
+    profiles: ["agent"]
+    build:
+      context: ..
+      dockerfile: jenkins/agent/Dockerfile
+    environment:
+      JENKINS_URL: http://controller:8080
+      DOCKER_TLS_CERTDIR: ""
+      DOCKER_HOST: unix:///var/run/docker.sock
+      DELTA_ECR_REPOSITORY: ${DELTA_ECR_REPOSITORY:?required}
+      AWS_REGION: ap-northeast-2
+    env_file:
+      - path: .runtime/agent-aws.env
+        required: false
+    privileged: true
+    secrets: [agent_secret]
+    volumes: ["agent-docker:/var/lib/docker"]
+    mem_limit: 3g
+    depends_on: [controller]
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+secrets:
+  agent_secret:
+    file: .runtime/agent-secret
+volumes:
+  jenkins-home:
+  agent-docker:
