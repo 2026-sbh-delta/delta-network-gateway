@@ -74,6 +74,12 @@ API·결과 필드·설정·롤백은 [검사 계약](../../platform/contracts/s
 
 현재 구현·로컬 회귀·실제 네트워크/서버 설치·인증/검사 검증은 완료했다. **main 반영 → SAST 설정 activate → GitHub Platform release → 공개 웹 SAST 검증은 아직**이다. 기존 main 전용 OIDC와 사용자의 PR 병합 절차를 유지한다. 사용자가 `Go.`로 커밋·푸시·PR 생성을 승인했다. 기존 Jenkins 권한 보완은 `42bbe5b`로 분리했고 SAST 연결은 별도 기능 커밋으로 묶는다.
 
-- 마무리 확인: 공개 플랫폼 readiness·기존 ID/PW 로그인·기존 Jenkins 성공 결과가 유지됐다. 임시 포워딩 세션은 AWS 이력에서도 `Terminated`를 확인했다. 사용자가 커밋·푸시·PR 생성을 승인했고 원격 게시를 진행한다. main 병합과 공개 SAST 활성화는 별도 단계다.
+- 마무리 확인: 공개 플랫폼 readiness·기존 ID/PW 로그인·기존 Jenkins 성공 결과가 유지됐다. 임시 포워딩 세션은 AWS 이력에서도 `Terminated`를 확인했다. 사용자 승인 후 원격 게시와 PR 생성을 완료했다. main 병합과 공개 SAST 활성화는 별도 단계다.
 
 - CI 게시 전 재검증: 시스템 `python3`에는 boto3가 없어 병합 함수 단위 테스트가 실패하는 것을 재현했다. 해당 순수 함수 시험에서 SDK import만 대역으로 분리해 기존 배포 테스트 방식에 맞췄다. 새 SAST 배포 스크립트도 CI Ruff 검사에 포함했다.
+
+### Git 게시와 다음 단계
+
+- 2026-11-04: `42bbe5b`(SG 규칙 생성 권한), `aa9598d`(SAST 사설 HTTPS 연결)을 `feat/platform-sast-aws`에 푸시하고 [PR #20](https://github.com/2026-sbh-delta/delta-network-gateway/pull/20)을 열었다. 시스템 Python의 배포 도구 29개와 Ruff/형식 재검증도 통과했다.
+- GitHub CI는 PR에서 실행한다. 최신 커밋의 결과는 PR Checks를 따른다. 이 문서의 실제 AWS 검사 기록은 공개 플랫폼 활성화와 구분한다.
+- PR은 사용자가 병합한다. main 반영 뒤 `connect.py activate`와 GitHub Platform release를 실행하고 공개 웹에서 같은 빌드의 SAST 결과를 검증한다. 아직 활성화·Release·공개 웹 SAST 검증은 수행하지 않았다.

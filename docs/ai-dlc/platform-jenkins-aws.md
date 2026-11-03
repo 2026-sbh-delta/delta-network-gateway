@@ -63,6 +63,6 @@
 - 배포 전/후 DB 백업은 S3 `database/2026/11/03/144959-database-Bdwhn3rv.dump`, `database/2026/11/03/145026-database-qm3Z746i.dump`에 저장됐다. 이번 단위에서는 별도 복원 시험을 반복하지 않았다.
 - ignored 근거: `platform/.runtime/jenkins-public-run.json`, `jenkins-aws-proof.json`, `jenkins-public-desktop.png`, `jenkins-public-mobile.png`, `jenkins-platform-release/`. 인증값은 근거 문서나 Git에 포함하지 않는다.
 
-현재 **Jenkins 서버·에이전트·공개 플랫폼 전환과 실제 빌드/실행 검증 완료**다. 권한 보완은 사용자 승인 후 `42bbe5b`로 커밋했다. 운영 문서는 후속 `feat/platform-sast-aws` PR에 함께 포함한다. PR #19로 배포한 코드는 main `cc1b1c3`이다.
+현재 **Jenkins 서버·에이전트·공개 플랫폼 전환과 실제 빌드/실행 검증 완료**다. 권한 보완은 사용자 승인 후 `42bbe5b`로 커밋했다. 운영 문서는 후속 [PR #20](https://github.com/2026-sbh-delta/delta-network-gateway/pull/20)에 함께 게시했다. PR #19로 배포한 코드는 main `cc1b1c3`이다.
 
 다음 작업은 운영 SAST 연결이다. 플랫폼 UI/API와 DB `0004`는 배포됐지만 `PLATFORM_SAST_URL`/토큰 및 실제 운영 검증은 남아 있다. 이후 DAST의 ECS 검사 수명/접근 계약, 고정 이미지의 Terraform·VM 배포로 이어간다. Jenkins HA·자동 확장·인증서 자동 갱신은 현재 구성에 포함하지 않는다.
