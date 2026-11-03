@@ -41,6 +41,10 @@ variable "origin_request_policy_id" {
   type        = string
   description = "기존 플랫폼 CloudFront Origin Request Policy ID"
 }
+variable "cloudfront_prefix_list_id" {
+  type        = string
+  description = "기존 플랫폼이 사용하는 AWS 관리 CloudFront prefix list ID"
+}
 variable "platform_vpc_id" {
   type        = string
   description = "플랫폼 VPC ID, VM 생성·연결 범위"

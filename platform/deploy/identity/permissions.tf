@@ -9,6 +9,7 @@ locals {
     Statement = concat(local.state_read, [
       { Sid = "StateLock", Effect = "Allow", Action = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"], Resource = local.lock_object },
       { Sid = "EC2Metadata", Effect = "Allow", Action = ["ec2:Describe*"], Resource = "*", Condition = { StringEquals = { "aws:RequestedRegion" = var.region } } },
+      { Sid = "CloudFrontPrefixListEntries", Effect = "Allow", Action = ["ec2:GetManagedPrefixListEntries"], Resource = "arn:aws:ec2:${var.region}:aws:prefix-list/${var.cloudfront_prefix_list_id}" },
       { Sid = "VMRoleRead", Effect = "Allow", Action = ["iam:GetRole", "iam:GetRolePolicy", "iam:ListRolePolicies", "iam:ListAttachedRolePolicies", "iam:ListInstanceProfilesForRole"], Resource = local.vm_roles },
       { Sid = "VMProfileRead", Effect = "Allow", Action = ["iam:GetInstanceProfile"], Resource = local.vm_profiles },
       { Sid = "ArtifactBucketConfiguration", Effect = "Allow", Action = [

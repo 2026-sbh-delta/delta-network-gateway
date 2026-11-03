@@ -27,6 +27,7 @@ Release는 SSM Parameter의 비밀값을 직접 조회하지 않는다. 다만 �
 | `create_oidc_provider` | bool | false | provider가 없을 때 생성. 이미 이 state가 관리 중인 경우에도 true 유지 |
 | `state_bucket` | string | 필수 | 기존 플랫폼 state 버킷 |
 | `origin_request_policy_id` | string | 필수 | 변경을 허용할 기존 CloudFront 정책 |
+| `cloudfront_prefix_list_id` | string | 필수 | 기존 플랫폼의 AWS 관리 CloudFront prefix list. 해당 목록의 항목 조회만 허용 |
 | `platform_vpc_id` | string | 필수 | VM 실행·연결을 허용할 기존 VPC |
 | `platform_subnet_ids` | set(string) | 필수 | 기존 public/private subnet ID |
 

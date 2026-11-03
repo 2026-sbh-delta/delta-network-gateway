@@ -2,9 +2,9 @@
 
 인프라는 **GitHub Actions → OIDC 임시 인증 → Terraform → AWS**, 앱은 **테스트 → ARM64 이미지 → ECR → SSM → 사설 VM**으로 배포한다. 터미널의 AWS 키를 GitHub에 저장하지 않는다.
 
-현재 플랫폼은 AWS에 배포돼 있고 PR #7도 병합됐다. 이번 OIDC 연결의 실제 진행 상태는 [작업 기록](../../docs/ai-dlc/platform-oidc.md)을 따른다. IAM 코드 준비와 GitHub에서 실제 배포 성공은 별개다.
+2026-11-03 PR #8 병합 후 실제 GitHub OIDC Plan·Release와 배포 후 기능 검증을 완료했다. 현재 저장소의 `PLATFORM_CI_ENABLED`는 사용자가 `true`로 설정했다. [실행·검증 기록](../../docs/ai-dlc/platform-oidc.md)을 따른다.
 
-## 사용자가 입력할 변수
+## 최초 설정에 필요한 변수
 
 [저장소 Actions 변수 설정](https://github.com/2026-sbh-delta/delta-network-gateway/settings/variables/actions)에서 **Variables → Repository variables → New repository variable**로 아래 9개를 등록한다. Secrets가 아니다. 현재 Free/private 저장소에서는 Environment를 사용하지 않는다.
 
@@ -20,7 +20,7 @@
 | `PLATFORM_POSTGRES_IMAGE` | 아래 이미지 주소 전체 |
 | `PLATFORM_CI_ENABLED` | 먼저 `false`, AWS 역할 생성과 새 워크플로의 main 반영을 확인한 뒤 `true` |
 
-2026-11-03 위 역할 3개를 AWS에 생성하고 신뢰 정책·권한 시뮬레이션을 확인했다. GitHub에서 실제 OIDC 인증·배포는 새 워크플로 main 반영 후 검증한다. 모든 값의 복사용 원본은 [github-variables.json](github-variables.json)에 있다.
+2026-11-03 위 역할 3개를 AWS에 생성하고 신뢰 정책·권한 시뮬레이션을 확인했다. GitHub의 실제 Plan·Release 인증과 배포도 성공했다. 위 표의 CI 플래그 false는 최초 설정값이며, 현재 활성화된 저장소에서 다시 입력할 필요는 없다. 모든 값의 복사용 원본은 [github-variables.json](github-variables.json)에 있다.
 
 `PLATFORM_TF_INPUTS`:
 

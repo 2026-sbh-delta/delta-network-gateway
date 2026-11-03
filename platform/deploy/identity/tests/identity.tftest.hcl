@@ -4,12 +4,14 @@ mock_provider "aws" {
   }
 }
 variables {
-  account_id               = "111122223333"
-  github_subject_prefix    = "repo:example@123/platform@456"
-  state_bucket             = "test-platform-state"
-  origin_request_policy_id = "00000000-0000-0000-0000-000000000001"
-  platform_vpc_id          = "vpc-00000000000000001"
-  platform_subnet_ids      = ["subnet-00000000000000001", "subnet-00000000000000002"]
+  create_oidc_provider      = false
+  account_id                = "111122223333"
+  github_subject_prefix     = "repo:example@123/platform@456"
+  state_bucket              = "test-platform-state"
+  origin_request_policy_id  = "00000000-0000-0000-0000-000000000001"
+  cloudfront_prefix_list_id = "pl-00000000000000001"
+  platform_vpc_id           = "vpc-00000000000000001"
+  platform_subnet_ids       = ["subnet-00000000000000001", "subnet-00000000000000002"]
 }
 run "exact_main_trust_and_existing_provider" {
   command = plan
@@ -29,13 +31,22 @@ run "plan_cannot_modify_state_or_resources" {
   command = plan
   assert {
     condition = alltrue([for s in local.plan_policy.Statement :
-      alltrue([for action in s.Action : startswith(action, "ec2:Describe") || startswith(action, "iam:Get") || startswith(action, "iam:List") || startswith(action, "s3:Get") || action == "s3:ListBucket" || startswith(action, "ecr:Describe") || startswith(action, "ecr:List") || startswith(action, "ecr:Get") || startswith(action, "cloudfront:Get") || startswith(action, "cloudfront:List") || s.Sid == "StateLock"])
+      alltrue([for action in s.Action : startswith(action, "ec2:Describe") || action == "ec2:GetManagedPrefixListEntries" || startswith(action, "iam:Get") || startswith(action, "iam:List") || startswith(action, "s3:Get") || action == "s3:ListBucket" || startswith(action, "ecr:Describe") || startswith(action, "ecr:List") || startswith(action, "ecr:Get") || startswith(action, "cloudfront:Get") || startswith(action, "cloudfront:List") || s.Sid == "StateLock"])
     ])
     error_message = "Plan의 쓰기 권한은 state 잠금에만 허용합니다."
   }
   assert {
     condition     = [for s in local.plan_policy.Statement : s.Resource if s.Sid == "StateLock"][0] == "arn:aws:s3:::test-platform-state/platform/terraform.tfstate.tflock" && !strcontains(aws_iam_policy.plan.policy, "identity.tfstate")
     error_message = "잠금 경로를 고정하고 identity state는 읽지 못해야 합니다."
+  }
+}
+run "cloudfront_entries_read_is_scoped" {
+  command = plan
+  assert {
+    condition = anytrue([for s in local.plan_policy.Statement :
+      contains(s.Action, "ec2:GetManagedPrefixListEntries") && try(s.Resource == "arn:aws:ec2:ap-northeast-2:aws:prefix-list/pl-00000000000000001", false)
+    ])
+    error_message = "Terraform의 CloudFront data source가 지정 AWS 관리 prefix list의 항목을 읽을 수 있어야 합니다."
   }
 }
 run "release_is_scoped_and_has_no_secret_api" {

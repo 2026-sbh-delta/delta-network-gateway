@@ -29,9 +29,9 @@
 
 AWS CLI v2.39.3을 설치하고 사용자 브라우저 승인으로 `delta-platform` SSO 프로필을 구성했다. SSO 리전은 `us-east-1`, 실제 서비스·Terraform 리전은 `ap-northeast-2`다. STS로 업무 계정 `616723161368`을 확인했다. 만료된 임시 키 전달 파일과 일회용 전달 스크립트는 제거했다.
 
-실제 저장 Plan을 검토하고 IAM 기반 **11개 추가·변경 0·삭제 0**을 적용했다. GitHub OIDC provider 1개, 역할 3개, managed policy 3개, 연결 4개다. 기존 플랫폼 VM·네트워크 변경은 없다. 세 역할 ARN은 사용자가 등록한 변수와 일치한다. 적용 후 IAM 신뢰 확인·권한 시뮬레이션 19개·최종 Plan No changes를 확인했다. 실제 GitHub OIDC 인증·배포와 이번 변경의 커밋·푸시는 미실행이다.
+실제 저장 Plan을 검토하고 IAM 기반 **11개 추가·변경 0·삭제 0**을 적용했다. GitHub OIDC provider 1개, 역할 3개, managed policy 3개, 연결 4개다. 기존 플랫폼 VM·네트워크 변경은 없다. 세 역할 ARN은 사용자가 등록한 변수와 일치한다. 적용 후 IAM 신뢰 확인·권한 시뮬레이션 19개·최종 Plan No changes를 확인했다. 구현을 `a0714e8`에 커밋·푸시했고 [PR #8](https://github.com/2026-sbh-delta/delta-network-gateway/pull/8)의 전체 CI 통과 후 main에 병합했다(`6b404fc`). 사용자가 CI를 활성화했고 실제 GitHub OIDC 인증과 Plan을 검증했다. 실제 GitHub Release와 배포 후 HTTPS·로그인·새 Worker 작업도 검증했다.
 
-사용자가 Repository variables 9개를 등록했고 API 대조로 일치를 확인했다. `PLATFORM_CI_ENABLED=false`를 유지한다. 에이전트는 GitHub 변수·Secrets를 변경하지 않았다.
+사용자가 Repository variables 9개를 등록했고 API 대조로 일치를 확인했다. 사용자가 `PLATFORM_CI_ENABLED=true`로 변경한 것을 API로 확인했다. 에이전트는 GitHub 변수·Secrets를 변경하지 않았다.
 
 ## 검증 기록
 
@@ -57,11 +57,33 @@ AWS CLI v2.39.3을 설치하고 사용자 브라우저 승인으로 `delta-platf
 | identity의 최종 `plan -detailed-exitcode` | 종료 0, No changes |
 | 적용 후 `prepare-identity.py` 재실행 | 입력·backend 파일 동일, 이미 관리 중인 provider 소유권 유지 |
 | `git diff --check` | 통과 |
+| PR #8 원격 CI | test·Terraform 두 root 모두 성공, 실행 41553337823 |
+| Git 게시·병합 | `a0714e8` 커밋·원격 브랜치 푸시·PR #8 생성 후 main `6b404fc` 병합 확인 |
 
-애플리케이션 코드 변경은 없으며 이번 작업에서 API·브라우저 테스트나 운영 앱 재배포는 반복하지 않았다. 새 브랜치의 원격 CI는 아직 실행하지 않았다.
+애플리케이션 코드 변경은 없다. [PR CI 41553337823](https://github.com/2026-sbh-delta/delta-network-gateway/actions/runs/41553337823)에서 API·배포 도구·브라우저와 두 Terraform root 검사가 모두 통과했다. PR 이벤트 실행이 늦게 나타나 중복 요청한 수동 CI 41553375515는 취소했다. 이후 실제 GitHub Release로 운영 앱을 재배포하고 아래 기능 검증까지 완료했다.
 
-## 남은 작업
+## 실제 OIDC Plan과 권한 보완
 
-1. 커밋 전 Conventional Commit 메시지를 사용자에게 알린다. 현재 후보는 `feat(ci): configure keyless AWS deployment without environments`다.
-2. IAM 기반 적용과 Repository variables 9개 등록·검증은 완료했다. 코드의 main 반영 후 사용자가 `PLATFORM_CI_ENABLED=true`로 전환한다.
-3. GitHub에서 실제 OIDC Plan을 확인하고 필요한 인프라 변경 및 앱 Release를 검증한다. 이후 U2 공개 소스 격리 빌드로 진행한다.
+[Platform infrastructure 41553866142](https://github.com/2026-sbh-delta/delta-network-gateway/actions/runs/41553866142)의 첫 실행에서 OIDC 역할 인증과 S3 state 초기화는 성공했다. Plan은 CloudFront data source의 `ec2:GetManagedPrefixListEntries` 권한 누락으로 실패했다. `ec2:Describe*`는 이 API를 포함하지 않는다.
+
+- 로그가 거부된 action·resource·역할을 명시했고 동일 action/ARN의 IAM 시뮬레이션도 `implicitDeny`였다. 원인이 특정돼 다중 가설·추가 계측은 생략했다.
+- 회귀 mock에서 해당 조회 권한 누락 실패를 확인한 뒤, 기존 플랫폼 state에서 얻은 서울 CloudFront prefix list `pl-22a6434b`의 정확한 ARN만 읽도록 추가했다. 다른 목록·다른 리전으로 범위를 넓히지 않았다.
+- 로컬 배포 도구 테스트 17개, IAM mock 7개가 통과했다. mock의 provider 생성 기본값은 명시적으로 false로 고정해 로컬 실계정 tfvars가 시험 전제에 영향을 주지 않게 했다.
+- 실제 저장 Plan은 `aws_iam_policy.plan` 1개 갱신뿐임을 확인했다. Access Analyzer finding 0을 확인한 뒤 적용했다. 해당 목록은 `allowed`, 다른 목록·리전은 `implicitDeny`였다. IAM root의 최종 Plan은 다시 No changes다.
+- 같은 GitHub 실행의 2차 시도가 성공했다. 다운로드한 Plan의 commit·체크섬을 확인했고 실제 리소스 변경은 0이다. 플랫폼 인프라 Apply는 불필요해 실행하지 않았다. Apply 역할의 실제 GitHub 실행을 검증한 것으로 표현하지 않는다.
+
+## 실제 Release와 기능 검증
+
+[Platform release 41554586247](https://github.com/2026-sbh-delta/delta-network-gateway/actions/runs/41554586247)이 main `6b404fc`에서 성공했다. GitHub의 Release OIDC 역할로 ARM64 이미지를 ECR에 게시하고, 기존 서울 앱 VM에 SSM으로 배포했다. 모든 사전 검사·배포·HTTPS readiness 단계가 성공했다.
+
+- 배포 artifact의 SSM 결과 `Success`, response code 0을 확인했다. PostgreSQL 이미지 digest는 기존 고정값과 같았다.
+- 실제 HTTPS 웹·readiness 200, 기존 계정 로그인·Secure/HttpOnly/SameSite 쿠키·세션 로그아웃을 확인했다. 비밀값을 CI나 문서에 기록하지 않았다.
+- 기존 서비스 ID `f886dfba-2dba-4026-aa38-8acc222a75d2`가 유지됐다. 새 소스 확인 `0b77568d-fab3-48ea-87e4-1341dfb81f31`을 접수해 Worker 성공과 이벤트 8개를 확인했다. GitHub 공개 예제의 고정 커밋 `68c1b9f87c41fb3fef2667e27149865c2f42d1eb`을 확인한 결과이며 고객 앱 이미지 빌드·배포 검증은 아니다.
+- 미로그인 업무 API 401, 다른 Origin의 POST 403을 확인했다. 백업·복원·강제 재시작 시험은 이번 IAM/CI 변경 때문에 반복하지 않았다.
+- 증거는 ignored `platform/.runtime/ci-plan-41553866142/`, `ci-release-41554586247/`, `https-release-smoke.json`에 보관한다. Terraform Plan·자격 증명·로그인 비밀번호는 커밋하지 않는다.
+
+권한 보완 코드와 검증 기록은 `fix(ci): allow CloudFront managed prefix list reads` 후속 변경으로 게시한다. 배포 검증 이후의 변경은 IAM 권한·입력 준비·회귀 시험·문서이며 앱 런타임 코드는 바꾸지 않는다.
+
+## 다음 작업
+
+U2 공개 소스 격리 빌드를 구현한다. 현재 고객 서비스 기능은 소스 사전 확인까지이며, 고객 Dockerfile 실행과 이미지 게시·VM 배포는 다음 단위다.
