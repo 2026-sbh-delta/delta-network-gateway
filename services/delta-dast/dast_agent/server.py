@@ -49,6 +49,27 @@ def _claude_auth() -> dict:
     }
 
 
+AUTH_LABELS = {"oidc": "OIDC 단기 토큰", "api_key": "API 키", "token": "인증 토큰", "login": "Claude 로그인", "none": "인증 없음"}
+
+
+def llm_runtime(claude: dict | None = None) -> dict:
+    """어디서 돌고 LLM을 무엇으로 인증하는지. SDK가 고르는 순서(키 → 토큰 → 페더레이션 → 로그인)와 같다."""
+    server = os.environ.get("DELTA_RUNTIME") == "server"
+    if os.environ.get("ANTHROPIC_API_KEY"):
+        auth = "api_key"
+    elif os.environ.get("ANTHROPIC_AUTH_TOKEN"):
+        auth = "token"
+    elif os.environ.get("ANTHROPIC_FEDERATION_RULE_ID"):
+        auth = "oidc"
+    elif (claude if claude is not None else _claude_auth())["logged_in"]:
+        auth = "login"
+    else:
+        auth = "none"
+    return {"location": "server" if server else "local",
+            "location_label": "서버(보안 도구 호스트)" if server else "로컬",
+            "auth": auth, "auth_label": AUTH_LABELS[auth]}
+
+
 def _codex_auth() -> dict:
     """Codex CLI 출력에서 로그인 방식만 판별하고 원문은 반환하지 않는다."""
     try:
@@ -114,6 +135,7 @@ def create_app(port: int = 8765, target_port: int = 8766,
                 "login_present": claude["logged_in"], "login_method": claude["method"],
                 "login_scope": "Claude Code 세션",
                 "credential_present": anthropic_key or anthropic_token or federation or claude["logged_in"],
+                "auth_label": llm_runtime(claude)["auth_label"],
                 **model_runtime["claude_agent"],
             },
             {
@@ -512,11 +534,12 @@ def create_app(port: int = 8765, target_port: int = 8766,
                 "target_ids": sorted(catalog.targets),
                 "payload_ids": sorted(catalog.payloads),
                 "claude_model": os.environ.get("DAST_CLAUDE_MODEL", DEFAULT_MODEL),
+                "llm_runtime": await asyncio.to_thread(llm_runtime),
                 "models": await asyncio.to_thread(model_statuses)}
 
     @app.get("/api/models")
     async def models():
-        return {"models": await asyncio.to_thread(model_statuses)}
+        return {"models": await asyncio.to_thread(model_statuses), "llm_runtime": await asyncio.to_thread(llm_runtime)}
 
     @app.get("/api/sast/status")
     async def sast_status():

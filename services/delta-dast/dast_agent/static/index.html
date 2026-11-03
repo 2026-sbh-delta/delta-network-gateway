@@ -56,7 +56,7 @@
     </section>
     <div class="settings">
       <label>테스트 대상<select id="scenario"><option value="vulnerable">취약 게시판</option><option value="fixed">수정 게시판</option><option value="csp">CSP 적용 게시판</option></select></label>
-      <label>DAST 계획<select id="planner"><option value="agent">AI 에이전트 · Agent SDK (로그인 인증)</option><option value="computer_use">AI 에이전트 · 공식 Computer Use (API 키 필요)</option><option value="claude">Claude 매핑 · 등록 경로 실행</option><option value="reviewed">수동 검토 계획 · 모델 호출 없음</option></select></label>
+      <label>DAST 계획<select id="planner"><option value="agent">AI 에이전트 · Agent SDK</option><option value="computer_use">AI 에이전트 · 공식 Computer Use (API 키 필요)</option><option value="claude">Claude 매핑 · 등록 경로 실행</option><option value="reviewed">수동 검토 계획 · 모델 호출 없음</option></select></label>
       <label>동시 점검<select id="concurrency"><option value="1">1개씩</option><option value="2" selected>2개 동시</option><option value="3">3개 동시</option><option value="4">4개 동시</option></select></label>
       <label class="toggle"><input type="checkbox" id="impact" checked> 영향 시연</label>
       <div class="target" hidden><span>등록된 대상</span><code id="target-origin">연결 확인 중</code></div>
@@ -85,7 +85,7 @@
         <section class="logs"><div class="section-head"><h2>실행 로그</h2><span id="elapsed">—</span></div><ol id="logs"></ol></section>
       </section>
       <aside>
-        <div class="queue-head"><h2>취약점</h2><span class="pill" id="plan-mode">계획 대기</span><strong id="queue-progress">0 / 0</strong></div>
+        <div class="queue-head"><h2>취약점</h2><span class="pill" id="plan-mode">계획 대기</span><span class="pill" id="llm-runtime" hidden></span><strong id="queue-progress">0 / 0</strong></div>
         <div class="queue-bar"><span id="queue-bar-fill"></span></div>
         <ol id="findings" class="queue" aria-label="점검할 취약점 목록"></ol>
         <p class="queue-legend"><span data-s="PENDING">대기</span><span data-s="RUNNING">점검</span><span data-s="REPRODUCED">취약</span><span data-s="NOT_REPRODUCED">안전</span><span data-s="INCONCLUSIVE">불가</span></p>

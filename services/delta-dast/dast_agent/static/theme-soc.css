@@ -414,3 +414,4 @@ footer{color:#6f7a86}
 .sast-v-vulnerable,.sast-v-candidate{color:var(--red)}
 .sast-v-uncertain{color:var(--amber)}
 .sast-v-safe{color:var(--green)}
+#llm-runtime[data-location="server"]{background:#123a2a;color:#7fe0a8}#llm-runtime[data-location="local"]{background:#3a2a12;color:#f2c48f}
