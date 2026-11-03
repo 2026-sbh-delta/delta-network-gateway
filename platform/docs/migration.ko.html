@@ -5,29 +5,36 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>서비스와 데이터 이전 안내</title>
   <style>
-    :root{font-family:system-ui,-apple-system,"Apple SD Gothic Neo","Noto Sans KR",sans-serif;color:#203b38;background:#f4f7f6;line-height:1.7}*{box-sizing:border-box}body{margin:0}.wrap{max-width:940px;margin:auto;padding:48px 24px 72px}header{padding:38px clamp(22px,6vw,64px);background:#173f3d;color:#fff;border-radius:18px}header p{color:#c4d9d4;max-width:680px}h1{font-size:clamp(1.8rem,4vw,2.8rem);line-height:1.25;margin:8px 0 14px}h2{font-size:1.25rem;margin:0 0 12px}section{margin:22px 0;padding:26px;background:#fff;border:1px solid #dfe8e5;border-radius:14px}.eyebrow{font-size:.75rem;letter-spacing:.12em;color:#94d2bd;font-weight:700}.flow{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:22px 0}.step{padding:15px 12px;border-radius:10px;background:#eaf3ef;border:1px solid #d8e8e1}.step b{display:block;color:#21685b;margin-bottom:5px}.targets{display:grid;grid-template-columns:1fr 1fr;gap:12px}.target{padding:16px;border:1px solid #dfe8e5;border-radius:10px}.target h3{margin:0 0 6px}.caution{padding:14px 16px;border-left:4px solid #bb8a32;background:#fbf7ec;color:#67532f}ol,ul{padding-left:1.3rem}li{margin:7px 0}footer{color:#748680;font-size:.86rem;margin:24px 4px}@media(max-width:650px){.wrap{padding:20px 14px 42px}header,section{padding:22px}.flow{grid-template-columns:1fr 1fr}.targets{grid-template-columns:1fr}}
+    :root{font-family:system-ui,-apple-system,"Apple SD Gothic Neo","Noto Sans KR",sans-serif;color:#203b38;background:#f4f7f6;line-height:1.65}*{box-sizing:border-box}body{margin:0}.wrap{max-width:900px;margin:auto;padding:38px 22px 60px}header{padding:32px clamp(20px,5vw,54px);background:#173f3d;color:#fff;border-radius:16px}header p{color:#c4d9d4;max-width:680px}.eyebrow{font-size:.73rem;letter-spacing:.12em;color:#94d2bd;font-weight:700}h1{font-size:clamp(1.8rem,4vw,2.7rem);line-height:1.25;margin:8px 0 12px}h2{font-size:1.2rem;margin:0 0 12px}h3{font-size:1rem;margin:0 0 7px}section{margin:18px 0;padding:23px;background:#fff;border:1px solid #dfe8e5;border-radius:13px}.verified{border-left:4px solid #2f806e}.pending{border-left:4px solid #b78a3c}.facts{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:15px 0}.fact{padding:12px;border:1px solid #e4ece9;border-radius:9px;background:#fbfcfb}.fact b{display:block;color:#21685b;margin-bottom:3px}.flow{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin:16px 0}.step{padding:12px;border-radius:9px;background:#eaf3ef;border:1px solid #d8e8e1;font-size:.9rem}.step b{display:block;color:#21685b;margin-bottom:4px}.caution{padding:12px 14px;border-left:4px solid #bb8a32;background:#fbf7ec;color:#67532f}ul,ol{padding-left:1.25rem}li{margin:6px 0}footer{color:#748680;font-size:.82rem;margin:20px 3px}@media(max-width:640px){.wrap{padding:18px 13px 38px}header,section{padding:20px}.facts{grid-template-columns:1fr}.flow{grid-template-columns:1fr 1fr}}
   </style>
 </head>
 <body><main class="wrap">
-  <header><div class="eyebrow">DELTA PLATFORM · 이전 설계</div><h1>서비스 위치를 바꾸면서<br>도메인과 로그인 상태를 유지합니다</h1><p>프론트엔드, 백엔드, PostgreSQL이 함께 움직이는 서비스를 기준으로 설명합니다. 아래 절차는 목표 설계이며, 실제 클라우드 이전이 이미 끝났다는 뜻은 아닙니다.</p></header>
-  <section><h2>이전 흐름</h2><p>서비스와 환경은 플랫폼에서 안정된 식별자로 연결합니다. AWS에서 시작하든 다른 지원 환경에서 시작하든 승인과 데이터 검증 단계는 같습니다.</p>
-    <div class="flow" aria-label="데이터 이전 흐름">
-      <div class="step"><b>1 · 초기 복사</b>원본 PostgreSQL의 기준 데이터를 대상에 복사합니다.</div>
-      <div class="step"><b>2 · 변경 동기화</b>CDC로 복사 이후의 변경을 따라잡습니다.</div>
-      <div class="step"><b>3 · 대상 검증</b>격리된 검증 환경에서 앱, 데이터, 세션 동작을 확인합니다.</div>
-      <div class="step"><b>4 · 승인과 전환</b>승인 후 쓰기를 잠시 멈추고 최종 동기화, 단일 작성자 전환을 합니다.</div>
+  <header><div class="eyebrow">DELTA PLATFORM · 이전 설계와 검증 상태</div><h1>서비스 위치를 바꾸면서<br>도메인과 로그인 상태를 유지합니다</h1><p>프론트엔드, 백엔드, PostgreSQL이 함께 움직이는 서비스를 기준으로 합니다. 아래 로컬 시연 결과는 클라우드 이전이 끝났다는 뜻이 아닙니다.</p></header>
+
+  <section class="verified"><h2>로컬 전체 흐름에서 확인한 내용</h2><p>별도 Docker PostgreSQL 17 원본·대상과 같은 고정 Docker 앱 이미지를 사용해 실제 Playwright 브라우저로 확인했습니다.</p>
+    <div class="facts">
+      <div class="fact"><b>로그인과 주소</b>로그인 1회 · 서비스 URL 유지 · 세션 쿠키 유지</div>
+      <div class="fact"><b>데이터와 앱</b>복사 전·CDC 중 기록 확인 · 대상 DB에 새 기록 저장 · 앱 이미지 ID 동일</div>
+      <div class="fact"><b>전환 중단 시간</b>통제된 쓰기 중지 4.332초 · 상태 확인에서 의도적으로 측정한 HTTP 503 17회, HTTP 200 12회</div>
+      <div class="fact"><b>접속 경로</b>로컬 Nginx는 루프백 데모 진입점만 담당합니다. 운영용 추가 로드 밸런서나 HAProxy 복귀를 제안하지 않습니다.</div>
     </div>
-    <p>프론트엔드와 백엔드는 새 실행 환경에서 같은 서비스 도메인을 사용합니다. PostgreSQL의 사용자·세션 데이터도 보존해 기존 로그인 상태를 이어가도록 합니다. 이전 중에는 구버전 앱과 신버전 앱 모두 같은 쓰기 DB를 바라보게 하며, 트래픽 분할 자체가 두 DB의 동시 쓰기를 만들지 않도록 합니다.</p>
+    <p class="caution"><b>가용성 표현:</b> 실제로 일시적인 503이 관찰됐으므로 무중단 이전으로 표현하지 않습니다.</p>
   </section>
-  <section><h2>대상 환경별 확인</h2><div class="targets">
-    <article class="target"><h3>Google Cloud</h3><p>대상 네트워크, 앱 연결, PostgreSQL 복제·지연, 읽기와 쓰기, 도메인 경로를 해당 GCP 환경에서 확인합니다.</p></article>
-    <article class="target"><h3>온프레미스</h3><p>사설 연결과 방화벽 경로, 앱 연결, PostgreSQL 복제·지연, 읽기와 쓰기, 도메인 경로를 해당 온프레미스 환경에서 확인합니다.</p></article>
-  </div><p>두 대상은 각각 별도로 검증합니다. 어느 쪽도 다른 쪽의 검증 결과만으로 완료 처리하지 않습니다. 서비스 데이터는 하나의 공유 데이터 계층을 사용하고, 전환 시점의 쓰기 주체는 하나로 유지합니다.</p></section>
-  <section><h2>전환 절차</h2><ol>
-    <li>대상 앱을 샌드박스에서 실행하고 테스트 DB로 연결해 기능을 검증합니다. 이 단계는 실제 고객 DB에 쓰지 않습니다.</li>
-    <li>데이터 일치, CDC 지연, 앱 준비 상태, 세션 확인 결과와 승인 대상 입력을 검토합니다.</li>
-    <li>승인된 짧은 쓰기 중지 구간에 신규 쓰기와 배치를 멈추고, CDC가 따라잡은 뒤 최종 동기화를 확인합니다.</li>
-    <li>쓰기 연결을 대상 PostgreSQL 하나로 전환하고 새 앱 경로를 엽니다. 읽기·쓰기와 기존 로그인 세션을 확인한 뒤 쓰기를 재개합니다.</li>
-  </ol><div class="caution"><b>복구 경계:</b> 대상 DB에서 새 쓰기가 시작된 뒤에는 DNS를 원래 위치로 돌리는 것만으로 안전하게 롤백할 수 없습니다. 원본과 대상 데이터가 달라질 수 있으므로, 사전 계획된 역방향 동기화나 별도 복구 절차 없이 이전 DB로 되돌리지 않습니다.</div></section>
-  <footer>이 페이지는 이전 절차의 의도된 설계를 설명합니다. 환경별 연결, 운영 승인, 실제 복제 및 전환 결과는 별도 검증 기록으로 확인합니다.</footer>
+
+  <section class="pending"><h2>클라우드 이전은 별도 검증이 필요합니다</h2><ul>
+    <li>AWS에서 GCP로 VM·VPN·PostgreSQL을 옮기는 실제 이전은 아직 실행하지 않았습니다.</li>
+    <li>GCP 프로젝트 <code>GCPterm2-delta</code>에는 <code>10.30.1.0/24</code> 서브넷이 있지만, 현재 VM 0대·VPN 0개입니다.</li>
+    <li>플랫폼 웹의 계획 승인은 계획에 대한 승인 기록만 남깁니다. 데이터 복사나 전환을 시작하지 않으며, 현재 실제 이전 실행은 운영자 CLI로 진행합니다.</li>
+    <li>이 로컬 증거는 원격 CI의 이전 검증 결과나 클라우드 적용 결과가 아닙니다.</li>
+  </ul></section>
+
+  <section><h2>의도한 이전 절차</h2><div class="flow" aria-label="데이터 이전 흐름">
+    <div class="step"><b>1 · 초기 복사</b>PostgreSQL 기준 데이터를 대상으로 복사</div>
+    <div class="step"><b>2 · CDC 동기화</b>복사 중 발생한 변경을 따라잡기</div>
+    <div class="step"><b>3 · 대상 검증</b>격리된 DB에서 앱·데이터·세션 확인</div>
+    <div class="step"><b>4 · 승인과 전환</b>쓰기 잠금, 최종 동기화, 단일 작성자 전환</div>
+  </div><p>기존 도메인과 로그인 세션을 유지하고, 전환 전에는 구·신 앱이 같은 쓰기 DB를 사용합니다. GCP와 온프레미스는 각각 연결·앱·DB를 따로 검증하며 한 공유 데이터 계층의 쓰기 주체는 하나로 둡니다.</p>
+    <p class="caution"><b>복구 경계:</b> 대상 DB 쓰기가 시작된 뒤에는 DNS만 원복해도 안전한 롤백이 되지 않습니다. 사전 계획한 역방향 동기화나 별도 복구 절차 없이 이전 DB로 되돌리지 않습니다.</p>
+  </section>
+  <footer>검증 범위는 로컬 브라우저와 두 PostgreSQL 데이터베이스입니다. 실제 클라우드 복제·전환과 원격 CI 검증은 별도 작업으로 남아 있습니다.</footer>
 </main></body></html>

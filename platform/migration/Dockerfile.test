@@ -1,0 +1,10 @@
+FROM python:3.12-slim
+RUN pip install --no-cache-dir uv==0.10.0
+WORKDIR /app/platform/backend
+COPY platform/backend/pyproject.toml platform/backend/uv.lock ./
+COPY platform/backend/src ./src
+COPY services/delta-staging/pyproject.toml /app/services/delta-staging/pyproject.toml
+COPY services/delta-staging/delta_staging /app/services/delta-staging/delta_staging
+RUN uv sync --frozen
+COPY platform/migration /app/platform/migration
+CMD ["uv", "run", "--frozen", "pytest", "-q", "-x", "-c", "/app/platform/migration/pytest.ini", "/app/platform/migration/tests"]

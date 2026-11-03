@@ -89,6 +89,17 @@ jobs:
           npm run build
           npx playwright install --with-deps chromium
           npm run test:e2e
+      - name: PostgreSQL copy and cutover
+        run: |
+          trap 'docker compose -f platform/migration/compose.test.yaml down -v' EXIT
+          uv run --project platform/backend ruff check --config platform/backend/pyproject.toml platform/migration
+          uv run --project platform/backend ruff format --check --config platform/backend/pyproject.toml platform/migration
+          docker compose -f platform/migration/compose.test.yaml build test
+          docker compose -f platform/migration/compose.test.yaml run --rm test
+      - name: Fullstack session continuity
+        run: |
+          trap 'docker compose --env-file platform/.runtime/migration-demo/.env -f platform/migration/compose.demo.yaml --profile target-app --profile runner down -v' EXIT
+          uv run --project platform/backend python platform/migration/demo.py
   terraform:
     strategy:
       fail-fast: false
