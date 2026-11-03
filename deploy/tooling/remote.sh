@@ -90,6 +90,11 @@ elif key=$(aws ssm get-parameter --region "$REGION" --name "${PARAMETER_PATH}ant
   backend=api
 fi
 unset key
+# 모델: Parameter Store에 있으면 그 값, 없으면 각 서비스 기본값
+sast_model=$(param sast_llm_model)
+dast_model=$(param dast_llm_model)
+[ -n "$sast_model" ] && printf 'SAST_LLM_MODEL=%s\n' "$sast_model" >> "$base/llm.env"
+[ -n "$dast_model" ] && printf 'DAST_CLAUDE_MODEL=%s\n' "$dast_model" >> "$base/llm.env"
 
 # SAST가 점검할 예제 소스(DAST 실습 게시판과 같은 코드)를 DAST 이미지에서 꺼내 둔다
 tmp=$(docker create "$DAST_IMAGE")
@@ -112,7 +117,7 @@ docker run -d --name delta-dast --restart unless-stopped --network host --shm-si
 
 for i in $(seq 1 60); do
   if curl -fsS http://127.0.0.1:8790/healthz >/dev/null 2>&1 && curl -fsS http://127.0.0.1:8765/api/sast/status >/dev/null 2>&1; then
-    echo "ok: sast=$(curl -fsS http://127.0.0.1:8790/healthz) dast_sast_link=$(curl -fsS http://127.0.0.1:8765/api/sast/status) llm_backend=$backend llm_auth=$([ -n "${rule:-}" ] && echo oidc || echo ${backend})"
+    echo "ok: sast=$(curl -fsS http://127.0.0.1:8790/healthz) dast_sast_link=$(curl -fsS http://127.0.0.1:8765/api/sast/status) llm_backend=$backend sast_model=${sast_model:-default} dast_model=${dast_model:-default} llm_auth=$([ -n "${rule:-}" ] && echo oidc || echo ${backend})"
     docker image prune -f >/dev/null
     docker ps --format '{{.Names}} {{.Image}} {{.Status}}'
     exit 0
