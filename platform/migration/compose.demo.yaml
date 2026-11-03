@@ -60,6 +60,7 @@ services:
       context: ../..
       dockerfile: platform/migration/Dockerfile.test
     profiles: [runner]
+    user: "${DEMO_RUNNER_UID:-0}:${DEMO_RUNNER_GID:-0}"
     volumes: ["../.runtime/migration-demo/work:/work"]
     environment:
       DELTA_MIGRATION_SOURCE_DSN: postgresql://delta_admin:${DB_ADMIN_PASSWORD}@source:5432/app

@@ -52,6 +52,9 @@ def wait_file(name, process):
 
 
 def main():
+    # Preserve private 0600 files while letting the invoking Linux user read them.
+    os.environ["DEMO_RUNNER_UID"] = str(os.getuid())
+    os.environ["DEMO_RUNNER_GID"] = str(os.getgid())
     WORK.mkdir(parents=True, exist_ok=True)
     if (WORK / "work/plan.json").exists():
         raise SystemExit("Existing demo plan: inspect it before a new run; do not overwrite.")
@@ -162,7 +165,7 @@ def main():
     try:
         wait_file("browser-ready", browser)
         source_env, target_env, workflow, execution = map(str, (uuid4(), uuid4(), uuid4(), uuid4()))
-        base = ["run", "--rm", "-T", "runner", "uv", "run", "--frozen", "platform-db-move"]
+        base = ["run", "--rm", "-T", "runner", "/app/platform/backend/.venv/bin/platform-db-move"]
         run(
             *base,
             "plan",
@@ -297,7 +300,11 @@ def main():
     finally:
         if browser.poll() is None:
             browser.terminate()
-            browser.wait(timeout=10)
+            try:
+                browser.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                browser.kill()
+                browser.wait(timeout=5)
         browser_log.close()
 
 

@@ -85,3 +85,5 @@
 - 원본 관측 IAM과 DAST 사설 연결 Apply는 완료했지만, 실제 취약 앱의 XSS 재현·GCP/온프레미스 샌드박스는 아직 별도 검증이 필요하다.
 
 - DB 이전 단위 커밋 전 회귀: `platform/backend`에서 `uv run pytest -q` → **158 passed, 1 deselected**. backend와 migration 도구 Ruff 검사·포맷, `git diff --check` 통과. 새 DB/전체 앱 CI 단계는 추가했으며 원격 실행 결과는 PR에서 확인한다.
+
+- PR #24 최초 CI: 기존 앱·브라우저·Terraform 7개 root와 PostgreSQL 통합 6개는 통과했지만 Linux 전체 앱 데모는 root 소유 0600 계획 파일을 runner 사용자가 읽지 못해 실패했다. Linux 컨테이너에서 같은 PermissionError를 재현했고, 동일 사용자 UID/GID로 journal 생성·읽기 및 0600 유지가 통과하는 것을 확인했다. 데모 실행기를 호출 사용자로 실행하고 미리 설치한 CLI를 사용한다. 실패 정리 중 브라우저 종료 대기가 원래 오류를 덮지 않도록 kill 후 정리한다. 전체 CI 재검증은 후속 실행 결과를 따른다.
