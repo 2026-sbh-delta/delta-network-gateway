@@ -46,7 +46,11 @@ const metric = (
   message: status === "ok" ? null : `${status} test fixture`,
   series: [],
 });
-function snapshot(env: ReturnType<typeof environment>, degraded = false) {
+function snapshot(
+  env: ReturnType<typeof environment>,
+  degraded = false,
+  migration: Record<string, unknown> | null = null,
+) {
   return {
     service_id: "svc-a",
     environment: env,
@@ -118,7 +122,7 @@ function snapshot(env: ReturnType<typeof environment>, degraded = false) {
         },
       ],
     },
-    migration: null,
+    migration,
   };
 }
 async function installBoundary(page: Page) {
@@ -157,7 +161,13 @@ async function installBoundary(page: Page) {
         json: {
           items:
             envMatch[1] === "svc-a"
-              ? [environment("env-a", "운영"), environment("env-b", "검증")]
+              ? [
+                  environment("env-a", "운영"),
+                  environment("env-b", "검증"),
+                ].concat([
+                  environment("env-c", "복제 차단"),
+                  environment("env-d", "전환 완료"),
+                ])
               : [environment("env-c", "운영")],
         },
       });
@@ -165,11 +175,54 @@ async function installBoundary(page: Page) {
     if (dataMatch) {
       const envId = url.searchParams.get("environment_id") ?? "env-a";
       const degraded = envId === "env-b";
+      const migration =
+        envId === "env-b"
+          ? {
+              workflow_id: "workflow-stale",
+              run_id: "run-stale",
+              stage: "synchronizing",
+              lag_bytes: null,
+              validation: "pending",
+              observed_at: "2026-11-04T00:00:00Z",
+              status: "stale",
+            }
+          : envId === "env-c"
+            ? {
+                workflow_id: "workflow-blocked",
+                run_id: "run-blocked",
+                stage: "fencing_source",
+                lag_bytes: 16384,
+                validation: "pending",
+                observed_at: "2026-11-04T00:01:00Z",
+                status: "blocked",
+              }
+            : envId === "env-d"
+              ? {
+                  workflow_id: "workflow-cleaned",
+                  run_id: "run-cleaned",
+                  stage: "cleaned",
+                  lag_bytes: 0,
+                  validation: "passed",
+                  observed_at: "2026-11-04T00:02:00Z",
+                  status: "completed",
+                }
+              : null;
       return route.fulfill({
         status: 200,
         json: snapshot(
-          environment(envId, envId === "env-b" ? "검증" : "운영"),
+          environment(
+            envId,
+            (
+              {
+                "env-a": "운영",
+                "env-b": "검증",
+                "env-c": "복제 차단",
+                "env-d": "전환 완료",
+              } as Record<string, string>
+            )[envId] ?? "운영",
+          ),
           degraded,
+          migration,
         ),
       });
     }
@@ -213,6 +266,54 @@ test("대시보드에서 환경을 바꾸고 누락·오류·오래된 값을 �
   await page.setViewportSize({ width: 390, height: 844 });
   await page.screenshot({
     path: info.outputPath("observability-mobile.png"),
+    fullPage: true,
+  });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+});
+
+test("DB 이전의 stale·blocked·cleaned 상태와 WAL 바이트를 표시한다", async ({
+  page,
+}, info) => {
+  await installBoundary(page);
+  await page.goto("/");
+  await page.getByLabel("아이디", { exact: true }).fill("browser-fixture");
+  await page.getByLabel("비밀번호", { exact: true }).fill("test-only");
+  await page.getByRole("button", { name: "로그인", exact: true }).click();
+  await page.getByRole("button", { name: "대시보드", exact: true }).click();
+
+  const migration = page.locator(".obs-migration");
+  await expect(
+    page.getByText("DB 이전 실행 없음", { exact: true }),
+  ).toBeVisible();
+  await page.getByLabel("환경 선택").selectOption("env-b");
+  await expect(migration).toContainText("오래된 상태");
+  await expect(migration).toContainText("변경 동기화 중");
+  await expect(migration).toContainText("검증: 대기");
+  await expect(migration).toContainText("미반영 WAL: 정보 없음");
+  await expect(migration).toContainText("마지막 갱신");
+
+  await page.getByLabel("환경 선택").selectOption("env-c");
+  await expect(migration).toContainText("차단됨");
+  await expect(migration).toContainText("원본 쓰기 차단 중");
+  await expect(migration).toContainText("16,384 바이트");
+
+  await page.getByLabel("환경 선택").selectOption("env-d");
+  await expect(migration).toContainText("실행 단계 완료");
+  await expect(migration).toContainText("DB 전환·복제 정리 완료");
+  await expect(migration).toContainText("검증: 통과");
+  await expect(migration).toContainText("미반영 WAL: 0 바이트");
+  await expect(migration).not.toContainText("서비스 이전 완료");
+  await page.screenshot({
+    path: info.outputPath("migration-cleaned-desktop.png"),
+    fullPage: true,
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({
+    path: info.outputPath("migration-cleaned-mobile.png"),
     fullPage: true,
   });
   expect(

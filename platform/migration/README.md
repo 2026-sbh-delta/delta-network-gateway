@@ -74,3 +74,18 @@ docker compose --env-file platform/.runtime/migration-demo/.env \
 ```
 
 AWS/GCP VM 배포·VPN 연결·관리형 DB 권한과 웹 실행기 연결은 후속이다. 2026-11-04 조회 기준 `term2-delta`의 고객 서브넷은 `10.30.1.0/24`이며 해당 프로젝트의 VM과 서울 VPN 터널은 0개였다. 준비된 고객 환경으로 연결하기 전에는 클라우드 이전 완료로 표시하지 않는다.
+
+
+## 플랫폼 승인·진행 상태 연결
+
+운영자 실행 도구에서 기존 `PLATFORM_*` 런타임 설정으로 플랫폼 업무 DB에 접근한다. 고객 DB 접속값 3개는 별도로 전달한다. 고객에게 플랫폼 DB 자격 증명을 나눠주는 방식이 아니다.
+
+1. 위 `plan` 명령으로 실제 DB 계획을 생성하고 DB 신원·대상·스키마·쓰기 계정을 검토한다.
+2. `platform-db-register --service-id <서비스-ID> --build-id <완료된-빌드-ID> --plan <계획파일> --request-key <고유요청키>`로 workflow를 등록한다. 플랫폼은 기존 성공한 빌드의 커밋·이미지 digest와 환경 연결을 고정한다. 같은 입력과 요청 키는 같은 workflow를 반환한다.
+3. 웹의 계획 화면에서 등록한 workflow·대상·이미지·action 해시를 검토하고 승인한다. 이 승인은 DB를 즉시 바꾸지 않는다. 구체적인 DB 작업은 운영자가 검토한 로컬 계획 파일과 연결된다.
+4. `platform-db-move start --platform --workflow-id <발급-ID> --plan <같은계획> --journal <영속경로> --approved-hash <DB-plan_hash>`로 시작한다. 플랫폼이 run ID를 발급하므로 `--run-id`를 생략한다. 같은 계획·workflow의 후속 `status`·`wait`·`promote`·`cleanup`도 `--platform`과 같은 journal을 사용한다.
+5. `promote`에는 별도로 DB 계획 해시를 다시 전달한다. **workflow의 input_hash, action의 payload_hash, DB 계획의 plan_hash는 서로 다른 값**이다. 첫 값은 전체 배포 계획, 두 번째는 DB 실행 입력, 마지막은 DB 계획 자체를 고정한다.
+
+선택한 대상 환경의 대시보드에 현재 단계·WAL 바이트 차이·검증·마지막 갱신을 보여준다. CLI 명령 전후에 상태를 갱신하며, 동기화 중에는 같은 실행의 `status --platform`을 주기적으로 호출한다. 5분 넘게 갱신되지 않은 진행 값은 오래됨으로 표시하고 실패는 점검 필요로 표시한다. 조회하지 않은 지연을 0으로 만들지 않는다. `cleaned`는 DB 전환과 복제 정리 완료이며 프론트·백엔드 배포 및 도메인 전환의 완료는 별도로 검증해야 한다.
+
+플랫폼 기록 실패로 DB 작업 결과가 불확실해도 새 run을 만들거나 journal을 지우지 않는다. 같은 journal·workflow로 상태를 확인하고 재개한다. 플랫폼 연결 없는 기존 CLI는 격리된 실험·명시적인 운영 복구용으로 유지한다. 웹 Worker의 자동 VM·도메인 전환은 아직 미연결이다.

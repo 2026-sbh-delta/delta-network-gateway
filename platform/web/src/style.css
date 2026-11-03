@@ -862,6 +862,12 @@ footer {
 .state-error {
   --state-color: #a54740;
 }
+.state-blocked {
+  --state-color: #a54740;
+}
+.state-completed {
+  --state-color: #607a70;
+}
 .state-no_data,
 .state-unsupported {
   --state-color: #778784;
@@ -882,14 +888,32 @@ footer {
   color: #314d48;
 }
 .obs-migration {
-  display: flex;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 8px;
+  display: block;
   padding-top: 13px;
   margin-top: 4px;
   border-top: 1px solid #edf1f0;
   color: #687c77;
+  font-size: 0.85rem;
+}
+.obs-migration-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.obs-migration p {
+  margin: 7px 0 0;
+  overflow-wrap: anywhere;
+}
+.obs-migration small {
+  display: block;
+  margin-top: 5px;
+}
+.obs-migration-none {
+  padding-top: 13px;
+  margin: 4px 0 0;
+  border-top: 1px solid #edf1f0;
+  color: #798987;
   font-size: 0.85rem;
 }
 .obs-instance {

@@ -65,9 +65,23 @@ export type Observability = {
   };
   migration: null | {
     workflow_id: string;
-    stage: string;
-    lag_seconds: number | null;
-    validation: "pending" | "passed" | "failed";
+    run_id: string;
+    stage:
+      | "planned"
+      | "preparing"
+      | "copying"
+      | "synchronizing"
+      | "fencing_source"
+      | "source_fenced"
+      | "validated"
+      | "promotion_pending"
+      | "promoted"
+      | "cleaned"
+      | "aborted";
+    lag_bytes: number | null;
+    validation: "pending" | "passed";
+    observed_at: string;
+    status: "ok" | "stale" | "blocked" | "completed";
   };
 };
 

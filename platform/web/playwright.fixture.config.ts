@@ -4,7 +4,7 @@ import { defineConfig } from "@playwright/test";
 // This configuration deliberately does not start the database-backed E2E server.
 export default defineConfig({
   testDir: "./tests",
-  testMatch: "workflow-planning.spec.ts",
+  testMatch: ["workflow-planning.spec.ts", "observability.spec.ts"],
   fullyParallel: false,
   workers: 1,
   use: {

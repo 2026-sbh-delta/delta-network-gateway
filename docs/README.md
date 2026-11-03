@@ -3,7 +3,7 @@
 ## 현재 상태
 
 - 기준일: 2026-11-04 (Asia/Seoul)
-- 플랫폼 관측·서비스 이전: 사용자 TODO 구현과 커밋·PR 병합 위임을 받아 진행 중이다. DAST PR #21은 CI 통과 후 병합했고, OTel 한 페이지 대시보드와 세션 예제를 구현했다. PR #22도 병합했고 실제 로컬 앱→AWS 관측 수집과 조회 IAM Apply를 검증했다. workflow/AI 실행 식별·승인과 계획 화면도 PR #23으로 병합·배포했다. PostgreSQL 초기 복사·CDC·안전 전환 실행기와 로컬 전체 앱·세션 이전을 검증했다. 고객 클라우드 VM/DB와 웹 자동 실행기 연결은 후속이다. [현재 범위·검증 기록](ai-dlc/platform-continuity.md)
+- 플랫폼 관측·서비스 이전: 사용자 TODO 구현과 커밋·PR 병합 위임을 받아 진행 중이다. DAST PR #21은 CI 통과 후 병합했고, OTel 한 페이지 대시보드와 세션 예제를 구현했다. PR #22도 병합했고 실제 로컬 앱→AWS 관측 수집과 조회 IAM Apply를 검증했다. workflow/AI 실행 식별·승인과 계획 화면도 PR #23으로 병합·배포했다. PostgreSQL 초기 복사·CDC·안전 전환 실행기와 로컬 전체 앱·세션 이전을 검증했다. 승인된 DB 이전 CLI와 대시보드 진행 상태도 연결했다. 고객 클라우드 VM/DB와 웹 자동 실행기 연결은 후속이다. [현재 범위·검증 기록](ai-dlc/platform-continuity.md)
 - 플랫폼 DAST 연결: `feat/platform-dast`에서 팀 DAST API·ECS 수명·취소/복구·결과 화면과 사설 네트워크 확장을 구현했다. 현재 AWS 샌드박스 대상이며 GCP·온프레미스는 각 환경의 별도 검증을 추가한다. 로컬 검증 결과는 [진행 기록](ai-dlc/platform-dast.md), 운영 연결은 [배포 안내](../platform/deploy/dast/README.md)를 따른다. PR #21은 main에 병합됐고 사설 경로·SG 추가 Apply를 완료했다. 도구 이미지 활성화·플랫폼 릴리스를 완료했고 실제 ECS 실행·정리와 후보0건의 DAST 미실행 표시를 검증했다. 실제 XSS 재현 검증은 별도다.
 - Jenkins AWS 운영 연결 완료(2026-11-03): PR #19 병합 후 GitHub OIDC로 사설 컨트롤러/전용 에이전트와 플랫폼을 배포했다. 공개 웹에서 실제 Jenkins 빌드 → ECR digest → ECS HTTP 검사·종료 및 데스크톱·모바일 표시를 검증했다. 기존 로그인·DB·서비스와 팀 스테이징을 보존했고 플랫폼/IAM 세 root는 No changes다. 배포 중 발견한 신규 SG 규칙 생성 권한 수정은 `42bbe5b`로 분리했고 운영 문서는 후속 `feat/platform-sast-aws` PR에 함께 포함한다. [진행 기록](ai-dlc/platform-jenkins-aws.md)
 - 플랫폼 Jenkins 전환: PR #18/#19는 main에 병합됐다. 최초 로컬 실제 검증은 [기록](ai-dlc/platform-jenkins.md)에 보존하고 현재 운영 상태는 위 AWS 기록을 따른다. 고객 앱 빌드는 Jenkins, 플랫폼 인프라·릴리스는 GitHub Actions/OIDC가 담당한다.
