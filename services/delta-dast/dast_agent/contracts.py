@@ -29,6 +29,14 @@ class TriggerHint(StrictModel):
     payload_id: str | None = Field(default=None, pattern=ID_PATTERN)
 
 
+class CodeStep(StrictModel):
+    """SAST가 알려준 코드 경로 한 단계. 화면의 코드 흐름(원인 → 연관 → 탐지)에 바로 쓴다."""
+    role: Literal["source", "propagation", "sink"]
+    file: str = Field(min_length=1, max_length=300)
+    line: int = Field(ge=1, le=10_000_000)
+    note: str = Field(default="", max_length=200)
+
+
 class Finding(StrictModel):
     id: str = Field(pattern=ID_PATTERN)
     title: str = Field(min_length=1, max_length=200)
@@ -39,6 +47,7 @@ class Finding(StrictModel):
     line: int = Field(ge=1, le=10_000_000)
     trigger: TriggerHint | None = None
     payload: str | None = Field(default=None, max_length=8192)
+    code_flow: list[CodeStep] | None = Field(default=None, max_length=12)
 
 
 class Report(StrictModel):
@@ -66,6 +75,8 @@ class RunRequest(StrictModel):
     project_id: str | None = Field(default=None, pattern=r"^[A-Za-z0-9_-]{1,64}$")
     # 취약 항목의 조치 권장 코드(수정안)를 점검 직후 자동으로 만든다. PR은 항상 사용자 승인 후 생성한다.
     auto_fix: bool = True
+    # 작업실에서 SAST 점검 결과로 시작한 경우의 SAST run_id. 끝나면 재현 결과를 SAST로 되돌린다.
+    sast_run_id: str | None = Field(default=None, pattern=r"^[A-Za-z0-9._-]{1,64}$")
 
 
 class Decision(StrictModel):

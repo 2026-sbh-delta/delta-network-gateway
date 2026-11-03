@@ -1,0 +1,8 @@
+# 출력 맥락별 페이로드 틀 ID. LLM은 이 안에서만 고른다. 실제 문자열과 nonce는 DAST가 만든다.
+html_text: [script_tag, img_onerror, svg_onload]
+html_attr: [attr_break_event, attr_break_tag]
+url: [javascript_url]
+js_string: [js_string_break, script_close_break]
+sql: [sql_quote_bool, sql_union, sql_time_delay]
+shell: [shell_separator, shell_subst]
+template: [template_expr]

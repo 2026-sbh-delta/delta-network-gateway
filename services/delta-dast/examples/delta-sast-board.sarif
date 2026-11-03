@@ -1,0 +1,1286 @@
+{
+  "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "delta-sast",
+          "version": "0.1.0",
+          "informationUri": "https://github.com/2026-sbh-delta/delta-network-gateway",
+          "rules": [
+            {
+              "id": "delta.xss.stored",
+              "name": "저장형 XSS",
+              "shortDescription": {
+                "text": "저장형 XSS"
+              },
+              "fullDescription": {
+                "text": "입력이 저장소를 거쳐 다른 응답의 HTML에 escape 없이 출력된다."
+              }
+            },
+            {
+              "id": "delta.xss.reflected",
+              "name": "반사형 XSS",
+              "shortDescription": {
+                "text": "반사형 XSS"
+              },
+              "fullDescription": {
+                "text": "입력이 같은 응답의 HTML에 escape 없이 출력된다."
+              }
+            },
+            {
+              "id": "delta.sqli",
+              "name": "SQL 인젝션",
+              "shortDescription": {
+                "text": "SQL 인젝션"
+              },
+              "fullDescription": {
+                "text": "입력이 조립된 SQL 문자열로 실행된다."
+              }
+            },
+            {
+              "id": "delta.cmdi",
+              "name": "명령 인젝션",
+              "shortDescription": {
+                "text": "명령 인젝션"
+              },
+              "fullDescription": {
+                "text": "입력이 셸 명령으로 실행된다."
+              }
+            },
+            {
+              "id": "delta.ssti",
+              "name": "템플릿 인젝션",
+              "shortDescription": {
+                "text": "템플릿 인젝션"
+              },
+              "fullDescription": {
+                "text": "입력으로 템플릿을 조립해 렌더링한다."
+              }
+            },
+            {
+              "id": "delta.secret",
+              "name": "하드코딩 비밀값",
+              "shortDescription": {
+                "text": "하드코딩 비밀값"
+              },
+              "fullDescription": {
+                "text": "비밀값으로 보이는 문자열이 코드에 있다."
+              }
+            }
+          ]
+        }
+      },
+      "columnKind": "unicodeCodePoints",
+      "invocations": [
+        {
+          "executionSuccessful": true
+        }
+      ],
+      "versionControlProvenance": [],
+      "results": [
+        {
+          "ruleId": "delta.xss.stored",
+          "kind": "pass",
+          "level": "none",
+          "message": {
+            "text": "POST /posts의 form.title 값이 저장소 app.store.posts를 거쳐 필터(html.escape)를 거쳐 GET /board 응답의 HTML 본문에 출력된다."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "app/board.py",
+                  "uriBaseId": "SRCROOT"
+                },
+                "region": {
+                  "startLine": 23,
+                  "startColumn": 43,
+                  "endLine": 23,
+                  "endColumn": 64
+                }
+              }
+            }
+          ],
+          "codeFlows": [
+            {
+              "threadFlows": [
+                {
+                  "locations": [
+                    {
+                      "location": {
+                        "physicalLocation": {
+                          "artifactLocation": {
+                            "uri": "app/board.py",
+                            "uriBaseId": "SRCROOT"
+                          },
+                          "region": {
+                            "startLine": 38,
+                            "startColumn": 13,
+                            "endLine": 38,
+                            "endColumn": 42
+                          }
+                        },
+                        "message": {
+                          "text": "입력 form.title"
+                        }
+                      },
+                      "kinds": [
+                        "source"
+                      ]
+                    },
+                    {
+                      "location": {
+                        "physicalLocation": {
+                          "artifactLocation": {
+                            "uri": "app/board.py",
+                            "uriBaseId": "SRCROOT"
+                          },
+                          "region": {
+                            "startLine": 38,
+                            "startColumn": 5,
+                            "endLine": 38,
+                            "endColumn": 50
+                          }
+                        },
+                        "message": {
+                          "text": "대입 title"
+                        }
+                      }
+                    },
+                    {
+                      "location": {
+                        "physicalLocation": {
+                          "artifactLocation": {
+                            "uri": "app/store.py",
+                            "uriBaseId": "SRCROOT"
+                          },
+                          "region": {
+                            "startLine": 8,
+                            "startColumn": 17,
+                            "endLine": 8,
+                            "endColumn": 27
+                          }
+                        },
+                        "message": {
+                          "text": "매개변수 title"
+                        }
+                      }
+                    },
+                    {
+                      "location": {
+                        "physicalLocation": {
+                          "artifactLocation": {
+                            "uri": "app/store.py",
+                            "uriBaseId": "SRCROOT"
+                          },
+                          "region": {
+                            "startLine": 10,
+                            "startColumn": 5,
+                            "endLine": 10,
+                            "endColumn": 68
+                          }
+                        },
+                        "message": {
+                          "text": "저장 app.store.posts.title"
+                        }
+                      }
+                    },
+                    {
+                      "location": {
+                        "physicalLocation": {
+                          "artifactLocation": {
+                            "uri": "app/board.py",
+                            "uriBaseId": "SRCROOT"
+                          },
+                          "region": {
+                            "startLine": 24,
+                            "startColumn": 39,
+                            "endLine": 24,
+                            "endColumn": 44
+                          }
+                        },
+                        "message": {
+                          "text": "읽기 app.store.posts"
+                        }
+                      }
+                    },
+                    {
+                      "location": {
+                        "physicalLocation": {
+                          "artifactLocation": {
+                            "uri": "app/board.py",
+                            "uriBaseId": "SRCROOT"
+                          },
+                          "region": {
+                            "startLine": 24,
+                            "startColumn": 13,
+                            "endLine": 24,
+                            "endColumn": 26
+                          }
+                        },
+                        "message": {
+                          "text": "반복 변수"
+                        }
+                      }
+                    },
+                    {
+                      "location": {
+                        "physicalLocation": {
+                          "artifactLocation": {
+                            "uri": "app/board.py",
+                            "uriBaseId": "SRCROOT"
+                          },
+                          "region": {
+                            "startLine": 23,
+                            "startColumn": 43,
+                            "endLine": 23,
+                            "endColumn": 64
+                          }
+                        },
+                        "message": {
+                          "text": "필터 html.escape"
+                        }
+                      },
+                      "kinds": [
+                        "sink"
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "partialFingerprints": {
+            "deltaFlow/v1": "e24388d54427779b6436eb09072362f9"
+          },
+          "properties": {
+            "dast": {
+              "verifiable": true,
+              "input": "form",
+              "field": "title",
+              "entry": {
+                "method": "POST",
+                "path": "/posts"
+              },
+              "render": {
+                "method": "GET",
+                "path": "/board"
+              },
+              "entries": [
+                {
+                  "method": "POST",
+                  "path": "/posts"
+                }
+              ],
+              "renders": [
+                {
+                  "method": "GET",
+                  "path": "/board"
+                }
+              ],
+              "context": "html_text",
+              "stored": true,
+              "payload": null
+            },
+            "judgment": {
+              "by": "rule",
+              "verdict": "safe",
+              "reason": "html.escape이(가) html_text 맥락의 안전 목록에 있다",
+              "cache_key": null,
+              "mode": "fast",
+              "cited": []
+            },
+            "sanitizers": [
+              {
+                "name": "html.escape",
+                "code_hash": "name:html.escape",
+                "at": "app/board.py:23"
+              }
+            ],
+            "stores": [
+              "app.store.posts"
+            ]
+          }
+        },
+        {
+          "ruleId": "delta.xss.stored",
+          "kind": "pass",
+          "level": "none",
+          "message": {
+            "text": "POST /posts의 form.title 값이 저장소 app.store.posts를 거쳐 필터(html.escape)를 거쳐 GET /posts/<post_id> 응답의 HTML 본문에 출력된다."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "app/board.py",
+                  "uriBaseId": "SRCROOT"
+                },
+                "region": {
+                  "startLine": 52,
+                  "startColumn": 32,
+                  "endLine": 52,
+                  "endColumn": 53
+                }
+              }
+            }
+          ],
+          "codeFlows": [
+            {
+              "threadFlows": [
+                {
+                  "locations": [
+                    {
+                      "location": {
+                        "physicalLocation": {
+                          "artifactLocation": {
+                            "uri": "app/board.py",
+                            "uriBaseId": "SRCROOT"
+                          },
+                          "region": {
+                            "startLine": 38,
+                            "startColumn": 13,
+                            "endLine": 38,
+                            "endColumn": 42
+                          }
+                        },
+                        "message": {
+                          "text": "입력 form.title"
+                        }
+                      },
+                      "kinds": [
+                        "source"
+                      ]
+                    },
+                    {
+                      "location": {
+                        "physicalLocation": {
+                          "artifactLocation": {
+                            "uri": "app/board.py",
+                            "uriBaseId": "SRCROOT"
+                          },
+                          "region": {
+                            "startLine": 38,
+                            "startColumn": 5,
+                            "endLine": 38,
+                            "endColumn": 50
+                          }
+                        },
+                        "message": {
+                          "text": "대입 title"
+                        }
+                      }
+                    },
+                    {
+                      "location": {
+                        "physicalLocation": {
+                          "artifactLocation": {
+                            "uri": "app/store.py",
+                            "uriBaseId": "SRCROOT"
+                          },
+                          "region": {
+                            "startLine": 8,
+                            "startColumn": 17,
+                            "endLine": 8,
+                            "endColumn": 27
+                          }
+                        },
+                        "message": {
+                          "text": "매개변수 title"
+                        }
+                      }
+                    },
+                    {
+                      "location": {
+                        "physicalLocation": {
+                          "artifactLocation": {
+                            "uri": "app/store.py",
+                            "uriBaseId": "SRCROOT"
+                          },
+                          "region": {
+                            "startLine": 10,
+                            "startColumn": 5,
+                            "endLine": 10,
+                            "endColumn": 68
+                          }
+                        },
+                        "message": {
+                          "text": "저장 app.store.posts.title"
+                        }
+                      }
+                    },
+                    {
+                      "location": {
+                        "physicalLocation": {
+                          "artifactLocation": {
+                            "uri": "app/store.py",
+                            "uriBaseId": "SRCROOT"
+                          },
+                          "region": {
+                            "startLine": 15,
+                            "startColumn": 12,
+                            "endLine": 15,
+                            "endColumn": 17
+                          }
+                        },
+                        "message": {
+                          "text": "읽기 app.store.posts"
+                        }
+                      }
+                    },
+                    {
+                      "location": {
+                        "physicalLocation": {
+                          "artifactLocation": {
+                            "uri": "app/store.py",
+                            "uriBaseId": "SRCROOT"
+                          },
+                          "region": {
+                            "startLine": 15,
+                            "startColumn": 5,
+                            "endLine": 15,
+                            "endColumn": 30
+                          }
+                        },
+                        "message": {
+                          "text": "반환"
+                        }
+                      }
+                    },
+                    {
+                      "location": {
+                        "physicalLocation": {
+                          "artifactLocation": {
+                            "uri": "app/board.py",
+                            "uriBaseId": "SRCROOT"
+                          },
+                          "region": {
+                            "startLine": 47,
+                            "startColumn": 12,
+                            "endLine": 47,
+                            "endColumn": 29
+                          }
+                        },
+                        "message": {
+                          "text": "호출 get_post"
+                        }
+                      }
+                    },
+                    {
+                      "location": {
+                        "physicalLocation": {
+                          "artifactLocation": {
+                            "uri": "app/board.py",
+                            "uriBaseId": "SRCROOT"
+                          },
+                          "region": {
+                            "startLine": 47,
+                            "startColumn": 5,
+                            "endLine": 47,
+                            "endColumn": 29
+                          }
+                        },
+                        "message": {
+                          "text": "대입 post"
+                        }
+                      }
+                    },
+                    {
+                      "location": {
+                        "physicalLocation": {
+                          "artifactLocation": {
+                            "uri": "app/board.py",
+                            "uriBaseId": "SRCROOT"
+                          },
+                          "region": {
+                            "startLine": 52,
+                            "startColumn": 32,
+                            "endLine": 52,
+                            "endColumn": 53
+                          }
+                        },
+                        "message": {
+                          "text": "필터 html.escape"
+                        }
+                      },
+                      "kinds": [
+                        "sink"
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "partialFingerprints": {
+            "deltaFlow/v1": "b923d0fa659045f4972c417029ba0420"
+          },
+          "properties": {
+            "dast": {
+              "verifiable": true,
+              "input": "form",
+              "field": "title",
+              "entry": {
+                "method": "POST",
+                "path": "/posts"
+              },
+              "render": {
+                "method": "GET",
+                "path": "/posts/<post_id>"
+              },
+              "entries": [
+                {
+                  "method": "POST",
+                  "path": "/posts"
+                }
+              ],
+              "renders": [
+                {
+                  "method": "GET",
+                  "path": "/posts/<post_id>"
+                }
+              ],
+              "context": "html_text",
+              "stored": true,
+              "payload": null
+            },
+            "judgment": {
+              "by": "rule",
+              "verdict": "safe",
+              "reason": "html.escape이(가) html_text 맥락의 안전 목록에 있다",
+              "cache_key": null,
+              "mode": "fast",
+              "cited": []
+            },
+            "sanitizers": [
+              {
+                "name": "html.escape",
+                "code_hash": "name:html.escape",
+                "at": "app/board.py:52"
+              }
+            ],
+            "stores": [
+              "app.store.posts"
+            ]
+          }
+        },
+        {
+          "ruleId": "delta.xss.stored",
+          "kind": "fail",
+          "level": "error",
+          "message": {
+            "text": "POST /posts의 form.body 값이 저장소 app.store.posts를 거쳐 필터 없이 GET /posts/<post_id> 응답의 HTML 본문에 출력된다."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "app/board.py",
+                  "uriBaseId": "SRCROOT"
+                },
+                "region": {
+                  "startLine": 52,
+                  "startColumn": 80,
+                  "endLine": 52,
+                  "endColumn": 84
+                }
+              }
+            }
+          ],
+          "codeFlows": [
+            {
+              "threadFlows": [
+                {
+                  "locations": [
+                    {
+                      "location": {
+                        "physicalLocation": {
+                          "artifactLocation": {
+                            "uri": "app/board.py",
+                            "uriBaseId": "SRCROOT"
+                          },
+                          "region": {
+                            "startLine": 39,
+                            "startColumn": 12,
+                            "endLine": 39,
+                            "endColumn": 40
+                          }
+                        },
+                        "message": {
+                          "text": "입력 form.body"
+                        }
+                      },
+                      "kinds": [
+                        "source"
+                      ]
+                    },
+                    {
+                      "location": {
+                        "physicalLocation": {
+                          "artifactLocation": {
+                            "uri": "app/board.py",
+                            "uriBaseId": "SRCROOT"
+                          },
+                          "region": {
+                            "startLine": 39,
+                            "startColumn": 5,
+                            "endLine": 39,
+                            "endColumn": 40
+                          }
+                        },
+                        "message": {
+                          "text": "대입 body"
+                        }
+                      }
+                    },
+                    {
+                      "location": {
+                        "physicalLocation": {
+                          "artifactLocation": {
+                            "uri": "app/store.py",
+                            "uriBaseId": "SRCROOT"
+                          },
+                          "region": {
+                            "startLine": 8,
+                            "startColumn": 29,
+                            "endLine": 8,
+                            "endColumn": 38
+                          }
+                        },
+                        "message": {
+                          "text": "매개변수 body"
+                        }
+                      }
+                    },
+                    {
+                      "location": {
+                        "physicalLocation": {
+                          "artifactLocation": {
+                            "uri": "app/store.py",
+                            "uriBaseId": "SRCROOT"
+                          },
+                          "region": {
+                            "startLine": 10,
+                            "startColumn": 5,
+                            "endLine": 10,
+                            "endColumn": 68
+                          }
+                        },
+                        "message": {
+                          "text": "저장 app.store.posts.body"
+                        }
+                      }
+                    },
+                    {
+                      "location": {
+                        "physicalLocation": {
+                          "artifactLocation": {
+                            "uri": "app/store.py",
+                            "uriBaseId": "SRCROOT"
+                          },
+                          "region": {
+                            "startLine": 15,
+                            "startColumn": 12,
+                            "endLine": 15,
+                            "endColumn": 17
+                          }
+                        },
+                        "message": {
+                          "text": "읽기 app.store.posts"
+                        }
+                      }
+                    },
+                    {
+                      "location": {
+                        "physicalLocation": {
+                          "artifactLocation": {
+                            "uri": "app/store.py",
+                            "uriBaseId": "SRCROOT"
+                          },
+                          "region": {
+                            "startLine": 15,
+                            "startColumn": 5,
+                            "endLine": 15,
+                            "endColumn": 30
+                          }
+                        },
+                        "message": {
+                          "text": "반환"
+                        }
+                      }
+                    },
+                    {
+                      "location": {
+                        "physicalLocation": {
+                          "artifactLocation": {
+                            "uri": "app/board.py",
+                            "uriBaseId": "SRCROOT"
+                          },
+                          "region": {
+                            "startLine": 47,
+                            "startColumn": 12,
+                            "endLine": 47,
+                            "endColumn": 29
+                          }
+                        },
+                        "message": {
+                          "text": "호출 get_post"
+                        }
+                      }
+                    },
+                    {
+                      "location": {
+                        "physicalLocation": {
+                          "artifactLocation": {
+                            "uri": "app/board.py",
+                            "uriBaseId": "SRCROOT"
+                          },
+                          "region": {
+                            "startLine": 47,
+                            "startColumn": 5,
+                            "endLine": 47,
+                            "endColumn": 29
+                          }
+                        },
+                        "message": {
+                          "text": "대입 post"
+                        }
+                      }
+                    },
+                    {
+                      "location": {
+                        "physicalLocation": {
+                          "artifactLocation": {
+                            "uri": "app/board.py",
+                            "uriBaseId": "SRCROOT"
+                          },
+                          "region": {
+                            "startLine": 51,
+                            "startColumn": 5,
+                            "endLine": 51,
+                            "endColumn": 24
+                          }
+                        },
+                        "message": {
+                          "text": "대입 body"
+                        }
+                      }
+                    },
+                    {
+                      "location": {
+                        "physicalLocation": {
+                          "artifactLocation": {
+                            "uri": "app/board.py",
+                            "uriBaseId": "SRCROOT"
+                          },
+                          "region": {
+                            "startLine": 52,
+                            "startColumn": 80,
+                            "endLine": 52,
+                            "endColumn": 84
+                          }
+                        },
+                        "message": {
+                          "text": "출력"
+                        }
+                      },
+                      "kinds": [
+                        "sink"
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "partialFingerprints": {
+            "deltaFlow/v1": "2d3b1d57b297b50cf62704e6cb34a5be"
+          },
+          "properties": {
+            "dast": {
+              "verifiable": true,
+              "input": "form",
+              "field": "body",
+              "entry": {
+                "method": "POST",
+                "path": "/posts"
+              },
+              "render": {
+                "method": "GET",
+                "path": "/posts/<post_id>"
+              },
+              "entries": [
+                {
+                  "method": "POST",
+                  "path": "/posts"
+                }
+              ],
+              "renders": [
+                {
+                  "method": "GET",
+                  "path": "/posts/<post_id>"
+                }
+              ],
+              "context": "html_text",
+              "stored": true,
+              "payload": null
+            },
+            "judgment": {
+              "by": "rule",
+              "verdict": "candidate",
+              "reason": "입력이 필터 없이 html_text 맥락의 싱크에 닿는다",
+              "cache_key": null,
+              "mode": "fast",
+              "cited": []
+            },
+            "sanitizers": [],
+            "stores": [
+              "app.store.posts"
+            ]
+          }
+        },
+        {
+          "ruleId": "delta.xss.stored",
+          "kind": "fail",
+          "level": "error",
+          "message": {
+            "text": "POST /posts/<post_id>/comments의 form.comment 값이 저장소 app.store.posts를 거쳐 필터 없이 GET /posts/<post_id> 응답의 HTML 본문에 출력된다."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "app/comments.py",
+                  "uriBaseId": "SRCROOT"
+                },
+                "region": {
+                  "startLine": 12,
+                  "startColumn": 27,
+                  "endLine": 12,
+                  "endColumn": 31
+                }
+              }
+            }
+          ],
+          "codeFlows": [
+            {
+              "threadFlows": [
+                {
+                  "locations": [
+                    {
+                      "location": {
+                        "physicalLocation": {
+                          "artifactLocation": {
+                            "uri": "app/comments.py",
+                            "uriBaseId": "SRCROOT"
+                          },
+                          "region": {
+                            "startLine": 21,
+                            "startColumn": 12,
+                            "endLine": 21,
+                            "endColumn": 43
+                          }
+                        },
+                        "message": {
+                          "text": "입력 form.comment"
+                        }
+                      },
+                      "kinds": [
+                        "source"
+                      ]
+                    },
+                    {
+                      "location": {
+                        "physicalLocation": {
+                          "artifactLocation": {
+                            "uri": "app/comments.py",
+                            "uriBaseId": "SRCROOT"
+                          },
+                          "region": {
+                            "startLine": 21,
+                            "startColumn": 5,
+                            "endLine": 21,
+                            "endColumn": 43
+                          }
+                        },
+                        "message": {
+                          "text": "대입 text"
+                        }
+                      }
+                    },
+                    {
+                      "location": {
+                        "physicalLocation": {
+                          "artifactLocation": {
+                            "uri": "app/comments.py",
+                            "uriBaseId": "SRCROOT"
+                          },
+                          "region": {
+                            "startLine": 26,
+                            "startColumn": 5,
+                            "endLine": 26,
+                            "endColumn": 34
+                          }
+                        },
+                        "message": {
+                          "text": "저장 app.store.posts.comments"
+                        }
+                      }
+                    },
+                    {
+                      "location": {
+                        "physicalLocation": {
+                          "artifactLocation": {
+                            "uri": "app/store.py",
+                            "uriBaseId": "SRCROOT"
+                          },
+                          "region": {
+                            "startLine": 15,
+                            "startColumn": 12,
+                            "endLine": 15,
+                            "endColumn": 17
+                          }
+                        },
+                        "message": {
+                          "text": "읽기 app.store.posts"
+                        }
+                      }
+                    },
+                    {
+                      "location": {
+                        "physicalLocation": {
+                          "artifactLocation": {
+                            "uri": "app/store.py",
+                            "uriBaseId": "SRCROOT"
+                          },
+                          "region": {
+                            "startLine": 15,
+                            "startColumn": 5,
+                            "endLine": 15,
+                            "endColumn": 30
+                          }
+                        },
+                        "message": {
+                          "text": "반환"
+                        }
+                      }
+                    },
+                    {
+                      "location": {
+                        "physicalLocation": {
+                          "artifactLocation": {
+                            "uri": "app/board.py",
+                            "uriBaseId": "SRCROOT"
+                          },
+                          "region": {
+                            "startLine": 47,
+                            "startColumn": 12,
+                            "endLine": 47,
+                            "endColumn": 29
+                          }
+                        },
+                        "message": {
+                          "text": "호출 get_post"
+                        }
+                      }
+                    },
+                    {
+                      "location": {
+                        "physicalLocation": {
+                          "artifactLocation": {
+                            "uri": "app/board.py",
+                            "uriBaseId": "SRCROOT"
+                          },
+                          "region": {
+                            "startLine": 47,
+                            "startColumn": 5,
+                            "endLine": 47,
+                            "endColumn": 29
+                          }
+                        },
+                        "message": {
+                          "text": "대입 post"
+                        }
+                      }
+                    },
+                    {
+                      "location": {
+                        "physicalLocation": {
+                          "artifactLocation": {
+                            "uri": "app/comments.py",
+                            "uriBaseId": "SRCROOT"
+                          },
+                          "region": {
+                            "startLine": 10,
+                            "startColumn": 35,
+                            "endLine": 10,
+                            "endColumn": 51
+                          }
+                        },
+                        "message": {
+                          "text": "매개변수 items"
+                        }
+                      }
+                    },
+                    {
+                      "location": {
+                        "physicalLocation": {
+                          "artifactLocation": {
+                            "uri": "app/comments.py",
+                            "uriBaseId": "SRCROOT"
+                          },
+                          "region": {
+                            "startLine": 12,
+                            "startColumn": 43,
+                            "endLine": 12,
+                            "endColumn": 47
+                          }
+                        },
+                        "message": {
+                          "text": "반복 변수"
+                        }
+                      }
+                    },
+                    {
+                      "location": {
+                        "physicalLocation": {
+                          "artifactLocation": {
+                            "uri": "app/comments.py",
+                            "uriBaseId": "SRCROOT"
+                          },
+                          "region": {
+                            "startLine": 12,
+                            "startColumn": 27,
+                            "endLine": 12,
+                            "endColumn": 31
+                          }
+                        },
+                        "message": {
+                          "text": "출력"
+                        }
+                      },
+                      "kinds": [
+                        "sink"
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "partialFingerprints": {
+            "deltaFlow/v1": "42d0f8829f1d95c266cb662da2cff5f0"
+          },
+          "properties": {
+            "dast": {
+              "verifiable": true,
+              "input": "form",
+              "field": "comment",
+              "entry": {
+                "method": "POST",
+                "path": "/posts/<post_id>/comments"
+              },
+              "render": {
+                "method": "GET",
+                "path": "/posts/<post_id>"
+              },
+              "entries": [
+                {
+                  "method": "POST",
+                  "path": "/posts/<post_id>/comments"
+                }
+              ],
+              "renders": [
+                {
+                  "method": "GET",
+                  "path": "/posts/<post_id>"
+                }
+              ],
+              "context": "html_text",
+              "stored": true,
+              "payload": null
+            },
+            "judgment": {
+              "by": "rule",
+              "verdict": "candidate",
+              "reason": "입력이 필터 없이 html_text 맥락의 싱크에 닿는다",
+              "cache_key": null,
+              "mode": "fast",
+              "cited": []
+            },
+            "sanitizers": [],
+            "stores": [
+              "app.store.posts"
+            ]
+          }
+        },
+        {
+          "ruleId": "delta.xss.reflected",
+          "kind": "fail",
+          "level": "error",
+          "message": {
+            "text": "GET /posts/<post_id>의 path.post_id 값이 필터 없이 GET /posts/<post_id> 응답의 URL 속성에 출력된다."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "app/comments.py",
+                  "uriBaseId": "SRCROOT"
+                },
+                "region": {
+                  "startLine": 13,
+                  "startColumn": 51,
+                  "endLine": 13,
+                  "endColumn": 58
+                }
+              }
+            }
+          ],
+          "codeFlows": [
+            {
+              "threadFlows": [
+                {
+                  "locations": [
+                    {
+                      "location": {
+                        "physicalLocation": {
+                          "artifactLocation": {
+                            "uri": "app/board.py",
+                            "uriBaseId": "SRCROOT"
+                          },
+                          "region": {
+                            "startLine": 46,
+                            "startColumn": 17,
+                            "endLine": 46,
+                            "endColumn": 29
+                          }
+                        },
+                        "message": {
+                          "text": "입력 path.post_id"
+                        }
+                      },
+                      "kinds": [
+                        "source"
+                      ]
+                    },
+                    {
+                      "location": {
+                        "physicalLocation": {
+                          "artifactLocation": {
+                            "uri": "app/comments.py",
+                            "uriBaseId": "SRCROOT"
+                          },
+                          "region": {
+                            "startLine": 10,
+                            "startColumn": 21,
+                            "endLine": 10,
+                            "endColumn": 33
+                          }
+                        },
+                        "message": {
+                          "text": "매개변수 post_id"
+                        }
+                      }
+                    },
+                    {
+                      "location": {
+                        "physicalLocation": {
+                          "artifactLocation": {
+                            "uri": "app/comments.py",
+                            "uriBaseId": "SRCROOT"
+                          },
+                          "region": {
+                            "startLine": 13,
+                            "startColumn": 51,
+                            "endLine": 13,
+                            "endColumn": 58
+                          }
+                        },
+                        "message": {
+                          "text": "출력"
+                        }
+                      },
+                      "kinds": [
+                        "sink"
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "partialFingerprints": {
+            "deltaFlow/v1": "51db1b68d66f9235b4f27ea0b4075f76"
+          },
+          "properties": {
+            "dast": {
+              "verifiable": true,
+              "input": "path",
+              "field": "post_id",
+              "entry": {
+                "method": "GET",
+                "path": "/posts/<post_id>"
+              },
+              "render": {
+                "method": "GET",
+                "path": "/posts/<post_id>"
+              },
+              "entries": [
+                {
+                  "method": "GET",
+                  "path": "/posts/<post_id>"
+                }
+              ],
+              "renders": [
+                {
+                  "method": "GET",
+                  "path": "/posts/<post_id>"
+                }
+              ],
+              "context": "url",
+              "stored": false,
+              "payload": null
+            },
+            "judgment": {
+              "by": "rule",
+              "verdict": "candidate",
+              "reason": "입력이 필터 없이 url 맥락의 싱크에 닿는다",
+              "cache_key": null,
+              "mode": "fast",
+              "cited": []
+            },
+            "sanitizers": [],
+            "stores": []
+          }
+        }
+      ],
+      "properties": {
+        "run_id": "board-1",
+        "commit": "abc1234",
+        "mode": "fast",
+        "payload_mode": "ai",
+        "dast_targets": 3,
+        "timings": {
+          "locate": 3.047,
+          "graph": 0.005,
+          "total": 3.053,
+          "judge": 0.0
+        },
+        "counts": {
+          "secrets": 0,
+          "rule:safe": 2,
+          "rule:candidate": 3
+        },
+        "llm": {
+          "llm_calls": 0,
+          "llm_cached": 0,
+          "llm_failed": 0
+        },
+        "parse_errors": []
+      }
+    }
+  ]
+}

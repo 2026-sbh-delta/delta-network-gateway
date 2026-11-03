@@ -82,7 +82,7 @@ SAST 결과 ─▶ POST /api/runs ─▶ run_id
 
 ### 3.1 SAST 입력 형식
 
-두 형식을 받는다.
+세 형식을 받는다.
 
 **(A) 내부 형식**
 
@@ -116,6 +116,16 @@ SAST 결과 ─▶ POST /api/runs ─▶ run_id
 **(B) AWS Security Agent 코드 리뷰 형식**
 
 `findings[0]`에 `findingId`가 있으면 이 형식으로 보고 변환한다. `findingId`, `name`, `description`, `reasoning`, `riskType`, `riskLevel`, `codeLocations[]`를 사용한다. 예시는 `examples/aws-code-review-sample.json`에 있다.
+
+**(C) Delta SAST SARIF 2.1.0**
+
+`version`이 `2.1.0`이고 `runs`가 있으면 Delta SAST(`services/delta-sast`) SARIF로 보고 변환한다. 예시는 `examples/delta-sast-board.sarif`에 있다.
+
+- 대상: `kind`가 `fail`·`review`이고 `properties.dast.verifiable`이 true인 XSS 결과(`delta.xss.stored`, `delta.xss.reflected`). 저장형·확정 후보를 먼저 두고 10개까지.
+- `id`: `sast-<partialFingerprints["deltaFlow/v1"]>`. 결과의 `finding_id`로 SAST 경로를 되찾는다.
+- `description`: SAST 메시지, 입력 라우트·입력 칸·출력 라우트·출력 맥락·저장형 여부, SAST 판정, 경로(파일:줄)를 넣어 에이전트 힌트로 쓴다.
+- `source_file`·`line`: 싱크 위치. `trigger`·`payload`는 넣지 않는다.
+- 결과를 SAST로 되돌릴 때는 SAST의 `delta_sast.dast_bridge.feedback_from_dast()`로 `POST /v1/sast/scans/{run_id}/dast-results` 요청을 만든다. `BLOCKED`는 필터가 못 막은 것으로 보고 `REPRODUCED`로 보낸다.
 
 > SAST 쪽이 URL·셀렉터·페이로드를 줄 필요는 없다. 에이전트가 설명·파일·줄을 근거로 화면에서 입력 지점을 찾는다.
 
