@@ -13,6 +13,7 @@ from .schema import events, runs, services
 
 SERVICE_FIELDS = (
     "id",
+    "project_id",
     "name",
     "repository_url",
     "source_ref",
@@ -189,7 +190,9 @@ class Store:
             )
             if not service:
                 raise Problem("service_not_found", "서비스를 찾을 수 없습니다.", 404)
-            snapshot = {k: service[k] for k in SERVICE_FIELDS if k not in ("id", "created_at")}
+            snapshot = {
+                k: service[k] for k in SERVICE_FIELDS if k not in ("id", "project_id", "created_at")
+            }
             snapshot.update(
                 repo_owner=service["repo_owner"], repo_name=service["repo_name"], version=1
             )

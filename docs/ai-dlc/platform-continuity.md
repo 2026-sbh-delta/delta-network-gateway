@@ -2,7 +2,7 @@
 
 - 기준일: 2026-11-04.
 - 승인: 사용자가 TODO 검토 후 OTel·한 페이지 대시보드·프론트/백엔드/DB·로그인 유지 범위를 합의하고 `Okay. Let's go.`로 구현을 지시했다. 후속으로 커밋과 PR 병합도 위임했다. 커밋 메시지를 사전에 알리고, 테스트·CI 확인 후 병합한다.
-- 현재: PR #21 DAST 연결은 CI 통과 후 main `de1f5ff`로 병합했다. 관측 API·대시보드·Collector·Django 예제 구현과 로컬/실제 AWS 수집 검증을 완료했다. 관측 IAM Apply·플랫폼 Release와 AWS→GCP/온프레미스 실제 이전은 아직 하지 않았다.
+- 현재: PR #21 DAST 연결은 CI 통과 후 main `de1f5ff`로 병합했다. 관측 API·대시보드·Collector·Django 예제 구현과 로컬/실제 AWS 수집 검증을 완료했다. PR #22 관측 기능은 CI 통과 후 main `3fefcb9`로 병합했다. 관측 조회 IAM Apply와 최종 No changes를 확인했다. 플랫폼 Release와 AWS→GCP/온프레미스 실제 이전은 아직 하지 않았다.
 
 ## 목적과 성공 기준
 
@@ -52,3 +52,16 @@
 - 기존 GCP ADC로 `term2-delta` Compute API 조회 HTTP200을 확인했다. 현재 고객 VM은 없으므로 GCP CPU/메모리의 실제 값까지 확인한 것은 아니다.
 
 연결 계약은 [관측 안내](../../platform/observability/README.md), 첫 풀스택 예제는 [세션 앱](../../platform/examples/session-app/README.md), 사용자 설명은 [한국어 HTML](../../platform/docs/migration.ko.html)을 따른다. 현재 환경 연결은 고정 공통 프로젝트 ID를 사용하며 workflow/AI의 전체 식별 계약은 다음 단위다.
+
+## 식별·승인 구현과 검증 (2026-11-04)
+
+- DB `0007`: 기존 서비스·환경·실행을 유지하며 공통 project, immutable workflow, 도구 실행 기록을 추가했다. 서비스/프로젝트 FK와 환경 소유 관계를 검증한다. UUID seed를 PostgreSQL UUID로 명시 변환하고, 기존 source-check 요청 해시에 새 project 필드가 끼지 않도록 수정했다.
+- 계획 API·계획 승인 화면, 동일 입력 재시도, 대상 변경 거부, 승인한 action 입력 해시 검증, 결과 바꿔치기/덮어쓰기 거부를 구현했다. 웹 승인은 계획 기록이며 실제 변경 실행을 시작하지 않는다.
+- 팀 `delta-ai` 계약에 선택적 execution_context를 추가했다. 기존 호출을 유지하며 신규 호출은 ID·커밋·공급자·본문 해시를 대조하고 단일 프로세스 영속 ledger로 재시도 결과를 보존한다. 플랫폼 어댑터는 결과 context를 다시 확인한다.
+- `platform/backend`: Ruff 검사/포맷 통과. `uv run pytest -q -x` → **158 passed**, 실통신 1 deselected. `uv run --with-editable ../../services/delta-ai pytest -q tests/integration_assessments.py` → **1 passed**. 실제 팀 AI API를 호출하되 외부 LLM은 사용하지 않는 통합 검사다.
+- `services/delta-ai`: `uv run --extra dev pytest -q` → **245 passed**. API 재시작 후 같은 결과 재사용·변경 입력 거부·다른 서비스/커밋/공급자 거부 포함.
+- `platform/web`: format/build 통과, 격리된 새 계획 화면 테스트 1개와 전체 브라우저 **14개 통과**. 데스크톱/모바일 시각 확인.
+- 관측 IAM 저장 Plan을 검토해 읽기 정책 **1 추가, 변경/삭제 0**을 Apply했다. 이후 `terraform plan -detailed-exitcode` → **No changes, 0**. 일반 GitHub Apply에 IAM 변경 권한을 추가하지 않았다.
+- DAST 사설 연결은 기존 ALB·VM 교체 없이 Route 3개·SG 규칙 1개 추가 Plan을 검토·Apply했다. 실제 DAST 이미지 갱신/활성화·플랫폼 Release 검증은 이어서 진행한다.
+
+[식별 계약과 현재 경계](../../platform/docs/workflows.ko.md). 이 단위의 실제 AI 서버 연결·변경 실행기·앱/DB 이전 검증은 후속이며 계획 승인만으로 완료라고 표시하지 않는다.

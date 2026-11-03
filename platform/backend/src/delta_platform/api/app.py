@@ -35,6 +35,7 @@ from delta_platform.core.inputs import (
     request_key,
 )
 from delta_platform.core.store import Store
+from delta_platform.core.workflows import ApprovalInput, WorkflowInput, WorkflowStore
 
 logger = logging.getLogger("delta_platform")
 Limit = Annotated[int, Query(ge=1, le=100)]
@@ -46,6 +47,7 @@ def create_app(settings=None, engine=None, *, dashboard=None):
     engine = engine or engine_for(settings)
     auth, store = Auth(engine, settings), Store(engine)
     environments = EnvironmentStore(engine)
+    workflows = WorkflowStore(engine)
     dashboard = dashboard or DashboardReader(settings.observability_region)
 
     @asynccontextmanager
@@ -195,6 +197,29 @@ def create_app(settings=None, engine=None, *, dashboard=None):
         minutes: Annotated[int, Query(ge=1, le=120)] = 15,
     ):
         return dashboard.read(environments.get(service_id, environment_id), minutes)
+
+    @protected.post("/services/{service_id}/workflows")
+    def workflow_create(service_id: UUID, body: WorkflowInput, request: Request):
+        result, created = workflows.create(
+            service_id, body, request_key(request.headers.get("idempotency-key"))
+        )
+        return JSONResponse(jsonable_encoder(result), status_code=201 if created else 200)
+
+    @protected.get("/services/{service_id}/workflows")
+    def workflow_list(service_id: UUID):
+        return workflows.list(service_id)
+
+    @protected.get("/workflows/{workflow_id}")
+    def workflow_detail(workflow_id: UUID):
+        return workflows.get(workflow_id)
+
+    @protected.get("/workflows/{workflow_id}/executions")
+    def execution_list(workflow_id: UUID):
+        return workflows.executions(workflow_id)
+
+    @protected.post("/workflows/{workflow_id}/approval")
+    def workflow_approve(workflow_id: UUID, body: ApprovalInput, summary=Depends(authenticated)):
+        return workflows.approve(workflow_id, body.input_hash, summary["login_id"])
 
     @protected.post("/services/{service_id}/source-checks")
     def source_check(service_id: UUID, body: EmptyInput, request: Request):

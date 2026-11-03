@@ -15,6 +15,7 @@ import {
 import "./style.css";
 import { BuildPanel } from "./BuildPanel";
 import { ObservabilityPanel } from "./ObservabilityPanel";
+import { WorkflowPlanningPanel } from "./WorkflowPlanningPanel";
 
 const labels = {
   queued: "확인 대기",
@@ -500,6 +501,7 @@ function Detail({ id, onBack }: { id: string; onBack: () => void }) {
             </aside>
           </div>
           <BuildPanel key={id} serviceId={id} source={run} />
+          <WorkflowPlanningPanel key={`${id}-workflows`} serviceId={id} />
           <section className="panel history">
             <h2>검사 이력</h2>
             {history.length === 0 ? (

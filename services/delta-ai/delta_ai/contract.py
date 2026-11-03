@@ -10,6 +10,8 @@ from typing import Annotated, Any, Literal, Self
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
 
+from delta_ai.execution import ExecutionContext
+
 Kind = Literal["migration_parity", "feedback_ingest", "deployment_gate", "runtime_security", "dast_verification",
                "migration_mapping"]
 Provider = Literal["aws", "gcp", "onprem"]
@@ -291,9 +293,22 @@ class AssessmentRequest(_Model):
     source_env: EnvInventory | None = None
     target_env: EnvInventory | None = None
     evidence: Evidence = Evidence()
+    execution_context: ExecutionContext | None = None
 
     @model_validator(mode="after")
     def _require_inputs_for_kind(self) -> Self:
+        context = self.execution_context
+        if context:
+            if (self.assessment_id != str(context.run_id)
+                    or self.service.service_id != str(context.service_id)
+                    or self.service.commit != context.commit_sha
+                    or self.service.repo != context.repository_url):
+                raise ValueError("실행 ID·서비스·기준 코드가 플랫폼 입력과 다르다")
+            if self.target_env is None or self.target_env.provider != context.target_provider:
+                raise ValueError("판단 대상 공급자가 플랫폼 입력과 다르다")
+            source = self.source_env.provider if self.source_env else None
+            if source != context.source_provider:
+                raise ValueError("출발 공급자가 플랫폼 입력과 다르다")
         if self.kind == "migration_parity" and (self.source_env is None or self.target_env is None):
             raise ValueError("migration_parity 는 source_env 와 target_env 가 필요하다")
         if self.kind == "feedback_ingest" and self.evidence.report is None:
@@ -484,6 +499,7 @@ class AssessmentResult(_Model):
     remediation: Remediation = Remediation()
     rule_candidates: tuple[RuleCandidate, ...] = ()
     meta: Meta = Meta()
+    execution_context: ExecutionContext | None = None
 
 
 class CandidateDecision(_Model):
