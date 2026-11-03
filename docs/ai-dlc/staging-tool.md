@@ -6,7 +6,7 @@
 - Ideation·Inception 승인: 사용자(정준우) `스테이징 쪽은 우리 관리 에이전트가 호출가능한 하나의 컴포넌트 툴로 개발 시작해` 지시를 아래 범위의 승인으로 기록한다. 파이프라인의 각 단계를 관리 에이전트가 호출하는 도구로 만든다는 구조도 같은 지시에서 확인했다.
 - 2026-11-02 추가 결정(사용자 승인): DAST는 클라우드마다 띄우지 않고 한 곳에서 돌린다. 스테이징은 공개 ALB + 실행기 IP /32만 허용하는 방식으로 둔다. IP는 하드코딩하지 않고 실행 때마다 확인해 넣는다. 시연 시간(7분) 때문에 환경은 미리 띄워 두고 실행 중에는 이미지만 바꾼다. 로컬 시험은 sb 프로필(Workload 계정)의 기본 VPC에서 한다.
 - 2026-11-03 추가 결정(김연재 제안, 사용자 수용): 빌드 식별자는 요청 값이 아니라 실행 중인 태스크에서 확인한 이미지 digest(`sha256:<64자리>`)로 남긴다. 이미지는 아키텍처별 단일 매니페스트로 만든다. 스테이징 아키텍처는 고정하지 않고 운영 대상을 따른다(`cpu_architecture` 변수). 지금 운영 대상이 GCP e2(x86)라 AWS 운영도 x86으로 맞추고 스테이징도 x86으로 둔다. 그러면 스테이징에서 검증한 digest 하나를 AWS·GCP 운영에 그대로 올릴 수 있다. AWS를 Graviton(ARM)으로 바꾸면 아키텍처별로 빌드하고 각각 검증한다.
-- 현재 단계: AWS U1·U2 구현과 단위/mock 검증 완료. x86 기준 Plan 재저장 전. Apply 전.
+- 현재 단계: AWS U1·U2 구현과 단위/mock 검증 완료. x86 기준 실제 Plan 저장 완료(Apply 전).
 - 범위: AWS ECS 스테이징 기반(Terraform), 이미지 교체·상태 조회·중지를 하는 도구 서비스(HTTP API, CLI, LLM 도구 정의).
 - 범위 밖: GCP 구현, 앱 데이터 초기화, DAST 대상 자동 등록, 빌드 단계.
 
@@ -60,7 +60,8 @@
 | --- | --- | --- |
 | 2026-11-02 | `TERRAFORM_BIN=terraform terraform/staging-aws/scripts/validate.sh` (1.16.4) | fmt/validate 통과, mock `terraform test` 11개 통과(공개 모드·전체 대역 거부 포함) |
 | 2026-11-02 | `services/delta-staging`: `.venv/bin/pytest -q` | 29개 통과(ECS/ELB/STS/EC2 응답 흉내, 실행기 IP 교체·중지 시 닫기 포함) |
-| 2026-11-02 | `AWS_PROFILE=sb terraform plan -out=staging.tfplan`(기본 VPC, 공개 모드, ARM64, `-var` 입력) | 25 to add, 0 change, 0 destroy. Apply는 사용자가 한다 |
+| 2026-11-02 | `AWS_PROFILE=sb terraform plan -out=staging.tfplan`(기본 VPC, 공개 모드, ARM64, `-var` 입력) | 25 to add, 0 change, 0 destroy. 아키텍처 결정으로 아래 x86 Plan으로 대체 |
+| 2026-11-03 | 같은 입력에 `cpu_architecture=X86_64`로 Plan 재저장(`staging.tfplan`) | 25 to add, 0 change, 0 destroy. 태스크 정의 `cpu_architecture = "X86_64"`. Apply는 사용자가 한다 |
 | 2026-11-02 | `.venv/bin/python -m delta_staging tools` / `deploy`(설정 없음, 허용 밖 이미지) | 도구 정의 출력, 설정 없음·이미지 거부를 종료 코드 2로 보고 |
 | 2026-11-03 | `services/delta-staging` 단위 테스트(`uv run --no-project --with pydantic --with boto3 --with fastapi --with httpx --with pytest --with pytest-asyncio`) | 31개 통과. 실행 중 태스크 digest 기록, 태그 이미지의 digest 확인, digest 불일치 시 실패 포함 |
 
