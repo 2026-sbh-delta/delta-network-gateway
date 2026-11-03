@@ -8,7 +8,7 @@
 - 현재: **최종 `disabled` 적용 및 실제 검증 완료**. Firewall 부재와 엔드포인트 0개, 기존 ALB/Client의 8080/8081 HTTP 200, 기존 사설 서버/네트워크/정책/로그 보존, 최종 Plan No changes를 확인했다. 실제 ANF 재생성과 검사 경로/삭제 보호 원복, 허용/차단/양방향 로그도 검증한 뒤 다시 비용 중단으로 마무리했다.
 - 로컬 실행 입력: ignored `terraform/network-security/inspection-mode.auto.tfvars`에 `inspection_mode = "disabled"`를 저장했다. 이 파일을 지우면 기본 enabled로 돌아갈 수 있으므로 비용 중단 중에는 보존한다.
 - 검증: 표준 명령에서 Python helper **11 passed**, Terraform mock **41 passed**. 실제 전환과 별개인 로컬 검사 결과다.
-- Git: 최신 origin/main `22b91803`의 33개 커밋을 fast-forward로 pull하고 ANF 변경을 복원했다. 충돌 없이 문서 인덱스를 자동 병합했으며 기존 원격 변경을 보존했다. pull 후 Python 11개와 Terraform mock 41개를 다시 통과했다. 분할 커밋과 원격 게시 결과는 아래 Git 기록을 따른다.
+- Git: 최신 origin/main `22b91803`의 33개 커밋을 fast-forward로 pull하고 ANF 변경을 복원했다. 충돌 없이 문서 인덱스를 자동 병합했으며 기존 원격 변경을 보존했다. pull 후 Python 11개와 Terraform mock 41개를 다시 통과했다. 구현/테스트/운영 문서 3개 서명 커밋을 origin/main에 게시했고 원격 HEAD 일치를 확인했다. 이 게시 확인 기록은 별도 후속 문서 커밋으로 저장한다.
 
 ## Ideation
 
@@ -97,5 +97,8 @@
 - 반영한 원격 기준: `22b91803362769b133065747dfcdeaa5d6cd4e58`.
 - 구현 커밋: `8be51b4e` (`feat(network): add staged ANF cost control`).
 - 테스트 커밋: `7341a2c4` (`test(network): verify ANF bypass and restoration guards`).
-- 구현, 테스트, 운영 문서를 나눠 서명 커밋하고 origin/main에 게시한다. 게시 완료는 push 결과와 `git ls-remote --heads origin main`으로 확인한 뒤 기록한다.
+- 운영 문서 커밋: `fae8ca04` (`docs(network): record ANF shutdown and restoration`).
+- 2026-11-03 17:19 KST `git push origin main` 성공, `22b91803..fae8ca04 main -> main` 확인.
+- `git ls-remote --heads origin main`의 `fae8ca04aa21b644ee15611f829b2c0c13cb41e9`와 로컬 HEAD 일치, 당시 작업 트리 clean을 확인했다. 위 3개 커밋의 SSH 서명도 검증했다.
+- 이 게시 확인 기록 자체는 별도 서명 커밋으로 저장한다. 최종 원격 HEAD는 그 문서 커밋을 푸시한 뒤 다시 대조한다.
 - 실제 tfvars/backend/state/Plan/검증 원본과 모드 입력은 커밋 대상에서 제외한다.

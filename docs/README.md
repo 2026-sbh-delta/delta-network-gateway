@@ -3,7 +3,7 @@
 ## 현재 상태
 
 - 기준일: 2026-11-03 (Asia/Seoul)
-- ANF 비용 절감(2026-11-03 17:08 KST): **최종 disabled 적용 완료**. Firewall/엔드포인트 2개를 제거했고 ALB/사설 Client의 두 포트 HTTP 200과 중앙 Plan No changes를 확인했다. 실제 ANF 재생성과 검사 경로/삭제 보호 원복, 허용/차단/양방향 로그까지 검증한 뒤 다시 꺼뒀다. 정책/규칙/기존 로그와 네트워크는 보존했다. 중앙 mock 41개와 helper 테스트 11개 통과. Git 게시 상태는 연결한 기록을 따른다. [기록](ai-dlc/anf-cost-mode.md)
+- ANF 비용 절감(2026-11-03 17:08 KST): **최종 disabled 적용 완료**. Firewall/엔드포인트 2개를 제거했고 ALB/사설 Client의 두 포트 HTTP 200과 중앙 Plan No changes를 확인했다. 실제 ANF 재생성과 검사 경로/삭제 보호 원복, 허용/차단/양방향 로그까지 검증한 뒤 다시 꺼뒀다. 정책/규칙/기존 로그와 네트워크는 보존했다. 최신 main pull 후에도 중앙 mock 41개와 helper 테스트 11개 통과. 구현/테스트/운영 문서 3개 서명 커밋을 origin/main에 게시했고 원격 `fae8ca04` 일치를 확인했다. 이 게시 확인 기록은 후속 문서 커밋으로 남긴다. [기록](ai-dlc/anf-cost-mode.md)
 - AWS → GCP 매핑 판단: [`migration_mapping`](ai-dlc/migration-mapping.md) 구현 완료. 실제 AWS state 로 대조했고 GCP 생성은 안 함. 앞단은 HAProxy 기각, AWS 기능 사용 방향(ADR-AI-37), 값의 기준은 Terraform(ADR-AI-38), GCP 담당은 동규 님(2026-11-02 사용자 전달).
 - 통합 시연: `deploy/demo-console/` 에서 온프레미스 증거·DAST·AI 판단·Jenkins 카나리를 한 흐름과 화면으로 돌린다. 2026-11-02 로컬 리허설 3개 시나리오 확인, 브랜치 `feat/demo-integration` 에 커밋·푸시했고 서버 배포는 안 함. 배포는 Mac Docker 대역이고 AWS·GCP 는 미연결. [기록](ai-dlc/demo-integration.md)
 - Jenkins 배포·AI 판단: `deploy/jenkins-local/`에서 카나리 승격·자동 롤백·사람 확인을 로컬 시나리오로 확인했다. main 병합 후 2026-11-02 delta-ai `.venv/bin/pytest -q` 85개, 파이프라인 스크립트 51개 통과, 병합 후 Jenkins 빌드 #53~65(가짜 LLM)로 사전 확인과 시나리오 경로 확인. 커밋은 로컬 브랜치 `feat/jenkins-on-main` 까지이고 푸시·AWS 배포는 안 했다. [기록](ai-dlc/jenkins-local.md)
