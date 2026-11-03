@@ -1,5 +1,7 @@
 # CloudFront ANF 시험 Runbook
 
+아래 허용/차단 기준은 중앙 `inspection_mode=enabled`일 때 적용한다. 비용 절감 우회 중에는 deny API도 서버의 HTTP 200 응답을 받을 수 있다. 정적 페이지의 과거 검증 기록은 현재 요청의 ANF 판정이 아니다. 전환과 원복은 [중앙 Runbook](../network-security/RUNBOOK.md#anf-비용-중단과-원복)을 따른다.
+
 ## 배포 확인
 
 1. Workload STS 계정, ALB active/internal과 두 Target Group healthy를 조회한다. deny TG 포트는 8081이지만 HealthCheckPort는 8080이어야 한다.

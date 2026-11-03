@@ -1,5 +1,7 @@
 # Server VPC 관제 Runbook
 
+아래 ANF 경로/차단 기준은 중앙 `inspection_mode=enabled`일 때 적용한다. 비용 절감 우회 중에는 8081도 통과할 수 있다. 모드 전환과 원복은 [중앙 Runbook](../network-security/RUNBOOK.md#anf-비용-중단과-원복)을 따른다.
+
 실제 배포/검증 상태는 [AI-DLC](../../docs/ai-dlc/aws-workload-server.md)를 따른다. 아래 명령 자체는 성공 기록이 아니다. Workload는 `sbh-delta-workload`, 중앙은 `sbh-delta-security`, Region은 `ap-northeast-2`를 사용한다.
 
 ## 사설 기동과 관리
