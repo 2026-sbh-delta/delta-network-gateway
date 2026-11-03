@@ -3,7 +3,7 @@
 ## 현재 상태
 
 - 기준일: 2026-11-03 (Asia/Seoul)
-- 플랫폼 U3: `feat/platform-sandbox`에서 실행 확인 API·Worker·화면과 전용 ECS 기반을 구현했다. PostgreSQL 88개·ECS 도구 36개·브라우저 7개·배포 도구 20개·Terraform mock 2개 run 통과. 실제 GitHub → CodeBuild → ECS digest/헬스 → 태스크 0개 정리와 기존 `t8-board` 보존을 확인했다. 플랫폼 `10.80.0.0/16`에 샌드박스 서브넷 `10.80.2.0/24`, `10.80.3.0/24`를 추가했고 두 root 최종 No changes다. 공개 웹 U3 Release·커밋·PR은 아직이다. [기록](ai-dlc/platform-u3.md)
+- 플랫폼 U3: `feat/platform-sandbox`에서 실행 확인 API·Worker·화면과 전용 ECS 기반을 구현했다. PostgreSQL 88개·ECS 도구 36개·브라우저 7개·배포 도구 20개·Terraform mock 2개 run 통과. 실제 GitHub → CodeBuild → ECS digest/헬스 → 태스크 0개 정리와 기존 `t8-board` 보존을 확인했다. 플랫폼 `10.80.0.0/16`에 샌드박스 서브넷 `10.80.2.0/24`, `10.80.3.0/24`를 추가했고 두 root 최종 No changes다. 기능 커밋 `652fb93`을 푸시하고 [PR #16](https://github.com/2026-sbh-delta/delta-network-gateway/pull/16)을 열었다. 공개 웹 U3 Release와 사용자 병합은 아직이다. [기록](ai-dlc/platform-u3.md)
 - 플랫폼 U2: [PR #14](https://github.com/2026-sbh-delta/delta-network-gateway/pull/14) 병합 후 GitHub OIDC Plan·Apply·Release를 완료했다. [공개 플랫폼](https://d3udcz0zch0on.cloudfront.net)에서 기존 로그인·서비스를 유지하고 실제 공개 저장소 빌드 → ECR digest → 결과·로그 표시를 검증했다. 운영 역할의 CodeBuild 조회 권한 오류를 수정·적용했고 회귀 검증, 실제 역할 조회, 데스크톱·모바일 화면과 두 Terraform root의 최종 No changes를 확인했다. 권한 수정 PR #15도 main에 병합됐다. [기록](ai-dlc/platform-u2.md)
 - ANF 비용 절감(2026-11-03 17:08 KST): **최종 disabled 적용 완료**. Firewall/엔드포인트 2개를 제거했고 ALB/사설 Client의 두 포트 HTTP 200과 중앙 Plan No changes를 확인했다. 실제 ANF 재생성과 검사 경로/삭제 보호 원복, 허용/차단/양방향 로그까지 검증한 뒤 다시 꺼뒀다. 정책/규칙/기존 로그와 네트워크는 보존했다. 최신 main pull 후에도 중앙 mock 41개와 helper 테스트 11개 통과. 구현/테스트/운영 문서 3개 서명 커밋을 origin/main에 게시했고 원격 `fae8ca04` 일치를 확인했다. 이 게시 확인 기록은 후속 문서 커밋으로 남긴다. [기록](ai-dlc/anf-cost-mode.md)
 - AWS → GCP 매핑 판단: [`migration_mapping`](ai-dlc/migration-mapping.md) 구현 완료. 실제 AWS state 로 대조했고 GCP 생성은 안 함. 앞단은 HAProxy 기각, AWS 기능 사용 방향(ADR-AI-37), 값의 기준은 Terraform(ADR-AI-38), GCP 담당은 동규 님(2026-11-02 사용자 전달).
@@ -73,7 +73,7 @@
 
 ANF는 비용 중단 모드로 유지한다. ignored `terraform/network-security/inspection-mode.auto.tfvars`를 보존하고, 검사가 필요할 때 [전환 Runbook](../terraform/network-security/RUNBOOK.md#anf-비용-중단과-원복)의 `disabled -> bypass -> enabled` 순서로 원복한다. 우회 중에는 기존 8081 차단 시험도 HTTP 200으로 응답한다.
 
-플랫폼 U2와 권한 수정 PR #15는 main에 반영됐다. U3 실행 확인 연결의 코드·전용 AWS 기반과 실제 실행 검증을 완료했다. 다음은 커밋 메시지 공유 → PR → 사용자 병합 → GitHub U3 Release와 공개 웹/VM 역할 전체 흐름 검증이다. SAST·DAST·AI 보안 검사는 실행 확인과 구분해 후속 연결한다.
+플랫폼 U2와 권한 수정 PR #15는 main에 반영됐다. U3 실행 확인 연결의 코드·전용 AWS 기반과 실제 실행 검증을 완료했다. PR #16의 CI 확인과 사용자 병합 후 GitHub U3 Release 및 공개 웹/VM 역할 전체 흐름을 검증한다. SAST·DAST·AI 보안 검사는 실행 확인과 구분해 후속 연결한다.
 
 CloudFront 두 버튼 웹의 실제 ANF 허용/차단 대조는 확인했다. 직접 EC2 Origin/Server IGW와 SG rule/임시 ALB ingress 정리와 실제 검증 JSON 게시를 마쳤고 네 root 최종 Plan은 No changes다. 남은 화면 검증은 UI 도구가 안정된 환경에서 차단 버튼 완료 화면/최종 검증 문구를 확인하는 것이다. 페이지 하단 검증 기록은 배포 당시 로그 대조 결과이며 개별 요청의 실시간 관제 판정은 아니다.
 

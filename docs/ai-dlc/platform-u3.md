@@ -2,7 +2,7 @@
 
 - 기준일: 2026-11-03. 브랜치 `feat/platform-sandbox`, 기준 main `febabd8`(PR #15 병합).
 - 승인: 공개 플랫폼에서 성공한 빌드 → ECS 실행 → 실제 이미지·헬스 확인 → 결과 표시와 충돌·정리를 제안했고 사용자가 `Go ahead.`로 구현을 승인했다. 구현 시작과 커밋 전 메시지 공유를 안내했다.
-- 상태: 실행 확인 API·Worker·화면과 전용 AWS 기반 구현·검증 완료. 로컬 플랫폼 API/Worker에서 실제 GitHub → CodeBuild → ECS 실행·정리까지 확인했다. AWS 기반 Apply·SSM 설정 병합 완료. 공개 웹 U3 Release·커밋·푸시·PR은 아직 수행하지 않았다.
+- 상태: 실행 확인 API·Worker·화면과 전용 AWS 기반 구현·검증 완료. 로컬 플랫폼 API/Worker에서 실제 GitHub → CodeBuild → ECS 실행·정리까지 확인했다. AWS 기반 Apply·SSM 설정 병합 완료. 기능 커밋 `652fb93`을 origin에 푸시하고 [PR #16](https://github.com/2026-sbh-delta/delta-network-gateway/pull/16)을 열었다. 공개 웹 U3 Release와 main 병합은 아직 수행하지 않았다.
 
 ## 목적과 범위
 
@@ -71,4 +71,12 @@
 - 실제 워크플로는 **로컬 시험 DB/API/Worker + SSO 권한으로 AWS 호출**했다. 공개 웹의 U3 동작과 VM 역할로 전체 실행하는 Release 검증은 PR 병합 후 수행한다. 역할 시뮬레이터와 VM의 읽기 호출 검증을 전체 운영 흐름 검증으로 표현하지 않는다.
 - SAST·DAST·AI 보안 판정, 고객 운영 VM 배포, 다중 고객 격리·고가용성·부하 검증은 미실행이다.
 - DB schema는 `0003`이며 기존 U2 앱으로 이미지 롤백만 하면 readiness에 실패한다. 배포 전 백업 또는 스키마 호환 수정 릴리스가 필요하다.
-- `feat(platform): add ECS sandbox runtime checks` 메시지를 제시했고 사용자의 `Go ahead.`로 커밋·푸시·PR 생성·CI 확인을 승인받았다. 게시 결과는 후속 기록에 남기며 사용자가 PR을 병합한다.
+- `feat(platform): add ECS sandbox runtime checks` 메시지를 제시했고 사용자의 `Go ahead.`로 커밋·푸시·PR 생성·CI 확인을 승인받았다. 게시 결과는 아래에 기록하며 사용자가 PR을 병합한다.
+
+## Git 게시
+
+2026-11-03에 `git fetch origin main`으로 기준 main `febabd8`과 차이가 없음을 확인했다. `git diff --check`와 커밋 파일 검사 후 기능 커밋 `652fb93`을 생성하고 `git push -u origin feat/platform-sandbox`를 완료했다. 자격 증명·실제 tfvars/backend/state/Plan·검증용 실행 파일은 제외했다.
+
+`gh pr create`로 [PR #16](https://github.com/2026-sbh-delta/delta-network-gateway/pull/16)을 열었으며 충돌 없이 병합 가능한 상태를 확인했다. GitHub Platform checks의 앱 시험과 네 Terraform root 검증 결과는 PR Checks를 따른다. `docs(platform): record sandbox PR publication` 후속 커밋은 이 게시 기록을 추가한다.
+
+사용자가 병합한 뒤 GitHub Release와 공개 웹의 전체 흐름을 검증한다. PR 생성·기반 Apply를 공개 웹 U3 배포 완료로 표현하지 않는다.
