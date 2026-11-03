@@ -14,6 +14,8 @@ GitHub OIDC provider와 Plan·Apply·Release IAM 역할을 관리한다. 일반 
 
 일반 Apply는 IAM 역할·정책 생성/변경, identity state 접근, 새로운 CloudFront 정책·S3/ECR 기반 생성을 허용하지 않는다. 기존 플랫폼의 변경과 VM 교체를 대상으로 한다. IAM 권한 변경이나 전체 플랫폼 기반 재구축은 관리자가 이 부트스트랩과 실제 Plan을 함께 검토해야 한다. EC2 조회와 SSM 명령 결과·파라미터 메타데이터 조회 중 리소스 제한을 지원하지 않는 API는 해당 리전에서 조회할 수 있다.
 
+새 SG 규칙 생성은 별도 inline policy에서 `security-group-rule/*`와 `aws:RequestTag/Project`를 확인한다. 생성 전에는 리소스 태그가 없기 때문이다. 부모 SG에는 기존 `ec2:ResourceTag/Project` 제한이 계속 적용된다. 기존 관리형 정책의 크기 한도를 넘기지 않도록 생성 권한을 분리했다.
+
 Release는 SSM Parameter의 비밀값을 직접 조회하지 않는다. 다만 지정 VM에서 실행하는 SSM 명령은 root 권한이므로 앱/Jenkins 운영 권한이다. 단순 이미지 업로드 역할로 취급하지 않는다. Apply의 PassRole은 app·nat·jenkins-controller·jenkins-agent 네 역할로 제한하고, VM 크기는 기존 ARM 소형과 t3.small/medium만 허용한다.
 
 ## 입력 속성
