@@ -49,3 +49,7 @@ SSM에서 `systemctl status delta-platform`, `docker compose ... ps`, `/health/r
 - **종료:** 앱을 중지해도 EBS·공인 IPv4·저장소 등 비용은 남는다. 해체는 데이터 보존 범위를 먼저 정하고 별도로 수행한다.
 
 현재 구성은 단일 AZ·단일 앱/DB VM이다. 다중 AZ HA와 자동 복구를 검증한 배포로 표현하지 않는다.
+
+## 고객 이미지 빌드
+
+플랫폼 자체 배포 CI와 고객 Dockerfile 빌드를 분리한다. 고객 빌드 기반·초기 SSO 구성·runtime 연결·비용·실패 복구는 [CodeBuild 안내](builds/README.md)를 따른다.

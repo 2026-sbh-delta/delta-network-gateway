@@ -20,6 +20,10 @@ ln -sfn "$release_dir" /opt/delta-platform/current
 compose=(docker compose --env-file /etc/delta-platform/deploy.env -f /opt/delta-platform/current/compose.yaml)
 "${compose[@]}" --profile migration pull
 "${compose[@]}" up -d --wait db
+# Avoid old workers claiming new run kinds during a schema upgrade.
+"${compose[@]}" stop api worker
+# A failed backup blocks the schema change; retain this key for DB rollback.
+bash "$release_dir/scripts/backup.sh"
 "${compose[@]}" --profile migration run --rm migrate
 cat > /etc/systemd/system/delta-platform.service <<'UNIT'
 [Unit]

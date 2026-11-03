@@ -1,5 +1,6 @@
 import re
 from pathlib import PurePosixPath
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -31,6 +32,15 @@ class LoginInput(StrictInput):
 
 class EmptyInput(StrictInput):
     pass
+
+
+class BuildInput(StrictInput):
+    source_check_id: str = Field(min_length=36, max_length=36)
+
+    @field_validator("source_check_id")
+    @classmethod
+    def valid_id(cls, value):
+        return str(UUID(value))
 
 
 class ServiceInput(StrictInput):

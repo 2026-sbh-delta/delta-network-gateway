@@ -1,6 +1,6 @@
 from sqlalchemy import create_engine, text
 
-SCHEMA_VERSION = "0001"
+SCHEMA_VERSION = "0002"
 
 
 def engine_for(settings):

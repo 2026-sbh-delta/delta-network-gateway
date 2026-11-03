@@ -28,6 +28,7 @@ RUN_FIELDS = (
     "status",
     "current_step",
     "resolved_commit_sha",
+    "external_id",
     "attempt",
     "result",
     "error",
@@ -142,11 +143,11 @@ class Store:
             result["latest_source_check"] = self._latest(conn, row["id"])
             return result, created
 
-    def _latest(self, conn, service_id):
+    def _latest(self, conn, service_id, kind="source_preflight"):
         row = (
             conn.execute(
                 sa.select(runs)
-                .where(runs.c.service_id == service_id)
+                .where(runs.c.service_id == service_id, runs.c.kind == kind)
                 .order_by(runs.c.created_at.desc(), runs.c.id.desc())
                 .limit(1)
             )
@@ -167,6 +168,7 @@ class Store:
             return {
                 **select_fields(row, SERVICE_FIELDS),
                 "latest_source_check": self._latest(conn, service_id),
+                "latest_build": self._latest(conn, service_id, "image_build"),
             }
 
     def list_services(self, limit, cursor):
@@ -194,7 +196,9 @@ class Store:
             existing = (
                 conn.execute(
                     sa.select(runs).where(
-                        runs.c.service_id == service_id, runs.c.request_key == key
+                        runs.c.service_id == service_id,
+                        runs.c.kind == "source_preflight",
+                        runs.c.request_key == key,
                     )
                 )
                 .mappings()
@@ -212,7 +216,7 @@ class Store:
             if active:
                 raise Problem(
                     "source_check_in_progress",
-                    "이미 소스를 확인하고 있습니다.",
+                    "이 서비스에서 진행 중인 작업이 있습니다.",
                     409,
                     run_id=str(active),
                 )
@@ -235,18 +239,123 @@ class Store:
             append_event(conn, row["id"], "queued", "소스 확인을 접수했습니다.")
             return select_fields(row, RUN_FIELDS), True
 
-    def run(self, run_id):
+    def enqueue_build(self, service_id, source_check_id, key, target):
+        request_hash = digest({"source_check_id": str(source_check_id)})
+        with self.engine.begin() as conn:
+            service = conn.scalar(
+                sa.select(services.c.id).where(services.c.id == service_id).with_for_update()
+            )
+            if not service:
+                raise Problem("service_not_found", "서비스를 찾을 수 없습니다.", 404)
+            existing = (
+                conn.execute(
+                    sa.select(runs).where(
+                        runs.c.service_id == service_id,
+                        runs.c.kind == "image_build",
+                        runs.c.request_key == key,
+                    )
+                )
+                .mappings()
+                .first()
+            )
+            if existing:
+                if existing["request_hash"] != request_hash:
+                    raise Problem("idempotency_conflict", "같은 요청 키의 내용이 다릅니다.", 409)
+                return select_fields(existing, RUN_FIELDS), False
+            source = (
+                conn.execute(
+                    sa.select(runs).where(
+                        runs.c.id == source_check_id,
+                        runs.c.service_id == service_id,
+                        runs.c.kind == "source_preflight",
+                        runs.c.status == "succeeded",
+                    )
+                )
+                .mappings()
+                .first()
+            )
+            if not source:
+                raise Problem(
+                    "source_check_required", "이 서비스의 성공한 소스 검사가 필요합니다.", 409
+                )
+            active = conn.scalar(
+                sa.select(runs.c.id).where(
+                    runs.c.service_id == service_id, runs.c.status.in_(["queued", "running"])
+                )
+            )
+            if active:
+                raise Problem(
+                    "build_in_progress",
+                    "이 서비스에서 진행 중인 작업이 있습니다.",
+                    409,
+                    run_id=str(active),
+                )
+            row = (
+                conn.execute(
+                    runs.insert()
+                    .values(
+                        id=uuid4(),
+                        service_id=service_id,
+                        kind="image_build",
+                        status="queued",
+                        input_snapshot={
+                            **source["input_snapshot"],
+                            "source_check_id": str(source_check_id),
+                            "build_target": target,
+                        },
+                        resolved_commit_sha=source["resolved_commit_sha"],
+                        request_key=key,
+                        request_hash=request_hash,
+                    )
+                    .returning(runs)
+                )
+                .mappings()
+                .one()
+            )
+            append_event(conn, row["id"], "queued", "확인한 커밋의 이미지 빌드를 접수했습니다.")
+            return select_fields(row, RUN_FIELDS), True
+
+    def prepare_submission(self, run_id, token, request):
+        with self.engine.begin() as conn:
+            row, instant = self._owned(conn, run_id, token)
+            if row["submission"]:
+                return row["submission"]
+            value = {"prepared_at": instant.isoformat(), "request": request}
+            conn.execute(runs.update().where(runs.c.id == run_id).values(submission=value))
+            return value
+
+    def attach_build(self, run_id, token, external_id):
+        with self.engine.begin() as conn:
+            row, _ = self._owned(conn, run_id, token)
+            if row["external_id"] and row["external_id"] != external_id:
+                raise ValueError("External execution must not change")
+            conn.execute(runs.update().where(runs.c.id == run_id).values(external_id=external_id))
+            if not row["external_id"]:
+                append_event(
+                    conn,
+                    run_id,
+                    "build_submitted",
+                    "CodeBuild가 빌드를 접수했습니다.",
+                    "build_queued",
+                )
+
+    def run(self, run_id, kind=None):
         with self.engine.connect() as conn:
             row = conn.execute(sa.select(runs).where(runs.c.id == run_id)).mappings().first()
-            if not row:
+            if not row or (kind and row["kind"] != kind):
                 raise Problem("run_not_found", "검사 이력을 찾을 수 없습니다.", 404)
             return select_fields(row, RUN_FIELDS)
 
-    def list_runs(self, service_id, limit, cursor):
+    def list_runs(self, service_id, limit, cursor, kind="source_preflight"):
         self.service(service_id)
         with self.engine.connect() as conn:
             return page_query(
-                conn, runs, RUN_FIELDS, [runs.c.service_id == service_id], limit, cursor
+                conn,
+                runs,
+                RUN_FIELDS,
+                [runs.c.service_id == service_id, runs.c.kind == kind],
+                limit,
+                cursor,
             )
 
     def run_events(self, run_id, after, limit):
@@ -314,7 +423,9 @@ class Store:
                         lease_expires_at=instant + timedelta(seconds=60),
                         attempt=row["attempt"] + 1,
                         started_at=instant,
-                        current_step="repository",
+                        current_step="build_queued"
+                        if row["kind"] == "image_build"
+                        else "repository",
                     )
                     .returning(runs)
                 )
@@ -327,7 +438,11 @@ class Store:
                 "reclaimed" if row["status"] == "running" else "started",
                 "중단된 검사를 이어갑니다."
                 if row["status"] == "running"
-                else "소스 확인을 시작했습니다.",
+                else (
+                    "이미지 빌드를 시작했습니다."
+                    if row["kind"] == "image_build"
+                    else "소스 확인을 시작했습니다."
+                ),
             )
             return dict(claimed)
 
@@ -343,7 +458,8 @@ class Store:
             or row["status"] != "running"
             or row["lease_token"] != token
             or row["lease_expires_at"] <= instant
-            or row["started_at"] + timedelta(seconds=120) <= instant
+            or row["started_at"] + timedelta(seconds=1800 if row["kind"] == "image_build" else 120)
+            <= instant
         ):
             raise LeaseLost()
         return row, instant
@@ -352,7 +468,9 @@ class Store:
         with self.engine.begin() as conn:
             row, instant = self._owned(conn, run_id, token)
             expiry = min(
-                instant + timedelta(seconds=60), row["started_at"] + timedelta(seconds=120)
+                instant + timedelta(seconds=60),
+                row["started_at"]
+                + timedelta(seconds=1800 if row["kind"] == "image_build" else 120),
             )
             if expiry <= instant:
                 raise LeaseLost()
@@ -393,7 +511,15 @@ class Store:
                 "retry_scheduled" if retry else state,
                 "잠시 후 다시 확인합니다."
                 if retry
-                else (error["message"] if error else "소스 확인을 완료했습니다."),
+                else (
+                    error["message"]
+                    if error
+                    else (
+                        "이미지 빌드를 완료했습니다."
+                        if row["kind"] == "image_build"
+                        else "소스 확인을 완료했습니다."
+                    )
+                ),
                 row["current_step"],
                 error or {},
             )

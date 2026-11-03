@@ -6,6 +6,7 @@ from typing import Annotated
 from uuid import UUID, uuid4
 
 import uvicorn
+from botocore.exceptions import BotoCoreError, ClientError
 from fastapi import APIRouter, Depends, FastAPI, Query, Request, Response
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
@@ -13,11 +14,12 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.exc import SQLAlchemyError
 
+from delta_platform.adapters.builds import BuildError, CodeBuildRunner, build_target
 from delta_platform.config import Settings
 from delta_platform.core.auth import COOKIE, Auth
 from delta_platform.core.database import engine_for, ready
 from delta_platform.core.errors import Problem
-from delta_platform.core.inputs import EmptyInput, LoginInput, ServiceInput, request_key
+from delta_platform.core.inputs import BuildInput, EmptyInput, LoginInput, ServiceInput, request_key
 from delta_platform.core.store import Store
 
 logger = logging.getLogger("delta_platform")
@@ -179,7 +181,7 @@ def create_app(settings=None, engine=None):
 
     @protected.get("/source-checks/{run_id}")
     def run_detail(run_id: UUID):
-        return store.run(run_id)
+        return store.run(run_id, "source_preflight")
 
     @protected.get("/source-checks/{run_id}/events")
     def event_list(
@@ -187,7 +189,49 @@ def create_app(settings=None, engine=None):
         after_sequence: Annotated[int, Query(ge=0)] = 0,
         limit: Annotated[int, Query(ge=1, le=200)] = 100,
     ):
+        store.run(run_id, "source_preflight")
         return store.run_events(run_id, after_sequence, limit)
+
+    @protected.post("/services/{service_id}/builds")
+    def image_build(service_id: UUID, body: BuildInput, request: Request):
+        result, created = store.enqueue_build(
+            service_id,
+            UUID(body.source_check_id),
+            request_key(request.headers.get("idempotency-key")),
+            build_target(settings),
+        )
+        return JSONResponse(jsonable_encoder(result), status_code=202 if created else 200)
+
+    @protected.get("/services/{service_id}/builds")
+    def build_list(service_id: UUID, limit: Limit = 50, cursor: str | None = None):
+        return store.list_runs(service_id, limit, cursor, "image_build")
+
+    @protected.get("/builds/{run_id}")
+    def build_detail(run_id: UUID):
+        return store.run(run_id, "image_build")
+
+    @protected.get("/builds/{run_id}/events")
+    def build_events(
+        run_id: UUID,
+        after_sequence: Annotated[int, Query(ge=0)] = 0,
+        limit: Annotated[int, Query(ge=1, le=200)] = 100,
+    ):
+        store.run(run_id, "image_build")
+        return store.run_events(run_id, after_sequence, limit)
+
+    @protected.get("/builds/{run_id}/logs")
+    def build_logs(run_id: UUID):
+        run = store.run(run_id, "image_build")
+        try:
+            return CodeBuildRunner(settings).log_tail(run)
+        except BuildError as exc:
+            raise Problem(exc.payload["code"], exc.payload["message"], 502) from None
+        except (BotoCoreError, ClientError):
+            raise Problem(
+                "build_logs_unavailable",
+                "빌드 로그를 가져오지 못했습니다. 잠시 후 다시 조회하세요.",
+                503,
+            ) from None
 
     router.include_router(protected)
     app.include_router(router)

@@ -6,12 +6,20 @@ export type Session = {
 export type Run = {
   id: string;
   service_id: string;
+  kind: "source_preflight" | "image_build";
+  external_id: string | null;
   status: "queued" | "running" | "succeeded" | "failed";
   current_step: string | null;
   attempt: number;
   resolved_commit_sha: string | null;
   created_at: string;
-  result: { dockerfile_blob_sha: string; checked_at: string } | null;
+  result: {
+    dockerfile_blob_sha?: string;
+    checked_at?: string;
+    image?: string;
+    image_digest?: string;
+    platform?: string;
+  } | null;
   error: { code: string; message: string; retry_at?: string } | null;
 };
 export type Service = {

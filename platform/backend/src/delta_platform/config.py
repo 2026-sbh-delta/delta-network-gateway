@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     local_mode: bool = False
     session_hours: int = 8
     web_dist: Path | None = None
+    build_project: str = ""
+    build_repository: str = ""
+    build_region: str = "ap-northeast-2"
 
     @model_validator(mode="after")
     def validate_settings(self):

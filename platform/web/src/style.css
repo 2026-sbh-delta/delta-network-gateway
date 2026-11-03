@@ -644,3 +644,30 @@ footer {
     display: none;
   }
 }
+
+.build-panel {
+  margin-top: 24px;
+}
+.build-result {
+  display: grid;
+  gap: 12px;
+  margin: 20px 0;
+  padding: 20px;
+  background: #edf7f2;
+  border-radius: 12px;
+  overflow-wrap: anywhere;
+}
+.build-panel code {
+  overflow-wrap: anywhere;
+}
+.build-logs {
+  max-height: 360px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: #142537;
+  color: #e4edf5;
+  padding: 20px;
+  border-radius: 12px;
+  font-size: 12px;
+}

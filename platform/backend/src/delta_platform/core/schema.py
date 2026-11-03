@@ -59,6 +59,8 @@ runs = sa.Table(
     col("status", sa.String(16), nullable=False),
     col("current_step", sa.String(40)),
     col("resolved_commit_sha", sa.String(40)),
+    col("external_id", sa.String(255)),
+    col("submission", JSONB(none_as_null=True)),
     col("attempt", sa.Integer, nullable=False, server_default="0"),
     timestamp("available_at", nullable=False, server_default=sa.func.now()),
     col("lease_token", UUID(as_uuid=True)),
@@ -69,7 +71,7 @@ runs = sa.Table(
     timestamp("started_at"),
     timestamp("finished_at"),
     sa.UniqueConstraint("service_id", "kind", "request_key", name="run_request_unique"),
-    sa.CheckConstraint("kind = 'source_preflight'", name="run_kind"),
+    sa.CheckConstraint("kind IN ('source_preflight', 'image_build')", name="run_kind"),
     sa.CheckConstraint("attempt >= 0", name="run_attempt"),
     sa.CheckConstraint("status IN ('queued','running','succeeded','failed')", name="run_status"),
     sa.CheckConstraint(
