@@ -1,8 +1,8 @@
 # 플랫폼 U2: 공개 저장소 이미지 빌드
 
-- 기준일: 2026-11-03. 브랜치 `feat/platform-builds`.
+- 기준일: 2026-11-03. U2는 main에 병합됐으며 운영 권한 보완 브랜치는 `fix/platform-build-read-permission`이다.
 - 승인: 사용자의 `Let's do next jobs.`에 따라 U2를 시작했고, CodeBuild 비교 후 `Then I will follow your decision.`으로 실행기 선택을 승인받았다. 구현 범위를 사전에 공유했다.
-- 상태: 구현·로컬 검증·AWS 빌드 기반 Apply·실제 이미지 빌드 완료. 백엔드·브라우저 최종 재검증 완료. 구현 커밋 `d0d3154`를 게시하고 [PR #14](https://github.com/2026-sbh-delta/delta-network-gateway/pull/14)를 생성했다. GitHub CI 실행 중이며 병합은 사용자가 진행한다. 앱 운영 배포는 아직 하지 않았다.
+- 상태: [PR #14](https://github.com/2026-sbh-delta/delta-network-gateway/pull/14) 병합·CI·GitHub OIDC Infra Plan/Apply·Release 완료. 공개 HTTPS에서 기존 로그인·서비스를 유지한 실제 빌드와 결과·로그 표시를 검증했다. 운영 중 발견한 CodeBuild 조회 권한도 수정·적용했다. 해당 수정의 main 반영은 별도 PR로 진행하며 병합은 사용자가 한다.
 
 ## Ideation / Inception
 
@@ -82,16 +82,16 @@
 
 - 실제 소스: `https://github.com/docker/welcome-to-docker`, 커밋 `68c1b9f87c41fb3fef2667e27149865c2f42d1eb`.
 - 실제 결과: `616723161368.dkr.ecr.ap-northeast-2.amazonaws.com/delta-platform-builds@sha256:f443317a8cf63d5ad1efcba56700d2619aa4b139befa2003f7fcab56973cf576` (`linux/amd64`).
-- 로컬 Worker·DB와 실제 AWS를 연결한 검증이다. 공개 플랫폼에서 U2를 실행했다고 표현하지 않는다.
+- 위 표는 운영 배포 전 로컬 Worker·DB와 실제 AWS를 연결한 검증이다. 공개 플랫폼 검증은 아래 병합 후 배포 기록으로 구분한다.
 - 고객 소스 취약점 검사나 ECS 실행 검사는 아직 하지 않았다. 스캔 승인 상태가 아니다.
 
-## Operation / 남은 게시·배포
+## Operation / 현재 배포 상태
 
-- 기존 플랫폼 URL은 U1을 계속 제공한다. 빌드 기반만 실제 AWS에 구성했다.
-- `platform/deploy/terraform`의 app VM IMDSv2 hop limit 2는 코드 변경이며 아직 Apply하지 않았다. 게시 후 기존 GitHub Infra Plan/Apply로 적용하고 Release로 U2를 배포한다.
+- [기존 플랫폼 URL](https://d3udcz0zch0on.cloudfront.net)에서 U2를 제공한다. 기존 고정 로그인과 서비스 기록을 유지했다.
+- `platform/deploy/terraform`의 app VM IMDSv2 hop limit 2를 GitHub Infra Plan/Apply로 적용했고 같은 main 커밋의 Release로 U2를 배포했다. 최종 Plan은 No changes다.
 - 스키마 `0002`는 빌드 종류·외부 실행 정보를 추가한다. Release는 기존 API/Worker를 멈추고 S3 DB 백업 후 migration을 실행한다. 구버전 Worker와 새 작업 종류가 섞이지 않게 한다. 단일 VM이므로 이 배포 구간에는 중단이 있다.
 - U1 바이너리는 schema `0001`을 요구한다. U2를 쓴 뒤 단순히 U1 이미지로 돌리면 readiness가 실패한다. 수정 릴리스나 DB 백업 복구가 필요하며 빌드 기록이 있는 상태의 downgrade는 거절한다.
-- AWS 자원 추가와 앱 운영 배포를 구분한다. Conventional Commit 메시지와 검증 결과를 공유했고 사용자의 `Commit.` 지시로 로컬 커밋을 승인받았다. 구현 커밋을 푸시하고 [PR #14](https://github.com/2026-sbh-delta/delta-network-gateway/pull/14)를 열었다. main 병합은 사용자가 진행하며 앱 Release는 아직 하지 않았다.
+- 운영 역할의 CodeBuild 조회·중단 권한을 해당 project ARN으로 보완했다. builds root의 IAM 정책 1개만 적용했으며 앱 재배포는 필요 없다. 운영 정책과 main 코드를 맞추는 후속 PR은 사용자가 병합한다.
 
 ## Git 기록
 
@@ -99,4 +99,39 @@
 - 대상 브랜치: `feat/platform-builds`, 기준 main: `23aa0b1` (PR #12).
 - 실제 설정·state·Plan·실행 로그·자격 증명 파일은 커밋에서 제외한다. 원격 게시·배포 승인은 이 로컬 커밋과 구분한다.
 
-- 2026-11-03 사용자 `Open PR. I'll merge it.` 지시로 `git push -u origin feat/platform-builds`와 PR 생성을 완료했다. [PR #14](https://github.com/2026-sbh-delta/delta-network-gateway/pull/14)는 OPEN·MERGEABLE이며 GitHub Platform checks가 시작됐다. CI 최종 결과는 PR Checks를 따른다. 병합·배포는 실행하지 않았다.
+- 2026-11-03 사용자 `Open PR. I'll merge it.` 지시로 `git push -u origin feat/platform-builds`와 PR 생성을 완료했다. 당시 [PR #14](https://github.com/2026-sbh-delta/delta-network-gateway/pull/14)는 OPEN·MERGEABLE이었고 GitHub Platform checks가 시작됐다. 이후 사용자 병합과 실제 배포는 아래 기록을 따른다.
+
+## main 병합 후 배포 (2026-11-03)
+
+- 사용자가 PR #14를 병합했다. merge commit: `b5a815c`. PR의 GitHub Platform checks 4개 job 모두 성공했다.
+- GitHub OIDC Plan [41615839743](https://github.com/2026-sbh-delta/delta-network-gateway/actions/runs/41615839743) 성공. artifact의 commit·Plan을 확인했고 app VM metadata hop limit 1→2의 in-place 변경 1개뿐이다. 추가·삭제는 없다.
+- 검토한 동일 Plan을 사용하는 Apply [41616127813](https://github.com/2026-sbh-delta/delta-network-gateway/actions/runs/41616127813)가 성공했다. 0개 추가·1개 변경·0개 삭제, VM 교체 없음.
+
+- Release [41616309485](https://github.com/2026-sbh-delta/delta-network-gateway/actions/runs/41616309485)를 같은 merge commit으로 시작했다. 사전 검사 4개 job과 앱 배포·HTTPS readiness가 모두 성공했다. 플랫폼 이미지 digest는 `sha256:0943857e246c3f3678838a3de0d75aa4cd7988023251bd28f9f3f2c217d3fce8`이다. S3 백업·schema 0002 migration·재시작 순서도 실제 실행했다.
+
+### 운영 역할의 CodeBuild 조회 권한 보완
+
+- 공개 HTTPS 검사에서 기존 고정 로그인·서비스 ID·소스 확인·401/403·Secure/HttpOnly 쿠키는 통과했지만, 빌드 요청 `7a69d0c9-197c-4117-bba7-2f4a0d381ba0`는 `build_provider_error / AccessDeniedException`으로 종료됐다. CodeBuild 시작은 성공했고 결과 조회에서 실패했다. 실패 이력은 유지한다.
+- 재현: ignored `.runtime/debug-u2-iam.py`로 **운영 Worker 컨테이너의 실제 VM 역할**에서 `BatchGetBuilds` 호출. AWS 오류가 거절된 리소스를 `project/delta-platform-builds`로 명시했다. 로컬 관리자 역할에서는 재현되지 않는 문제였다.
+- 원인: IAM Resource를 `build/<name>:*`로 지정했으나 `BatchGetBuilds`·`StopBuild`는 **project ARN**으로 권한을 평가한다. [AWS 권한 표](https://docs.aws.amazon.com/codebuild/latest/userguide/auth-and-access-control-permissions-reference.html)와 실제 오류가 일치했다.
+- 회귀 검증: 렌더링된 Terraform IAM 정책에서 두 동작의 대상이 정확한 project ARN인지 검사하는 assertion을 먼저 추가했다. 기존 코드에서 실패 → 수정 후 mock 통과를 확인했다.
+- 기존 초기 IAM 구성과 같은 SSO 관리자 경로로 builds root의 `aws_iam_role_policy.platform_builds` 하나만 수정했다. 역할·VM·네트워크 추가/삭제나 앱 재배포는 없다. 정책 전파 전 첫 조회는 여전히 실패했고, 전파 후 같은 운영 Worker 호출은 `PASS: BatchGetBuilds SUCCEEDED`로 성공했다.
+- 실제 IAM 시뮬레이션 4개: 이 프로젝트 조회·중단 allowed, 다른 프로젝트 조회·중단 implicitDeny. 고객 빌드 역할의 권한은 변경하지 않았다.
+- 기존 플랫폼의 GitHub 최종 Plan [41617239878](https://github.com/2026-sbh-delta/delta-network-gateway/actions/runs/41617239878)도 성공·No changes다.
+- 임시 진단 코드는 ignored `.runtime/debug-u2-iam.py`에만 있고 앱에 진단 로그를 추가하지 않았다. 수정한 Terraform·회귀 테스트는 별도 fix 브랜치에 기록한다.
+
+### 공개 플랫폼 최종 검증
+
+| 명령·확인 (2026-11-03) | 실제 결과 |
+| --- | --- |
+| `.runtime/https_release_smoke.py` | 기존 고정 로그인·서비스 조회·실제 GitHub 소스 검사, 미인증 401·잘못된 Origin 403·로그아웃·쿠키 속성 통과 |
+| `.runtime/u2-https-build.py` | 공개 HTTPS에서 빌드 접수 → 운영 Worker/CodeBuild 실행 → ECR digest 검증 → 결과·이벤트·실제 로그 조회 성공. 동일 요청 키 재전송도 같은 실행 반환 |
+| `PATH=… node platform/.runtime/u2-browser.cjs` | 실제 HTTPS 로그인·기존 서비스·빌드 완료·digest·로그 표시 확인. 데스크톱/390px 모바일 캡처 확인, 가로 페이지 넘침·브라우저 오류 없음 |
+| builds root `terraform validate`, `terraform test` | validate 성공, 권한 회귀 assertion을 포함한 mock 1개 통과 |
+| builds root `terraform plan -detailed-exitcode` | 권한 수정 적용 후 종료 코드 0, No changes |
+
+- 최종 공개 빌드: 플랫폼 실행 `690c0fc9-84d8-4080-93ee-f4d93fe29d4b`, CodeBuild `delta-platform-builds:7a961eba-3e7e-4192-8386-7b566c77a59b`.
+- 소스 커밋: `68c1b9f87c41fb3fef2667e27149865c2f42d1eb`.
+- 결과: `616723161368.dkr.ecr.ap-northeast-2.amazonaws.com/delta-platform-builds@sha256:3ea49729362e9a272631eba09718e8f56be797865d8b644bf75a0aadae0709c7`, `linux/amd64`.
+- HTTPS 검증 클라이언트는 플랫폼 고정 로그인만 사용했다. AWS 빌드·조회는 운영 VM 역할이 수행했다. 계정 재등록이나 사용자 장기 키 전달은 없었다.
+- 실제 응답·로그·캡처는 ignored `platform/.runtime/u2-*`에 보관한다. 다음 U3는 이 digest를 기존 ECS 검사 도구에 연결하는 작업이며 아직 구현하지 않았다.

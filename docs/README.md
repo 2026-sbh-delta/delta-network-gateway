@@ -3,7 +3,7 @@
 ## 현재 상태
 
 - 기준일: 2026-11-03 (Asia/Seoul)
-- 플랫폼 U2: 사용자가 CodeBuild 선택을 승인했다. `feat/platform-builds`에서 빌드 API·Worker·웹·별도 빌드 기반을 구현했다. PostgreSQL 71개·브라우저 5개·빌드 기반 mock 1개·배포 도구 19개 통과. AWS 빌드 기반 6개 추가 후 실제 공개 저장소 이미지 빌드·ECR digest·API 결과/로그 조회·최종 No changes를 확인했다. 구현 `d0d3154`를 게시하고 [PR #14](https://github.com/2026-sbh-delta/delta-network-gateway/pull/14)를 열었다. CI 실행 중이며 병합은 사용자가 진행한다. 앱 운영 배포는 아직 하지 않았다. [기록](ai-dlc/platform-u2.md)
+- 플랫폼 U2: [PR #14](https://github.com/2026-sbh-delta/delta-network-gateway/pull/14) 병합 후 GitHub OIDC Plan·Apply·Release를 완료했다. [공개 플랫폼](https://d3udcz0zch0on.cloudfront.net)에서 기존 로그인·서비스를 유지하고 실제 공개 저장소 빌드 → ECR digest → 결과·로그 표시를 검증했다. 운영 역할의 CodeBuild 조회 권한 오류를 수정·적용했고 회귀 검증, 실제 역할 조회, 데스크톱·모바일 화면과 두 Terraform root의 최종 No changes를 확인했다. 권한 수정은 별도 fix 브랜치이며 후속 PR 병합이 필요하다. [기록](ai-dlc/platform-u2.md)
 - ANF 비용 절감(2026-11-03 17:08 KST): **최종 disabled 적용 완료**. Firewall/엔드포인트 2개를 제거했고 ALB/사설 Client의 두 포트 HTTP 200과 중앙 Plan No changes를 확인했다. 실제 ANF 재생성과 검사 경로/삭제 보호 원복, 허용/차단/양방향 로그까지 검증한 뒤 다시 꺼뒀다. 정책/규칙/기존 로그와 네트워크는 보존했다. 최신 main pull 후에도 중앙 mock 41개와 helper 테스트 11개 통과. 구현/테스트/운영 문서 3개 서명 커밋을 origin/main에 게시했고 원격 `fae8ca04` 일치를 확인했다. 이 게시 확인 기록은 후속 문서 커밋으로 남긴다. [기록](ai-dlc/anf-cost-mode.md)
 - AWS → GCP 매핑 판단: [`migration_mapping`](ai-dlc/migration-mapping.md) 구현 완료. 실제 AWS state 로 대조했고 GCP 생성은 안 함. 앞단은 HAProxy 기각, AWS 기능 사용 방향(ADR-AI-37), 값의 기준은 Terraform(ADR-AI-38), GCP 담당은 동규 님(2026-11-02 사용자 전달).
 - 통합 시연: `deploy/demo-console/` 에서 온프레미스 증거·DAST·AI 판단·Jenkins 카나리를 한 흐름과 화면으로 돌린다. 2026-11-02 로컬 리허설 3개 시나리오 확인, 브랜치 `feat/demo-integration` 에 커밋·푸시했고 서버 배포는 안 함. 배포는 Mac Docker 대역이고 AWS·GCP 는 미연결. [기록](ai-dlc/demo-integration.md)
@@ -71,7 +71,7 @@
 
 ANF는 비용 중단 모드로 유지한다. ignored `terraform/network-security/inspection-mode.auto.tfvars`를 보존하고, 검사가 필요할 때 [전환 Runbook](../terraform/network-security/RUNBOOK.md#anf-비용-중단과-원복)의 `disabled -> bypass -> enabled` 순서로 원복한다. 우회 중에는 기존 8081 차단 시험도 HTTP 200으로 응답한다.
 
-플랫폼 U1과 OIDC Plan/Release는 검증 완료다. U2 CodeBuild 이미지 빌드의 구현·실제 AWS 검증을 완료했다. 커밋 전 변경·검증·Conventional Commit 메시지를 공유하고, 게시·병합 후 기존 GitHub Infra/Release 경로로 앱을 배포한다. U3에서는 main에 병합된 ECS 스테이징 도구에 검사할 이미지 digest를 전달한다.
+플랫폼 U2는 운영 배포와 공개 HTTPS 빌드 검증까지 완료했다. 운영 중 발견한 CodeBuild 권한 수정은 AWS에 적용했으며 별도 PR로 main에 반영한다. 다음 U3에서는 main에 병합된 ECS 스테이징 도구에 검사할 이미지 digest를 전달한다. U3 구현 전에 연동 범위와 검증 계획을 공유한다.
 
 CloudFront 두 버튼 웹의 실제 ANF 허용/차단 대조는 확인했다. 직접 EC2 Origin/Server IGW와 SG rule/임시 ALB ingress 정리와 실제 검증 JSON 게시를 마쳤고 네 root 최종 Plan은 No changes다. 남은 화면 검증은 UI 도구가 안정된 환경에서 차단 버튼 완료 화면/최종 검증 문구를 확인하는 것이다. 페이지 하단 검증 기록은 배포 당시 로그 대조 결과이며 개별 요청의 실시간 관제 판정은 아니다.
 
