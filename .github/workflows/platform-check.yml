@@ -2,10 +2,10 @@ name: Platform checks
 
 on:
   pull_request:
-    paths: ['platform/**', 'services/delta-staging/**', 'services/delta-dast/**', '.github/workflows/platform-*.yml']
+    paths: ['platform/**', 'services/delta-staging/**', 'services/delta-dast/**', 'services/delta-ai/**', '.github/workflows/platform-*.yml']
   push:
     branches: [main, feat/platform]
-    paths: ['platform/**', 'services/delta-staging/**', 'services/delta-dast/**', '.github/workflows/platform-*.yml']
+    paths: ['platform/**', 'services/delta-staging/**', 'services/delta-dast/**', 'services/delta-ai/**', '.github/workflows/platform-*.yml']
   workflow_call:
   workflow_dispatch:
 
@@ -71,6 +71,11 @@ jobs:
       - name: Platform to team DAST integration
         working-directory: platform/backend
         run: uv run --with-editable ../../services/delta-dast pytest -q tests/integration_dast.py
+      - name: AI execution identity
+        run: uv run --project services/delta-ai --python 3.12 --frozen --extra dev pytest -q services/delta-ai/tests
+      - name: Platform to team AI integration
+        working-directory: platform/backend
+        run: uv run --with-editable ../../services/delta-ai pytest -q tests/integration_assessments.py
       - name: Deployment boundaries
         run: |
           python3 -m unittest discover -s platform/deploy/tests -v

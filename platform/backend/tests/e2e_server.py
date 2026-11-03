@@ -26,7 +26,7 @@ if __name__ == "__main__":
     with engine.begin() as conn:
         conn.execute(
             sa.text(
-                "TRUNCATE sessions, auth_rate_limits, run_events, runs, service_environments, services"
+                "TRUNCATE sessions, auth_rate_limits, run_events, workflow_executions, workflows, runs, service_environments, services"
             )
         )
     child = subprocess.Popen([sys.executable, str(Path(__file__).with_name("e2e_worker.py"))])

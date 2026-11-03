@@ -86,7 +86,7 @@ class EnvironmentStore:
 
     def bind(self, service_id, data, *, environment_id=None):
         # This operator-only entry point is not exposed by the public HTTP API.
-        Store(self.engine).service(service_id)
+        service = Store(self.engine).service(service_id)
         payload = data.model_dump(mode="json")
         public = {f: payload.pop(f) for f in ("name", "cloud", "region", "version")}
         with self.engine.begin() as conn:
@@ -123,7 +123,7 @@ class EnvironmentStore:
             conn.execute(
                 environments.insert().values(
                     id=identifier,
-                    project_id=WORKSPACE_ID,
+                    project_id=service["project_id"],
                     service_id=service_id,
                     **public,
                     binding=payload,
