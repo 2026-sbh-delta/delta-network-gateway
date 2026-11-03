@@ -77,3 +77,7 @@ mock은 AWS에 자원을 만들지 않는다. 실제 검증은 별도다. API �
 | PLATFORM_BUILD_PROJECT | Worker가 시작할 프로젝트 |
 | PLATFORM_BUILD_REPOSITORY | digest 조회·결과 주소의 기준 ECR |
 | PLATFORM_BUILD_REGION | AWS SDK 접속 리전 |
+
+## CodeBuild 권한 리소스
+
+`StartBuild`, `BatchGetBuilds`, `StopBuild`는 모두 해당 **project ARN**으로 권한을 평가한다. 실행 ID를 인자로 받는 조회·중단 API도 build ARN을 IAM Resource로 쓰면 AccessDenied가 발생한다. 빌드 기반 mock에 이 계약을 고정했고 실제 플랫폼 Worker 역할로 조회를 검증한다. [AWS 권한 표](https://docs.aws.amazon.com/codebuild/latest/userguide/auth-and-access-control-permissions-reference.html)를 따른다.

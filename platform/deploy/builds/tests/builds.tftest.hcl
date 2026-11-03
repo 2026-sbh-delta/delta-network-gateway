@@ -26,4 +26,12 @@ run "isolated_build" {
     condition     = !strcontains(jsonencode(jsondecode(aws_iam_role_policy.platform_builds.policy).Statement), "iam:PassRole")
     error_message = "플랫폼 Worker가 다른 빌드 역할을 지정할 수 없어야 합니다."
   }
+  assert {
+    condition = alltrue([for action in ["codebuild:BatchGetBuilds", "codebuild:StopBuild"] :
+      anytrue([for statement in jsondecode(aws_iam_role_policy.platform_builds.policy).Statement :
+        contains(statement.Action, action) && statement.Resource == "arn:aws:codebuild:${var.region}:${var.account_id}:project/${var.name}"
+      ])
+    ])
+    error_message = "CodeBuild 조회·중단은 build ARN이 아니라 해당 project ARN으로 권한을 평가합니다."
+  }
 }

@@ -1,8 +1,7 @@
 # Delta Platform
 
-개발자용 플랫폼의 웹·API·Worker를 관리한다. 현재 브랜치는 **고정 로그인 → 공개 GitHub 등록 → 소스 확인 → CodeBuild 이미지 빌드 → 결과·로그 조회**를 구현한다. 실제 공개 URL은 아직 U1이며, U2 배포 상태는 [진행 기록](../docs/ai-dlc/platform-u2.md)을 따른다. 빌드 성공은 실행 검사나 배포 성공을 뜻하지 않는다.
+개발자용 플랫폼의 웹·API·Worker를 관리한다. **고정 로그인 → 공개 GitHub 등록 → 소스 확인 → CodeBuild 이미지 빌드 → 결과·로그 조회**를 운영 배포하고 공개 HTTPS에서 실제 빌드를 검증했다. [U2 진행 기록](../docs/ai-dlc/platform-u2.md)을 따른다. 빌드 성공은 실행 검사나 배포 성공을 뜻하지 않는다.
 
-- 브랜치: `feat/platform`
 - [구현 범위·검증 기록](../docs/ai-dlc/platform-u1.md)
 - [전체 방향과 후속 단위](../docs/ai-dlc/platform.md) · [한국어 구성 설명](docs/overview.ko.html)
 - AWS 배포 완료: https://d3udcz0zch0on.cloudfront.net · [실제 검증](../docs/ai-dlc/platform-aws.md). GitHub 워크플로는 [PR #7](https://github.com/2026-sbh-delta/delta-network-gateway/pull/7)에서 CI 성공 후 병합됐다. [OIDC 역할 생성과 변수 입력](deploy/GITHUB.md)을 완료했으며, 새 워크플로도 PR #8에서 main에 반영했고 GitHub OIDC Plan·Release 및 배포 후 로그인·Worker 작업까지 검증했다.
@@ -43,7 +42,7 @@ uv run platform-worker
 2. 빌드 경로와 Dockerfile 경로는 **저장소 최상위 기준**이다. Dockerfile은 빌드 경로 안에 있어야 한다.
 3. **소스 확인**을 누른다. 공개 여부, 커밋, 빌드 디렉터리, Dockerfile의 위치·유형을 검사한다.
 4. 빌드 실행기를 연결한 환경에서는 성공한 소스 검사 아래 **이 커밋 빌드**를 누른다. 성공 시 이미지 digest를, 실패 시 원인과 빌드 로그를 확인한다.
-4. 확정된 커밋과 단계별 결과를 확인한다. 실패하면 사유를 확인한 뒤 새 검사를 실행한다.
+5. 확정된 커밋과 단계별 결과를 확인한다. 실패하면 사유를 확인한 뒤 새 검사를 실행한다.
 
 GitHub 무인증 조회 한도에 도달하면 실패 사유를 표시한다. 검사는 소스 코드를 실행하지 않는다. 파일 존재 확인과 빌드·보안 검사를 구분한다. 앱 포트·헬스 체크 경로는 후속 배포를 위한 등록 정보이며 현재 해당 주소에 요청하지 않는다.
 
@@ -81,7 +80,7 @@ npm run test:e2e
 npm run format:check
 ```
 
-브라우저 시험은 실제 API·별도 Worker 프로세스·PostgreSQL을 사용하고 **GitHub HTTP 응답만 fixture로 대체**한다. 시험 계정은 시험 서버에만 적용되며 운영 코드의 기본 계정이 아니다. `test-results/`의 화면 캡처도 검증용 데이터다.
+로컬 브라우저 시험은 실제 API·별도 Worker 프로세스·PostgreSQL을 사용하고 **GitHub·AWS 응답은 fixture로 대체**한다. 시험 계정은 시험 서버에만 적용되며 운영 코드의 기본 계정이 아니다. `test-results/`의 화면 캡처도 검증용 데이터다. 운영 HTTPS에서는 실제 AWS 빌드·로그와 데스크톱·모바일 화면을 별도로 검증했다.
 
 실제 GitHub 조회는 `platform/backend/`에서 별도로 실행한다.
 
