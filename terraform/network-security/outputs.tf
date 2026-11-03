@@ -24,7 +24,7 @@ output "tgw_arn" {
 }
 
 output "spoke_route_table_id" {
-  description = "Before-inspection TGW route table for workload VPC and VPN attachment associations."
+  description = "TGW Spoke route table; sends registered VPC traffic to inspection or directly according to inspection_mode."
   value       = aws_ec2_transit_gateway_route_table.spoke.id
 }
 
@@ -39,15 +39,25 @@ output "inspection_attachment_id" {
 }
 
 output "firewall_arn" {
-  description = "Firewall ARN shared through RAM, not merely the policy ARN."
-  value       = aws_networkfirewall_firewall.central.arn
+  description = "Firewall ARN shared through RAM, or null in disabled mode."
+  value       = try(aws_networkfirewall_firewall.central[0].arn, null)
+}
+
+output "inspection_mode" {
+  description = "Traffic inspection mode: enabled, bypass (firewall retained), or disabled (endpoints removed)."
+  value       = var.inspection_mode
+}
+
+output "inspection_route_targets" {
+  description = "Desired Spoke RT next hop for every registered CIDR; use for staged ReplaceTransitGatewayRoute operations."
+  value       = { for cidr, route in aws_ec2_transit_gateway_route.before_inspection : cidr => route.transit_gateway_attachment_id }
 }
 
 output "primary_endpoint_ids_by_az_id" {
-  description = "Inspection VPC primary endpoint IDs by physical AZ ID; never use these as consumer VPC route targets."
+  description = "Inspection VPC primary endpoint IDs by physical AZ ID, or an empty map in disabled mode."
   value       = local.primary_endpoint_ids
   precondition {
-    condition     = alltrue([for endpoint_id in values(local.primary_endpoint_ids) : endpoint_id != null]) && length(distinct(values(local.primary_endpoint_ids))) == length(var.inspection_azs)
+    condition     = alltrue([for endpoint_id in values(local.primary_endpoint_ids) : endpoint_id != null]) && length(distinct(values(local.primary_endpoint_ids))) == (local.firewall_enabled ? length(var.inspection_azs) : 0)
     error_message = "Each configured physical AZ requires exactly one primary Firewall endpoint."
   }
 }

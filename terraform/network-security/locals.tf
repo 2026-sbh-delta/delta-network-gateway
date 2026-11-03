@@ -1,5 +1,6 @@
 locals {
-  prefix = "${var.name}-${var.environment}"
+  prefix           = "${var.name}-${var.environment}"
+  firewall_enabled = var.inspection_mode != "disabled"
   common_tags = merge({
     Team        = "Delta"
     Project     = "delta-multicloud"
@@ -39,6 +40,9 @@ locals {
   spoke_routes = { for entry in flatten([for key, spoke in var.spoke_attachments : [for cidr in spoke.vpc_cidrs : {
     key = "${key}/${cidr}", spoke_key = key, cidr = cidr
   }]]) : entry.key => entry }
+  direct_spoke_targets = merge([for spoke in values(var.spoke_attachments) : {
+    for cidr in spoke.vpc_cidrs : cidr => spoke.attachment_id
+  }]...)
 
   input_cidrs = concat(
     [var.inspection_vpc_cidr], [for subnet in values(local.subnets) : subnet.cidr],
@@ -82,6 +86,10 @@ locals {
 resource "terraform_data" "contract" {
   input = "delta-central-contract-v1"
   lifecycle {
+    precondition {
+      condition     = var.inspection_mode == "enabled" || (length(var.vpn_networks) == 0 && length(var.vpn_peers) == 0)
+      error_message = "Bypass and disabled modes support VPC spokes only. Keep inspection enabled while VPN networks or peers are registered."
+    }
     precondition {
       condition = alltrue([for cidr in local.input_cidrs : try(
         cidrnetmask(cidr) != "" && cidrhost(cidr, 0) == split("/", cidr)[0], false

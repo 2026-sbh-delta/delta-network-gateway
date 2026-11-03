@@ -1,5 +1,6 @@
 # Illustrative values ONLY. Copy to ignored terraform.tfvars and replace them.
 # Use AWS_PROFILE=sbh-delta-security in the shell, not a hardcoded provider profile.
+inspection_mode = "enabled" # enabled -> bypass -> disabled; restore via bypass first.
 central_account_id  = "111122223333"
 inspection_vpc_cidr = "10.250.0.0/24"
 inspection_azs = {

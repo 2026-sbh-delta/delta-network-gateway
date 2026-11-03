@@ -26,7 +26,8 @@ resource "aws_cloudwatch_log_resource_policy" "firewall" {
 }
 
 resource "aws_networkfirewall_logging_configuration" "central" {
-  firewall_arn = aws_networkfirewall_firewall.central.arn
+  count        = local.firewall_enabled ? 1 : 0
+  firewall_arn = aws_networkfirewall_firewall.central[0].arn
   logging_configuration {
     dynamic "log_destination_config" {
       for_each = aws_cloudwatch_log_group.firewall

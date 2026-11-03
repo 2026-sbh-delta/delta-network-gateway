@@ -1,8 +1,8 @@
 locals {
-  shared_resources = {
-    tgw      = aws_ec2_transit_gateway.central.arn
-    firewall = aws_networkfirewall_firewall.central.arn
-  }
+  shared_resources = merge(
+    { tgw = aws_ec2_transit_gateway.central.arn },
+    local.firewall_enabled ? { firewall = aws_networkfirewall_firewall.central[0].arn } : {}
+  )
   share_principals = { for item in flatten([for kind in ["tgw", "firewall"] : [for account_id in var.shared_account_ids : {
     key = "${kind}/${account_id}", kind = kind, account_id = account_id
   }]]) : item.key => item }

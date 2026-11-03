@@ -88,7 +88,11 @@ resource "aws_ec2_transit_gateway_route" "before_inspection" {
   for_each                       = local.inspected_cidrs
   destination_cidr_block         = each.key
   transit_gateway_route_table_id = aws_ec2_transit_gateway_route_table.spoke.id
-  transit_gateway_attachment_id  = aws_ec2_transit_gateway_vpc_attachment.inspection.id
+  # Keep route tables, destinations, associations and resource addresses stable.
+  # VPN bypass is rejected by terraform_data.contract before any writes.
+  transit_gateway_attachment_id = var.inspection_mode == "enabled" ? aws_ec2_transit_gateway_vpc_attachment.inspection.id : lookup(
+    local.direct_spoke_targets, each.key, aws_ec2_transit_gateway_vpc_attachment.inspection.id
+  )
 }
 
 resource "aws_ec2_transit_gateway_route" "to_spoke" {

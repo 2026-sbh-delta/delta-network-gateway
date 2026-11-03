@@ -40,10 +40,11 @@ resource "aws_route_table_association" "firewall" {
 }
 
 resource "aws_networkfirewall_firewall" "central" {
+  count                             = local.firewall_enabled ? 1 : 0
   name                              = "${local.prefix}-central"
   vpc_id                            = aws_vpc.inspection.id
   firewall_policy_arn               = aws_networkfirewall_firewall_policy.central.arn
-  delete_protection                 = var.firewall_protection.delete
+  delete_protection                 = var.inspection_mode == "bypass" ? false : var.firewall_protection.delete
   subnet_change_protection          = var.firewall_protection.subnet
   firewall_policy_change_protection = var.firewall_protection.policy
 
@@ -60,16 +61,16 @@ resource "aws_networkfirewall_firewall" "central" {
 locals {
   # Each AZ key is known at plan time. Match subnet IDs as well as the API AZ name;
   # never infer physical AZ identity from a computed set's position.
-  primary_endpoint_ids = { for az_id in keys(var.inspection_azs) : az_id => one(flatten([
-    for sync in one(aws_networkfirewall_firewall.central.firewall_status).sync_states : [
+  primary_endpoint_ids = local.firewall_enabled ? { for az_id in keys(var.inspection_azs) : az_id => one(flatten([
+    for sync in one(aws_networkfirewall_firewall.central[0].firewall_status).sync_states : [
       for attachment in sync.attachment : attachment.endpoint_id
       if attachment.subnet_id == aws_subnet.inspection["${az_id}/firewall"].id
     ] if sync.availability_zone == data.aws_availability_zone.selected[az_id].name
-  ])) }
+  ])) } : {}
 }
 
 resource "aws_route" "to_firewall" {
-  for_each               = local.route_matrix
+  for_each               = local.firewall_enabled ? local.route_matrix : {}
   route_table_id         = aws_route_table.tgw[each.value.az_id].id
   destination_cidr_block = each.value.cidr
   vpc_endpoint_id        = local.primary_endpoint_ids[each.value.az_id]

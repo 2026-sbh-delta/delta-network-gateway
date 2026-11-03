@@ -254,6 +254,17 @@ variable "stateful_rule_capacity" {
   }
 }
 
+variable "inspection_mode" {
+  description = "enabled inspects traffic, bypass keeps the firewall for staged transitions, disabled removes billable endpoints. Bypass modes currently support VPC spokes only."
+  type        = string
+  default     = "enabled"
+  nullable    = false
+  validation {
+    condition     = contains(["enabled", "bypass", "disabled"], var.inspection_mode)
+    error_message = "inspection_mode must be enabled, bypass or disabled."
+  }
+}
+
 variable "firewall_protection" {
   description = "Deletion, subnet and policy-association protections; disable the required protection in a separate apply before teardown or topology changes."
   type = object({
