@@ -27,7 +27,7 @@ from . import projects
 from . import sast_link
 from .report import build as build_report
 from .computer_use import investigate as investigate_computer_use
-from .planner import DEFAULT_MODEL, plan
+from .planner import DEFAULT_MODEL, apply_target, plan
 from .registry import load_catalog
 from .runner import browser_available, verify
 
@@ -228,7 +228,7 @@ def create_app(port: int = 8765, target_port: int = 8766,
                 await publish(event if "finding_id" in event else {**event, "finding_id": finding.id})
 
             hint = finding.trigger.model_dump() if finding.trigger else {}
-            target_id = hint.get("target_id") or default_target
+            target_id = hint.get("target_id") or run.get("target_id") or default_target
             payload_id = hint.get("payload_id") or (
                 "visual_svg_v1" if "visual_svg_v1" in catalog.payloads else sorted(catalog.payloads)[0])
             mapping = {"target_id": target_id, "payload_id": payload_id, "planner_mode": run["planner"],
@@ -286,7 +286,8 @@ def create_app(port: int = 8765, target_port: int = 8766,
             output.mkdir(parents=True, exist_ok=False)
             await publish({"type": "state", "phase": phase,
                            "message": "SAST 입력과 등록된 payload·경로를 확인합니다."})
-            report = Report.model_validate(normalize_report(raw_report))
+            report = apply_target(Report.model_validate(normalize_report(raw_report)), catalog,
+                                  run.get("target_id"), run["scenario"])
             run["source"] = report.source
             run["source_label"] = report.source_label
             await publish({"type": "log", "message": "SAST 입력 출처: " + report.source_label})
@@ -554,8 +555,12 @@ def create_app(port: int = 8765, target_port: int = 8766,
 
     def launch(args: RunRequest, extra: dict | None = None) -> str:
         project_id = args.project_id or (extra or {}).get("project_id") or DEFAULT_PROJECT
-        if not projects.get_project(project_id):
+        project = projects.get_project(project_id)
+        if not project:
             raise HTTPException(422, "등록되지 않은 프로젝트입니다.")
+        target_id = args.target_id or project.get("target_id")
+        if target_id is not None and target_id not in catalog.targets:
+            raise HTTPException(422, "등록되지 않은 점검 대상입니다.")
         running = [run for run in runs.values() if run["status"] == "running"]
         if len(running) >= MAX_PARALLEL:
             raise HTTPException(429, f"동시에 {MAX_PARALLEL}개까지 점검할 수 있습니다. 진행 중인 점검이 끝난 뒤 다시 요청하세요.")
@@ -569,7 +574,8 @@ def create_app(port: int = 8765, target_port: int = 8766,
                "planner": args.planner, "concurrency": args.concurrency, "impact": args.impact,
                "auto_fix": args.auto_fix, "sast_run_id": args.sast_run_id, "results": [], "duration_ms": 0,
                "events": deque(maxlen=2000), "sequence": 0, "changed": asyncio.Event(),
-               "report": args.report, "started_at": time.time(), **(extra or {}), "project_id": project_id}
+               "report": args.report, "started_at": time.time(), **(extra or {}), "project_id": project_id,
+               "target_id": target_id}
         runs[run_id] = run
         if on_run_start is not None and not running:
             # 로컬 실습 대상은 매 점검을 같은 초기 상태에서 시작한다.

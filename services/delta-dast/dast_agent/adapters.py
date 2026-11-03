@@ -1,5 +1,7 @@
 """외부 SAST 결과를 좁은 내부 finding 형식으로 변환한다."""
 
+import re
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -101,6 +103,17 @@ def code_flow(result: dict) -> list[dict]:
     return out
 
 
+def _sast_input(dast: dict) -> dict | None:
+    """SAST의 입력 라우트·칸. 등록된 route와 맞으면 LLM 없이도 실행 힌트가 채워진다."""
+    entry = dast.get("entry") or {}
+    method, path, field = entry.get("method"), entry.get("path"), dast.get("field")
+    if not (isinstance(method, str) and re.fullmatch(r"[A-Z]{3,7}", method) and isinstance(path, str) and path):
+        return None
+    if not (isinstance(field, str) and re.fullmatch(r"[A-Za-z0-9_-]{1,64}", field)):
+        field = None
+    return {"method": method, "path": path[:300], "field": field, "stored": bool(dast.get("stored"))}
+
+
 def sarif_targets(raw: dict) -> list[dict]:
     """DAST가 공격할 결과만. kind가 fail·review이고, DAST로 재현 가능하고, 지금 DAST가 다루는 XSS인 것."""
     out = []
@@ -150,6 +163,7 @@ def from_sarif(raw: dict) -> dict:
             "trigger": None,
             "payload": None,
             "code_flow": code_flow(result) or None,
+            "sast_input": _sast_input(dast),
         })
     run_id = (run.get("properties") or {}).get("run_id", "")
     return {"source": "delta-sast", "source_label": f"Delta SAST SARIF {run_id}".strip()[:200],

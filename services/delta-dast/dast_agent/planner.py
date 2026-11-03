@@ -7,7 +7,7 @@ import re
 import tempfile
 import time
 
-from .contracts import Decision, Finding, Plan, Report
+from .contracts import Decision, Finding, Plan, Report, TriggerHint
 from .registry import RegistryCatalog
 
 
@@ -18,6 +18,26 @@ def _hint(finding: Finding) -> dict[str, str]:
     if finding.trigger is None:
         return {}
     return {key: value for key, value in finding.trigger.model_dump().items() if value is not None}
+
+
+def apply_target(report: Report, catalog: RegistryCatalog, target_id: str | None, scenario: str) -> Report:
+    """점검 대상을 힌트에 채운다. SAST 입력이 등록 route와 맞으면 route·field·payload까지 채워 LLM 없이 실행된다."""
+    if not target_id:
+        return report
+    default_payload = "visual_svg_v1" if "visual_svg_v1" in catalog.payloads else sorted(catalog.payloads)[0]
+    findings = []
+    for finding in report.findings:
+        hint = _hint(finding)
+        if set(hint) >= {"target_id", "route_id", "field", "payload_id"}:
+            findings.append(finding)
+            continue
+        hint.setdefault("target_id", target_id)
+        sast = finding.sast_input
+        route = sast and catalog.match_route(hint["target_id"], scenario, sast.method, sast.path, sast.field, sast.stored)
+        if route is not None and hint.get("route_id", route.id) == route.id:
+            hint |= {"route_id": route.id, "field": route.field, "payload_id": hint.get("payload_id", default_payload)}
+        findings.append(finding.model_copy(update={"trigger": TriggerHint(**hint)}))
+    return report.model_copy(update={"findings": findings})
 
 
 def _matching(catalog: RegistryCatalog, finding: Finding) -> list[dict[str, str]]:

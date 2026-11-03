@@ -209,6 +209,17 @@ class RegistryCatalog:
             for payload_id in self.payloads
         ]
 
+    def match_route(self, target_id: str, scenario: str, method: str, path: str,
+                    field: str | None, stored: bool) -> RouteDefinition | None:
+        """SAST가 알려준 입력 라우트·칸과 정확히 맞는 등록 route. 없거나 여러 개면 None."""
+        target = self.targets.get(target_id)
+        if target is None or not stored or method != "POST":
+            return None
+        matches = [route for route in target.routes
+                   if route.kind == "stored_xss" and _render(route.submit_path, scenario) == path
+                   and (field is None or route.field == field)]
+        return matches[0] if len(matches) == 1 else None
+
     def resolve_target(self, target_id: str, scenario: str, target_port: int) -> ResolvedTarget:
         target = self.targets.get(target_id)
         if target is None:
