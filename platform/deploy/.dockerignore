@@ -1,0 +1,8 @@
+**
+!builds/
+!builds/build.py
+!jenkins/
+!jenkins/agent/
+!jenkins/agent/Dockerfile
+!jenkins/agent/build.py
+!jenkins/agent/start.sh

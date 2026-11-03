@@ -1,0 +1,30 @@
+pipeline {
+    agent none
+    options {
+        skipDefaultCheckout(true)
+        disableConcurrentBuilds()
+        timeout(time: 30, unit: 'MINUTES')
+        buildDiscarder(logRotator(numToKeepStr: '200', artifactNumToKeepStr: '200'))
+        timestamps()
+    }
+    stages {
+        stage('Build verified commit') {
+            agent { label 'delta-image-builder' }
+            steps {
+                deleteDir()
+                // Parameters enter the environment, never the shell program itself.
+                withEnv([
+                    "DELTA_RUN_ID=${params.DELTA_RUN_ID}",
+                    "DELTA_SOURCE=${params.DELTA_SOURCE}",
+                    "DELTA_COMMIT=${params.DELTA_COMMIT}",
+                    "DELTA_CONTEXT=${params.DELTA_CONTEXT}",
+                    "DELTA_DOCKERFILE=${params.DELTA_DOCKERFILE}"
+                ]) {
+                    sh 'python3 /opt/delta/jenkins-build.py'
+                }
+                archiveArtifacts artifacts: 'result.json', allowEmptyArchive: false
+            }
+            post { always { deleteDir() } }
+        }
+    }
+}

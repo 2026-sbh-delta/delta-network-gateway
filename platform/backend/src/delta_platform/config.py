@@ -4,6 +4,7 @@ import ipaddress
 import os
 import secrets
 from pathlib import Path
+from typing import Literal
 from urllib.parse import urlsplit
 
 from argon2 import PasswordHasher, extract_parameters
@@ -25,10 +26,17 @@ class Settings(BaseSettings):
     local_mode: bool = False
     session_hours: int = 8
     web_dist: Path | None = None
+    build_provider: Literal["jenkins", "codebuild"] = "jenkins"
     build_project: str = ""
     build_repository: str = ""
     build_region: str = "ap-northeast-2"
+    jenkins_url: str = ""
+    jenkins_job: str = "delta-platform-image"
+    jenkins_user: str = ""
+    jenkins_token: SecretStr = SecretStr("")
     sandbox_target: str = ""
+    sast_url: str = ""
+    sast_token: SecretStr = SecretStr("")
 
     @model_validator(mode="after")
     def validate_settings(self):

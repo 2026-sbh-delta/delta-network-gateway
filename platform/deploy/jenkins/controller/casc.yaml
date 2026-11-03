@@ -1,0 +1,49 @@
+jenkins:
+  systemMessage: "Delta 플랫폼 이미지 빌드"
+  numExecutors: 0
+  mode: EXCLUSIVE
+  securityRealm:
+    local:
+      allowsSignup: false
+      users:
+        - id: admin
+          password: ${JENKINS_ADMIN_PASSWORD}
+        - id: platform
+          password: ${JENKINS_PLATFORM_PASSWORD}
+  authorizationStrategy:
+    globalMatrix:
+      entries:
+        - user:
+            name: admin
+            permissions: ["Overall/Administer"]
+        - user:
+            name: platform
+            permissions: ["Overall/Read", "Job/Read", "Job/Build", "Job/Cancel"]
+  nodes:
+    - permanent:
+        name: image-builder
+        remoteFS: /home/jenkins/agent
+        numExecutors: 1
+        mode: EXCLUSIVE
+        labelString: delta-image-builder
+        launcher:
+          inbound:
+            webSocket: true
+jobs:
+  - script: >
+      pipelineJob('delta-platform-image') {
+        description('플랫폼이 확인한 공개 GitHub 커밋을 빌드하고 ECR digest를 반환합니다.')
+        parameters {
+          stringParam('DELTA_RUN_ID', '', '플랫폼 실행 UUID')
+          stringParam('DELTA_SOURCE', '', '공개 GitHub 저장소')
+          stringParam('DELTA_COMMIT', '', '확인한 40자리 커밋')
+          stringParam('DELTA_CONTEXT', '.', '빌드 context')
+          stringParam('DELTA_DOCKERFILE', 'Dockerfile', 'Dockerfile 경로')
+        }
+        definition {
+          cps {
+            script(new File('/opt/delta/Jenkinsfile').text)
+            sandbox(true)
+          }
+        }
+      }

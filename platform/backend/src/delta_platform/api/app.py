@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Annotated
 from uuid import UUID, uuid4
 
+import httpx
 import uvicorn
 from botocore.exceptions import BotoCoreError, ClientError
 from fastapi import APIRouter, Depends, FastAPI, Query, Request, Response
@@ -14,8 +15,9 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.exc import SQLAlchemyError
 
-from delta_platform.adapters.builds import BuildError, CodeBuildRunner, build_target
+from delta_platform.adapters.builds import BuildError, build_runner, build_target
 from delta_platform.adapters.sandbox import sandbox_target
+from delta_platform.adapters.security import security_target
 from delta_platform.config import Settings
 from delta_platform.core.auth import COOKIE, Auth
 from delta_platform.core.database import engine_for, ready
@@ -23,8 +25,8 @@ from delta_platform.core.errors import Problem
 from delta_platform.core.inputs import (
     BuildInput,
     EmptyInput,
+    ImageCheckInput,
     LoginInput,
-    SandboxInput,
     ServiceInput,
     request_key,
 )
@@ -227,8 +229,33 @@ def create_app(settings=None, engine=None):
         store.run(run_id, "image_build")
         return store.run_events(run_id, after_sequence, limit)
 
+    @protected.post("/services/{service_id}/security-checks")
+    def security_check(service_id: UUID, body: ImageCheckInput, request: Request):
+        result, created = store.enqueue_security(
+            service_id,
+            UUID(body.build_id),
+            request_key(request.headers.get("Idempotency-Key")),
+            security_target(settings),
+        )
+        return JSONResponse(jsonable_encoder(result), status_code=202 if created else 200)
+
+    @protected.get("/services/{service_id}/security-checks")
+    def security_list(service_id: UUID, limit: Limit = 50, cursor: str | None = None):
+        return store.list_runs(service_id, limit, cursor, "security_check")
+
+    @protected.get("/security-checks/{run_id}")
+    def security_detail(run_id: UUID):
+        return store.run(run_id, "security_check")
+
+    @protected.get("/security-checks/{run_id}/events")
+    def security_events(
+        run_id: UUID, after_sequence: Annotated[int, Query(ge=0)] = 0, limit: Limit = 100
+    ):
+        store.run(run_id, "security_check")
+        return store.run_events(run_id, after_sequence, limit)
+
     @protected.post("/services/{service_id}/sandbox-checks")
-    def sandbox_check(service_id: UUID, body: SandboxInput, request: Request):
+    def sandbox_check(service_id: UUID, body: ImageCheckInput, request: Request):
         result, created = store.enqueue_sandbox(
             service_id,
             UUID(body.build_id),
@@ -258,12 +285,12 @@ def create_app(settings=None, engine=None):
 
     @protected.get("/builds/{run_id}/logs")
     def build_logs(run_id: UUID):
-        run = store.run(run_id, "image_build")
+        run = store.build_execution(run_id)
         try:
-            return CodeBuildRunner(settings).log_tail(run)
+            return build_runner(settings, run).log_tail(run)
         except BuildError as exc:
             raise Problem(exc.payload["code"], exc.payload["message"], 502) from None
-        except (BotoCoreError, ClientError):
+        except (BotoCoreError, ClientError, httpx.HTTPError):
             raise Problem(
                 "build_logs_unavailable",
                 "빌드 로그를 가져오지 못했습니다. 잠시 후 다시 조회하세요.",

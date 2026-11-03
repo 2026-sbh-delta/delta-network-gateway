@@ -338,9 +338,22 @@ class Store:
                     conn,
                     run_id,
                     "build_submitted",
-                    "CodeBuild가 빌드를 접수했습니다.",
+                    "빌드 실행기가 요청을 접수했습니다.",
                     "build_queued",
                 )
+
+    def resolve_jenkins_queue(self, run_id, token, queue_id, build_id):
+        with self.engine.begin() as conn:
+            row, _ = self._owned(conn, run_id, token)
+            if row["external_id"] == build_id:
+                return
+            if (
+                row["external_id"] != queue_id
+                or not queue_id.startswith("jenkins:queue:")
+                or not build_id.startswith("jenkins:build:")
+            ):
+                raise ValueError("Jenkins queue ownership changed")
+            conn.execute(runs.update().where(runs.c.id == run_id).values(external_id=build_id))
 
     def run(self, run_id, kind=None):
         with self.engine.connect() as conn:
@@ -348,6 +361,20 @@ class Store:
             if not row or (kind and row["kind"] != kind):
                 raise Problem("run_not_found", "검사 이력을 찾을 수 없습니다.", 404)
             return select_fields(row, RUN_FIELDS)
+
+    def build_execution(self, run_id):
+        """Private adapter context; never return the snapshot through the HTTP API."""
+        with self.engine.connect() as conn:
+            row = (
+                conn.execute(
+                    sa.select(runs).where(runs.c.id == run_id, runs.c.kind == "image_build")
+                )
+                .mappings()
+                .first()
+            )
+            if not row:
+                raise Problem("run_not_found", "빌드 실행을 찾을 수 없습니다.", 404)
+            return dict(row)
 
     def list_runs(self, service_id, limit, cursor, kind="source_preflight"):
         self.service(service_id)
@@ -428,7 +455,15 @@ class Store:
                         started_at=instant,
                         current_step="build_queued"
                         if row["kind"] == "image_build"
-                        else ("sandbox_queued" if row["kind"] == "sandbox_check" else "repository"),
+                        else (
+                            "sandbox_queued"
+                            if row["kind"] == "sandbox_check"
+                            else (
+                                "security_queued"
+                                if row["kind"] == "security_check"
+                                else "repository"
+                            )
+                        ),
                     )
                     .returning(runs)
                 )
@@ -535,13 +570,107 @@ class Store:
                         else (
                             "샌드박스 실행 확인과 정리를 완료했습니다. 보안 검사는 아직 하지 않았습니다."
                             if row["kind"] == "sandbox_check"
-                            else "소스 확인을 완료했습니다."
+                            else (
+                                "SAST 결과를 확인했습니다. 운영 배포 승인은 별도입니다."
+                                if row["kind"] == "security_check"
+                                else "소스 확인을 완료했습니다."
+                            )
                         )
                     )
                 ),
                 row["current_step"],
                 error or {},
             )
+
+    def enqueue_security(self, service_id, build_id, key, target):
+        request_hash = digest({"build_id": str(build_id)})
+        with self.engine.begin() as conn:
+            service = conn.scalar(
+                sa.select(services.c.id).where(services.c.id == service_id).with_for_update()
+            )
+            if not service:
+                raise Problem("service_not_found", "서비스를 찾을 수 없습니다.", 404)
+            existing = (
+                conn.execute(
+                    sa.select(runs).where(
+                        runs.c.service_id == service_id,
+                        runs.c.kind == "security_check",
+                        runs.c.request_key == key,
+                    )
+                )
+                .mappings()
+                .first()
+            )
+            if existing:
+                if existing["request_hash"] != request_hash:
+                    raise Problem("idempotency_conflict", "같은 요청 키의 내용이 다릅니다.", 409)
+                return select_fields(existing, RUN_FIELDS), False
+            build = (
+                conn.execute(
+                    sa.select(runs).where(
+                        runs.c.id == build_id,
+                        runs.c.service_id == service_id,
+                        runs.c.kind == "image_build",
+                        runs.c.status == "succeeded",
+                    )
+                )
+                .mappings()
+                .first()
+            )
+            if not build:
+                raise Problem(
+                    "successful_build_required", "이 서비스의 성공한 이미지 빌드가 필요합니다.", 409
+                )
+            active = conn.scalar(
+                sa.select(runs.c.id).where(
+                    runs.c.status.in_(["queued", "running"]),
+                    runs.c.service_id == service_id,
+                )
+            )
+            if active:
+                raise Problem(
+                    "security_busy",
+                    "진행 중인 작업 또는 사용 중인 SAST 검사가 있습니다. 완료 후 다시 실행하세요.",
+                    409,
+                    run_id=str(active),
+                )
+            result = build["result"]
+            if (
+                result.get("platform") != "linux/amd64"
+                or not result.get("image")
+                or result.get("commit_sha") != build["resolved_commit_sha"]
+            ):
+                raise Problem(
+                    "security_build_invalid",
+                    "SAST 검사에 전달할 빌드 정보를 확인할 수 없습니다.",
+                    409,
+                )
+            row = (
+                conn.execute(
+                    runs.insert()
+                    .values(
+                        id=uuid4(),
+                        service_id=service_id,
+                        kind="security_check",
+                        status="queued",
+                        input_snapshot={
+                            "build_id": str(build_id),
+                            "image": result["image"],
+                            "image_digest": result["image_digest"],
+                            "repository_url": build["input_snapshot"]["repository_url"],
+                            "security_target": target,
+                        },
+                        resolved_commit_sha=build["resolved_commit_sha"],
+                        request_key=key,
+                        request_hash=request_hash,
+                    )
+                    .returning(runs)
+                )
+                .mappings()
+                .one()
+            )
+            append_event(conn, row["id"], "queued", "빌드한 커밋의 SAST 검사를 접수했습니다.")
+            return select_fields(row, RUN_FIELDS), True
 
     def enqueue_sandbox(self, service_id, build_id, key, target):
         request_hash = digest({"build_id": str(build_id)})

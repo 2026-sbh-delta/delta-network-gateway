@@ -43,7 +43,7 @@ class BuildInput(StrictInput):
         return str(UUID(value))
 
 
-class SandboxInput(StrictInput):
+class ImageCheckInput(StrictInput):
     build_id: str = Field(min_length=36, max_length=36)
 
     @field_validator("build_id")

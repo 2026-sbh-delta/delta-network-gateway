@@ -18,7 +18,13 @@ DIGEST = "sha256:" + "b" * 64
 
 
 def config():
-    return settings().model_copy(update={"build_project": PROJECT, "build_repository": REPOSITORY})
+    return settings().model_copy(
+        update={
+            "build_provider": "codebuild",
+            "build_project": PROJECT,
+            "build_repository": REPOSITORY,
+        }
+    )
 
 
 def queued(store, data, key="build"):

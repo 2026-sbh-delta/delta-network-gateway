@@ -17,6 +17,25 @@ class BuildError(Exception):
 
 
 def build_target(settings):
+    if settings.build_provider == "jenkins":
+        from delta_platform.adapters.jenkins import jenkins_target
+
+        return jenkins_target(settings)
+    return codebuild_target(settings)
+
+
+def build_runner(settings, run):
+    provider = run["input_snapshot"]["build_target"].get("provider", "codebuild")
+    if provider == "jenkins":
+        from delta_platform.adapters.jenkins import JenkinsRunner
+
+        return JenkinsRunner(settings)
+    if provider == "codebuild":
+        return CodeBuildRunner(settings)
+    raise BuildError("build_provider_invalid", "저장된 빌드 실행기를 확인하세요.")
+
+
+def codebuild_target(settings):
     if not settings.build_project or not settings.build_repository:
         raise Problem(
             "builder_not_configured", "이미지 빌드 실행기가 아직 연결되지 않았습니다.", 503
@@ -37,7 +56,7 @@ def build_target(settings):
 
 class CodeBuildRunner:
     def __init__(self, settings, *, codebuild=None, ecr=None, logs=None, sleep=time.sleep):
-        self.target = build_target(settings)
+        self.target = codebuild_target(settings)
         config = Config(
             connect_timeout=5, read_timeout=15, retries={"mode": "standard", "max_attempts": 2}
         )

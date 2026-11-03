@@ -1,0 +1,7 @@
+**
+!controller/
+!controller/Dockerfile
+!controller/plugins.txt
+!controller/casc.yaml
+!pipeline/
+!pipeline/Jenkinsfile

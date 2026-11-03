@@ -657,7 +657,8 @@ footer {
   border-radius: 12px;
   overflow-wrap: anywhere;
 }
-.build-panel code {
+.build-panel code,
+.security-panel code {
   overflow-wrap: anywhere;
 }
 .build-logs {

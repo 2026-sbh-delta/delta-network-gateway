@@ -162,8 +162,8 @@ export function SandboxPanel({
         </code>
       </p>
       <p className="sandbox-boundary">
-        실행 확인은 보안 검사와 다릅니다. SAST·DAST·AI 보안 검사와 운영 배포는
-        아직 연결하지 않았습니다.
+        실행 확인은 보안 검사와 다릅니다. SAST는 아래 코드 보안 검사에서 별도로
+        실행합니다. DAST·AI 보안 검사와 운영 배포는 아직 연결하지 않았습니다.
       </p>
       {error && (
         <p className="error" role="alert">

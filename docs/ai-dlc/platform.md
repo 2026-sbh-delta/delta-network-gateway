@@ -5,7 +5,7 @@
 - 기준일: 2026-11-03 (Asia/Seoul).
 - 사용자 지시: `Okay, start the task by making branch for platform. Don't forget to create dir for platform and separate things.`
 - 위 지시에 따라 Ideation 방향을 승인된 범위로 기록하고 전용 브랜치·디렉터리 분리(U0)를 수행했다. U1은 사용자 구현 승인 후 [구현·검증](platform-u1.md)과 [AWS 배포](platform-aws.md)를 완료했다.
-- 확정: 공개 GitHub 저장소 + Dockerfile, 운영 VM, 기존 ECS 샌드박스, Terraform과 플랫폼 CI 연동, AWS → GCP·온프레미스 DB 이전 준비.
+- 확정: 고객 이미지 빌드는 Jenkins(2026-11-03 사용자 변경), 공개 GitHub 저장소 + Dockerfile, 운영 VM, 기존 ECS 샌드박스, Terraform과 플랫폼 CI 연동, AWS → GCP·온프레미스 DB 이전 준비.
 - 로그인은 사용자 정정에 따라 고정 ID·비밀번호 한 쌍과 공통 작업 공간으로 시작한다. U1에 회원가입·계정 관리·소셜 로그인·개인별 권한은 없다.
 - 문서는 한국어로 작성하고 코드 주석은 필요하면 영어로 작성한다.
 - 구현 전 작업 범위를 공유한다. 추가 지시 `Dont forget to tell me before you commit.`에 따라 커밋 전에 변경 내용·검증 결과를 알린다. 푸시는 별도 지시 범위다.
@@ -43,7 +43,7 @@
 개발자 → platform/web → backend/api → 플랫폼 DB
                                      ↕
                               backend/worker
-                               ├─ CodeBuild → 고객 이미지 전용 ECR
+                               ├─ Jenkins 전용 빌드 에이전트 → 고객 이미지 전용 ECR
                                ├─ ECS / SAST·DAST·AI 도구
                                ├─ Terraform → 전용 출력 → VM 준비 검사
                                ├─ automation → VM 앱 배포·헬스 체크
@@ -61,7 +61,7 @@
 | U0 | 브랜치·디렉터리·문서 | `feat/platform`, 역할별 경계, 설명 문서·진행 기록 | 준비 완료 |
 | U1 | 고정 로그인·서비스 등록·소스 사전 검사 | 실제 DB 공유, 인증 보호·재시작 보존·중복 요청·GitHub 확인 검증 | [구현·검증 완료](platform-u1.md), AWS 배포 완료 |
 | U2 | 공개 저장소·빌드 | 특정 커밋의 이미지·결과 저장, 관리 권한 없는 빌드 | [운영 배포·공개 HTTPS 실제 빌드 검증 완료](platform-u2.md), PR #15 병합 완료 |
-| U3 | ECS 검사 연결 | 검사한 digest·증거 연결, 미통과/미연결 시 배포 차단 | [실행 확인 구현·실제 AWS 검증 완료](platform-u3.md), PR #16 게시. 공개 웹 Release·보안 검사 연결은 후속 |
+| U3 | ECS 검사 연결 | 검사한 digest·증거 연결, 미통과/미연결 시 배포 차단 | [PR #16 병합·공개 Release 검증 완료](platform-u3.md). [SAST 결과 연결](platform-security.md)은 로컬 구현·검증 완료, 운영 미연결. DAST는 후속 |
 | U4 | Terraform·VM 배포 | handoff 검증·준비 검사·배포·헬스 체크·실패 처리 | 미착수 |
 | U5 | 관측 조회 | 실제 지표·로그·트레이스, 조회 실패·수집 시각 표시 | 미착수 |
 | U6 | DB 이전 | 호환성·복제·최종 동기화·단일 쓰기 전환·검증, 복구 경계 명시 | 미착수 |
@@ -112,3 +112,7 @@
 - 2026-11-03 사용자 `commit and open PR` 지시로 U1 구현·AWS 배포·GitHub 워크플로를 `5390c63` (`feat(platform): add developer workspace and AWS deployment workflows`)으로 커밋하고 `git push -u origin feat/platform` 성공을 확인했다.
 - `gh pr create --base main --head feat/platform`으로 [PR #7](https://github.com/2026-sbh-delta/delta-network-gateway/pull/7)을 생성했다. GitHub 조회 결과 OPEN, MERGEABLE이며 PR 테스트 실행이 시작됐다. 병합은 실행하지 않았다.
 - 후속 커밋 전에도 변경 내용과 검증 결과를 사용자에게 알린다.
+
+## Jenkins 선택 변경 (2026-11-03)
+
+사용자가 CodeBuild 대신 Jenkins 사용을 지정하고 구현·Jenkins 구성 준비를 승인했다. [Jenkins 단위](platform-jenkins.md)에서 실행기 전환과 실제 흐름을 검증한다. 기존 CodeBuild 선택·검증 기록은 과거 상태이며 새 기본 실행기와 구분한다. 플랫폼 자체의 GitHub Actions OIDC/Release는 유지한다.
