@@ -5,6 +5,7 @@ AWS Network / Security 계정의 Inspection VPC, Transit Gateway, 공유 Network
 - [Terraform 실행 안내와 전체 입력/출력](terraform/network-security/README.md)
 - [업무 계정 및 원격 네트워크 연결 계약](terraform/network-security/CONNECTIONS.md)
 - [AWS 사설 Workload 클라이언트](terraform/workload-client/README.md)
+- [AWS 스테이징 기반](terraform/staging-aws/README.md)과 [스테이징 도구](services/delta-staging/README.md)
 - [검증, 장애 대응, 해체 Runbook](terraform/network-security/RUNBOOK.md)
 - [프로젝트 상태와 AI-DLC](docs/README.md)
 - [개발자용 플랫폼 작업 영역](platform/README.md)

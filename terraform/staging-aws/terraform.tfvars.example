@@ -1,0 +1,8 @@
+# Mock fixture values. Actual values belong in ignored terraform.tfvars.
+account_id         = "444455556666"
+vpc_id             = "vpc-00000000000000001"
+subnet_ids         = ["subnet-00000000000000001", "subnet-00000000000000002"]
+route_table_ids    = ["rtb-00000000000000001", "rtb-00000000000000002"]
+scanner_cidrs      = ["10.10.1.0/24"]
+container_port     = 8080
+health_check_path  = "/"

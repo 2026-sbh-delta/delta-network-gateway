@@ -2,7 +2,7 @@
 
 from html import escape
 
-from flask import Blueprint, abort, redirect, request
+from flask import Blueprint, abort, request
 
 from .comments import render_comments
 from .store import create_post, get_post, posts
@@ -39,7 +39,9 @@ def save_post():
     body = request.form.get("body", "")
     if not title or not body:
         abort(422)
-    return redirect(f"/posts/{create_post(title, body)}", code=303)
+    # 저장 확인 화면에서 상세로 이동한다. DAST는 이 링크로 저장된 글을 찾는다.
+    post_id = create_post(title, body)
+    return page("저장 완료", f'<p>저장했습니다.</p><a id="saved-post" href="/posts/{post_id}">저장한 글 보기</a>')
 
 
 @board.get("/posts/<post_id>")

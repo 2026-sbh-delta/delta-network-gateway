@@ -1,0 +1,6 @@
+bucket = "REPLACE_WITH_STAGING_STATE_BUCKET"
+key = "delta/lab/staging-aws/terraform.tfstate"
+region = "ap-northeast-2"
+encrypt = true
+use_lockfile = true
+allowed_account_ids = ["REPLACE_WITH_STAGING_ACCOUNT_ID"]
