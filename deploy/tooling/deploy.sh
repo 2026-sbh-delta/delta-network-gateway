@@ -3,6 +3,7 @@
 # 사용: AWS_PROFILE=sb deploy/tooling/deploy.sh
 set -euo pipefail
 export AWS_PROFILE="${AWS_PROFILE:-sb}"
+export AWS_PAGER=""
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo="$(cd "$here/../.." && pwd)"
 tf="$repo/terraform/tooling-aws"

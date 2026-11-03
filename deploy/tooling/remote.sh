@@ -11,6 +11,8 @@ registry="${SAST_IMAGE%%/*}"
 aws ecr get-login-password --region "$REGION" | docker login --username AWS --password-stdin "$registry" >/dev/null
 docker pull -q "$SAST_IMAGE"
 docker pull -q "$DAST_IMAGE"
+# 받은 뒤 바로 로그아웃해서 ECR 임시 토큰을 서버 디스크에 남기지 않는다
+docker logout "$registry" >/dev/null
 
 # SAST·DAST가 같이 쓰는 내부 토큰. 처음 한 번만 만든다(서버 밖으로 나가지 않음).
 if [ ! -s "$base/secrets.env" ]; then
