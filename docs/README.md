@@ -3,6 +3,7 @@
 ## 현재 상태
 
 - 기준일: 2026-11-03 (Asia/Seoul)
+- Jenkins AWS 운영 연결: PR #18 병합 후 `feat/platform-jenkins-aws`에서 사설 컨트롤러/전용 에이전트·CA 검증·GitHub Plan/Apply/Release를 준비한다. 백엔드 126개, Terraform mock 14개, 배포 도구 24개가 통과했다. 실제 VM 배포·공개 플랫폼 전환은 검증 중이다. [진행 기록](ai-dlc/platform-jenkins-aws.md)
 - 플랫폼 Jenkins 전환: 사용자 지시로 `feat/platform-jenkins`의 별도 worktree에서 새 빌드 실행기를 Jenkins로 연결했다. 로컬 실제 Jenkins → ECR → ECS digest/헬스/종료와 웹 표시를 검증했다. 빌드 전용 IAM 기반은 적용했고 Jenkins 운영 EC2·HTTPS·공개 플랫폼 전환은 아직이다. 구현 `337b0ec`을 푸시하고 [PR #18](https://github.com/2026-sbh-delta/delta-network-gateway/pull/18)을 열었다. 최신 CI는 PR Checks를 따른다. [구성 안내](../platform/deploy/jenkins/README.md) · [검증 기록](ai-dlc/platform-jenkins.md)
 - 플랫폼 SAST 연결: 성공한 빌드의 고정 커밋 검사와 발견 사항·근거 표시를 구현했다. 실제 SAST HTTP 연결과 DB/Worker/브라우저 통합을 각각 검증했다. 검사 완료와 운영 배포 승인을 구분한다. 운영 SAST 연결·DB migration `0004`·릴리스는 아직이다. [계약](../platform/contracts/security-checks.md) · [검증 기록](ai-dlc/platform-security.md)
 - 플랫폼 U3: 사용자가 PR #16을 병합했고 main `35aff4a`의 GitHub Release가 성공했다. 공개 웹에서 실제 VM 역할의 ECS 실행·digest·헬스·태스크 0개 정리를 검증했다. 이후 Jenkins 전환은 위 별도 기록을 따른다. [기록](ai-dlc/platform-u3.md)
@@ -52,6 +53,7 @@
 - [플랫폼 U2: 공개 저장소 이미지 빌드](ai-dlc/platform-u2.md)
 - [플랫폼 U3: 샌드박스 실행 확인](ai-dlc/platform-u3.md)
 - [플랫폼 Jenkins 빌드 전환](ai-dlc/platform-jenkins.md)
+- [Jenkins AWS 운영 연결](ai-dlc/platform-jenkins-aws.md)
 - [플랫폼 SAST 결과 연결](ai-dlc/platform-security.md)
 - [플랫폼 AWS 배포·운영 기록](ai-dlc/platform-aws.md)
 - [플랫폼 GitHub OIDC 연결](ai-dlc/platform-oidc.md)

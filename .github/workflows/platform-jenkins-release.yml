@@ -1,0 +1,72 @@
+name: Platform Jenkins release
+
+on:
+  workflow_dispatch:
+    inputs:
+      component:
+        description: '최초 controller 배포 → 운영자 토큰 초기 구성 → agent 배포'
+        required: true
+        type: choice
+        options: [controller, agent]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: platform-aws-mutation
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      PLATFORM_TF_INPUTS: ${{ vars.PLATFORM_TF_INPUTS }}
+      PLATFORM_STATE_BUCKET: ${{ vars.PLATFORM_STATE_BUCKET }}
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+      AWS_ROLE_ARN: ${{ vars.AWS_RELEASE_ROLE_ARN }}
+      COMPONENT: ${{ inputs.component }}
+      TF_IN_AUTOMATION: 'true'
+      TF_INPUT: 'false'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with: {persist-credentials: false}
+      - name: Validate deployment configuration
+        env:
+          CI_ENABLED: ${{ vars.PLATFORM_CI_ENABLED }}
+        run: |
+          test "$CI_ENABLED" = true
+          case "$COMPONENT" in controller|agent) ;; *) exit 1;; esac
+          python3 platform/deploy/scripts/ci-config.py
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e
+        with: {version: '0.10.0', python-version: '3.12'}
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd
+        with: {terraform_version: '1.16.4', terraform_wrapper: false}
+      - name: Build trusted component
+        run: |
+          if [ "$COMPONENT" = controller ]; then
+            docker build -t delta-jenkins:release -f platform/deploy/jenkins/controller/Dockerfile platform/deploy/jenkins
+          else
+            docker build -t delta-jenkins:release -f platform/deploy/jenkins/agent/Dockerfile platform/deploy
+          fi
+      - uses: aws-actions/configure-aws-credentials@61815dcd50bd041e203e49132bacad1fd04d2708
+        with:
+          role-to-assume: ${{ vars.AWS_RELEASE_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          allowed-account-ids: ${{ vars.AWS_ACCOUNT_ID }}
+          role-session-name: jenkins-release-${{ github.run_id }}
+      - name: Read reviewed infrastructure outputs
+        working-directory: platform/deploy/terraform
+        run: |
+          terraform init -backend-config=backend.hcl -lockfile=readonly
+          mkdir -p ../../.runtime
+          terraform output -json > ../../.runtime/jenkins-outputs.json
+      - name: Publish and install pinned image
+        run: |
+          uv sync --project platform/deploy --frozen
+          uv run --project platform/deploy python platform/deploy/jenkins/aws/deploy.py --component "$COMPONENT" --outputs platform/.runtime/jenkins-outputs.json --image delta-jenkins:release

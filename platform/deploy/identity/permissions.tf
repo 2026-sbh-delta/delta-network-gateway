@@ -36,7 +36,7 @@ locals {
       ], Resource = "${local.ec2}:*/*", Condition = local.project },
       { Sid = "CreateTaggedEC2", Effect = "Allow", Action = ["ec2:CreateVolume", "ec2:CreateSecurityGroup", "ec2:CreateSubnet", "ec2:CreateRouteTable", "ec2:CreateInternetGateway", "ec2:CreateVpc", "ec2:AllocateAddress"], Resource = "${local.ec2}:*/*", Condition = { StringEquals = { "aws:RequestTag/Project" = var.name, "aws:RequestedRegion" = var.region } } },
       { Sid = "CreateWithinPlatformVpc", Effect = "Allow", Action = ["ec2:CreateSecurityGroup", "ec2:CreateSubnet", "ec2:CreateRouteTable"], Resource = "${local.ec2}:vpc/${var.platform_vpc_id}" },
-      { Sid = "LaunchTaggedVM", Effect = "Allow", Action = ["ec2:RunInstances"], Resource = "${local.ec2}:instance/*", Condition = { StringEquals = { "aws:RequestTag/Project" = var.name, "ec2:InstanceType" = ["t4g.micro", "t4g.small", "t4g.medium"] } } },
+      { Sid = "LaunchTaggedVM", Effect = "Allow", Action = ["ec2:RunInstances"], Resource = "${local.ec2}:instance/*", Condition = { StringEquals = { "aws:RequestTag/Project" = var.name, "ec2:InstanceType" = ["t4g.micro", "t4g.small", "t4g.medium", "t3.small", "t3.medium"] } } },
       { Sid = "LaunchWithPlatformNetwork", Effect = "Allow", Action = ["ec2:RunInstances"], Resource = concat([for id in var.platform_subnet_ids : "${local.ec2}:subnet/${id}"], ["${local.ec2}:security-group/*"]), Condition = local.project },
       { Sid = "LaunchImagesAndVolumes", Effect = "Allow", Action = ["ec2:RunInstances"], Resource = ["arn:aws:ec2:${var.region}::image/*", "${local.ec2}:volume/*"] },
       { Sid = "LaunchNetworkInterfaces", Effect = "Allow", Action = ["ec2:RunInstances"], Resource = "${local.ec2}:network-interface/*", Condition = { ArnEquals = { "ec2:Subnet" = [for id in var.platform_subnet_ids : "${local.ec2}:subnet/${id}"] } } },
@@ -57,7 +57,7 @@ locals {
       { Sid = "PlatformImages", Effect = "Allow", Action = ["ecr:DescribeRepositories", "ecr:DescribeImages", "ecr:BatchCheckLayerAvailability", "ecr:GetDownloadUrlForLayer", "ecr:BatchGetImage", "ecr:InitiateLayerUpload", "ecr:UploadLayerPart", "ecr:CompleteLayerUpload", "ecr:PutImage"], Resource = local.ecr },
       { Sid = "ReleaseArchive", Effect = "Allow", Action = ["s3:PutObject"], Resource = "${local.bucket}/releases/*" },
       { Sid = "RunDeploymentDocument", Effect = "Allow", Action = ["ssm:SendCommand"], Resource = "arn:aws:ssm:${var.region}::document/AWS-RunShellScript" },
-      { Sid = "RunOnlyOnPlatformApp", Effect = "Allow", Action = ["ssm:SendCommand"], Resource = "${local.ec2}:instance/*", Condition = { StringEquals = { "ssm:resourceTag/Project" = var.name, "ssm:resourceTag/Name" = "${var.name}-app" } } },
+      { Sid = "RunOnlyOnPlatformApp", Effect = "Allow", Action = ["ssm:SendCommand"], Resource = "${local.ec2}:instance/*", Condition = { StringEquals = { "ssm:resourceTag/Project" = var.name, "ssm:resourceTag/Name" = ["${var.name}-app", "${var.name}-jenkins-controller", "${var.name}-jenkins-agent"] } } },
       { Sid = "DeploymentResultAndParameterMetadata", Effect = "Allow", Action = ["ssm:GetCommandInvocation", "ssm:DescribeParameters"], Resource = "*", Condition = { StringEquals = { "aws:RequestedRegion" = var.region } } }
     ])
   }

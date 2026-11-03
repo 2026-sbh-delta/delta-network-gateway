@@ -1,7 +1,11 @@
 """Trusted Jenkins job adapter. Customer URLs never select the controller or job."""
 
+import base64
+import binascii
+import hashlib
 import json
 import re
+import ssl
 import time
 from datetime import UTC, datetime
 from urllib.parse import urljoin, urlsplit
@@ -12,6 +16,20 @@ from botocore.config import Config
 
 from delta_platform.adapters.builds import BuildError
 from delta_platform.core.errors import Problem
+
+
+def jenkins_ca(settings):
+    encoded = settings.jenkins_ca_base64
+    if not encoded:
+        return None
+    try:
+        if len(encoded) > 32768:
+            raise ValueError()
+        pem = base64.b64decode(encoded, validate=True).decode("ascii")
+        ssl.create_default_context(cadata=pem)
+        return pem
+    except (ValueError, UnicodeError, binascii.Error, ssl.SSLError):
+        raise Problem("builder_config_invalid", "Jenkins CA 인증서를 확인하세요.", 503) from None
 
 
 def jenkins_target(settings):
@@ -47,12 +65,14 @@ def jenkins_target(settings):
         raise Problem(
             "builder_config_invalid", "Jenkins 주소·Job·이미지 저장소 설정을 확인하세요.", 503
         )
+    ca = jenkins_ca(settings)
     return {
         "provider": "jenkins",
         "url": url,
         "job": settings.jenkins_job,
         "repository": settings.build_repository,
         "region": settings.build_region,
+        **({"ca_sha256": hashlib.sha256(ca.encode()).hexdigest()} if ca else {}),
     }
 
 
@@ -61,6 +81,7 @@ class JenkinsRunner:
         self.target = jenkins_target(settings)
         self.auth = (settings.jenkins_user, settings.jenkins_token.get_secret_value())
         self.transport, self.sleep = transport, sleep
+        self.verify = ssl.create_default_context(cadata=jenkins_ca(settings))
         self.job = "/job/" + self.target["job"]
         self.ecr = ecr or boto3.client(
             "ecr",
@@ -77,6 +98,7 @@ class JenkinsRunner:
             timeout=20,
             follow_redirects=False,
             trust_env=False,
+            verify=self.verify,
             transport=self.transport,
         ) as client:
             with client.stream(method, self.target["url"] + path, **kwargs) as response:
@@ -362,6 +384,7 @@ class JenkinsRunner:
             timeout=20,
             follow_redirects=False,
             trust_env=False,
+            verify=self.verify,
             transport=self.transport,
         ) as client:
             with client.stream(

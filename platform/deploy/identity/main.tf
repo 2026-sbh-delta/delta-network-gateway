@@ -12,8 +12,8 @@ locals {
   project       = { StringEquals = { "ec2:ResourceTag/Project" = var.name, "aws:RequestedRegion" = var.region } }
   cloud_project = { StringEquals = { "aws:ResourceTag/Project" = var.name } }
   roles         = toset(["plan", "apply", "release"])
-  vm_roles      = [for suffix in ["app", "nat"] : "${local.iam}:role/${var.name}-${suffix}"]
-  vm_profiles   = [for suffix in ["app", "nat"] : "${local.iam}:instance-profile/${var.name}-${suffix}"]
+  vm_roles      = [for suffix in ["app", "nat", "jenkins-controller", "jenkins-agent"] : "${local.iam}:role/${var.name}-${suffix}"]
+  vm_profiles   = [for suffix in ["app", "nat", "jenkins-controller", "jenkins-agent"] : "${local.iam}:instance-profile/${var.name}-${suffix}"]
   trust = {
     Version = "2012-10-17"
     Statement = [{

@@ -57,10 +57,10 @@ run "release_is_scoped_and_has_no_secret_api" {
   }
   assert {
     condition = (
-      [for s in local.release_policy.Statement : s.Condition.StringEquals["ssm:resourceTag/Name"] if s.Sid == "RunOnlyOnPlatformApp"][0] == "delta-platform-app" &&
+      toset([for s in local.release_policy.Statement : s.Condition.StringEquals["ssm:resourceTag/Name"] if s.Sid == "RunOnlyOnPlatformApp"][0]) == toset(["delta-platform-app", "delta-platform-jenkins-controller", "delta-platform-jenkins-agent"]) &&
       [for s in local.release_policy.Statement : s.Resource if s.Sid == "ReleaseArchive"][0] == "arn:aws:s3:::delta-platform-artifacts-111122223333/releases/*"
     )
-    error_message = "앱 VM과 릴리스 경로만 대상으로 허용해야 합니다."
+    error_message = "앱/Jenkins VM과 릴리스 경로만 대상으로 허용해야 합니다."
   }
 }
 run "apply_cannot_manage_iam_or_ci_identity" {
@@ -70,8 +70,8 @@ run "apply_cannot_manage_iam_or_ci_identity" {
     error_message = "일반 Apply에서 IAM 정책과 신뢰를 수정하면 안 됩니다."
   }
   assert {
-    condition     = toset([for s in local.apply_policy.Statement : s.Resource if s.Sid == "PassOnlyVMRoles"][0]) == toset(["arn:aws:iam::111122223333:role/delta-platform-app", "arn:aws:iam::111122223333:role/delta-platform-nat"])
-    error_message = "PassRole은 플랫폼의 기존 VM 역할 두 개로 제한해야 합니다."
+    condition     = toset([for s in local.apply_policy.Statement : s.Resource if s.Sid == "PassOnlyVMRoles"][0]) == toset(["arn:aws:iam::111122223333:role/delta-platform-app", "arn:aws:iam::111122223333:role/delta-platform-nat", "arn:aws:iam::111122223333:role/delta-platform-jenkins-controller", "arn:aws:iam::111122223333:role/delta-platform-jenkins-agent"])
+    error_message = "PassRole은 플랫폼의 지정한 플랫폼/Jenkins VM 역할 네 개로 제한해야 합니다."
   }
 }
 run "create_provider_only_when_requested" {

@@ -57,3 +57,18 @@ run "reject_large_compute" {
   variables { instance_type = "t4g.2xlarge" }
   expect_failures = [var.instance_type]
 }
+run "jenkins_is_private_and_separate" {
+  command = plan
+  assert {
+    condition     = length(aws_instance.jenkins) == 2 && alltrue([for vm in aws_instance.jenkins : !vm.associate_public_ip_address && vm.metadata_options[0].http_tokens == "required" && vm.root_block_device[0].encrypted])
+    error_message = "Jenkins는 별도 사설 VM 두 개, 암호화 디스크와 IMDSv2를 사용해야 합니다."
+  }
+  assert {
+    condition     = aws_instance.jenkins["controller"].instance_type == "t3.small" && aws_instance.jenkins["agent"].instance_type == "t3.medium" && aws_ebs_volume.jenkins.encrypted
+    error_message = "소형 컨트롤러와 전용 빌드 에이전트, 암호화 영속 이력을 유지해야 합니다."
+  }
+  assert {
+    condition     = aws_vpc_security_group_ingress_rule.jenkins_platform.from_port == 443 && aws_vpc_security_group_ingress_rule.jenkins_agent.to_port == 443 && aws_vpc_security_group_ingress_rule.jenkins_platform.cidr_ipv4 == null && aws_vpc_security_group_ingress_rule.jenkins_agent.cidr_ipv4 == null
+    error_message = "컨트롤러 ingress는 플랫폼/에이전트 SG의 HTTPS로 제한해야 합니다."
+  }
+}

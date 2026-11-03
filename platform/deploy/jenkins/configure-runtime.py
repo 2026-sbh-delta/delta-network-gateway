@@ -1,8 +1,10 @@
 """Merge approved Jenkins settings into existing SSM runtime without printing secrets."""
 
 import argparse
+import base64
 import json
 import re
+import ssl
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -19,11 +21,24 @@ def merged_runtime(current, values, account):
         "PLATFORM_JENKINS_USER",
         "PLATFORM_JENKINS_TOKEN",
     }
-    if set(values) != expected or any(
-        not isinstance(v, str) or not v or "\n" in v or "\r" in v
-        for v in values.values()
+    optional = {"PLATFORM_JENKINS_CA_BASE64"}
+    if (
+        not expected <= set(values)
+        or set(values) - expected - optional
+        or any(
+            not isinstance(v, str) or not v or "\n" in v or "\r" in v
+            for v in values.values()
+        )
     ):
         raise ValueError("지정된 Jenkins 설정만 허용합니다.")
+    if "PLATFORM_JENKINS_CA_BASE64" in values:
+        if len(values["PLATFORM_JENKINS_CA_BASE64"]) > 32768:
+            raise ValueError("CA 인증서가 너무 큽니다.")
+        ssl.create_default_context(
+            cadata=base64.b64decode(
+                values["PLATFORM_JENKINS_CA_BASE64"], validate=True
+            ).decode("ascii")
+        )
     url = urlsplit(values["PLATFORM_JENKINS_URL"])
     if (
         values["PLATFORM_BUILD_PROVIDER"] != "jenkins"
@@ -87,6 +102,9 @@ def main():
         Value=json.dumps(merged),
         Type="SecureString",
         KeyId=metadata["KeyId"],
+        Tier="Advanced"
+        if len(json.dumps(merged).encode()) > 4096
+        else metadata["Tier"],
         Overwrite=True,
     )
     print(

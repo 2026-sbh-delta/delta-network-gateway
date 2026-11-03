@@ -10,11 +10,11 @@ GitHub OIDC provider와 Plan·Apply·Release IAM 역할을 관리한다. 일반 
 | --- | --- |
 | Plan | 서울 EC2 메타데이터, 플랫폼 IAM·S3·ECR·CloudFront 설정 조회, 앱 state 읽기와 전용 잠금 |
 | Apply | Plan 권한 + 플랫폼 태그의 EC2 변경, 지정 VPC·subnet에서 VM 실행, 기존 CloudFront·버킷·ECR 설정 변경, 앱 state 저장 |
-| Release | 앱 state 읽기, 지정 ECR 이미지 게시, `releases/` 업로드, 플랫폼 앱 VM의 SSM 명령 실행 |
+| Release | 앱 state 읽기, 지정 ECR 이미지 게시, `releases/` 업로드, 플랫폼 앱/Jenkins controller/agent VM의 SSM 명령 실행 |
 
 일반 Apply는 IAM 역할·정책 생성/변경, identity state 접근, 새로운 CloudFront 정책·S3/ECR 기반 생성을 허용하지 않는다. 기존 플랫폼의 변경과 VM 교체를 대상으로 한다. IAM 권한 변경이나 전체 플랫폼 기반 재구축은 관리자가 이 부트스트랩과 실제 Plan을 함께 검토해야 한다. EC2 조회와 SSM 명령 결과·파라미터 메타데이터 조회 중 리소스 제한을 지원하지 않는 API는 해당 리전에서 조회할 수 있다.
 
-Release는 SSM Parameter의 비밀값을 직접 조회하지 않는다. 다만 앱 VM에서 실행하는 SSM 명령은 root 권한이므로 이 역할은 앱 운영 권한이다. 단순 이미지 업로드 역할로 취급하지 않는다.
+Release는 SSM Parameter의 비밀값을 직접 조회하지 않는다. 다만 지정 VM에서 실행하는 SSM 명령은 root 권한이므로 앱/Jenkins 운영 권한이다. 단순 이미지 업로드 역할로 취급하지 않는다. Apply의 PassRole은 app·nat·jenkins-controller·jenkins-agent 네 역할로 제한하고, VM 크기는 기존 ARM 소형과 t3.small/medium만 허용한다.
 
 ## 입력 속성
 
