@@ -15,6 +15,8 @@ import {
 import "./style.css";
 import "./presentation.css";
 import "./dashboard.css";
+import "./release.css";
+import { ApplicationPanel } from "./ApplicationPanel";
 import {
   AppShell,
   Icon,
@@ -434,63 +436,18 @@ function Detail({
             )}
           </div>
           {view === "overview" && (
-            <>
-              <section className="service-overview panel">
-                <div className="overview-intro">
-                  <div className="eyebrow">SOURCE READINESS</div>
-                  <h2>등록한 서비스의 준비 상태</h2>
-                  <p>
-                    소스를 확인하고, 검증한 이미지로 다음 환경을 준비하세요.
-                  </p>
-                  <Status run={run} />
-                </div>
-                <dl className="overview-facts">
-                  <div>
-                    <dt>소스 기준</dt>
-                    <dd>{service.source_ref}</dd>
-                  </div>
-                  <div>
-                    <dt>앱 포트</dt>
-                    <dd>{service.container_port}</dd>
-                  </div>
-                  <div>
-                    <dt>헬스 체크</dt>
-                    <dd>{service.healthcheck_path}</dd>
-                  </div>
-                </dl>
-              </section>
-              <div className="section-heading">
-                <h2>다음 작업</h2>
-                <span>준비 → 계획 → 확인</span>
-              </div>
-              <div className="next-actions">
-                {sections.slice(1).map((item, i) => (
-                  <button
-                    className="next-action"
-                    key={item.view}
-                    onClick={() => onNavigate(item.view)}
-                  >
-                    <span className="action-index">0{i + 1}</span>
-                    <Icon name={item.view} />
-                    <strong>{item.title}</strong>
-                    <span>{item.description}</span>
-                    <span className="action-arrow">
-                      <Icon name="arrow" />
-                    </span>
-                  </button>
-                ))}
-              </div>
-              <p className="overview-note">
-                소스 확인, 이미지 빌드, 보안 검사와 이전 실행은 각각의 결과로
-                확인합니다.
-              </p>
-            </>
+            <ApplicationPanel service={service} onNavigate={onNavigate} />
           )}
           {view === "migration" && (
             <WorkflowPlanningPanel key={`${id}-workflows`} serviceId={id} />
           )}
           {view === "build" && (
             <>
+              <ApplicationPanel
+                service={service}
+                mode="build"
+                onNavigate={onNavigate}
+              />
               <div className="work-stage-heading">
                 <span>01</span>
                 <div>

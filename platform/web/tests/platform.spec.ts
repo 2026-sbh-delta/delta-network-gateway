@@ -91,7 +91,9 @@ async function register(page: Page, name: string, dockerfile = "Dockerfile") {
   await page
     .getByRole("button", { name: "등록하고 상세 보기", exact: true })
     .click();
-  await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name, exact: true, level: 1 }),
+  ).toBeVisible();
   await page.getByRole("button", { name: "메뉴 열기" }).click();
   await page.getByRole("button", { name: "빌드·검사", exact: true }).click();
 }
@@ -120,7 +122,11 @@ test("로그인 → 등록 → 실제 DB·Worker 검사 → 새로고침 → 로
   });
   await page.reload();
   await expect(
-    page.getByRole("heading", { name: "검증용 주문 서비스", exact: true }),
+    page.getByRole("heading", {
+      name: "검증용 주문 서비스",
+      exact: true,
+      level: 1,
+    }),
   ).toBeVisible();
   await expect(
     page.getByText("소스 확인 완료", { exact: true }).first(),

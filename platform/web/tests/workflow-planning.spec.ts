@@ -267,6 +267,7 @@ test("이전 계획은 고정 빌드·서로 다른 환경으로 만들고 승�
     target_environment_ids: ["env-gcp", "env-dc"],
   });
   expect(boundary.createHeader).toBeTruthy();
+  await panel.getByText("승인 대상 · 커밋 · 이미지 · 계획 버전").click();
   await expect(
     panel
       .locator(".workflow-facts")
