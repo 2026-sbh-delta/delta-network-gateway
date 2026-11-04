@@ -32,7 +32,8 @@
 - GCP 초기 주의: Sink 생성 직후 첫 테스트 항목은 목적지에서 확인되지 않았다. 필터 일치·쓰기 권한·수집기 정상 동작과 실제 네트워크 로그 수신을 확인하고 새 테스트 로그로 중앙 도착을 검증했다. 설정 전파 시점에 관한 추정이며 첫 항목이 누락된 원인을 확정하지는 않았다. 과거 로그의 자동 재전송을 주장하지 않는다.
 - 후속 독립 재검증: 새 마커를 사용한 `smoke.py` 전체 실행도 추가 수동 전송 없이 AWS·GCP 모두 통과했다. `smoke-confirmed.json`에 원본 정보와 중앙 이벤트 ID, 임시 AWS 그룹 삭제 결과를 기록했다.
 - 최종 실제 Plan: `No changes`, 상세 종료 코드 0.
-- 커밋 / 푸시 / PR / 병합: 아직 실행 전.
+- 커밋 / 푸시: `bb1f2f0`을 게시했고 [PR #34](https://github.com/2026-sbh-delta/delta-network-gateway/pull/34)를 열었다. 최신 main의 발표 화면 변경을 반영하면서 `docs/README.md`의 양쪽 진행 기록을 보존했다. PR 병합은 CI 확인 후 진행한다.
+- 첫 CI의 새 logging Terraform 작업은 Linux provider 체크섬 누락으로 실패했다. `terraform providers lock -platform=darwin_arm64 -platform=linux_amd64`로 양쪽 패키지의 공식 서명·체크섬을 기록해 수정한다. AWS/GCP 실제 수신 실패와는 별개다.
 - GitHub 기존 플랫폼 인프라 workflow는 이 새 root를 실행하지 않는다. 최초 배포는 승인된 관리자 세션과 GCP ADC로 수행하며 원격 S3 state에 기록한다.
 
 ## 실제 연결 정보
