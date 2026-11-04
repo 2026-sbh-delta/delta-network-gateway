@@ -27,9 +27,7 @@ class IdentityPreparationTests(unittest.TestCase):
         }.get
         self.sts.get_caller_identity.return_value = {"Account": "123456789012"}
         self.iam.exceptions.NoSuchEntityException = MissingProvider
-        self.iam.get_open_id_connect_provider.return_value = {
-            "ClientIDList": ["sts.amazonaws.com"]
-        }
+        self.iam.get_open_id_connect_provider.return_value = {"ClientIDList": ["sts.amazonaws.com"]}
         spec = importlib.util.spec_from_file_location(
             "prepare_identity",
             Path(__file__).resolve().parents[1] / "scripts/prepare-identity.py",
@@ -44,7 +42,7 @@ class IdentityPreparationTests(unittest.TestCase):
         ):
             spec.loader.exec_module(self.module)
 
-    def prepare(self, owns_provider=False, subject_default=True):
+    def prepare(self, owns_provider=False, subject_default=True, extra_resources=()):
         platform = {
             "outputs": {
                 "account_id": {"value": "123456789012"},
@@ -52,6 +50,7 @@ class IdentityPreparationTests(unittest.TestCase):
             },
             "resources": [
                 {
+                    "mode": "data" if resource_type == "aws_ec2_managed_prefix_list" else "managed",
                     "type": resource_type,
                     "name": name,
                     "instances": [{"attributes": {"id": resource_id}}],
@@ -65,6 +64,7 @@ class IdentityPreparationTests(unittest.TestCase):
                 ]
             ],
         }
+        platform["resources"].extend(extra_resources)
         identity = {
             "resources": [
                 {
@@ -77,8 +77,7 @@ class IdentityPreparationTests(unittest.TestCase):
             else []
         }
         self.s3.get_object.side_effect = [
-            {"Body": io.BytesIO(json.dumps(state).encode())}
-            for state in (platform, identity)
+            {"Body": io.BytesIO(json.dumps(state).encode())} for state in (platform, identity)
         ]
         oidc = {
             "use_default": subject_default,
@@ -86,12 +85,8 @@ class IdentityPreparationTests(unittest.TestCase):
             "sub_claim_prefix": "repo:team@123/repo@456",
         }
         with (
-            patch.object(
-                sys, "argv", ["prepare-identity.py", "--account-id", "123456789012"]
-            ),
-            patch.object(
-                self.module.subprocess, "check_output", return_value=json.dumps(oidc)
-            ),
+            patch.object(sys, "argv", ["prepare-identity.py", "--account-id", "123456789012"]),
+            patch.object(self.module.subprocess, "check_output", return_value=json.dumps(oidc)),
             patch.object(self.module, "write_private") as write,
             redirect_stdout(io.StringIO()),
         ):
@@ -111,8 +106,49 @@ class IdentityPreparationTests(unittest.TestCase):
     def test_existing_external_provider_is_reused(self):
         values = self.prepare()
         self.assertFalse(values["create_oidc_provider"])
+        self.assertEqual(values["platform_subnet_ids"], ["subnet-private", "subnet-public"])
+
+    def test_all_owned_service_instances_are_included_and_other_subnets_excluded(self):
+        values = self.prepare(
+            extra_resources=[
+                {
+                    "mode": "managed",
+                    "type": "aws_subnet",
+                    "name": "service",
+                    "instances": [
+                        {"index_key": "ai", "attributes": {"id": "subnet-ai"}},
+                        {
+                            "index_key": "jenkins_controller",
+                            "attributes": {"id": "subnet-controller"},
+                        },
+                    ],
+                },
+                {
+                    "mode": "data",
+                    "type": "aws_subnet",
+                    "name": "service",
+                    "instances": [
+                        {"attributes": {"id": "subnet-external"}},
+                    ],
+                },
+                {
+                    "mode": "managed",
+                    "type": "aws_subnet",
+                    "name": "unrelated",
+                    "instances": [
+                        {"attributes": {"id": "subnet-unrelated"}},
+                    ],
+                },
+            ]
+        )
         self.assertEqual(
-            values["platform_subnet_ids"], ["subnet-public", "subnet-private"]
+            set(values["platform_subnet_ids"]),
+            {
+                "subnet-private",
+                "subnet-public",
+                "subnet-ai",
+                "subnet-controller",
+            },
         )
 
     def test_owned_provider_remains_managed_on_rerun(self):
@@ -126,9 +162,7 @@ class IdentityPreparationTests(unittest.TestCase):
         self.assertTrue(self.prepare()["create_oidc_provider"])
 
     def test_wrong_audience_stops(self):
-        self.iam.get_open_id_connect_provider.return_value = {
-            "ClientIDList": ["unrelated"]
-        }
+        self.iam.get_open_id_connect_provider.return_value = {"ClientIDList": ["unrelated"]}
         with self.assertRaisesRegex(SystemExit, "audience"):
             self.prepare()
 
