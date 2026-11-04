@@ -3,7 +3,7 @@
 - 기준일: 2026-11-04 (Asia/Seoul).
 - 승인: 사용자가 계획·아키텍처 확인 후 `Proceed. What about monitoring?`으로 구현을 승인했다. 기존 커밋·PR 위임을 유지하며 커밋 전에 메시지를 알린다.
 - 브랜치: `feat/platform-onprem`, 기준 main `cfa68b3`.
-- 현재: 실행기·팀 DAST 연결·관측 조회/화면 구현과 실제 VM 내부 검증 완료. 전용 namespace와 Collector 파일을 설치했다. **VPN/TGW는 팀에서 작업 중**이며 AWS 플랫폼 활성화·중앙 관측 전송은 아직 하지 않았다.
+- 현재: [PR #32](https://github.com/2026-sbh-delta/delta-network-gateway/pull/32)를 전체 CI 통과 후 main `fa436c2`에 병합했다. 실행기·팀 DAST 연결·관측 조회/화면 구현과 실제 VM 내부 검증을 완료하고 전용 namespace·Collector 파일을 설치했다. **VPN/TGW는 팀에서 작업 중**이며 AWS 플랫폼 활성화·중앙 관측 전송은 아직 하지 않았다.
 
 ## 목적과 범위
 
@@ -54,6 +54,7 @@ VM은 CPU·메모리·루트 디스크 사용률만 추가한다.60초 수집, �
 - `python3 -m unittest discover -s platform/deploy/tests -v`:35 passed. 온프레미스 권한·출발지·자원 제한3개 포함.
 - Ruff·웹 Prettier·셸 문법·`git diff --check` 통과. 새 DAST·배포 테스트와 실제 Collector 경계 검증을 GitHub CI에 추가했다.
 - 최초 원격 CI는 임시 Collector 시작에서 실패했다. Linux 파일 소유자와 cap-drop 컨테이너 UID가 달라 읽기 권한이 거부되는 것을 재현했고, 실행 UID/GID를 파일 소유자에 맞춰 같은 검증이 통과함을 확인했다. 파일0600·임시 디렉터리0700·cap-drop은 유지하며 실패한 컨테이너는 진단 후 삭제한다.
+- [최종 원격 CI](https://github.com/2026-sbh-delta/delta-network-gateway/actions/runs/41826737391/attempts/2): 애플리케이션 전체 검사와 Terraform8개 root 통과. 첫 시도는 기존 DB 이전 테스트의 출발·대상 system ID가 같아 안전 검사에서 중단됐고, 로컬 독립 DB3회 확인 및 동일 커밋 재실행에서 통과했다. DB 안전 검사·fixture는 변경하지 않았으며 반복 실패 시 별도 조사한다.
 
 ## 다음 작업과 운영
 
@@ -62,4 +63,4 @@ VM은 CPU·메모리·루트 디스크 사용률만 추가한다.60초 수집, �
 3. 공개 웹에서 실제 온프레미스 검사·취소·정리, 실제 DAST 실행 확인.
 4. AWS 관측 gateway의 IAM·mTLS·사설 포트를 적용하고 온프레미스 Collector 시작. 실제 수치·앱 요청/로그/trace·수집 중단 시 표시 확인.
 
-본문은 로컬 검증과 VM 준비 기록이다. 구현 코드는 `feat/platform-onprem` PR로 게시하고 원격 CI·병합 결과를 별도로 기록한다. AWS 플랫폼 활성화·릴리스는 사설 연결 확인 후 진행한다. [준비·포트·활성화·롤백](../../platform/deploy/onprem/README.md)을 따른다.
+코드의 main 병합과 AWS 배포는 별도다. AWS 플랫폼 활성화·릴리스는 사설 연결 확인 후 진행한다. [준비·포트·활성화·롤백](../../platform/deploy/onprem/README.md)을 따른다.
