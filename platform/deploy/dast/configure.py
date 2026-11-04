@@ -37,7 +37,7 @@ def target(url):
     }
 
 
-def prepare(url, root=BASE):
+def prepare(url, root=BASE, gcp_env=None):
     definition = target(url)
     with urllib.request.urlopen(
         "http://127.0.0.1:8765/api/runs", timeout=10
@@ -49,6 +49,7 @@ def prepare(url, root=BASE):
         raise ValueError("Wait for active DAST scans before configuring the target")
     root.mkdir(parents=True, exist_ok=True)
     env = root / "dast-platform.env"
+    values = {}
     if env.exists():
         values = dict(
             line.split("=", 1) for line in env.read_text().splitlines() if line
@@ -58,12 +59,24 @@ def prepare(url, root=BASE):
             raise ValueError("Existing DAST platform token format is invalid")
     else:
         token = secrets.token_hex(32)
+    values.update(
+        {"DAST_PLATFORM_TOKEN": token, "DAST_PLATFORM_TARGET_ID": "platform-sandbox"}
+    )
+    if gcp_env is not None:
+        if set(gcp_env) != {"DAST_GCP_TARGET", "DAST_GCP_CREDENTIALS_JSON"}:
+            raise ValueError("Expected only GCP DAST settings")
+        if any(c in value for value in gcp_env.values() for c in "\r\n"):
+            raise ValueError("GCP settings must be single-line JSON")
+        if (
+            json.loads(gcp_env["DAST_GCP_CREDENTIALS_JSON"]).get("type")
+            != "external_account"
+        ):
+            raise ValueError("Keyless federation configuration is required")
+        values.update(gcp_env)
     for path, value, mode in (
         (
             env,
-            "DAST_PLATFORM_TOKEN="
-            + token
-            + "\nDAST_PLATFORM_TARGET_ID=platform-sandbox\n",
+            "".join(f"{key}={value}\n" for key, value in values.items()),
             0o600,
         ),
         (
@@ -85,8 +98,14 @@ def prepare(url, root=BASE):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--sandbox-url", required=True)
+    parser.add_argument("--gcp-outputs", type=Path)
     args = parser.parse_args()
-    prepare(args.sandbox_url)
+    gcp_env = (
+        json.loads(args.gcp_outputs.read_text())["dast_env"]["value"]
+        if args.gcp_outputs
+        else None
+    )
+    prepare(args.sandbox_url, gcp_env=gcp_env)
     print(
         "DAST target and token prepared. Redeploy the merged tooling image to load them."
     )

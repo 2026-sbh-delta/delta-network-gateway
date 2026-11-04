@@ -22,7 +22,15 @@ class SandboxError(Exception):
         super().__init__(code)
 
 
-def sandbox_target(settings):
+def sandbox_target(settings, cloud="aws"):
+    if cloud == "gcp":
+        from delta_platform.adapters.gcp_sandbox import configured_target
+
+        return configured_target(settings)
+    if cloud != "aws":
+        raise Problem(
+            "sandbox_not_configured", "선택한 환경의 샌드박스가 아직 연결되지 않았습니다.", 503
+        )
     if not settings.sandbox_target:
         raise Problem("sandbox_not_configured", "샌드박스 실행기가 아직 연결되지 않았습니다.", 503)
     try:
@@ -223,6 +231,9 @@ class SandboxRunner:
                         "image_digest": checked.image_digest,
                         "commit_sha": req.commit,
                         "platform": "linux/amd64",
+                        "execution_cloud": "aws",
+                        "environment_check": "aws_sandbox_only",
+                        "runtime": "ecs",
                         "task_arn": checked.task_arn,
                         "revision": revision,
                         "runtime_check": "passed",

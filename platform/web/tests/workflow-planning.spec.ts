@@ -137,6 +137,27 @@ async function fixture(page: Page) {
         status: 200,
         json: { items: [service], next_cursor: null },
       });
+    if (path === "/sandbox-targets")
+      return route.fulfill({
+        status: 200,
+        json: {
+          items: [
+            { cloud: "aws", label: "AWS", runtime: "ECS", configured: true },
+            {
+              cloud: "gcp",
+              label: "GCP",
+              runtime: "Cloud Run",
+              configured: false,
+            },
+            {
+              cloud: "onprem",
+              label: "온프레미스",
+              runtime: "미연결",
+              configured: false,
+            },
+          ],
+        },
+      });
     if (path === `/services/${service.id}`)
       return route.fulfill({ status: 200, json: service });
     if (path === `/services/${service.id}/source-checks`)

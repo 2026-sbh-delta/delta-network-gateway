@@ -49,4 +49,16 @@ uv run --project platform/deploy python platform/deploy/sast/aws/connect.py acti
 - 비활성화 전 실행을 모두 정리한다. DAST 런타임 세 값만 제거하되 DB `0005` 호환 앱을 유지한다. DAST 기록이 있으면 자동 DB downgrade를 거부한다. 이전 도구 이미지 복구 시에도 `dast-runs`·`dast-data`와 `.platform` 취소 기록을 삭제하지 않는다.
 - HTTPS 인증서는 기존 SAST와 공유하므로 [인증서 운영 조건](../sast/README.md)을 따른다. DAST는 단일 프로세스·단일 Worker로 실행하며 여러 Uvicorn Worker에 같은 기록 디렉터리를 공유하는 구성은 지원하지 않는다.
 
-GCP·온프레미스에서는 각 환경의 실행기를 연결한 뒤 별도 검사한다. 현재 이 문서의 실제 연결 대상은 AWS ECS다.
+## GCP 샌드박스 연결
+
+[전용 기반](../sandbox-gcp/README.md)을 적용한 뒤 Terraform 출력 파일을 검사 서버에 전달한다. 파일에 SA 비밀 키는 없다. 기존 설정을 유지하며 두 GCP 설정만 병합한다.
+
+```bash
+python3 /opt/delta/platform-dast-configure.py \
+  --sandbox-url 'http://internal-delta-platform-....ap-northeast-2.elb.amazonaws.com' \
+  --gcp-outputs /opt/delta/gcp-sandbox-outputs.json
+```
+
+새 DAST 이미지에 `google-auth`가 포함돼야 한다. EC2의 `delta-lab-tooling-host` 역할에서 WIF를 사용하며 별도 SA 키를 넣지 않는다. 플랫폼 runner와 검사기 scanner SA는 분리한다. 새 코드로 DAST만 교체할 때 기존 environment·host network·볼륨·모델 설정을 보존하고 실행 중 검사가 없음을 확인한다. 이전 이미지와 설정은 복구용으로 보관한다.
+
+GCP 서비스 주소는 실행마다 달라지므로 DAST가 Cloud Run 자원과 이미지를 재확인한 후 그 주소만 허용한다. 검사 중에는 GCP의 IAM 인증을 사용한다. Cloud Run 앱의 운영 VM 검증과 온프레미스 실행기는 별도이며, 실제 적용 상태는 [GCP 진행 기록](../../../docs/ai-dlc/platform-gcp-sandbox.md)을 따른다.

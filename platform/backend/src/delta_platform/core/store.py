@@ -696,6 +696,11 @@ class Store:
         request_hash = digest(
             {
                 "build_id": str(build_id),
+                **(
+                    {"execution_cloud": target["cloud"]}
+                    if target.get("cloud", "aws") != "aws"
+                    else {}
+                ),
                 **({"security_check_id": str(security_check_id)} if security_check_id else {}),
             }
         )
@@ -812,6 +817,7 @@ class Store:
                             "container_port": build["input_snapshot"]["container_port"],
                             "healthcheck_path": build["input_snapshot"]["healthcheck_path"],
                             "sandbox_target": target,
+                            "execution_cloud": target.get("cloud", "aws"),
                             **extra,
                         },
                         resolved_commit_sha=build["resolved_commit_sha"],
@@ -843,7 +849,7 @@ class Store:
                 conn,
                 run_id,
                 "sandbox_prepared",
-                "실행할 ECS 개정판을 저장했습니다.",
+                "실행할 샌드박스 자원 식별자를 저장했습니다.",
                 "sandbox_prepared",
             )
 

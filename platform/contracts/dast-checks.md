@@ -1,13 +1,13 @@
 # 샌드박스 DAST 검사 계약
 
-현재 구현은 AWS ECS에서 실행한다. 같은 빌드의 SAST 결과와 이미지 digest를 확인한 뒤 팀의 `services/delta-dast`에 검사를 요청한다. AWS에서의 결과는 GCP·온프레미스 검증 결과가 아니다.
+`execution_cloud`에 따라 AWS ECS 또는 GCP Cloud Run에서 실행한다. 같은 빌드의 SAST 결과와 이미지 digest를 확인한 뒤 팀의 `services/delta-dast`에 검사를 요청한다. AWS에서의 결과는 GCP·온프레미스 검증 결과가 아니다.
 
 ```text
 성공한 빌드 + 같은 커밋의 SAST
   → 원본 SARIF 해시 확인
-  → AWS ECS에서 같은 digest 실행·헬스 확인
+  → 선택 환경에서 같은 digest 실행·헬스 확인
   → 팀 DAST의 AI·브라우저로 XSS 후보 확인
-  → DAST 종료 확인 + ECS 앱 종료
+  → DAST 종료 확인 + 샌드박스 앱 정리
   → 결과 저장·화면 표시
 ```
 
@@ -17,7 +17,7 @@
 
 | 메서드·경로 | 내용 |
 | --- | --- |
-| POST `/services/{id}/dast-checks` | `{ "build_id": "UUID", "security_check_id": "UUID" }`, `Idempotency-Key` 필수 |
+| POST `/services/{id}/dast-checks` | `{ "build_id": "UUID", "security_check_id": "UUID", "execution_cloud": "aws 또는 gcp" }`, `Idempotency-Key` 필수 |
 | GET `/services/{id}/dast-checks` | 해당 서비스의 검사 이력 |
 | GET `/dast-checks/{id}` | 진행·결과·정리 상태 |
 | GET `/dast-checks/{id}/events` | 순번 기준 진행 이력 |
@@ -29,8 +29,8 @@
 
 | 값 | 뜻 |
 | --- | --- |
-| `execution_cloud=aws` | 실제 실행 환경 |
-| `environment_check=aws_sandbox_only` | AWS 샌드박스에서 확인한 결과. 다른 배포 환경으로 승계 불가 |
+| `execution_cloud=aws 또는 gcp` | 실제 실행 환경 |
+| `environment_check=aws_sandbox_only 또는 gcp_sandbox_only` | 선택 환경의 샌드박스에서 확인한 결과. 다른 배포 환경으로 승계 불가 |
 | `REPRODUCED` | 해당 후보를 재현함 |
 | `NOT_REPRODUCED` | 이번 시도에서 재현하지 못함. 안전 보증 아님 |
 | `BLOCKED` | 브라우저 정책에 차단됨. 추가 확인 필요 |
@@ -48,3 +48,7 @@
 GCP·온프레미스 실행기는 후속 연결이다. 대상별 실행기에서 동일 digest 실행·헬스·종료를 확인하고, DAST의 등록 대상과 결과도 환경별로 묶어야 한다. 두 곳으로 배포하면 각각 검사한다. 이때 환경별 풀·권한·사설 접근·DB 테스트 데이터도 분리한다. 현재 AWS 전용 잠금 하나를 그대로 멀티 환경 공용 풀로 쓰지는 않는다.
 
 실제 운영 활성화는 [배포 안내](../deploy/dast/README.md)를 따른다.
+
+## GCP 대상 인증
+
+플랫폼이 전달한 `runtime_resource`를 DAST가 Cloud Run API로 다시 조회한다. run ID·커밋·원본 이미지 digest에 대응하는 GCP 이미지·runtime SA·실제 revision·canonical URL이 모두 같아야 대상에 등록한다. 임의 URL을 그대로 신뢰하지 않는다. 검사기의 단기 ID 토큰은 해당 origin으로 나가는 서버 측 요청에만 넣는다. 브라우저 스크립트나 다른 origin에 인증 헤더를 전달하지 않는다. 검사 종료 시 등록 대상과 토큰 캐시를 제거한다.
