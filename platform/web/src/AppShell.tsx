@@ -114,14 +114,6 @@ export function AppShell({
     window.scrollTo({ top: 0 });
   }, [route.view, route.serviceId]);
   useEffect(() => {
-    const wide = window.matchMedia("(min-width: 1001px)");
-    const resized = () => {
-      if (wide.matches) dialog.current?.close();
-    };
-    wide.addEventListener("change", resized);
-    return () => wide.removeEventListener("change", resized);
-  }, []);
-  useEffect(() => {
     if (!open) return;
     const overflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -208,10 +200,10 @@ export function AppShell({
       >
         본문으로 이동
       </a>
-      <aside className="desktop-sidebar">{sidebar()}</aside>
       <dialog
+        id="workspace-drawer"
         ref={dialog}
-        className="mobile-drawer"
+        className="workspace-drawer"
         aria-label="작업 공간 메뉴"
         onClose={() => setOpen(false)}
         onKeyDown={(event) => {
@@ -249,6 +241,8 @@ export function AppShell({
           <button
             className="drawer-trigger"
             aria-label="메뉴 열기"
+            aria-controls="workspace-drawer"
+            aria-haspopup="dialog"
             aria-expanded={open}
             onClick={() => {
               dialog.current?.showModal();

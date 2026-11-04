@@ -273,6 +273,7 @@ test("대시보드에서 환경을 바꾸고 누락·오류·오래된 값을 �
   await page.getByLabel("아이디", { exact: true }).fill("browser-fixture");
   await page.getByLabel("비밀번호", { exact: true }).fill("test-only");
   await page.getByRole("button", { name: "로그인", exact: true }).click();
+  await page.getByRole("button", { name: "메뉴 열기" }).click();
   await page.getByRole("button", { name: "모니터링", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "서비스 대시보드" }),
@@ -336,6 +337,7 @@ test("DB 이전의 stale·blocked·cleaned 상태와 WAL 바이트를 표시한�
   await page.getByLabel("아이디", { exact: true }).fill("browser-fixture");
   await page.getByLabel("비밀번호", { exact: true }).fill("test-only");
   await page.getByRole("button", { name: "로그인", exact: true }).click();
+  await page.getByRole("button", { name: "메뉴 열기" }).click();
   await page.getByRole("button", { name: "모니터링", exact: true }).click();
 
   const migration = page.locator(".obs-migration");

@@ -70,19 +70,11 @@ h2 {
 .app-shell {
   min-height: 100dvh;
 }
-.desktop-sidebar,
 .drawer-content {
   display: flex;
   flex-direction: column;
   background: #111e33;
   color: #d2dbee;
-}
-.desktop-sidebar {
-  position: fixed;
-  inset: 0 auto 0 0;
-  width: 248px;
-  z-index: 20;
-  overflow-y: auto;
 }
 .shell-brand {
   display: flex;
@@ -242,7 +234,6 @@ h2 {
   flex-shrink: 0;
 }
 .shell-body {
-  margin-left: 248px;
   min-width: 0;
 }
 .shell-topbar {
@@ -289,7 +280,7 @@ h2 {
 .skip-link {
   position: fixed;
   top: -100px;
-  left: 270px;
+  left: 16px;
   padding: 10px 18px;
   background: white;
   border: 2px solid var(--accent);
@@ -299,7 +290,11 @@ h2 {
   top: 12px;
 }
 .drawer-trigger {
-  display: none;
+  display: grid;
+  place-items: center;
+  padding: 9px;
+  border: 0;
+  background: #f1f4fa;
 }
 .shell-footer {
   display: flex;
@@ -661,7 +656,7 @@ h2 {
   background: #e7eeff;
   color: #3d5eda;
 }
-.mobile-drawer {
+.workspace-drawer {
   padding: 0;
   border: 0;
   margin: 0;
@@ -672,7 +667,18 @@ h2 {
   background: #111e33;
   color: white;
 }
-.mobile-drawer::backdrop {
+.workspace-drawer[open] {
+  animation: drawer-enter 180ms ease-out;
+}
+@keyframes drawer-enter {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+.workspace-drawer::backdrop {
   background: #0c193d80;
   backdrop-filter: blur(2px);
 }
@@ -708,24 +714,6 @@ h2 {
   }
   .next-action {
     padding: 20px;
-  }
-}
-@media (max-width: 1000px) {
-  .desktop-sidebar {
-    display: none;
-  }
-  .shell-body {
-    margin-left: 0;
-  }
-  .drawer-trigger {
-    display: grid;
-    place-items: center;
-    padding: 9px;
-    border: 0;
-    background: #f1f4fa;
-  }
-  .skip-link {
-    left: 16px;
   }
 }
 @media (max-width: 700px) {
@@ -842,6 +830,7 @@ h2 {
   *::after {
     scroll-behavior: auto !important;
     transition: none !important;
+    animation: none !important;
   }
 }
 
