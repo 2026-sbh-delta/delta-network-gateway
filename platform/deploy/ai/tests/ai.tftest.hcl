@@ -2,7 +2,7 @@ mock_provider "aws" {
   override_during = plan
   mock_data "aws_subnet" {
     defaults = {
-      id = "subnet-0123456789abcdef0", vpc_id = "vpc-0123456789abcdef0", cidr_block = "10.80.20.0/24",
+      id                = "subnet-0123456789abcdef0", vpc_id = "vpc-0123456789abcdef0", cidr_block = "10.80.20.0/24",
       availability_zone = "ap-northeast-2a", map_public_ip_on_launch = false, tags = { Project = "delta-platform" }
     }
   }
@@ -11,10 +11,10 @@ mock_provider "aws" {
   mock_resource "aws_ecr_repository" { defaults = { arn = "arn:aws:ecr:ap-northeast-2:111122223333:repository/delta-platform-ai" } }
 }
 variables {
-  account_id = "111122223333"
-  subnet_id = "subnet-0123456789abcdef0"
+  account_id                 = "111122223333"
+  subnet_id                  = "subnet-0123456789abcdef0"
   platform_security_group_id = "sg-0123456789abcdef0"
-  ami_id = "ami-0123456789abcdef0"
+  ami_id                     = "ami-0123456789abcdef0"
 }
 run "independent_private_ai" {
   command = plan
