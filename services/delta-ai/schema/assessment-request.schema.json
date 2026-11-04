@@ -630,7 +630,9 @@
               "enum": [
                 "irsa",
                 "pod_identity",
+                "instance_profile",
                 "workload_identity",
+                "service_account",
                 "static_key",
                 "none"
               ],
@@ -775,7 +777,7 @@
     },
     "MappingInput": {
       "additionalProperties": false,
-      "description": "이전 전에 무엇을 만들지 정하는 입력. 지금은 AWS → GCP 만 다룬다.\n\n대응표가 AWS 출발만 알아서, 다른 방향을 받으면 GCP 대상 결과를 그럴듯하게 낸다. 그래서 받지 않는다.",
+      "description": "이전 전에 무엇을 만들지 정하는 입력. AWS → GCP 와 GCP → AWS 를 다룬다.\n\n방향마다 대응표가 따로 있어서, 출발과 맞지 않는 값(다른 CSP 의 리전·타입·보안 도구)을 받으면 거부한다.\n잘못된 방향의 결과를 그럴듯하게 내지 않으려는 것이다.",
       "properties": {
         "source_provider": {
           "default": "aws",
@@ -1439,6 +1441,21 @@
           "title": "Guardduty Plans",
           "type": "array"
         },
+        "scc_services": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Scc Services"
+        },
         "other_tools": {
           "default": [],
           "items": {
@@ -1516,6 +1533,18 @@
           ],
           "default": null,
           "title": "Instance Profile"
+        },
+        "service_account": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Service Account"
         },
         "permissions": {
           "anyOf": [

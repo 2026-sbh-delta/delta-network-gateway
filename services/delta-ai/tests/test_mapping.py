@@ -316,15 +316,16 @@ def test_request_requires_something_to_map_and_a_valid_cidr():
         AssessmentRequest.model_validate({"assessment_id": "m", "kind": "migration_mapping", "service": {"service_id": "w"}})
 
 
-@pytest.mark.parametrize("mapping", [
-    {"servers": [{**SERVER, "instance_type": "e2-micro"}]},  # GCP 서버를 출발로 넣음
-    {"servers": [SERVER], "region": "ap-northeast-2"},  # 대상 리전이 AWS
-    {"servers": [SERVER], "source_region": "asia-northeast3"},  # 출발 리전이 GCP
-    {"servers": [SERVER], "source_provider": "gcp"},
-    {"servers": [SERVER], "target_provider": "aws"},
+@pytest.mark.parametrize(("mapping", "message"), [
+    ({"servers": [{**SERVER, "instance_type": "e2-micro"}]}, "AWS 인스턴스 타입이 아니다"),  # GCP 서버를 출발로 넣음
+    ({"servers": [SERVER], "region": "ap-northeast-2"}, "GCP 리전이 아니다"),  # 대상 리전이 AWS
+    ({"servers": [SERVER], "source_region": "asia-northeast3"}, "AWS 리전이 아니다"),  # 출발 리전이 GCP
+    ({"servers": [SERVER], "source_provider": "gcp"}, "gcp → gcp"),
+    ({"servers": [SERVER], "target_provider": "aws"}, "aws → aws"),
+    ({"servers": [SERVER], "source_provider": "onprem"}, "onprem → gcp"),
 ])
-def test_only_aws_to_gcp_is_accepted(mapping):
-    with pytest.raises(ValidationError, match="AWS → GCP"):
+def test_only_aws_gcp_directions_with_matching_values_are_accepted(mapping, message):
+    with pytest.raises(ValidationError, match=message):
         _request(**mapping)
 
 
@@ -415,3 +416,142 @@ async def test_no_servers_means_no_cost_section(tmp_path):
 def test_every_instance_in_the_mapping_table_has_a_price():
     assert set(AWS_HOURLY_USD[DEFAULT_SOURCE_REGION]) == set(AWS_INSTANCES)
     assert set(GCP_HOURLY_USD[DEFAULT_TARGET_REGION]) == set(GCP_INSTANCES)
+
+
+# --- GCP → AWS ---------------------------------------------------------------------------------------------------
+
+GCP_SERVER = {"name": "web", "instance_type": "e2-small", "os": "ubuntu", "service_account": False}
+
+
+def _gcp(**mapping: object) -> dict[str, object]:
+    return {"source_provider": "gcp", "target_provider": "aws", **mapping}
+
+
+@pytest.mark.parametrize(("source", "target"), [("e2-micro", "t3.micro"), ("e2-medium", "t3.medium"),
+                                                ("e2-standard-2", "t3.large"), ("e2-standard-4", "t3.xlarge")])
+async def test_gcp_e2_maps_to_the_x86_t3_with_at_least_the_memory(tmp_path, source, target):
+    result = await _assess(tmp_path, **_gcp(servers=[{**GCP_SERVER, "instance_type": source}]))
+
+    compute = _rows(result, "compute")[0]
+    assert compute.target == target
+    assert any("CPU 크레딧" in test for test in compute.required_tests)  # T 계열 버스트는 부하 시험을 낸다
+    assert _rows(result, "cpu_arch")[0].grade == "exact"  # E2 와 t3 는 둘 다 x86 이라 재빌드가 없다
+    assert result.verdict == "pass"
+
+
+async def test_gcp_to_aws_uses_aws_region_and_prices(tmp_path):
+    result = await _assess(tmp_path, **_gcp(servers=[GCP_SERVER]))
+
+    assert result.mapping.region == DEFAULT_SOURCE_REGION
+    line = result.mapping.cost.lines[0]
+    assert (line.source_type, line.target_type) == ("e2-small", "t3.small")
+    assert line.source_monthly == round(GCP_HOURLY_USD[DEFAULT_TARGET_REGION]["e2-small"] * 730, 2)
+    assert line.target_monthly == round(AWS_HOURLY_USD[DEFAULT_SOURCE_REGION]["t3.small"] * 730, 2)
+
+
+async def test_gcp_service_account_roles_become_instance_profile_actions(tmp_path):
+    server = {**GCP_SERVER, "service_account": True,
+              "permissions": ["roles/storage.objectViewer", "roles/secretmanager.secretAccessor"]}
+
+    row = _rows(await _assess(tmp_path, **_gcp(servers=[server])), "identity")[0]
+
+    assert row.grade == "approximate"
+    assert row.target == "인스턴스 프로파일: s3:GetObject, s3:ListBucket, secretsmanager:GetSecretValue"
+
+
+async def test_unmapped_gcp_role_is_a_gap(tmp_path):
+    server = {**GCP_SERVER, "service_account": True, "permissions": ["roles/pubsub.publisher"]}
+
+    result = await _assess(tmp_path, **_gcp(servers=[server]))
+
+    assert _rows(result, "identity")[0].grade == "gap"
+    assert result.verdict == "needs_human"
+
+
+async def test_gcp_subnet_explains_that_aws_subnets_are_zonal(tmp_path):
+    subnet = {**SUBNET, "zone": None}
+
+    row = _rows(await _assess(tmp_path, **_gcp(subnets=[subnet])), "subnet")[0]
+
+    assert "AZ" in row.differences[0] and "NAT 게이트웨이" in row.target
+
+
+async def test_container_optimized_os_maps_approximately(tmp_path):
+    row = _rows(await _assess(tmp_path, **_gcp(servers=[{**GCP_SERVER, "os": "cos"}])), "os")[0]
+
+    assert row.grade == "approximate"
+    assert "Bottlerocket" in row.target
+
+
+async def test_scc_services_map_to_guardduty_features_without_asking_a_tier(tmp_path):
+    security = {"scc_services": ["Event Threat Detection", "Container Threat Detection", "VM Threat Detection"]}
+
+    result = await _assess(tmp_path, **_gcp(security=security))
+
+    row = _rows(result, "security")[0]
+    assert row.target == "GuardDuty 기본 탐지, RUNTIME_MONITORING"
+    assert row.grade == "split"
+    assert any("에이전트" in d for d in row.differences)  # VM 탐지는 에이전트가 있어야 한다
+    assert result.verdict == "pass"
+
+
+async def test_log_threats_only_need_the_guardduty_foundation(tmp_path):
+    row = _rows(await _assess(tmp_path, **_gcp(security={"scc_services": ["Event Threat Detection"]})), "security")[0]
+
+    assert (row.target, row.grade) == ("GuardDuty 기본 탐지", "approximate")
+
+
+async def test_scc_without_threat_detection_has_nothing_to_carry(tmp_path):
+    row = _rows(await _assess(tmp_path, **_gcp(security={"scc_services": []})), "security")[0]
+
+    assert row.grade == "exact"
+
+
+async def test_unmapped_scc_service_is_a_gap_a_person_can_accept(tmp_path):
+    security = {"scc_services": ["Event Threat Detection", "Security Health Analytics"]}
+
+    blocked = await _assess(tmp_path, **_gcp(security=security))
+    accepted = await _assess(tmp_path, **_gcp(security=security, accepted_gaps=["Security Health Analytics"]))
+
+    assert blocked.verdict == "needs_human"
+    assert any(r.grade == "gap" and r.source == "Security Health Analytics" for r in blocked.mapping.rows)
+    assert accepted.verdict == "pass"
+    assert any(r.grade == "gap" for r in accepted.mapping.rows)  # 승인해도 표에 남는다
+
+
+async def test_unknown_scc_services_go_to_a_person(tmp_path):
+    result = await _assess(tmp_path, **_gcp(security={}))
+
+    assert result.verdict == "needs_human"
+    assert _rows(result, "security")[0].grade == "unknown"
+
+
+@pytest.mark.parametrize(("mapping", "message"), [
+    (_gcp(servers=[{**GCP_SERVER, "instance_type": "t3.small"}]), "GCP 인스턴스 타입이 아니다"),
+    (_gcp(servers=[GCP_SERVER], region="asia-northeast3"), "AWS 리전이 아니다"),
+    (_gcp(servers=[GCP_SERVER], source_region="ap-northeast-2"), "GCP 리전이 아니다"),
+    (_gcp(servers=[{**GCP_SERVER, "instance_profile": True}]), "instance_profile 는 받지 않는다"),
+    (_gcp(security={"guardduty_enabled": True}), "guardduty 값은 받지 않는다"),
+    (_gcp(servers=[GCP_SERVER], scc_tier="premium"), "scc_tier 는 GCP 대상에서만"),
+    ({"servers": [{**SERVER, "service_account": True}]}, "service_account 는 받지 않는다"),
+    ({"security": {"scc_services": []}}, "scc_services 는 받지 않는다"),
+])
+def test_values_from_the_other_cloud_are_rejected_per_direction(mapping, message):
+    with pytest.raises(ValidationError, match=message):
+        _request(**mapping)
+
+
+async def test_aws_target_may_use_the_aws_server_vpc_but_gcp_target_may_not(tmp_path):
+    subnet = {**SUBNET, "cidr": "10.60.1.0/24", "target_cidr": "10.20.1.0/24"}
+
+    to_aws = await _assess(tmp_path, **_gcp(subnets=[subnet]))
+    to_gcp = await _assess(tmp_path, subnets=[{**SUBNET, "target_cidr": "10.20.1.0/24"}])
+
+    assert "MAP-NET-002" not in {f.rule_id for f in to_aws.findings}
+    assert "MAP-NET-002" in {f.rule_id for f in to_gcp.findings}
+
+
+async def test_default_aws_target_cidr_comes_from_the_aws_pool(tmp_path):
+    result = await _assess(tmp_path, **_gcp(subnets=[{**SUBNET, "cidr": "10.60.1.0/24", "target_cidr": None}]))
+
+    assert _rows(result, "subnet")[0].target.startswith("10.20.")

@@ -108,6 +108,12 @@
 - GuardDuty 기능은 API·Terraform 의 실제 이름으로 받는다(2026-11-04 실계정 조회로 확인). `EKS_AUDIT_LOGS`→Event, `EKS_RUNTIME_MONITORING`→Container, `RUNTIME_MONITORING`→Container·VM, `EBS_MALWARE_PROTECTION`→VM Threat Detection. `S3_DATA_EVENTS`·`RDS_LOGIN_EVENTS`·`LAMBDA_NETWORK_LOGS`·`AI_PROTECTION` 은 대응을 정하지 않아 `gap` 이다. 처음 구현은 실제로 없는 이름(`EKS_PROTECTION`, `MALWARE_PROTECTION_EC2`)을 써서 실제 입력이 모두 `gap` 으로 나왔다.
 - 실계정은 쓰지 않는 서비스(EKS·RDS·Lambda)의 기능도 켜 둔다. 쓰는지는 이 입력으로 알 수 없어 `gap` 으로 두고, 쓰지 않으면 사람이 `accepted_gaps` 로 승인한다.
 - 방향: 입력에 `source_provider`(aws)·`target_provider`(gcp)를 두고 다른 방향은 거부한다. GCP 인스턴스 타입(점이 없는 `e2-micro` 등), GCP 출발 리전, AWS 대상 리전도 거부한다. 거부하지 않으면 GCP 서버를 넣었을 때 서브넷·권한이 GCP 대상으로 그럴듯하게 나왔다.
+- 방향 추가(2026-11-04): GCP → AWS 를 받는다. 방향마다 `mapping_catalog.Route` 하나(타입·가격·서브넷 설명·OS·권한 표)를 두고 같은 규칙 코드로 돈다. 입력 검증도 방향별로 바꿨다. 출발 CSP 의 타입·리전만, 대상 CSP 의 리전만 받고, 출발과 맞지 않는 값(GCP 출발의 `instance_profile`·`guardduty_*`, AWS 출발의 `service_account`·`scc_services`, AWS 대상의 `scc_tier`)은 거부한다.
+  - 서버: E2 → x86 t3 에서만 고른다. t4g 가 더 싸지만 이미지 재빌드가 필요하다. T 계열은 버스트형이라 부하 시험을 확인 항목으로 낸다.
+  - 권한: GCP 역할 하나를 AWS 동작 여러 개로 옮긴다(`roles/storage.objectViewer` → `s3:GetObject`·`s3:ListBucket`). 표에 없는 역할은 `gap` 이다.
+  - 보안: 켠 SCC 서비스(`scc_services`)를 받는다. Event Threat Detection 은 GuardDuty 기본 탐지가, Container·VM Threat Detection 은 `RUNTIME_MONITORING` 이 덮는다. GuardDuty 는 등급이 없어 묻지 않는다. 대응 없는 서비스(Security Health Analytics 등)는 `gap` 이고 `accepted_gaps` 로 승인한다.
+  - 대역: 기본값의 예약 대역과 대역 범위를 대상별로 나눴다. AWS 대상이면 AWS Server VPC(10.20.0.0/16)는 대상 자신이라 충돌로 보지 않고 그 안에서 고른다.
+  - 동등성: Cloud Armor 규칙 → 범주 → AWS 관리형 그룹으로 수정안을 낸다. 한 그룹이 여러 범주를 덮으므로 수정안 중복 제거 키를 (식, 범주)로 바꿨다. 쿠버네티스가 아닌 VM 배포를 위해 `instance_profile`·`service_account` 를 각 CSP 의 기본 권한 방식으로 받는다.
 - 능력 손실 승인은 `accepted_gaps` 로 받는다. finding 은 dismissed 가 되지만 표에는 `gap` 으로 남고 출처는 `operator` 다. 지금은 보안 도구에만 적용한다.
 - **알려진 한계:** CPU 구조 `fix` 의 ops 는 `multi_arch_image=true` 다. 호출자가 빌드 없이 이 값만 넣어 다시 보내면 통과한다. 이 값은 신고이지 이미지 확인이 아니다. 호출자를 정한 뒤 이미지 매니페스트 확인으로 바꿀지 다시 본다.
 

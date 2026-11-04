@@ -46,7 +46,8 @@ class WafInventory(_Model):
 
 
 class IdentityInventory(_Model):
-    mechanism: Literal["irsa", "pod_identity", "workload_identity", "static_key", "none"] | None = None
+    mechanism: Literal["irsa", "pod_identity", "instance_profile", "workload_identity", "service_account", "static_key",
+                       "none"] | None = None
     cloud_apis: tuple[str, ...] = ()  # 앱이 직접 호출하는 CSP API (s3 등). 출발 환경에 적는다
     cross_cloud_access: bool | None = None  # 대상 환경에서 출발 CSP API 접근이 확인됐는가
 
@@ -239,28 +240,59 @@ class SourceServer(_Model):
     instance_type: str | None = None
     os: str | None = None  # amazon_linux, ubuntu, rhel, rocky, debian 등
     multi_arch_image: bool | None = None  # 대상 CPU 구조용 이미지를 확인했는가
-    instance_profile: bool | None = None
-    permissions: tuple[str, ...] | None = None  # 프로파일이 쓰는 AWS 동작. None 은 모른다는 뜻이다
+    instance_profile: bool | None = None  # AWS 출발. 붙은 인스턴스 프로파일이 있는가
+    service_account: bool | None = None  # GCP 출발. 기본이 아닌 서비스 계정이 붙어 있는가
+    permissions: tuple[str, ...] | None = None  # AWS 동작 또는 GCP 역할. None 은 모른다는 뜻이다
     peak_memory_percent: float | None = Field(default=None, ge=0, le=100)  # 있으면 작은 후보를 제안만 한다
     origin: ValueOrigin = "operator"
 
 
 class SourceSecurity(_Model):
-    guardduty_enabled: bool | None = None  # Terraform 밖에서 켰을 수 있으므로 없다고 꺼진 것으로 보지 않는다
+    guardduty_enabled: bool | None = None  # AWS 출발. Terraform 밖에서 켰을 수 있으므로 없다고 꺼진 것으로 보지 않는다
     guardduty_plans: tuple[str, ...] = ()
+    scc_services: tuple[str, ...] | None = None  # GCP 출발. 켠 SCC 탐지 서비스. None 은 모른다, 빈 값은 없다는 뜻이다
     other_tools: tuple[str, ...] = ()
     origin: ValueOrigin = "operator"
 
 
 AWS_REGION = re.compile(r"^[a-z]{2}(-gov)?-[a-z]+-\d+$")  # ap-northeast-2
 GCP_REGION = re.compile(r"^[a-z]+-[a-z]+\d+$")  # asia-northeast3
-DIRECTION = "migration_mapping 은 지금 AWS → GCP 만 다룬다"
+REGIONS = {"aws": AWS_REGION, "gcp": GCP_REGION}
+# AWS 타입은 t4g.nano 처럼 점으로, GCP 타입은 e2-micro 처럼 줄표로 나뉜다
+INSTANCE_TYPES = {"aws": re.compile(r"^[a-z0-9-]+\.[a-z0-9-]+$"), "gcp": re.compile(r"^[a-z0-9]+-[a-z0-9-]+$")}
+MAPPING_DIRECTIONS = frozenset({("aws", "gcp"), ("gcp", "aws")})
+DIRECTION = "migration_mapping 은 AWS → GCP 와 GCP → AWS 만 다룬다"
+
+
+def _direction_errors(config: MappingInput) -> list[str]:
+    source, target = config.source_provider, config.target_provider
+    label = f"{source.upper()} → {target.upper()}"
+    errors = []
+    if config.region is not None and not REGIONS[target].fullmatch(config.region):
+        errors.append(f"{label}: 대상 region {config.region} 이 {target.upper()} 리전이 아니다")
+    if config.source_region is not None and not REGIONS[source].fullmatch(config.source_region):
+        errors.append(f"{label}: source_region {config.source_region} 이 {source.upper()} 리전이 아니다")
+    foreign = [s.name for s in config.servers if s.instance_type and not INSTANCE_TYPES[source].fullmatch(s.instance_type)]
+    if foreign:
+        errors.append(f"{label}: {source.upper()} 인스턴스 타입이 아니다: {', '.join(foreign)}")
+    wrong_identity = "service_account" if source == "aws" else "instance_profile"
+    if any(getattr(s, wrong_identity) is not None for s in config.servers):
+        errors.append(f"{label}: 출발이 {source.upper()} 라 {wrong_identity} 는 받지 않는다")
+    security = config.security
+    if security is not None and source == "aws" and security.scc_services is not None:
+        errors.append(f"{label}: 출발이 AWS 라 scc_services 는 받지 않는다")
+    if security is not None and source == "gcp" and (security.guardduty_enabled is not None or security.guardduty_plans):
+        errors.append(f"{label}: 출발이 GCP 라 guardduty 값은 받지 않는다")
+    if config.scc_tier is not None and target != "gcp":
+        errors.append(f"{label}: scc_tier 는 GCP 대상에서만 쓴다")
+    return errors
 
 
 class MappingInput(_Model):
-    """이전 전에 무엇을 만들지 정하는 입력. 지금은 AWS → GCP 만 다룬다.
+    """이전 전에 무엇을 만들지 정하는 입력. AWS → GCP 와 GCP → AWS 를 다룬다.
 
-    대응표가 AWS 출발만 알아서, 다른 방향을 받으면 GCP 대상 결과를 그럴듯하게 낸다. 그래서 받지 않는다.
+    방향마다 대응표가 따로 있어서, 출발과 맞지 않는 값(다른 CSP 의 리전·타입·보안 도구)을 받으면 거부한다.
+    잘못된 방향의 결과를 그럴듯하게 내지 않으려는 것이다.
     """
 
     source_provider: Provider = "aws"
@@ -273,7 +305,7 @@ class MappingInput(_Model):
     security: SourceSecurity | None = None
     existing_subnets: tuple[ExistingSubnet, ...] | None = None
     reserved_cidrs: tuple[Cidr, ...] = ()
-    scc_tier: Literal["standard", "premium"] | None = None
+    scc_tier: Literal["standard", "premium"] | None = None  # GCP 대상만. 대상 프로젝트의 SCC 등급
     accepted_gaps: tuple[str, ...] = ()  # 사람이 잃어도 된다고 승인한 능력. 표에는 gap 으로 남는다
 
     @model_validator(mode="after")
@@ -283,17 +315,12 @@ class MappingInput(_Model):
         return self
 
     @model_validator(mode="after")
-    def _require_aws_to_gcp(self) -> Self:
-        if (self.source_provider, self.target_provider) != ("aws", "gcp"):
+    def _require_supported_direction(self) -> Self:
+        if (self.source_provider, self.target_provider) not in MAPPING_DIRECTIONS:
             raise ValueError(f"{DIRECTION}: {self.source_provider} → {self.target_provider} 는 받지 않는다")
-        if self.region is not None and not GCP_REGION.fullmatch(self.region):
-            raise ValueError(f"{DIRECTION}: 대상 region {self.region} 이 GCP 리전이 아니다")
-        if self.source_region is not None and not AWS_REGION.fullmatch(self.source_region):
-            raise ValueError(f"{DIRECTION}: source_region {self.source_region} 이 AWS 리전이 아니다")
-        # AWS 타입은 t4g.nano 처럼 점으로 나뉜다. e2-micro 같은 GCP 타입은 출발로 받지 않는다
-        foreign = [s.name for s in self.servers if s.instance_type and "." not in s.instance_type]
-        if foreign:
-            raise ValueError(f"{DIRECTION}: AWS 인스턴스 타입이 아니다: {', '.join(foreign)}")
+        errors = _direction_errors(self)
+        if errors:
+            raise ValueError("; ".join(errors))
         return self
 
 
