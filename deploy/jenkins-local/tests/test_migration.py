@@ -85,8 +85,14 @@ def test_plan_takes_machine_type_and_platform_from_the_judgment(judge):
 
     assert [(s["id"], s["machine_type"], s["target_platform"]) for s in plan["services"]] == [
         ("web", "e2-small", "linux/amd64"), ("api", "e2-medium", "linux/amd64")]
-    assert mp.target_tfvars(plan) == {"region": "asia-northeast3", "server_subnet_cidr": "10.60.0.0/24"}
-    assert set(mp.terraform_gaps(plan)["missing_variables"]) == {"machine_type", "security_policy_rules"}
+    assert mp.target_tfvars(plan) == {"region": "asia-northeast3"}
+    gaps = mp.terraform_gaps(plan)
+    assert gaps["root"] == "terraform/network-security-gcp"
+    missing = gaps["missing_variables"]
+    assert missing["machine_type"] == {"fixed": "e2-micro", "needed": {"web": "e2-small", "api": "e2-medium"}}
+    assert missing["server_count"] == {"fixed": 1, "needed": 2}
+    assert missing["cloud_armor_rules"]["attachable"] is False  # 앞단이 패스스루 NLB 다
+    assert missing["subnets"] == plan["subnets"]  # subnets 는 central 과 같이 받는 객체라 workload 만 채우지 않는다
 
 
 def test_standard_scc_gaps_are_not_crossed_without_a_person(judge):

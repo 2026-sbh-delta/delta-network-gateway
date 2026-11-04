@@ -24,8 +24,11 @@ CIDR_OP = re.compile(r"^/mapping/subnets/(\d+)/target_cidr$")
 CLOUD_ARMOR_VERSION = re.compile(r"(-v\d+)?-(stable|canary)$")
 SCC_TIERS = ("premium", "standard")
 # 대상 root. 로컬 실행기는 Terraform 을 돌리지 않고, 채울 값과 root 에 없는 변수만 낸다
-TERRAFORM_ROOTS = {"gcp": "terraform/gcp-server", "aws": "terraform/workload-server"}
+TERRAFORM_ROOTS = {"gcp": "terraform/network-security-gcp", "aws": "terraform/workload-server"}
 AWS_ROOT_FIXED = {"instance_type": "t4g.nano", "architecture": "arm64"}  # workload-server 에 박혀 있는 값
+# network-security-gcp/workload.tf 에 박혀 있는 값. 서버 한 대, 앱은 startup script 가 넣고, 앞단은 패스스루 NLB 다
+GCP_ROOT_FIXED = {"machine_type": "e2-micro", "servers": 1}
+PASSTHROUGH_NLB = "앞단이 패스스루 NLB 라 Cloud Armor WAF 규칙을 붙일 수 없다. 외부 Application LB 나 프록시 NLB 가 필요하다"
 # AWS 관리형 그룹 → 범주. delta-ai waf_mapping 과 같은 표다(이 스크립트는 표준 라이브러리만 쓴다)
 AWS_GROUP_CAPABILITIES: dict[str, tuple[str, ...]] = {
     "AWSManagedRulesSQLiRuleSet": ("sqli",),
@@ -270,11 +273,9 @@ def target_plan(inventory: Mapping[str, Any], result: Mapping[str, Any], state: 
 
 def target_tfvars(plan: Mapping[str, Any]) -> dict[str, Any]:
     """대상 root 에 이미 있는 변수만 채운다. 없는 변수는 terraform_gaps 가 낸다."""
-    values: dict[str, Any] = {"region": plan["region"]}
-    if plan["target"] == "gcp" and plan["subnets"]:
-        values["server_subnet_cidr"] = plan["subnets"][0]["target_cidr"]
-    # workload-server 의 azs 는 AZ 두 개와 TGW 서브넷까지 받아서 서브넷 하나로는 채우지 않는다
-    return values
+    # 서브넷은 어느 쪽도 채우지 않는다. network-security-gcp 의 subnets 는 central 과 workload 를 같이 받는 객체이고,
+    # workload-server 의 azs 는 AZ 두 개와 TGW 서브넷까지 받는다. 서브넷 하나로는 채울 수 없어 terraform_gaps 가 낸다
+    return {"region": plan["region"]}
 
 
 def _aws_root_gaps(plan: Mapping[str, Any]) -> dict[str, Any]:
@@ -288,13 +289,18 @@ def _aws_root_gaps(plan: Mapping[str, Any]) -> dict[str, Any]:
             "subnets": plan["subnets"]}
 
 
+def _gcp_root_gaps(plan: Mapping[str, Any]) -> dict[str, Any]:
+    types = {s["id"]: s["machine_type"] for s in plan["services"] if s["machine_type"] != GCP_ROOT_FIXED["machine_type"]}
+    return {"machine_type": {"fixed": GCP_ROOT_FIXED["machine_type"], "needed": types},
+            "server_count": {"fixed": GCP_ROOT_FIXED["servers"], "needed": len(plan["services"])},
+            "app_delivery": {"fixed": "startup script 가 app/server.py 를 넣는다", "needed": "서비스별 대상 구조 이미지"},
+            "cloud_armor_rules": {"attachable": False, "reason": PASSTHROUGH_NLB, "needed": plan["waf_rules"]},
+            "scc_services": plan.get("security", []), "subnets": plan["subnets"]}
+
+
 def terraform_gaps(plan: Mapping[str, Any]) -> dict[str, Any]:
     target = plan["target"]
-    if target == "aws":
-        missing = _aws_root_gaps(plan)
-    else:
-        missing = {"machine_type": {s["id"]: s["machine_type"] for s in plan["services"]},
-                   "security_policy_rules": plan["waf_rules"]}
+    missing = _aws_root_gaps(plan) if target == "aws" else _gcp_root_gaps(plan)
     return {"root": TERRAFORM_ROOTS[target], "missing_variables": missing}
 
 

@@ -1,7 +1,7 @@
 # Jenkins 클라우드 이전 파이프라인과 서비스별 가중치 화면
 
 - 기준일: 2026-11-04 (Asia/Seoul)
-- 상태: 설계·로컬 구현. **클라우드 자원은 만들지 않는다.** AWS·GCP 는 로컬 컨테이너와 HAProxy 대역으로 시험한다.
+- 상태: 설계·로컬 구현. **클라우드 자원은 만들지 않는다.** AWS·GCP 는 로컬 컨테이너와 HAProxy 대역으로 시험한다. 운영 앞단은 HAProxy 가 아니라 ALB 가중치 대상 그룹 권고(ADR-AI-37)이고, 그 구현은 아직 없다.
 - 실행 방법: [deploy/jenkins-local](../../deploy/jenkins-local/README.md) 의 "클라우드 이전" 절
 - 앞선 문서: [Jenkins 로컬 검증](jenkins-local.md), [AWS → GCP 매핑 판단](migration-mapping.md)
 
@@ -131,7 +131,8 @@ Jenkins 파라미터: `DIRECTION`(`aws-to-gcp` | `gcp-to-aws`), `SCENARIO`(`good
 ## 남는 일
 
 - 실제 실행기: 대상 root 에 tfvars 적용, 대상 배포, 적용 후 대상 환경 재수집, 실제 LB 에 공격 시험. 대상 root 에 없는 변수는 빌드마다 `terraform-gaps.json` 으로 남는다.
-  - GCP 대상(`terraform/gcp-server`): 머신 타입·보안 정책 변수가 없다.
+  - GCP 대상(`terraform/network-security-gcp`, main #27 이 `gcp-server` 를 대체): `e2-micro` 서버 한 대가 박혀 있고, 앱은 startup script 가 `app/server.py` 를 넣는다. 앞단이 패스스루 NLB 라 **Cloud Armor WAF 규칙을 붙일 수 없다**(외부 Application LB 나 프록시 NLB 가 필요). `subnets` 는 central·workload 를 같이 받는 객체라 workload 하나로 채우지 않는다. 모두 `terraform-gaps.json` 에 나온다.
   - AWS 대상(`terraform/workload-server`): `t4g.nano` 와 arm64 AMI 검사가 박혀 있어 **t3(x86) 대상은 지금 root 로 만들 수 없다.** WAF(WebACL)·GuardDuty 기능 변수도 없다. `azs` 는 AZ 두 개와 TGW 서브넷을 받아 서브넷 하나로는 채우지 않는다.
 - DB 이전 단계를 `platform-db-move` 와 연결.
-- GCP 출발 인벤토리는 실제 GCP 프로젝트를 조회하지 않고 AWS 인벤토리를 거꾸로 둔 시험 값이다(GCP 는 상시무료만 쓴다). GCP 수집기를 만들면 바꾼다.
+- GCP 출발 인벤토리: `inventory-gcp.json` 은 AWS 인벤토리를 거꾸로 둔 시험 값이다. 실제 프로젝트는 `pipeline/scripts/gcp_inventory.py` 로 읽는다. gcloud 읽기 전용 결과(instances·subnets·security-policies·enabled services)를 받아 서버·서브넷·WAF·권한 방식을 채우고, API 로 알 수 없는 secrets·logging·ingress·network 는 base 값을 둔다. SCC 는 프로젝트 API 가 꺼져 있어도 조직에서 켤 수 있어 모른다(None)로 둔다.
+  - 2026-11-04 `term2-delta` 실측: `delta-lab-server`(e2-micro, ubuntu, 사설 `10.32.1.0/24`, 서비스 계정 없음), Cloud Armor 정책 0개, SCC API 꺼짐. 판단은 `needs_human` — SCC 를 모른다는 한 건만 사람 확인이 필요하고, 승인하면 t3.micro·x86·ubuntu 로 계획이 나온다(월 $7.84 → $9.49). AWS 대상 root 는 여전히 t4g.nano·arm64 라 만들 수 없다.
