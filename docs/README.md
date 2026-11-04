@@ -1,6 +1,6 @@
 # Delta network gateway
 
-2026-11-05: [온프레미스 FE·BE 구현·실검증](ai-dlc/platform-onprem-release.md). 별도 앱·DB 후보와 샌드박스 허용/차단·복원을 확인했다. 중앙 관측·검사 API·플랫폼 릴리스는 연결 대기다.
+2026-11-05: [온프레미스 FE·BE 구현·실검증](ai-dlc/platform-onprem-release.md). 샌드박스 FE·BE 실행·통신 정책을 준비했다. 샘플 앱은 원복했고 수정 버전 후보는 중지했다. 계측은 플랫폼 배포 시 자동 주입 방식으로 전환 예정이며 중앙 연결·릴리스는 대기다.
 
 ## 현재 상태
 

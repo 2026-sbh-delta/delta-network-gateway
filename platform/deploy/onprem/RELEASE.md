@@ -1,6 +1,6 @@
 # 온프레미스 발표 앱 실행
 
-기존 `demo`와 별도의 `delta-notes` 공간에 FE·BE·PostgreSQL을 둔다. 임시 검사는 `delta-platform-sandbox`에서 한 번에 하나만 실행한다. VM·VPN·팀의 SAST/DAST 서버·S3 state는 이 도구가 관리하지 않는다.
+기존 `demo`와 별도의 `delta-notes` 공간을 사용한다. 현재 샘플 앱은 메모리 저장 FE·BE이며 DB와 직접 OTel 계측 코드는 없다. 수정 버전 후보는 중지 상태다. 임시 검사는 `delta-platform-sandbox`에서 한 번에 하나만 실행한다. VM·VPN·팀의 SAST/DAST 서버·S3 state는 이 도구가 관리하지 않는다.
 
 ## 구성 파일과 책임
 
@@ -55,7 +55,9 @@ uv run --project platform/deploy python platform/deploy/onprem/policy-change.py 
 
 `--candidate <YAML>`은 외부 제안 입력이다. 이번 실행기는 지정 샌드박스의 FE→BE:8080 규칙만 허용하며 다른 namespace·전체 공개·범위 확대를 거부한다. 승인 후 실제 정책의 resourceVersion이 바뀌면 다시 검토해야 한다. 실검증은 검토된 템플릿으로 수행했고, AI가 생성했다고 기록하지 않았다.
 
-## 운영 후보와 최초 DB 복원
+## 운영 후보 준비
+
+아래 DB 옵션과 복원 도구는 DB 지원 앱을 별도로 확정한 경우에만 사용한다. 현재 샘플 앱에 PostgreSQL을 연결하면 데이터가 유지된다고 가정하지 않는다.
 
 DAST·승인 통합이 준비되지 않은 상태에서는 `--preview`를 사용하며 보안 상태를 `pending`으로 표시한다. 보안 검사를 생략한 결과를 통과로 바꾸지 않는다. 이 CLI는 서버 등록 자동화와 실제 서비스 도메인 전환을 수행하지 않는다.
 
@@ -82,9 +84,9 @@ uv run --project platform/deploy python platform/deploy/onprem/restore-db.py \
 
 ## 관측과 접속
 
-샘플 앱의 `OTEL_EXPORTER_OTLP_ENDPOINT`를 앱 Collector에 연결하면 HTTP histogram, 5xx 로그, FE→BE trace가 전송된다. 실제 앱 HTTP 송수신으로 이 계약을 테스트했다. 호스트는 기존 native Collector가 60초마다 수집한다. 인증된 AWS gateway와 실제 왕복 경로 확인 전에는 중앙 전송 성공·대시보드 표시 완료로 기록하지 않는다. 설정은 [관측 문서](../../observability/onprem/README.md)를 따른다. 앱과 호스트 수집 인증을 공유하지 않는다.
+앱 계측은 Oneport처럼 플랫폼이 배포 시 지원되는 런타임에 자동 계측 라이브러리를 연결하는 방향으로 전환한다. 자동 주입은 아직 구현하지 않았다. 현재 샘플 앱에 `OTEL_EXPORTER_OTLP_ENDPOINT`만 설정해도 trace가 생성되는 것은 아니다. 호스트 지표는 기존 native Collector 설정을 사용한다. 인증된 AWS gateway와 실제 왕복 경로 확인 전에는 중앙 전송 성공·대시보드 표시 완료로 기록하지 않는다. 설정은 [관측 문서](../../observability/onprem/README.md)를 따른다. 앱과 호스트 수집 인증을 공유하지 않는다.
 
-현재 운영 후보 주소는 사설 `10.40.0.10:32081`이다. Tailscale에 연결된 개발 PC에서는 관리용 SSH 터널로 확인할 수 있다.
+예약된 후보 주소는 사설 `10.40.0.10:32081`이며 현재 앱은 중지되어 응답하지 않는다. 원복된 이미지로 다시 배포한 뒤 Tailscale에 연결된 개발 PC에서 아래 SSH 터널로 확인할 수 있다.
 
 ```bash
 ssh -i ~/.ssh/teammate_vm -N -L 18081:10.40.0.10:32081 onprem@delta-onprem.tail6bd796.ts.net

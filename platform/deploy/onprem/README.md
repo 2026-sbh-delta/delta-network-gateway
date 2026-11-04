@@ -2,7 +2,7 @@
 
 기존 k3s에 임시 `delta-platform-sandbox`와 운영 후보 `delta-notes`를 분리한다. Jenkins가 같은 커밋으로 빌드한 FE·BE digest를 실행하고 통신·실제 이미지를 확인한 뒤 임시 자원만 정리한다. 기존 `demo` 앱·DB, 홈 라우터와 VPN은 변경하지 않는다. 운영 서비스·DB 이전 완료를 의미하지 않는다.
 
-2026-11-05 FE·BE 실행·정리, RBAC, 통신 허용·차단, 별도 PostgreSQL 복원·새 쓰기·재시작 후 데이터 유지를 확인했다. 현재 운영 후보는 보안 승인 대기이며 DAST는 사용자 지시에 따라 API 준비 전까지 제외한다. **AWS↔온프레미스 VPN/TGW는 팀에서 연결 중**이므로 AWS 플랫폼의 온프레미스 선택은 아직 활성화하지 않았다. [이번 검증 기록](../../../docs/ai-dlc/platform-onprem-release.md)
+2026-11-05 FE·BE 실행·정리, RBAC, 통신 허용·차단을 확인했다. 샘플 앱 원복에 따라 수정 버전 후보는 중지했고 데이터 PVC는 보존했다. DAST는 사용자 지시에 따라 API 준비 전까지 제외한다. **AWS↔온프레미스 VPN/TGW는 팀에서 연결 중**이므로 AWS 플랫폼의 온프레미스 선택은 아직 활성화하지 않았다. [이번 검증 기록](../../../docs/ai-dlc/platform-onprem-release.md)
 
 ## 서버 확인과 준비
 
