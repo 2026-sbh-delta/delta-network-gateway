@@ -234,6 +234,7 @@ test("이전 계획은 고정 빌드·서로 다른 환경으로 만들고 승�
   await page.getByLabel("비밀번호", { exact: true }).fill("test-only");
   await page.getByRole("button", { name: "로그인", exact: true }).click();
   await page.getByRole("button", { name: /이전 계획 대상/ }).click();
+  await page.getByRole("button", { name: "메뉴 열기" }).click();
   await page.getByRole("button", { name: "이전 계획", exact: true }).click();
   const panel = page.getByRole("region", { name: "배포·이전 계획" });
   await expect(
