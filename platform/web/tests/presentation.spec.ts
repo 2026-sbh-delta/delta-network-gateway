@@ -91,7 +91,7 @@ test("단계별 화면은 서비스를 보존하고 새로고침·뒤로가기�
   await page.getByRole("button", { name: /주문 서비스 example/ }).click();
   await expect(page).toHaveURL(/#\/overview\/presentation-orders$/);
   await expect(
-    page.getByRole("heading", { name: "주문 서비스", exact: true }),
+    page.getByRole("heading", { name: "주문 서비스", exact: true, level: 1 }),
   ).toBeVisible();
   await page.screenshot({
     animations: "disabled",
@@ -135,7 +135,7 @@ test("단계별 화면은 서비스를 보존하고 새로고침·뒤로가기�
     .getByRole("combobox", { name: "작업 서비스 선택" })
     .selectOption("presentation-payments");
   await expect(
-    page.getByRole("heading", { name: "결제 서비스", exact: true }),
+    page.getByRole("heading", { name: "결제 서비스", exact: true, level: 1 }),
   ).toBeVisible();
   await page.getByRole("button", { name: "메뉴 열기" }).click();
   await page.getByRole("button", { name: "모니터링", exact: true }).click();
@@ -161,7 +161,7 @@ for (const viewport of [
     await page.setViewportSize(viewport);
     await page.goto("/#/overview/presentation-orders");
     await expect(
-      page.getByRole("heading", { name: "주문 서비스", exact: true }),
+      page.getByRole("heading", { name: "주문 서비스", exact: true, level: 1 }),
     ).toBeVisible();
     await page.screenshot({
       animations: "disabled",

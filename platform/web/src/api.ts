@@ -1,3 +1,4 @@
+import type { ApplicationBundle } from "./application-model";
 export type Session = {
   login_id: string;
   expires_at: string;
@@ -67,6 +68,8 @@ export type SandboxTarget = {
   configured: boolean;
 };
 export type Service = {
+  project_id?: string;
+  application_bundle?: ApplicationBundle;
   id: string;
   name: string;
   repository_url: string;
@@ -80,7 +83,11 @@ export type Service = {
 };
 export type ServiceInput = Omit<
   Service,
-  "id" | "created_at" | "latest_source_check"
+  | "id"
+  | "created_at"
+  | "latest_source_check"
+  | "application_bundle"
+  | "project_id"
 >;
 export type RunEvent = {
   sequence: number;

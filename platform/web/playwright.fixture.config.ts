@@ -8,6 +8,7 @@ export default defineConfig({
     "workflow-planning.spec.ts",
     "observability.spec.ts",
     "presentation.spec.ts",
+    "release.spec.ts",
   ],
   fullyParallel: false,
   workers: 1,

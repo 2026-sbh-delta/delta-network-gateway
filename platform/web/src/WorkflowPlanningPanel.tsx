@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, message, type Page, type Run } from "./api";
+import { EnvironmentComparison, type Execution } from "./EnvironmentComparison";
 import type { Environment } from "./observability-api";
 
 type WorkflowKind = "migration" | "deployment";
@@ -31,13 +32,6 @@ type Workflow = {
   input_hash: string;
   approved_by: string | null;
   approved_at: string | null;
-  created_at: string;
-};
-type Execution = {
-  id: string;
-  environment_id: string;
-  kind: string;
-  status: string;
   created_at: string;
 };
 const workflowStatus: Record<Workflow["status"], string> = {
@@ -208,6 +202,8 @@ export function WorkflowPlanningPanel({ serviceId }: { serviceId: string }) {
         createKey.current.key,
       );
       createKey.current = null;
+      setWorkflow(null);
+      setExecutions([]);
       setSelectedWorkflowId(created.id);
       setNotice("계획을 만들었습니다. 계획 승인 전에는 변경이 없습니다.");
       setRefresh((n) => n + 1);
@@ -285,118 +281,122 @@ export function WorkflowPlanningPanel({ serviceId }: { serviceId: string }) {
           </p>
         </div>
       ) : (
-        <form className="workflow-form" onSubmit={createPlan}>
-          <div className="workflow-form-row">
-            <label>
-              계획 종류
-              <select
-                value={kind}
-                onChange={(e) => setKind(e.target.value as WorkflowKind)}
-              >
-                <option value="migration">서비스·DB 이전</option>
-                <option value="deployment">앱 배포</option>
-              </select>
-            </label>
-            <label>
-              고정 이미지 빌드
-              <select
-                value={buildId}
-                onChange={(e) => setBuildId(e.target.value)}
-                required
-              >
-                <option value="">빌드 선택</option>
-                {readyBuilds.map((build) => (
-                  <option key={build.id} value={build.id}>
-                    {build.resolved_commit_sha?.slice(0, 12)} ·{" "}
-                    {build.result?.image_digest?.slice(0, 19)} ·{" "}
-                    {runTime(build.created_at)}
-                  </option>
+        <details className="release-plan-create" open={!workflows.length}>
+          <summary>새 변경 계획 만들기</summary>
+          <form className="workflow-form" onSubmit={createPlan}>
+            <div className="workflow-form-row">
+              <label>
+                계획 종류
+                <select
+                  value={kind}
+                  onChange={(e) => setKind(e.target.value as WorkflowKind)}
+                >
+                  <option value="migration">서비스 이전</option>
+                  <option value="deployment">앱 배포</option>
+                </select>
+              </label>
+              <label>
+                고정 이미지 빌드
+                <select
+                  value={buildId}
+                  onChange={(e) => setBuildId(e.target.value)}
+                  required
+                >
+                  <option value="">빌드 선택</option>
+                  {readyBuilds.map((build) => (
+                    <option key={build.id} value={build.id}>
+                      {build.resolved_commit_sha?.slice(0, 12)} ·{" "}
+                      {build.result?.image_digest?.slice(0, 19)} ·{" "}
+                      {runTime(build.created_at)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            {kind === "migration" ? (
+              <label>
+                출발 환경
+                <select
+                  value={sourceId}
+                  onChange={(e) => setSourceId(e.target.value)}
+                  required
+                >
+                  <option value="">출발 환경 선택</option>
+                  {environments.map((env) => (
+                    <option key={env.id} value={env.id}>
+                      {env.name} · {env.cloud.toUpperCase()} · {env.region}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : (
+              <label>
+                출발 환경 <span className="muted">(선택 사항)</span>
+                <select
+                  value={sourceId}
+                  onChange={(e) => setSourceId(e.target.value)}
+                >
+                  <option value="">출발 환경 없음</option>
+                  {environments.map((env) => (
+                    <option key={env.id} value={env.id}>
+                      {env.name} · {env.cloud.toUpperCase()} · {env.region}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            <fieldset className="workflow-targets">
+              <legend>
+                대상 환경 <small>1~2개 · 출발 환경 제외</small>
+              </legend>
+              {environments
+                .filter((env) => env.id !== sourceId)
+                .map((env) => (
+                  <label key={env.id} className="workflow-target">
+                    <input
+                      type="checkbox"
+                      checked={targetIds.includes(env.id)}
+                      disabled={
+                        !targetIds.includes(env.id) && targetIds.length >= 2
+                      }
+                      onChange={() => toggleTarget(env.id)}
+                    />
+                    <span>
+                      {env.name}
+                      <small>
+                        {env.cloud.toUpperCase()} · {env.region}
+                      </small>
+                    </span>
+                  </label>
                 ))}
-              </select>
-            </label>
-          </div>
-          {kind === "migration" ? (
-            <label>
-              출발 환경
-              <select
-                value={sourceId}
-                onChange={(e) => setSourceId(e.target.value)}
-                required
-              >
-                <option value="">출발 환경 선택</option>
-                {environments.map((env) => (
-                  <option key={env.id} value={env.id}>
-                    {env.name} · {env.cloud.toUpperCase()} · {env.region}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : (
-            <label>
-              출발 환경 <span className="muted">(선택 사항)</span>
-              <select
-                value={sourceId}
-                onChange={(e) => setSourceId(e.target.value)}
-              >
-                <option value="">출발 환경 없음</option>
-                {environments.map((env) => (
-                  <option key={env.id} value={env.id}>
-                    {env.name} · {env.cloud.toUpperCase()} · {env.region}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-          <fieldset className="workflow-targets">
-            <legend>
-              대상 환경 <small>1~2개 · 출발 환경 제외</small>
-            </legend>
-            {environments
-              .filter((env) => env.id !== sourceId)
-              .map((env) => (
-                <label key={env.id} className="workflow-target">
-                  <input
-                    type="checkbox"
-                    checked={targetIds.includes(env.id)}
-                    disabled={
-                      !targetIds.includes(env.id) && targetIds.length >= 2
-                    }
-                    onChange={() => toggleTarget(env.id)}
-                  />
-                  <span>
-                    {env.name}
-                    <small>
-                      {env.cloud.toUpperCase()} · {env.region}
-                    </small>
-                  </span>
-                </label>
-              ))}
-            {environments.filter((env) => env.id !== sourceId).length === 0 && (
+              {environments.filter((env) => env.id !== sourceId).length ===
+                0 && (
+                <p className="muted">
+                  출발과 다른 대상 환경이 필요합니다. 운영자에게 환경 등록을
+                  요청하세요.
+                </p>
+              )}
+            </fieldset>
+            {!readyBuilds.length && (
               <p className="muted">
-                출발과 다른 대상 환경이 필요합니다. 운영자에게 환경 등록을
-                요청하세요.
+                고정된 이미지 digest가 있는 성공 빌드가 필요합니다. 완료된
+                이미지 빌드가 없습니다.
               </p>
             )}
-          </fieldset>
-          {!readyBuilds.length && (
-            <p className="muted">
-              고정된 이미지 digest가 있는 성공 빌드가 필요합니다. 완료된 이미지
-              빌드가 없습니다.
-            </p>
-          )}
-          <button
-            className="primary"
-            disabled={
-              busy ||
-              !buildId ||
-              targetIds.length < 1 ||
-              targetIds.some((id) => id === sourceId) ||
-              (kind === "migration" && !sourceId)
-            }
-          >
-            {busy ? "계획 저장 중…" : "변경 계획 만들기"}
-          </button>
-        </form>
+            <button
+              className="primary"
+              disabled={
+                busy ||
+                !buildId ||
+                targetIds.length < 1 ||
+                targetIds.some((id) => id === sourceId) ||
+                (kind === "migration" && !sourceId)
+              }
+            >
+              {busy ? "계획 저장 중…" : "변경 계획 만들기"}
+            </button>
+          </form>
+        </details>
       )}
       <div className="workflow-existing">
         <h3>최근 계획</h3>
@@ -408,7 +408,11 @@ export function WorkflowPlanningPanel({ serviceId }: { serviceId: string }) {
             <select
               aria-label="최근 계획 선택"
               value={selectedWorkflowId}
-              onChange={(e) => setSelectedWorkflowId(e.target.value)}
+              onChange={(e) => {
+                setWorkflow(null);
+                setExecutions([]);
+                setSelectedWorkflowId(e.target.value);
+              }}
             >
               {workflows.map((item) => (
                 <option key={item.id} value={item.id}>
@@ -421,11 +425,23 @@ export function WorkflowPlanningPanel({ serviceId }: { serviceId: string }) {
         ) : (
           <p className="muted">저장된 계획이 없습니다.</p>
         )}
+        <EnvironmentComparison
+          environments={environments}
+          sourceId={workflow?.input_snapshot.source?.id ?? sourceId}
+          targetIds={
+            workflow
+              ? workflow.input_snapshot.targets.map((t) => t.id)
+              : targetIds
+          }
+          executions={workflow ? executions : []}
+          workflowId={workflow?.id ?? null}
+          planHash={workflow?.input_hash ?? null}
+        />
         {workflow && (
           <div className="workflow-detail">
             <div className="workflow-detail-heading">
               <strong>
-                {workflow.kind === "migration" ? "서비스·DB 이전" : "앱 배포"}
+                {workflow.kind === "migration" ? "서비스 이전" : "앱 배포"}
               </strong>
               <span className={`status ${workflow.status}`}>
                 {workflowStatus[workflow.status]}
@@ -441,42 +457,49 @@ export function WorkflowPlanningPanel({ serviceId }: { serviceId: string }) {
                 </span>
               ))}
             </p>
-            <dl className="workflow-facts">
-              <div>
-                <dt>커밋</dt>
-                <dd>
-                  <code>{workflow.input_snapshot.commit_sha.slice(0, 12)}</code>
-                </dd>
-              </div>
-              <div>
-                <dt>이미지</dt>
-                <dd>
-                  <code>{workflow.input_snapshot.image}</code>
-                </dd>
-              </div>
-              <div>
-                <dt>계획 해시</dt>
-                <dd>
-                  <code>{workflow.input_hash.slice(0, 16)}…</code>
-                </dd>
-              </div>
-              <div>
-                <dt>계획 승인</dt>
-                <dd>
-                  {workflow.approved_by
-                    ? `${workflow.approved_by} · ${workflow.approved_at ? runTime(workflow.approved_at) : ""}`
-                    : "승인 대기"}
-                </dd>
-              </div>
-            </dl>
+            <details className="release-plan-details">
+              <summary>승인 대상 · 커밋 · 이미지 · 계획 버전</summary>
+              <dl className="workflow-facts">
+                <div>
+                  <dt>커밋</dt>
+                  <dd>
+                    <code>
+                      {workflow.input_snapshot.commit_sha.slice(0, 12)}
+                    </code>
+                  </dd>
+                </div>
+                <div>
+                  <dt>이미지</dt>
+                  <dd>
+                    <code>{workflow.input_snapshot.image}</code>
+                  </dd>
+                </div>
+                <div>
+                  <dt>계획 해시</dt>
+                  <dd>
+                    <code>{workflow.input_hash.slice(0, 16)}…</code>
+                  </dd>
+                </div>
+                <div>
+                  <dt>계획 승인</dt>
+                  <dd>
+                    {workflow.approved_by
+                      ? `${workflow.approved_by} · ${workflow.approved_at ? runTime(workflow.approved_at) : ""}`
+                      : "승인 대기"}
+                  </dd>
+                </div>
+              </dl>
+            </details>
             {workflow.status === "planned" && (
               <button disabled={busy} onClick={approvePlan}>
                 계획 승인
               </button>
             )}
             <p className="workflow-boundary">
-              계획 승인은 입력 해시를 확인해 기록합니다. 배포 또는 DB 쓰기
-              전환은 시작되지 않습니다.
+              승인 범위는 선택한 단일 이미지와 대상 환경입니다. FE·BE 묶음 승인
+              및 AI 코드 수정 승인은 아직 연결되지 않았습니다. 계획 승인은 입력
+              해시를 확인해 기록합니다. 배포 또는 DB 쓰기 전환은 시작되지
+              않습니다.
             </p>
             <div className="workflow-executions">
               <h4>최근 실행</h4>

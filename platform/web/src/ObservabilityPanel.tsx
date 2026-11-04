@@ -1,3 +1,4 @@
+import { RuntimeComponents } from "./RuntimeComponents";
 import { useEffect, useState } from "react";
 import { api, message, type Service } from "./api";
 import {
@@ -163,7 +164,22 @@ function Sparkline({ metric, title }: { metric: Metric; title: string }) {
 export function ObservabilityPanel({ serviceId }: { serviceId: string }) {
   const [service, setService] = useState<Service | null>(null);
   const [environments, setEnvironments] = useState<Environment[]>([]);
-  const [environmentId, setEnvironmentId] = useState("");
+  const [environmentId, setEnvironmentId] = useState(() => {
+    try {
+      return sessionStorage.getItem(`delta:environment:${serviceId}`) ?? "";
+    } catch {
+      return "";
+    }
+  });
+  useEffect(() => {
+    if (environmentId) {
+      try {
+        sessionStorage.setItem(`delta:environment:${serviceId}`, environmentId);
+      } catch {
+        /* Storage may be disabled. */
+      }
+    }
+  }, [serviceId, environmentId]);
   const [minutes, setMinutes] = useState(15);
   const [snapshot, setSnapshot] = useState<Observability | null>(null);
   const [environmentState, setEnvironmentState] = useState<
@@ -444,7 +460,9 @@ export function ObservabilityPanel({ serviceId }: { serviceId: string }) {
                 >
                   {appState?.status === "ok" && appState.value !== null
                     ? appState.value === 1
-                      ? "앱 실행 중"
+                      ? service?.application_bundle
+                        ? "대표 서비스 응답"
+                        : "앱 실행 중"
                       : "앱 중지"
                     : appState
                       ? metricText(appState)
@@ -452,7 +470,7 @@ export function ObservabilityPanel({ serviceId }: { serviceId: string }) {
                 </span>
               </div>
               <p className="obs-line">
-                앱 상태{" "}
+                {service?.application_bundle ? "대표 서비스 상태" : "앱 상태"}{" "}
                 <b>
                   {appState?.status === "ok" && appState.value !== null
                     ? appState.value === 1
@@ -466,45 +484,59 @@ export function ObservabilityPanel({ serviceId }: { serviceId: string }) {
               <p className="obs-line">
                 DB 연결{" "}
                 <b>
-                  {dbState?.status === "ok" && dbState.value !== null
-                    ? dbState.value === 1
-                      ? "연결됨"
-                      : "연결 안 됨"
-                    : dbState
-                      ? metricText(dbState)
-                      : stateLabel.no_data}
+                  {service?.application_bundle?.database === "none" ||
+                  service?.application_bundle?.database === "memory"
+                    ? "미구성"
+                    : dbState?.status === "ok" && dbState.value !== null
+                      ? dbState.value === 1
+                        ? "연결됨"
+                        : "연결 안 됨"
+                      : dbState
+                        ? metricText(dbState)
+                        : stateLabel.no_data}
                 </b>
               </p>
-              {snapshot.migration && (
-                <div className="obs-migration">
-                  <div className="obs-migration-head">
-                    <b>DB 이전</b>
-                    <span
-                      className={`obs-pill state-${snapshot.migration.status}`}
-                    >
-                      {migrationStatus[snapshot.migration.status]}
-                    </span>
+              <RuntimeComponents service={service} snapshot={snapshot} />
+              {service?.application_bundle?.database === "memory" && (
+                <p className="release-notice">
+                  메모리 저장 · 백엔드 재시작 시 데이터가 사라집니다. 데이터
+                  보존·DB 이전 검증 대상이 아닙니다.
+                </p>
+              )}
+              {snapshot.migration &&
+                service?.application_bundle?.database !== "none" &&
+                service?.application_bundle?.database !== "memory" && (
+                  <div className="obs-migration">
+                    <div className="obs-migration-head">
+                      <b>DB 이전</b>
+                      <span
+                        className={`obs-pill state-${snapshot.migration.status}`}
+                      >
+                        {migrationStatus[snapshot.migration.status]}
+                      </span>
+                    </div>
+                    <p>단계: {migrationStage[snapshot.migration.stage]}</p>
+                    <p>
+                      검증:{" "}
+                      {snapshot.migration.validation === "passed"
+                        ? "통과"
+                        : "대기"}
+                      {" · "}
+                      미반영 WAL:{" "}
+                      {snapshot.migration.lag_bytes === null
+                        ? "정보 없음"
+                        : `${snapshot.migration.lag_bytes.toLocaleString("ko-KR")} 바이트`}
+                    </p>
+                    <small>
+                      마지막 갱신 {stamp(snapshot.migration.observed_at)}
+                    </small>
                   </div>
-                  <p>단계: {migrationStage[snapshot.migration.stage]}</p>
-                  <p>
-                    검증:{" "}
-                    {snapshot.migration.validation === "passed"
-                      ? "통과"
-                      : "대기"}
-                    {" · "}
-                    미반영 WAL:{" "}
-                    {snapshot.migration.lag_bytes === null
-                      ? "정보 없음"
-                      : `${snapshot.migration.lag_bytes.toLocaleString("ko-KR")} 바이트`}
-                  </p>
-                  <small>
-                    마지막 갱신 {stamp(snapshot.migration.observed_at)}
-                  </small>
-                </div>
-              )}
-              {!snapshot.migration && (
-                <p className="obs-migration-none">DB 이전 실행 없음</p>
-              )}
+                )}
+              {!snapshot.migration &&
+                service?.application_bundle?.database !== "none" &&
+                service?.application_bundle?.database !== "memory" && (
+                  <p className="obs-migration-none">DB 이전 실행 없음</p>
+                )}
             </section>
             <section className="panel">
               <div className="panel-top">
