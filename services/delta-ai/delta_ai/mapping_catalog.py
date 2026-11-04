@@ -69,10 +69,18 @@ AWS_ACTION_ROLES: dict[str, str] = {
 
 LOG_THREATS = "log_threats"
 FOUNDATION = "GuardDuty 기본 탐지"
+# 키는 GuardDuty API·Terraform aws_guardduty_detector_feature 의 실제 기능 이름이다(2026-11-04 실계정 조회로 확인).
+# 여기 없는 기능(S3_DATA_EVENTS, RDS_LOGIN_EVENTS, LAMBDA_NETWORK_LOGS, AI_PROTECTION 등)은 gap 이다
 PLAN_CAPABILITIES: dict[str, tuple[str, ...]] = {
-    "EKS_PROTECTION": ("container_threats",),
+    "EKS_AUDIT_LOGS": (LOG_THREATS,),  # GKE 감사 로그 탐지는 Event Threat Detection 이 맡는다
+    "EKS_RUNTIME_MONITORING": ("container_threats",),
     "RUNTIME_MONITORING": ("container_threats", "vm_threats"),
-    "MALWARE_PROTECTION_EC2": ("vm_threats",),
+    "EBS_MALWARE_PROTECTION": ("vm_threats",),
+}
+CAPABILITY_LABELS: dict[str, str] = {  # 표에 보일 능력 이름. 잃는 능력을 행마다 구분하려고 쓴다
+    LOG_THREATS: "로그 기반 위협 탐지",
+    "container_threats": "컨테이너 위협 탐지",
+    "vm_threats": "VM 위협 탐지",
 }
 SCC_SERVICES: dict[str, frozenset[str]] = {  # 셋 다 Security Command Center Premium 이상이다
     "Event Threat Detection": frozenset({LOG_THREATS}),

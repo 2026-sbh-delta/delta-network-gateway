@@ -33,6 +33,7 @@ from delta_ai.findings import check_state, finding_id
 from delta_ai.mapping_catalog import (
     AWS_ACTION_ROLES,
     AWS_INSTANCES,
+    CAPABILITY_LABELS,
     FOUNDATION,
     GCP_INSTANCES,
     LOG_THREATS,
@@ -284,14 +285,21 @@ def _security_gap(source: str, capability: str, reason: str, config: MappingInpu
     return _Part((row,), (finding,))
 
 
+def _premium_gap(capability: str, config: MappingInput, origin: ValueOrigin) -> _Part:
+    """Premium 이 없어 잃는 능력 하나를 한 행으로 낸다. 행마다 어떤 능력·서비스인지 보여야 구분된다."""
+    service = next(name for name, capabilities in SCC_SERVICES.items() if capability in capabilities)
+    label = CAPABILITY_LABELS.get(capability, capability)
+    reason = f"Security Command Center Premium 이 아니어서 {service} 를 쓸 수 없다. {label} 능력을 잃는다"
+    return _security_gap(f"GuardDuty {label}", capability, reason, config, origin)
+
+
 def _security_cover(security: SourceSecurity, covered: frozenset[str], config: MappingInput) -> _Part:
     names = _smallest_cover(covered)
     if config.scc_tier is None:
         row = _row("MAP-SEC-001", "security", FOUNDATION, ", ".join(names), "unknown", security.origin)
         return _graded(row, "대상 프로젝트의 Security Command Center 등급을 모른다")
     if config.scc_tier == "standard":
-        reason = f"Security Command Center Premium 이 아니어서 쓸 수 없다: {', '.join(names)}"
-        return _merge(_security_gap(FOUNDATION, capability, reason, config, security.origin) for capability in sorted(covered))
+        return _merge(_premium_gap(capability, config, security.origin) for capability in sorted(covered))
     differences = ["제품이 달라 같은 탐지를 보장하지 않는다"]
     grade: MappingGrade = "split" if len(names) > 1 else "approximate"
     tests = ("탐지가 쓰는 감사 로그가 켜져 있는지 확인한다", "대상에서 샘플 탐지가 나오는지 시험한다")
@@ -305,7 +313,8 @@ def _map_guardduty(security: SourceSecurity, config: MappingInput) -> _Part:
     for plan in security.guardduty_plans:
         capabilities = PLAN_CAPABILITIES.get(plan)
         if capabilities is None:
-            reason = f"GuardDuty {plan} 의 대응을 정하지 않아 이 능력을 잃는다"
+            reason = (f"GuardDuty {plan} 의 대응을 정하지 않아 이 능력을 잃는다. "
+                      "그 서비스를 대상에서 쓰지 않으면 사람이 accepted_gaps 로 승인한다")
             parts.append(_security_gap(plan, plan, reason, config, security.origin))
         else:
             covered.update(capabilities)

@@ -187,7 +187,7 @@ async def test_guardduty_foundation_needs_premium_and_lists_the_log_requirement(
 
 async def test_several_capabilities_become_a_split_with_every_service(tmp_path):
     result = await _assess(tmp_path, scc_tier="premium",
-                           security={"guardduty_enabled": True, "guardduty_plans": ["EKS_PROTECTION", "RUNTIME_MONITORING"]})
+                           security={"guardduty_enabled": True, "guardduty_plans": ["EKS_RUNTIME_MONITORING", "RUNTIME_MONITORING"]})
 
     row = _rows(result, "security")[0]
     assert result.verdict == "pass"
@@ -204,14 +204,60 @@ async def test_security_tool_without_premium_does_not_pass(tmp_path, tier, grade
     assert _rows(result, "security")[0].grade == grade
 
 
+async def test_each_capability_lost_without_premium_is_its_own_distinguishable_row(tmp_path):
+    result = await _assess(tmp_path, scc_tier="standard",
+                           security={"guardduty_enabled": True, "guardduty_plans": ["RUNTIME_MONITORING"]})
+
+    gaps = _rows(result, "security")
+    sources = [row.source for row in gaps]
+    assert [row.grade for row in gaps] == ["gap"] * 3
+    assert len(set(sources)) == 3
+    for source, service in zip(sources, ("Container Threat Detection", "Event Threat Detection",
+                                         "VM Threat Detection"), strict=True):
+        row = next(r for r in gaps if r.source == source)
+        assert service in row.differences[0]
+    assert len({f.evidence for f in result.findings if f.rule_id == "MAP-SEC-001"}) == 3
+
+
 async def test_plan_without_a_gcp_counterpart_is_a_gap_naming_what_is_lost(tmp_path):
     result = await _assess(tmp_path, scc_tier="premium",
-                           security={"guardduty_enabled": True, "guardduty_plans": ["S3_PROTECTION"]})
+                           security={"guardduty_enabled": True, "guardduty_plans": ["RDS_LOGIN_EVENTS"]})
 
     gaps = [row for row in _rows(result, "security") if row.grade == "gap"]
     assert result.verdict == "needs_human"
-    assert gaps[0].source == "S3_PROTECTION"
-    assert gaps[0].differences
+    assert gaps[0].source == "RDS_LOGIN_EVENTS"
+    assert "accepted_gaps" in gaps[0].differences[0]
+
+
+# GuardDuty API·Terraform aws_guardduty_detector_feature 가 쓰는 실제 기능 이름이다
+@pytest.mark.parametrize(("feature", "service"), [("EBS_MALWARE_PROTECTION", "VM Threat Detection"),
+                                                  ("EKS_RUNTIME_MONITORING", "Container Threat Detection"),
+                                                  ("EKS_AUDIT_LOGS", "Event Threat Detection")])
+async def test_real_guardduty_feature_names_map_to_a_scc_service(tmp_path, feature, service):
+    result = await _assess(tmp_path, scc_tier="premium",
+                           security={"guardduty_enabled": True, "guardduty_plans": [feature]})
+
+    rows = _rows(result, "security")
+    assert result.verdict == "pass"
+    assert [row.grade for row in rows if row.grade == "gap"] == []
+    assert service in rows[0].target
+
+
+async def test_live_aws_features_lose_only_what_scc_cannot_cover(tmp_path):
+    features = ["S3_DATA_EVENTS", "EKS_AUDIT_LOGS", "EBS_MALWARE_PROTECTION", "RDS_LOGIN_EVENTS", "LAMBDA_NETWORK_LOGS"]
+    result = await _assess(tmp_path, scc_tier="premium", security={"guardduty_enabled": True, "guardduty_plans": features})
+
+    gaps = {row.source for row in _rows(result, "security") if row.grade == "gap"}
+    assert gaps == {"S3_DATA_EVENTS", "RDS_LOGIN_EVENTS", "LAMBDA_NETWORK_LOGS"}
+
+
+async def test_a_feature_for_an_unused_service_can_be_accepted_and_stays_visible(tmp_path):
+    result = await _assess(tmp_path, scc_tier="premium",
+                           security={"guardduty_enabled": True, "guardduty_plans": ["RDS_LOGIN_EVENTS"]},
+                           accepted_gaps=["RDS_LOGIN_EVENTS"])
+
+    assert result.verdict == "pass"
+    assert [row.value_source for row in _rows(result, "security") if row.grade == "gap"] == ["operator"]
 
 
 async def test_a_person_can_accept_a_gap_but_it_stays_visible(tmp_path):
@@ -268,6 +314,24 @@ def test_request_requires_something_to_map_and_a_valid_cidr():
         _request(subnets=[{**SUBNET, "cidr": "not-a-cidr"}])
     with pytest.raises(ValidationError):
         AssessmentRequest.model_validate({"assessment_id": "m", "kind": "migration_mapping", "service": {"service_id": "w"}})
+
+
+@pytest.mark.parametrize("mapping", [
+    {"servers": [{**SERVER, "instance_type": "e2-micro"}]},  # GCP 서버를 출발로 넣음
+    {"servers": [SERVER], "region": "ap-northeast-2"},  # 대상 리전이 AWS
+    {"servers": [SERVER], "source_region": "asia-northeast3"},  # 출발 리전이 GCP
+    {"servers": [SERVER], "source_provider": "gcp"},
+    {"servers": [SERVER], "target_provider": "aws"},
+])
+def test_only_aws_to_gcp_is_accepted(mapping):
+    with pytest.raises(ValidationError, match="AWS → GCP"):
+        _request(**mapping)
+
+
+def test_aws_to_gcp_direction_is_stated_in_the_input():
+    mapping = _request(servers=[SERVER]).evidence.mapping
+
+    assert (mapping.source_provider, mapping.target_provider) == ("aws", "gcp")
 
 
 def _server(name: str, instance_type: str) -> dict[str, object]:

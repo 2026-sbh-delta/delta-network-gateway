@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import ipaddress
+import re
 from typing import Annotated, Any, Literal, Self
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
@@ -251,9 +252,19 @@ class SourceSecurity(_Model):
     origin: ValueOrigin = "operator"
 
 
-class MappingInput(_Model):
-    """이전 전에 무엇을 만들지 정하는 입력. 지금은 AWS → GCP 만 다룬다."""
+AWS_REGION = re.compile(r"^[a-z]{2}(-gov)?-[a-z]+-\d+$")  # ap-northeast-2
+GCP_REGION = re.compile(r"^[a-z]+-[a-z]+\d+$")  # asia-northeast3
+DIRECTION = "migration_mapping 은 지금 AWS → GCP 만 다룬다"
 
+
+class MappingInput(_Model):
+    """이전 전에 무엇을 만들지 정하는 입력. 지금은 AWS → GCP 만 다룬다.
+
+    대응표가 AWS 출발만 알아서, 다른 방향을 받으면 GCP 대상 결과를 그럴듯하게 낸다. 그래서 받지 않는다.
+    """
+
+    source_provider: Provider = "aws"
+    target_provider: Provider = "gcp"
     network_mode: Literal["create", "reuse"] = "create"
     region: str | None = None
     source_region: str | None = None  # 비용 비교에만 쓴다. 없으면 기본값을 쓰고 assumptions 에 적는다
@@ -269,6 +280,20 @@ class MappingInput(_Model):
     def _require_something_to_map(self) -> Self:
         if not (self.subnets or self.servers or self.security):
             raise ValueError("mapping 은 subnets, servers, security 중 하나가 필요하다")
+        return self
+
+    @model_validator(mode="after")
+    def _require_aws_to_gcp(self) -> Self:
+        if (self.source_provider, self.target_provider) != ("aws", "gcp"):
+            raise ValueError(f"{DIRECTION}: {self.source_provider} → {self.target_provider} 는 받지 않는다")
+        if self.region is not None and not GCP_REGION.fullmatch(self.region):
+            raise ValueError(f"{DIRECTION}: 대상 region {self.region} 이 GCP 리전이 아니다")
+        if self.source_region is not None and not AWS_REGION.fullmatch(self.source_region):
+            raise ValueError(f"{DIRECTION}: source_region {self.source_region} 이 AWS 리전이 아니다")
+        # AWS 타입은 t4g.nano 처럼 점으로 나뉜다. e2-micro 같은 GCP 타입은 출발로 받지 않는다
+        foreign = [s.name for s in self.servers if s.instance_type and "." not in s.instance_type]
+        if foreign:
+            raise ValueError(f"{DIRECTION}: AWS 인스턴스 타입이 아니다: {', '.join(foreign)}")
         return self
 
 

@@ -11,7 +11,7 @@ GuardDuty 하나에 대응하는 단일 제품은 없다. Security Command Cente
 
 ## 판정 기준
 
-켜진 능력을 덮는 가장 작은 조합을 고른다. 하나면 approximate, 여럿이면 split 이다. 등급을 모르면 unknown, Premium 이 없거나 대응 없는 플랜이면 gap 이다. 사용 여부를 모르면 unknown 이고, 꺼진 것으로 보지 않는다.
+GuardDuty 기능은 API 이름으로 받는다. EKS_AUDIT_LOGS 는 Event, EKS_RUNTIME_MONITORING 은 Container, RUNTIME_MONITORING 은 Container 와 VM, EBS_MALWARE_PROTECTION 은 VM Threat Detection 으로 본다. S3_DATA_EVENTS, RDS_LOGIN_EVENTS, LAMBDA_NETWORK_LOGS 는 대응을 정하지 않았다. 켜진 능력을 덮는 가장 작은 조합을 고른다. 하나면 approximate, 여럿이면 split 이다. 등급을 모르면 unknown, Premium 이 없거나 대응 없는 플랜이면 gap 이다. 사용 여부를 모르면 unknown 이고, 꺼진 것으로 보지 않는다.
 
 ## 고치는 법
 

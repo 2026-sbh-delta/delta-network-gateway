@@ -105,6 +105,9 @@
 - 규칙 8개: `MAP-NET-001~003`, `MAP-CMP-001~002`, `MAP-OS-001`, `MAP-IAM-001`, `MAP-SEC-001`.
 - `approximate`·`split` 은 막지 않는 low finding 으로 내서 LLM 이 근거 문서로 설명할 수 있게 했다. 판정은 통과다.
 - Terraform 에 GuardDuty 가 없으면 꺼졌다고 쓰지 않고 `unknown` 으로 둔다. 콘솔에서 켰을 수 있어서다. 사람이나 호출자가 실제 값을 넣어야 한다.
+- GuardDuty 기능은 API·Terraform 의 실제 이름으로 받는다(2026-11-04 실계정 조회로 확인). `EKS_AUDIT_LOGS`→Event, `EKS_RUNTIME_MONITORING`→Container, `RUNTIME_MONITORING`→Container·VM, `EBS_MALWARE_PROTECTION`→VM Threat Detection. `S3_DATA_EVENTS`·`RDS_LOGIN_EVENTS`·`LAMBDA_NETWORK_LOGS`·`AI_PROTECTION` 은 대응을 정하지 않아 `gap` 이다. 처음 구현은 실제로 없는 이름(`EKS_PROTECTION`, `MALWARE_PROTECTION_EC2`)을 써서 실제 입력이 모두 `gap` 으로 나왔다.
+- 실계정은 쓰지 않는 서비스(EKS·RDS·Lambda)의 기능도 켜 둔다. 쓰는지는 이 입력으로 알 수 없어 `gap` 으로 두고, 쓰지 않으면 사람이 `accepted_gaps` 로 승인한다.
+- 방향: 입력에 `source_provider`(aws)·`target_provider`(gcp)를 두고 다른 방향은 거부한다. GCP 인스턴스 타입(점이 없는 `e2-micro` 등), GCP 출발 리전, AWS 대상 리전도 거부한다. 거부하지 않으면 GCP 서버를 넣었을 때 서브넷·권한이 GCP 대상으로 그럴듯하게 나왔다.
 - 능력 손실 승인은 `accepted_gaps` 로 받는다. finding 은 dismissed 가 되지만 표에는 `gap` 으로 남고 출처는 `operator` 다. 지금은 보안 도구에만 적용한다.
 - **알려진 한계:** CPU 구조 `fix` 의 ops 는 `multi_arch_image=true` 다. 호출자가 빌드 없이 이 값만 넣어 다시 보내면 통과한다. 이 값은 신고이지 이미지 확인이 아니다. 호출자를 정한 뒤 이미지 매니페스트 확인으로 바꿀지 다시 본다.
 
