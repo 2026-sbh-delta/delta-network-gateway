@@ -506,3 +506,29 @@ test("빌드 연결이 없는 최신 실패 뒤에 이전 성공을 재사용하
   ).toBeVisible();
   await expect(gcp.getByText("검사 완료", { exact: true })).toHaveCount(0);
 });
+
+test("출발 환경이 없는 배포 계획에 작성 폼의 AWS 선택을 섞지 않는다", async ({
+  page,
+}) => {
+  await boundary(page);
+  const deployment = {
+    ...workflow,
+    kind: "deployment",
+    input_snapshot: { ...workflow.input_snapshot, source: null },
+  };
+  await page.route("**/api/v1/workflows/workflow-1", (route) =>
+    route.fulfill({ json: deployment }),
+  );
+  await page.goto("/#/migration/notes-fe");
+  const comparison = page.getByRole("region", { name: "환경 차이와 AI 제안" });
+  await expect(
+    comparison
+      .locator(".release-compare-route")
+      .getByText("출발 환경 없음", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    comparison
+      .locator(".release-compare-route")
+      .getByText("AWS 운영", { exact: true }),
+  ).toHaveCount(0);
+});

@@ -427,7 +427,9 @@ export function WorkflowPlanningPanel({ serviceId }: { serviceId: string }) {
         )}
         <EnvironmentComparison
           environments={environments}
-          sourceId={workflow?.input_snapshot.source?.id ?? sourceId}
+          sourceId={
+            workflow ? (workflow.input_snapshot.source?.id ?? null) : sourceId
+          }
           targetIds={
             workflow
               ? workflow.input_snapshot.targets.map((t) => t.id)
