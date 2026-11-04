@@ -18,7 +18,11 @@ locals {
     flatten([for key, network in var.vpn_networks : [for cidr in network.cidrs : { owner = "vpn/${key}", cidr = cidr }]])
   )
   inspected_cidrs = toset([for network in local.remote_networks : network.cidr])
-  home_net        = sort(tolist(setunion(toset([var.inspection_vpc_cidr]), local.inspected_cidrs)))
+  # Direct VPN routes come from BGP, preserving both HA attachments and withdrawals.
+  # A static route to one VPN attachment would break ECMP and failover.
+  spoke_destination_cidrs = toset(flatten([for spoke in values(var.spoke_attachments) : tolist(spoke.vpc_cidrs)]))
+  static_spoke_cidrs      = var.inspection_mode == "enabled" ? local.inspected_cidrs : local.spoke_destination_cidrs
+  home_net                = sort(tolist(setunion(toset([var.inspection_vpc_cidr]), local.inspected_cidrs)))
 
   # Integer IPv4 intervals permit complete containment/overlap checks, including
   # differently sized prefixes. Invalid CIDRs are rejected before any AWS writes.
@@ -86,10 +90,6 @@ locals {
 resource "terraform_data" "contract" {
   input = "delta-central-contract-v1"
   lifecycle {
-    precondition {
-      condition     = var.inspection_mode == "enabled" || (length(var.vpn_networks) == 0 && length(var.vpn_peers) == 0)
-      error_message = "Bypass and disabled modes support VPC spokes only. Keep inspection enabled while VPN networks or peers are registered."
-    }
     precondition {
       condition = alltrue([for cidr in local.input_cidrs : try(
         cidrnetmask(cidr) != "" && cidrhost(cidr, 0) == split("/", cidr)[0], false

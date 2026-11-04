@@ -88,7 +88,7 @@ run "reject_unknown_inspection_mode" {
   expect_failures = [var.inspection_mode]
 }
 
-run "reject_bypass_with_vpn_network" {
+run "reject_bypass_with_unpaired_vpn_network" {
   command = plan
   variables {
     inspection_mode = "bypass"
@@ -97,7 +97,7 @@ run "reject_bypass_with_vpn_network" {
   expect_failures = [terraform_data.contract]
 }
 
-run "reject_disabled_with_vpn_network" {
+run "reject_disabled_with_unpaired_vpn_network" {
   command = plan
   variables {
     inspection_mode = "disabled"

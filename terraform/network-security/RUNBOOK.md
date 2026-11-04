@@ -4,10 +4,12 @@
 
 승인 범위와 실제 결과는 [ANF 비용 절감 AI-DLC](../../docs/ai-dlc/anf-cost-mode.md)를 따른다. 나머지 검사/관제 절차는 `inspection_mode=enabled` 기준이다. 아래 명령을 실행했다는 사실만으로 통신이나 원복을 성공으로 기록하지 않는다.
 
+2026-11-04 GCP 작업은 사용자 지시로 ANF를 원복하지 않는다. disabled를 유지하며 VPN의 BGP 경로를 Spoke RT에 전파하는 구현을 추가했다. 새 GCP 연결은 [GCP Runbook](../network-security-gcp/RUNBOOK.md)의 절차를 따른다. 아래 VPC 전환 helper는 정적 Route의 추가/삭제를 처리하지 않으므로, VPN이 붙은 상태의 모드 전환에 그대로 사용하지 않는다. 해당 전환은 VPN 전파와 정적 검사 경로의 추가/삭제를 포함한 별도 저장 Plan 검토가 필요하다.
+
 ### 전환 전 확인
 
 - 중앙 계정 STS, 기존 backend/state, Firewall/두 Endpoint READY와 IN_SYNC, 실제 VPC Attachment/RT를 확인한다.
-- VPC Spoke만 지원한다. VPN이 등록돼 있으면 먼저 별도 설계를 승인받는다. 보조 Endpoint Association이 있으면 소유자의 제거와 영향을 확인하기 전 Firewall을 제거하지 않는다.
+- 아래 helper의 적용 범위는 기존 VPC 정적 Route의 다음 홉 교체다. 직접 모드의 VPN은 BGP 전파로 처리한다. 보조 Endpoint Association이 있으면 소유자의 제거와 영향을 확인하기 전 Firewall을 제거하지 않는다.
 - 정적 웹, 8080 허용 API와 8081 차단 API를 기준 결과로 기록한다. 우회 중의 8081 성공은 예상 동작이다.
 - `terraform.tfvars` 대신 모드 전용의 ignored `inspection-mode.auto.tfvars`를 사용한다. 이 파일을 지우면 기본 enabled로 돌아갈 수 있으므로 비용 중단 중에는 보존한다. SSO 인증정보와 Plan/JSON은 커밋하지 않는다.
 - 고정 Provider 6.71.0은 TGW 다음 홉 변경을 Route 삭제/재생성으로 처리한다. 다음 helper는 검토한 JSON Plan에서 기존 Spoke Route의 다음 홉 변경만 추출해 AWS ReplaceTransitGatewayRoute를 호출한다. 기본은 dry run이고 `--execute`가 있어야 변경한다. 실제 계정, 경로 변경 여부와 검사 원복 전 READY/IN_SYNC를 확인하며, 도중 실패하면 이번에 바꾼 다음 홉을 되돌린다. 복구 실패 메시지가 있으면 실제 Route를 직접 확인한다.

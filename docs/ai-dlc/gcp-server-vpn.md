@@ -1,5 +1,7 @@
 # GCP 사설 서버와 HA VPN AI-DLC
 
+2026-11-04 현재 상태: 아래는 이전 무료 크레딧 프로젝트의 과거 작업 기록이다. 현재 tracked tree에는 당시 `terraform/gcp-server` 코드가 없다. 새 팀원 프로젝트 `term2-delta`의 구현과 실제 검증/운영 상태는 [GCP 중앙 네트워크와 AWS 로그 수집](gcp-central-network.md)을 따른다. 아래 승인, Billing 조회와 테스트 결과를 새 프로젝트에 적용하지 않는다.
+
 ## 단계와 승인 상태
 
 - 기준일: 2026-11-01 (Asia/Seoul).
