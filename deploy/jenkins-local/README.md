@@ -75,6 +75,24 @@ Jenkins 의 `SCENARIO` 파라미터로 고른다.
 | `metrics-<비율>.json`, `gate-<비율>.json` | 트래픽 단계 지표와 판단 결과 |
 | `failure-analysis.json` | 실패 원인 분석 |
 
+## 클라우드 이전
+
+Jenkins 잡 `delta-cloud-migration` 이 판단 → 갭 메우기 → 대상 배포 → 동등성 확인 → 서비스별 단계 전환을 한 번에 돈다. 설계는 [클라우드 이전 파이프라인](../../docs/ai-dlc/cloud-migration-pipeline.md). **클라우드 자원은 만들지 않는다.** AWS·GCP 는 로컬 컨테이너와 HAProxy 대역이다.
+
+| 대상 | 주소 | 비고 |
+|---|---|---|
+| 서비스별 비율 화면 (traffic-control) | http://127.0.0.1:18082 | 수동 모드에서 서비스마다 대상 비율을 바꾼다 |
+| 이전 게이트웨이 | http://127.0.0.1:18083/ , /api/hello | `X-App-Version` 이 `<클라우드>-…` 로 어느 쪽이 응답했는지 보인다 |
+
+| 파라미터 | 값 |
+|---|---|
+| `DIRECTION` | `aws-to-gcp`, `gcp-to-aws` |
+| `SCENARIO` | `good`, `scc-standard`(GCP 대상 Standard), `iam-gap`(대응 없는 권한), `security-gap`(대응 없는 보안 기능), `bad-target`(api 대상 50% 실패), `gate-down` |
+| `SCC_TIER` | `ask` 면 판단 뒤 묻는다. AWS 대상에는 쓰지 않는다 |
+| `CUTOVER_MODE` | `auto`(`CUTOVER_STEPS` 순서) 또는 `manual`(화면) |
+
+사람이 정할 것(SCC 등급, 잃어도 되는 능력, 자동으로 옮기지 않는 차이)이 있으면 입력 단계에서 멈춘다. 승인하지 않으면 진행하지 않는다. 빌드마다 `target-plan.json`(대상 타입·구조·WAF·보안 기능), `terraform-gaps.json`(대상 Terraform root 에 아직 없는 변수), `cutover-state.json` 을 남긴다.
+
 ## 테스트
 
 ```bash
@@ -84,6 +102,6 @@ Jenkins 의 `SCENARIO` 파라미터로 고른다.
 ## 여기서 확인할 수 없는 것
 
 - 사설망·ANF 경유, Jenkins 의 인터넷 경로, 실제 서버 메모리(t4g.nano·e2-micro)
-- AWS→GCP 교차 배포, ARM/x86 이미지 빌드
+- 실제 AWS·GCP 로의 교차 배포(이전은 로컬 대역으로만 확인한다), 실제 Cloud Armor·AWS WAF·GuardDuty·SCC
 - 동규 님의 실제 HAProxy 설정
 - Dependency-Check, SonarQube, ZAP (아직 넣지 않았다)
