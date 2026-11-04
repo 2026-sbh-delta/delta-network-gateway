@@ -23,6 +23,10 @@ class SandboxError(Exception):
 
 
 def sandbox_target(settings, cloud="aws"):
+    if cloud == "onprem":
+        from delta_platform.adapters.onprem_sandbox import configured_target
+
+        return configured_target(settings)
     if cloud == "gcp":
         from delta_platform.adapters.gcp_sandbox import configured_target
 
@@ -43,6 +47,22 @@ def sandbox_target(settings, cloud="aws"):
     except (ValueError, TypeError):
         raise Problem("sandbox_config_invalid", "샌드박스 실행기 설정을 확인하세요.", 503) from None
     return target.model_dump(mode="json")
+
+
+def runner_for(settings, cloud, *, inspector=None):
+    if cloud == "gcp":
+        from delta_platform.adapters.gcp_sandbox import GcpSandboxRunner
+
+        return GcpSandboxRunner(settings, inspector=inspector)
+    if cloud == "onprem":
+        from delta_platform.adapters.onprem_sandbox import OnpremSandboxRunner
+
+        return OnpremSandboxRunner(settings, inspector=inspector)
+    if cloud != "aws":
+        raise Problem("sandbox_not_configured", "지원하지 않는 실행 환경입니다.", 503)
+    runner = SandboxRunner(settings)
+    runner.inspector = inspector
+    return runner
 
 
 class GuardedStaging(AwsEcsStaging):

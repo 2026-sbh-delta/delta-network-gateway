@@ -37,6 +37,7 @@ export type Observability = {
       state: string;
       cpu_percent: Metric;
       memory_percent: Metric;
+      disk_percent?: Metric;
     }[];
   };
   logs: {

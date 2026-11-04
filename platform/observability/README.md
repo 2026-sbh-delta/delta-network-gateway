@@ -19,6 +19,7 @@ Collector: `otel/opentelemetry-collector-contrib:0.164.0` (`sha256:340c9ca6a3661
 - trace: OTel Collector의 AWS X-Ray exporter, 서비스/환경 annotation으로 조회. 플랫폼은 요청 정보 중 이름·시간·관계만 반환한다.
 - 인프라: AWS EC2/CloudWatch, GCP Compute/Monitoring. CPU·메모리·상태만 조회한다. 메모리는 해당 VM의 CloudWatch Agent/Google Ops Agent가 필요하다. 연결되지 않은 지표는 데이터 없음으로 표시한다.
 - GCP 조회는 ADC/연동된 서비스 계정의 조회 권한을 사용한다. GCP Collector의 AWS 쓰기 인증은 연합 역할 등 실행 환경에 맞게 별도로 연결해야 하며 SA JSON 키를 이미지에 넣지 않는다.
+- 온프레미스: [Collector 연결 설정](onprem/README.md)과 등록한 호스트 ID로 CPU·메모리·루트 디스크를 조회한다. 앱 지표와 호스트 지표 수신·인증을 분리한다. `수집 중`은 Collector의 보고 상태이며 VM 전원 상태 확인을 뜻하지 않는다. 실제 서버 연결 상태는 [온프레미스 진행 기록](../../docs/ai-dlc/platform-onprem.md)을 따른다.
 
 ## 운영자가 환경 등록
 

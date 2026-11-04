@@ -307,7 +307,7 @@ def create_app(settings=None, engine=None, *, dashboard=None):
         for cloud, label, runtime in (
             ("aws", "AWS", "ecs"),
             ("gcp", "GCP", "cloud_run"),
-            ("onprem", "온프레미스", "unconfigured"),
+            ("onprem", "온프레미스", "k3s"),
         ):
             try:
                 sandbox_target(settings, cloud)
