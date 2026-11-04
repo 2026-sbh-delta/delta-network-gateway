@@ -2,6 +2,8 @@
 
 ## 현재 상태
 
+- 플랫폼 서브넷 분리(2026-11-04): 실제 AWS 변경 승인 후 전용 서브넷과 AI/SAST/DAST 실행 기반을 준비 중이다. 기존 VM·데이터·로그 수신 주소를 보존하며 단계적으로 이전한다. 아직 Apply/이전 완료가 아니다. [설계·진행 기록](ai-dlc/platform-subnets.md)
+
 - 기준일: 2026-11-04 (Asia/Seoul)
 - 플랫폼 발표 화면(2026-11-04): 왼쪽 사이드바·모바일 서랍과 서비스 개요/빌드·검사/이전 계획/모니터링 화면을 구현했다. 로그인은 유지하고 화면 틀과 분리했다. 로컬 검증과 화면 캡처를 확인했으며 PR 검토 전이다. [설계·검증·미리보기](ai-dlc/platform-presentation.md)
 - 플랫폼 중앙 로그(2026-11-04): [PR #34](https://github.com/2026-sbh-delta/delta-network-gateway/pull/34)를 전체 CI 통과 후 main에 병합했다. AWS CloudWatch Logs Destination/Kinesis/Lambda와 GCP Cloud Logging Sink/PubSub/WIF 수집기를 플랫폼 계정(616723161368, 서울)에 별도 배포했고 양쪽 실제 수신·최종 Plan No changes를 확인했다. 기존 네트워크 계정 수집기는 유지한다. AWS 팀원 로그 그룹의 구독 추가와 플랫폼 웹 조회 연결은 별도다. [팀원 연결 안내](../platform/deploy/logging/README.md) · [진행·검증 기록](ai-dlc/platform-central-logging.md)
