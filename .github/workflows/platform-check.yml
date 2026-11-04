@@ -70,6 +70,11 @@ jobs:
         run: uv run --project services/delta-dast --python 3.12 --frozen --with pytest --with pytest-asyncio --with httpx python -m pytest -q services/delta-dast/tests/test_platform_api.py services/delta-dast/tests/test_cloud_run.py services/delta-dast/tests/test_onprem.py services/delta-dast/tests/test_sarif_adapter.py services/delta-dast/tests/test_llm_runtime.py
       - name: On-premise telemetry boundaries
         run: python3 platform/deploy/onprem/verify-observability.py
+      - name: Scanner transfer boundaries
+        run: |
+          uv run --project platform/deploy python -m unittest discover -s platform/deploy/scanners/tests -v
+          uv run --project platform/backend ruff check --config platform/backend/pyproject.toml platform/deploy/scanners
+          uv run --project platform/backend ruff format --check --config platform/backend/pyproject.toml platform/deploy/scanners
       - name: Platform AI deployment boundaries
         run: |
           uv run --project platform/deploy python -m unittest discover -s platform/deploy/ai/tests -v
@@ -119,7 +124,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        root: [platform/deploy/terraform, platform/deploy/identity, platform/deploy/builds, platform/deploy/sandbox, platform/deploy/jenkins/identity, platform/deploy/sast/network, platform/deploy/observability/identity, platform/deploy/sandbox-gcp, platform/deploy/logging, platform/deploy/ai]
+        root: [platform/deploy/terraform, platform/deploy/identity, platform/deploy/builds, platform/deploy/sandbox, platform/deploy/jenkins/identity, platform/deploy/sast/network, platform/deploy/observability/identity, platform/deploy/sandbox-gcp, platform/deploy/logging, platform/deploy/ai, platform/deploy/scanners]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:

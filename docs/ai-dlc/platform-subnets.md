@@ -42,3 +42,6 @@
 - 2026-11-04: 플랫폼 Terraform validate 및 mock test 5개 통과. 실제 저장 Plan은 네트워크 25개 추가, 기존 리소스 변경/삭제 0개. 아직 Apply 전이다.
 - 팀원 AI Terraform state의 존재는 읽기 전용으로 확인했다. 이후 사용자는 팀원 쪽과 독립적으로 우리 플랫폼 Terraform을 관리하고 팀원 S3 버킷을 변경하지 말라고 명확히 지시했다. 팀원 서버·state의 가져오기/이전/갱신은 하지 않는다. `platform/deploy/ai/`에는 별도 `delta-platform-ai` 자원과 플랫폼 전용 버킷의 새 `platform/ai.tfstate`를 사용한다.
 - 2026-11-04: 독립 AI Terraform/배포 도구 구현. `terraform validate`, `terraform test` 3개, Python 배포 경계 unittest 3개, ruff check/format 통과. 팀원 AI 서버·IAM·ECR·SSM·S3/state를 재사용하지 않는다. 신규 AI의 실제 Plan/Apply/모델 호출은 아직 미실행이다.
+- PR #38 전체 CI 통과 후 main `5f3236c`에 병합. GitHub Plan `41848865019`의 커밋/SHA256·25개 추가만 포함됨을 확인했다. Apply `41849333581`은 먼저 실행 중인 플랫폼 Release 때문에 대기 중이다.
+- Jenkins 전용 subnet 이동과 자격 증명 보존 도구, 플랫폼 전용 검사 VM/기록 복사 도구를 후속 브랜치에서 구현했다. 원본 공용 도구 VM과 팀원 리소스는 보존한다. 모델/GCP 인증 호환을 위해 기존 도구 instance profile을 참조하며 해당 IAM 자원은 수정하지 않는다.
+- 후속 로컬 검증: 플랫폼 Terraform mock 6개, 검사기 Terraform mock 2개, Jenkins Python 6개, 아카이브 경계 Python 2개 통과. 후속 Plan/Apply/이전은 아직 실행 전이다.
