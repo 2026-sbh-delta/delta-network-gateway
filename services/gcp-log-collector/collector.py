@@ -149,7 +149,7 @@ def runtime():
     session = AuthorizedSession(credentials, refresh_timeout=5, max_refresh_attempts=1)
     pubsub = PubSub(session, os.environ["PUBSUB_SUBSCRIPTION"])
     logs = boto3.client("logs", config=Config(connect_timeout=3, read_timeout=5, retries={"max_attempts": 2, "mode": "standard"}))
-    return pubsub, CloudWatchWriter(logs, os.environ["DESTINATION_LOG_GROUP"], "gcp-network-security"), session
+    return pubsub, CloudWatchWriter(logs, os.environ["DESTINATION_LOG_GROUP"], os.environ.get("DESTINATION_LOG_STREAM", "gcp-network-security")), session
 
 
 def handler(event, context):

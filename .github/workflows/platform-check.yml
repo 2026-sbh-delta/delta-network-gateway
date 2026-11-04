@@ -2,10 +2,10 @@ name: Platform checks
 
 on:
   pull_request:
-    paths: ['platform/**', 'services/delta-staging/**', 'services/delta-dast/**', 'services/delta-ai/**', '.github/workflows/platform-*.yml']
+    paths: ['platform/**', 'services/delta-staging/**', 'services/delta-dast/**', 'services/delta-ai/**', 'services/gcp-log-collector/**', '.github/workflows/platform-*.yml']
   push:
     branches: [main, feat/platform]
-    paths: ['platform/**', 'services/delta-staging/**', 'services/delta-dast/**', 'services/delta-ai/**', '.github/workflows/platform-*.yml']
+    paths: ['platform/**', 'services/delta-staging/**', 'services/delta-dast/**', 'services/delta-ai/**', 'services/gcp-log-collector/**', '.github/workflows/platform-*.yml']
   workflow_call:
   workflow_dispatch:
 
@@ -70,6 +70,14 @@ jobs:
         run: uv run --project services/delta-dast --python 3.12 --frozen --with pytest --with pytest-asyncio --with httpx python -m pytest -q services/delta-dast/tests/test_platform_api.py services/delta-dast/tests/test_cloud_run.py services/delta-dast/tests/test_onprem.py services/delta-dast/tests/test_sarif_adapter.py services/delta-dast/tests/test_llm_runtime.py
       - name: On-premise telemetry boundaries
         run: python3 platform/deploy/onprem/verify-observability.py
+      - name: Central logging contracts
+        env:
+          PYTHONPATH: services/gcp-log-collector:platform/deploy/logging
+        run: |
+          python3 -m unittest discover -s platform/deploy/logging/tests -v
+          uv run --project platform/backend python -m unittest discover -s services/gcp-log-collector/tests -v
+          uv run --project platform/backend ruff check --config platform/backend/pyproject.toml platform/deploy/logging
+          uv run --project platform/backend ruff format --check --config platform/backend/pyproject.toml platform/deploy/logging
       - name: Platform to team DAST integration
         working-directory: platform/backend
         run: uv run --with-editable ../../services/delta-dast pytest -q tests/integration_dast.py
@@ -106,7 +114,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        root: [platform/deploy/terraform, platform/deploy/identity, platform/deploy/builds, platform/deploy/sandbox, platform/deploy/jenkins/identity, platform/deploy/sast/network, platform/deploy/observability/identity, platform/deploy/sandbox-gcp]
+        root: [platform/deploy/terraform, platform/deploy/identity, platform/deploy/builds, platform/deploy/sandbox, platform/deploy/jenkins/identity, platform/deploy/sast/network, platform/deploy/observability/identity, platform/deploy/sandbox-gcp, platform/deploy/logging]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
