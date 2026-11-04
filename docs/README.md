@@ -3,6 +3,7 @@
 ## 현재 상태
 
 - 기준일: 2026-11-04 (Asia/Seoul)
+- 플랫폼 발표 화면(2026-11-04): 왼쪽 사이드바·모바일 서랍과 서비스 개요/빌드·검사/이전 계획/모니터링 화면을 구현했다. 로그인은 유지하고 화면 틀과 분리했다. 로컬 검증과 화면 캡처를 확인했으며 PR 검토 전이다. [설계·검증·미리보기](ai-dlc/platform-presentation.md)
 - 온프레미스 연결(2026-11-04): [PR #32](https://github.com/2026-sbh-delta/delta-network-gateway/pull/32)를 전체 CI 통과 후 main에 병합했다. k3s 실행기·팀 DAST 등록·OTel 호스트 관측/화면을 추가하고 실제 VM의 동일 이미지·HTTP·권한·통신 차단·정리와 CPU/메모리/디스크 수집을 확인했다. 기존 앱·DB는 보존했고 Collector 서비스는 중지 상태다. 팀에서 VPN/TGW 연결 중이므로 AWS 플랫폼 활성화·중앙 관측 전송·실제 DAST 공격 검사는 후속이다. [진행·검증 기록](ai-dlc/platform-onprem.md)
 - GCP 샌드박스(2026-11-04): [PR #29](https://github.com/2026-sbh-delta/delta-network-gateway/pull/29) 병합·[Release 41814681634](https://github.com/2026-sbh-delta/delta-network-gateway/actions/runs/41814681634) 완료. AWS ECS/GCP Cloud Run 선택과 DAST 연결을 배포했다. 실제 WIF·동일 digest·인증 HTTP·익명403·삭제·공개 웹 결과를 확인했고 기존 로그인·서비스2개를 보존했다. 후보0건은 DAST 미실행으로 표시한다. 온프레미스·최종 운영 VM 검증은 후속이다. [검증·한계](ai-dlc/platform-gcp-sandbox.md)
 - GCP 중앙 네트워크(2026-11-04): 현재 사용자 요청으로 GCP `inspection_mode=disabled` 적용 완료. 검사 Endpoint1개와 연결2개를 제거했고 API404/네 BGP UP, 두 포트 양방향 HTTP200, 일반 방화벽 로그99건의 AWS 중앙 일치와 최종 실제 Plan No changes를 확인했다. AWS ANF도 disabled다. VPC/NCC/VPN/VM/NLB와 기본 허용/거부, 중앙 로그 수집은 유지한다. 초기 enabled의 실제 L7 탐지/장애 검증 기록은 보존했고 게시 전 Terraform mock61개/Python36개 통과. 재개용 공통 AWS/GCP 자동화는 후속이며 구현/테스트/운영 문서는 분할 커밋해 [PR #27](https://github.com/2026-sbh-delta/delta-network-gateway/pull/27)에서 관리한다. 최종 병합 상태는 해당 PR을 따른다. [실제 결과와 검증 한계](ai-dlc/gcp-central-network.md)
