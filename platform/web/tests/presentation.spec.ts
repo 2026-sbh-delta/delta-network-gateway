@@ -139,9 +139,11 @@ test("단계별 화면은 서비스를 보존하고 새로고침·뒤로가기�
   ).toBeVisible();
   await page.getByRole("button", { name: "메뉴 열기" }).click();
   await page.getByRole("button", { name: "모니터링", exact: true }).click();
-  await expect(page.getByLabel("서비스 선택", { exact: true })).toHaveValue(
-    "presentation-payments",
-  );
+  await expect(
+    page.getByRole("link", { name: "결제 서비스", exact: true }),
+  ).toBeVisible();
+  await expect(page).toHaveURL(/#\/monitoring\/presentation-payments$/);
+  await expect(page.locator("main").getByRole("combobox")).toHaveCount(0);
   await expect(
     page.getByText("이 서비스에 연결된 환경이 없습니다."),
   ).toBeVisible();

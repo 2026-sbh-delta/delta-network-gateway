@@ -5,6 +5,7 @@
 - 플랫폼 서브넷 분리(2026-11-04): 실제 AWS 변경 승인 후 전용 서브넷과 AI/SAST/DAST 실행 기반을 준비 중이다. 기존 VM·데이터·로그 수신 주소를 보존하며 단계적으로 이전한다. 아직 Apply/이전 완료가 아니다. [설계·진행 기록](ai-dlc/platform-subnets.md)
 
 - 기준일: 2026-11-04 (Asia/Seoul)
+- 플랫폼 프로젝트 대시보드(2026-11-04): 사용자 요청으로 중복 프로젝트 선택을 제거하고 환경 탭·기간 버튼·지표/실제 추이·서버/로그/요청 경로 중심 화면을 구현했다. 환경 미연결 안내와 재조회를 보완했으며 전체 검사·운영 반영은 진행 중이다. [설계·검증](ai-dlc/platform-presentation.md)
 - 플랫폼 발표 화면(2026-11-04): 서비스 개요/빌드·검사/이전 계획/모니터링 화면 개편 PR #31은 병합됐다. 후속 요청으로 데스크톱·모바일 모두 메뉴 버튼으로 여는 왼쪽 서랍을 구현하고 로컬 검증·화면 캡처를 확인했다. 로그인은 유지하며 후속 변경은 아직 병합·배포하지 않았다. [설계·검증·미리보기](ai-dlc/platform-presentation.md)
 - 플랫폼 중앙 로그(2026-11-04): [PR #34](https://github.com/2026-sbh-delta/delta-network-gateway/pull/34)를 전체 CI 통과 후 main에 병합했다. AWS CloudWatch Logs Destination/Kinesis/Lambda와 GCP Cloud Logging Sink/PubSub/WIF 수집기를 플랫폼 계정(616723161368, 서울)에 별도 배포했고 양쪽 실제 수신·최종 Plan No changes를 확인했다. 기존 네트워크 계정 수집기는 유지한다. AWS 팀원 로그 그룹의 구독 추가와 플랫폼 웹 조회 연결은 별도다. [팀원 연결 안내](../platform/deploy/logging/README.md) · [진행·검증 기록](ai-dlc/platform-central-logging.md)
 - 온프레미스 연결(2026-11-04): [PR #32](https://github.com/2026-sbh-delta/delta-network-gateway/pull/32)를 전체 CI 통과 후 main에 병합했다. k3s 실행기·팀 DAST 등록·OTel 호스트 관측/화면을 추가하고 실제 VM의 동일 이미지·HTTP·권한·통신 차단·정리와 CPU/메모리/디스크 수집을 확인했다. 기존 앱·DB는 보존했고 Collector 서비스는 중지 상태다. 팀에서 VPN/TGW 연결 중이므로 AWS 플랫폼 활성화·중앙 관측 전송·실제 DAST 공격 검사는 후속이다. [진행·검증 기록](ai-dlc/platform-onprem.md)
