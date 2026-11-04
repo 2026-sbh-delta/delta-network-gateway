@@ -3,6 +3,7 @@
 개발자용 플랫폼의 웹·API·Worker를 관리한다. 현재 운영 경로는 **고정 로그인 → 공개 GitHub 등록 → 소스 확인 → Jenkins 이미지 빌드 → 대상 환경 실행 검사·SAST/DAST → 결과·로그 조회**다. [Jenkins AWS 운영 기록](../docs/ai-dlc/platform-jenkins-aws.md)에서 배포와 실제 기능 검증 상태를 확인한다. 빌드 성공은 실행 검사나 배포 성공을 뜻하지 않는다.
 
 - [구현 범위·검증 기록](../docs/ai-dlc/platform-u1.md)
+- [발표용 고객 서비스: Delta Notes 등록값·시연 순서](../docs/ai-dlc/platform-sample-service.md)
 - [OTel 대시보드·앱/DB 이전 진행](../docs/ai-dlc/platform-continuity.md) · [관측 연결](observability/README.md) · [세션 유지 예제](examples/session-app/README.md) · [이전 설명 HTML](docs/migration.ko.html)
 - [전체 방향과 후속 단위](../docs/ai-dlc/platform.md) · [한국어 구성 설명](docs/overview.ko.html)
 - AWS 배포 완료: https://d3udcz0zch0on.cloudfront.net · [실제 검증](../docs/ai-dlc/platform-aws.md). GitHub 워크플로는 [PR #7](https://github.com/2026-sbh-delta/delta-network-gateway/pull/7)에서 CI 성공 후 병합됐다. [OIDC 역할 생성과 변수 입력](deploy/GITHUB.md)을 완료했으며, 새 워크플로도 PR #8에서 main에 반영했고 GitHub OIDC Plan·Release 및 배포 후 로그인·Worker 작업까지 검증했다.
