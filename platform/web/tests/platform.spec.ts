@@ -540,3 +540,36 @@ for (const mismatch of [false, true]) {
     },
   );
 }
+
+test("등록한 프로젝트를 삭제하면 실제 저장소와 새로고침한 목록에서 사라진다", async ({
+  page,
+}) => {
+  await login(page);
+  const name = "삭제 검증 프로젝트";
+  await register(page, name);
+  await page
+    .getByRole("button", { name: "← 서비스 목록", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: `${name} 프로젝트 삭제`, exact: true })
+    .click();
+  const modal = page.getByRole("dialog", { name: "프로젝트를 삭제할까요?" });
+  await modal.getByLabel("확인을 위해 프로젝트 이름을 입력하세요").fill(name);
+  const deleted = page.waitForResponse(
+    (response) =>
+      response.url().endsWith("/delete") &&
+      response.request().method() === "POST",
+  );
+  await modal
+    .getByRole("button", { name: "프로젝트 삭제", exact: true })
+    .click();
+  expect((await deleted).status()).toBe(204);
+  await expect(modal).toHaveCount(0);
+  await page.reload();
+  await expect(
+    page.getByRole("heading", { name: "내 서비스", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: `${name} 프로젝트 삭제`, exact: true }),
+  ).toHaveCount(0);
+});

@@ -28,6 +28,7 @@ from delta_platform.core.errors import Problem
 from delta_platform.core.inputs import (
     BuildInput,
     DastCheckInput,
+    DeleteServiceInput,
     EmptyInput,
     ImageCheckInput,
     LoginInput,
@@ -187,6 +188,11 @@ def create_app(settings=None, engine=None, *, dashboard=None):
     @protected.get("/services/{service_id}")
     def service_detail(service_id: UUID):
         return store.service(service_id)
+
+    @protected.post("/services/{service_id}/delete", status_code=204)
+    def delete_service(service_id: UUID, body: DeleteServiceInput):
+        store.delete_service(service_id, body.confirmation_name)
+        return Response(status_code=204)
 
     @protected.get("/services/{service_id}/environments")
     def service_environments(service_id: UUID):

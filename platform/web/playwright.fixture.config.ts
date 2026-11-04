@@ -9,6 +9,7 @@ export default defineConfig({
     "observability.spec.ts",
     "presentation.spec.ts",
     "release.spec.ts",
+    "project-delete.spec.ts",
   ],
   fullyParallel: false,
   workers: 1,
