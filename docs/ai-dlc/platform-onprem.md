@@ -53,6 +53,7 @@ VM은 CPU·메모리·루트 디스크 사용률만 추가한다.60초 수집, �
 - Python3.12로 CI와 같은 팀 DAST 계약5개 파일 실행:37 passed. 플랫폼↔실제 팀 DAST API 통합 테스트도1 passed.
 - `python3 -m unittest discover -s platform/deploy/tests -v`:35 passed. 온프레미스 권한·출발지·자원 제한3개 포함.
 - Ruff·웹 Prettier·셸 문법·`git diff --check` 통과. 새 DAST·배포 테스트와 실제 Collector 경계 검증을 GitHub CI에 추가했다.
+- 최초 원격 CI는 임시 Collector 시작에서 실패했다. Linux 파일 소유자와 cap-drop 컨테이너 UID가 달라 읽기 권한이 거부되는 것을 재현했고, 실행 UID/GID를 파일 소유자에 맞춰 같은 검증이 통과함을 확인했다. 파일0600·임시 디렉터리0700·cap-drop은 유지하며 실패한 컨테이너는 진단 후 삭제한다.
 
 ## 다음 작업과 운영
 

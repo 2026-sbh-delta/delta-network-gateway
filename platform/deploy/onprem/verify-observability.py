@@ -1,6 +1,7 @@
 """Validate real Collector configs and mTLS boundaries locally; no cloud writes."""
 
 import json
+import os
 import ssl
 import subprocess
 import tempfile
@@ -82,7 +83,7 @@ def certs(path):
             "-out",
             f"{leaf}.pem",
         )
-    # Only temporary test material; run the validator as root in its restricted container.
+    # Only temporary test material, readable by the caller and the matching container UID.
     for file in path.iterdir():
         file.chmod(0o600)
 
@@ -121,9 +122,8 @@ def main():
         base = [
             "docker",
             "run",
-            "--rm",
             "--user",
-            "0:0",
+            f"{os.getuid()}:{os.getgid()}",
             "--read-only",
             "--cap-drop=ALL",
             "--security-opt=no-new-privileges",
@@ -145,7 +145,7 @@ def main():
             ["--config=/config/onprem/app.yaml"],
             gateway,
         ):
-            command([*base, "--network=none", IMAGE, "validate", *config])
+            command([*base, "--rm", "--network=none", IMAGE, "validate", *config])
         print("Collector configs: 3 validated")
         container = command(
             [
