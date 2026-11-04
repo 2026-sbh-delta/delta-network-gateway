@@ -1,0 +1,9 @@
+# Synthetic inputs for mock tests. Replace after read-only preflight.
+project_id = "term2-delta"
+project_number = "123456789012"
+subnets = { central = "10.31.0.0/24", workload = "10.30.1.0/24" }
+aws_cidrs = ["10.10.0.0/16", "10.20.0.0/16"]
+internet_source_cidrs = ["192.0.2.1/32"]
+server_image = "projects/ubuntu-os-cloud/global/images/ubuntu-2404-noble-amd64-v20261024"
+aws_collector_role_arn = "arn:aws:iam::111122223333:role/delta-lab-gcp-log-collector"
+aws_vpn_tunnels = {}
