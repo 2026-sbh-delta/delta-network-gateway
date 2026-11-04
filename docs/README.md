@@ -1,5 +1,7 @@
 # Delta network gateway
 
+2026-11-05: [온프레미스 FE·BE 구현·실검증](ai-dlc/platform-onprem-release.md). 별도 앱·DB 후보와 샌드박스 허용/차단·복원을 확인했다. 중앙 관측·검사 API·플랫폼 릴리스는 연결 대기다.
+
 ## 현재 상태
 
 - 서랍 드롭다운(2026-11-05): 사용자 요청으로 펼친 서비스 목록을 서랍의 남색/파란 테마에 맞췄다. 빌드·fixture 검사 11개와 밝은/어두운 모드·키보드·모바일 표시를 확인했다. PR #43 검사 11개 통과·병합 후 [Release 41859205247](https://github.com/2026-sbh-delta/delta-network-gateway/actions/runs/41859205247)를 완료했다. 운영의 펼친 목록 색상·서비스 선택·기존 데이터 보존을 확인했다. [검증·미리보기](ai-dlc/platform-presentation.md)

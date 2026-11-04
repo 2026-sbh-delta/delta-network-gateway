@@ -1,0 +1,21 @@
+schema_version: 1
+provider: onprem
+node_name: delta-onprem
+architecture: amd64
+private_ip: 10.40.0.10
+namespaces:
+  sandbox: delta-platform-sandbox
+  runtime: delta-notes
+build:
+  provider: jenkins
+  frontend_context: frontend
+  backend_context: backend
+  same_commit_required: true
+capabilities:
+  network_policy: supported
+  namespace_rbac: supported
+  managed_threat_detection: unsupported
+  multi_node_ha: unsupported
+observability:
+  host_interval_seconds: 60
+  delivery: requires_registration_and_verification

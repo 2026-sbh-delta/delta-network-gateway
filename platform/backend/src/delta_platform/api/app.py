@@ -31,6 +31,7 @@ from delta_platform.core.inputs import (
     EmptyInput,
     ImageCheckInput,
     LoginInput,
+    SandboxCheckInput,
     ServiceInput,
     request_key,
 )
@@ -326,6 +327,7 @@ def create_app(settings=None, engine=None, *, dashboard=None):
             UUID(body.build_id),
             request_key(request.headers.get("Idempotency-Key")),
             sandbox_target(settings, body.execution_cloud),
+            backend_build_id=UUID(body.backend_build_id) if body.backend_build_id else None,
             security_check_id=UUID(body.security_check_id),
             dast_target=dast_target(settings),
         )
@@ -351,12 +353,13 @@ def create_app(settings=None, engine=None, *, dashboard=None):
         return store.cancel_sandbox(run_id, "dast_check")
 
     @protected.post("/services/{service_id}/sandbox-checks")
-    def sandbox_check(service_id: UUID, body: ImageCheckInput, request: Request):
+    def sandbox_check(service_id: UUID, body: SandboxCheckInput, request: Request):
         result, created = store.enqueue_sandbox(
             service_id,
             UUID(body.build_id),
             request_key(request.headers.get("Idempotency-Key")),
             sandbox_target(settings, body.execution_cloud),
+            backend_build_id=UUID(body.backend_build_id) if body.backend_build_id else None,
         )
         return JSONResponse(jsonable_encoder(result), status_code=202 if created else 200)
 

@@ -1,0 +1,139 @@
+# 전용 샌드박스 권한과 자원 한도
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: delta-platform-sandbox
+  labels:
+    app.kubernetes.io/managed-by: delta-platform
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: v1.36
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: runtime
+  namespace: delta-platform-sandbox
+  labels:
+    app.kubernetes.io/managed-by: delta-platform
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: controller
+  namespace: delta-platform-sandbox
+  labels:
+    app.kubernetes.io/managed-by: delta-platform
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: scanner
+  namespace: delta-platform-sandbox
+  labels:
+    app.kubernetes.io/managed-by: delta-platform
+automountServiceAccountToken: false
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: controller
+  namespace: delta-platform-sandbox
+  labels:
+    app.kubernetes.io/managed-by: delta-platform
+rules:
+- apiGroups:
+  - ''
+  resources:
+  - pods
+  - secrets
+  verbs:
+  - get
+  - create
+  - delete
+- apiGroups:
+  - ''
+  resources:
+  - services
+  resourceNames:
+  - sandbox
+  - sandbox-backend
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: controller
+  namespace: delta-platform-sandbox
+  labels:
+    app.kubernetes.io/managed-by: delta-platform
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: controller
+subjects:
+- kind: ServiceAccount
+  name: controller
+  namespace: delta-platform-sandbox
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: scanner
+  namespace: delta-platform-sandbox
+  labels:
+    app.kubernetes.io/managed-by: delta-platform
+rules:
+- apiGroups:
+  - ''
+  resources:
+  - pods
+  verbs:
+  - get
+- apiGroups:
+  - ''
+  resources:
+  - services
+  resourceNames:
+  - sandbox
+  - sandbox-backend
+  verbs:
+  - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: scanner
+  namespace: delta-platform-sandbox
+  labels:
+    app.kubernetes.io/managed-by: delta-platform
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: scanner
+subjects:
+- kind: ServiceAccount
+  name: scanner
+  namespace: delta-platform-sandbox
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: sandbox
+  namespace: delta-platform-sandbox
+  labels:
+    app.kubernetes.io/managed-by: delta-platform
+spec:
+  hard:
+    pods: '2'
+    secrets: '2'
+    persistentvolumeclaims: '0'
+    services: '2'
+    requests.cpu: 1000m
+    limits.cpu: 1000m
+    requests.memory: 512Mi
+    limits.memory: 512Mi
+    requests.ephemeral-storage: 512Mi
+    limits.ephemeral-storage: 512Mi

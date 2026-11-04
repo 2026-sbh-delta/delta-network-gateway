@@ -1,0 +1,152 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+  namespace: delta-notes
+  labels:
+    app.kubernetes.io/managed-by: delta-platform
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress: []
+  egress: []
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: frontend-to-backend-egress
+  namespace: delta-notes
+  labels:
+    app.kubernetes.io/managed-by: delta-platform
+spec:
+  podSelector:
+    matchLabels:
+      component: frontend
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          component: backend
+    ports:
+    - protocol: TCP
+      port: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: frontend-to-backend-ingress
+  namespace: delta-notes
+  labels:
+    app.kubernetes.io/managed-by: delta-platform
+spec:
+  podSelector:
+    matchLabels:
+      component: backend
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          component: frontend
+    ports:
+    - protocol: TCP
+      port: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: backend-to-database-egress
+  namespace: delta-notes
+  labels:
+    app.kubernetes.io/managed-by: delta-platform
+spec:
+  podSelector:
+    matchLabels:
+      component: backend
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          component: database
+    ports:
+    - protocol: TCP
+      port: 5432
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: backend-to-database-ingress
+  namespace: delta-notes
+  labels:
+    app.kubernetes.io/managed-by: delta-platform
+spec:
+  podSelector:
+    matchLabels:
+      component: database
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          component: backend
+    ports:
+    - protocol: TCP
+      port: 5432
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: app-dns
+  namespace: delta-notes
+  labels:
+    app.kubernetes.io/managed-by: delta-platform
+spec:
+  podSelector:
+    matchLabels:
+      app: delta-notes
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: frontend-entry
+  namespace: delta-notes
+  labels:
+    app.kubernetes.io/managed-by: delta-platform
+spec:
+  podSelector:
+    matchLabels:
+      component: frontend
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - ipBlock:
+        cidr: 10.80.1.70/32
+    - ipBlock:
+        cidr: 10.90.10.83/32
+    ports:
+    - protocol: TCP
+      port: 3000
