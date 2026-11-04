@@ -67,7 +67,9 @@ jobs:
           cd ../../..
           docker run --rm -e AWS_REGION -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -e AWS_EC2_METADATA_DISABLED -e DELTA_PROJECT_ID -e DELTA_SERVICE_ID -e DELTA_ENVIRONMENT_ID -v "$PWD/platform/observability/collector.yaml:/config.yaml:ro" otel/opentelemetry-collector-contrib:0.164.0@sha256:340c9ca6a36617084c6661bdc4f0fe92b7cda5a805d61673ec8db375fddc522b validate --config=/config.yaml
       - name: DAST platform contract
-        run: uv run --project services/delta-dast --python 3.12 --frozen --with pytest --with pytest-asyncio --with httpx python -m pytest -q services/delta-dast/tests/test_platform_api.py services/delta-dast/tests/test_sarif_adapter.py services/delta-dast/tests/test_llm_runtime.py
+        run: uv run --project services/delta-dast --python 3.12 --frozen --with pytest --with pytest-asyncio --with httpx python -m pytest -q services/delta-dast/tests/test_platform_api.py services/delta-dast/tests/test_cloud_run.py services/delta-dast/tests/test_onprem.py services/delta-dast/tests/test_sarif_adapter.py services/delta-dast/tests/test_llm_runtime.py
+      - name: On-premise telemetry boundaries
+        run: python3 platform/deploy/onprem/verify-observability.py
       - name: Platform to team DAST integration
         working-directory: platform/backend
         run: uv run --with-editable ../../services/delta-dast pytest -q tests/integration_dast.py
@@ -79,8 +81,8 @@ jobs:
       - name: Deployment boundaries
         run: |
           python3 -m unittest discover -s platform/deploy/tests -v
-          uv run --project platform/backend ruff check platform/deploy/scripts platform/deploy/tests platform/deploy/builds platform/deploy/sandbox platform/deploy/jenkins platform/deploy/sast/aws platform/deploy/dast
-          uv run --project platform/backend ruff format --check platform/deploy/scripts platform/deploy/tests platform/deploy/builds platform/deploy/sandbox platform/deploy/jenkins platform/deploy/sast/aws platform/deploy/dast
+          uv run --project platform/backend ruff check platform/deploy/scripts platform/deploy/tests platform/deploy/builds platform/deploy/sandbox platform/deploy/sandbox-gcp platform/deploy/jenkins platform/deploy/sast/aws platform/deploy/dast platform/deploy/onprem
+          uv run --project platform/backend ruff format --check platform/deploy/scripts platform/deploy/tests platform/deploy/builds platform/deploy/sandbox platform/deploy/sandbox-gcp platform/deploy/jenkins platform/deploy/sast/aws platform/deploy/dast platform/deploy/onprem
       - name: Browser
         working-directory: platform/web
         run: |
@@ -104,7 +106,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        root: [platform/deploy/terraform, platform/deploy/identity, platform/deploy/builds, platform/deploy/sandbox, platform/deploy/jenkins/identity, platform/deploy/sast/network, platform/deploy/observability/identity]
+        root: [platform/deploy/terraform, platform/deploy/identity, platform/deploy/builds, platform/deploy/sandbox, platform/deploy/jenkins/identity, platform/deploy/sast/network, platform/deploy/observability/identity, platform/deploy/sandbox-gcp]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:

@@ -62,8 +62,13 @@ class DastInspector:
             "image": source["image"],
             "image_digest": runtime["image_digest"],
             "sast_evidence_sha256": source["sast_evidence_sha256"],
-            "target_url": source["sandbox_target"]["url"],
+            "target_url": runtime.get("url") or source["sandbox_target"]["url"],
         }
+        cloud = source["sandbox_target"].get("cloud", "aws")
+        if cloud in ("gcp", "onprem"):
+            binding.update(execution_cloud=cloud, runtime_resource=runtime["resource"])
+        if cloud == "onprem":
+            binding["runtime_revision"] = runtime["revision"]
         guard()
         progress("dast_evidence", "같은 빌드의 SAST 근거를 확인합니다.")
         try:
@@ -151,8 +156,8 @@ class DastInspector:
                 counts[r["status"]] += 1
                 findings.append({k: r[k] for k in ("finding_id", "status", "evidence_sha256")})
             return {
-                "execution_cloud": "aws",
-                "environment_check": "aws_sandbox_only",
+                "execution_cloud": source["sandbox_target"].get("cloud", "aws"),
+                "environment_check": source["sandbox_target"].get("cloud", "aws") + "_sandbox_only",
                 "dast_check": "not_run" if scan["status"] == "skipped" else "completed",
                 "dast_reason": "no_supported_xss_candidates"
                 if scan["status"] == "skipped"

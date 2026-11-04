@@ -301,13 +301,31 @@ def create_app(settings=None, engine=None, *, dashboard=None):
         store.run(run_id, "security_check")
         return store.run_events(run_id, after_sequence, limit)
 
+    @protected.get("/sandbox-targets")
+    def sandbox_targets():
+        items = []
+        for cloud, label, runtime in (
+            ("aws", "AWS", "ecs"),
+            ("gcp", "GCP", "cloud_run"),
+            ("onprem", "온프레미스", "k3s"),
+        ):
+            try:
+                sandbox_target(settings, cloud)
+                configured = True
+            except Problem:
+                configured = False
+            items.append(
+                {"cloud": cloud, "label": label, "runtime": runtime, "configured": configured}
+            )
+        return {"items": items}
+
     @protected.post("/services/{service_id}/dast-checks")
     def dast_check(service_id: UUID, body: DastCheckInput, request: Request):
         result, created = store.enqueue_sandbox(
             service_id,
             UUID(body.build_id),
             request_key(request.headers.get("Idempotency-Key")),
-            sandbox_target(settings),
+            sandbox_target(settings, body.execution_cloud),
             security_check_id=UUID(body.security_check_id),
             dast_target=dast_target(settings),
         )
@@ -338,7 +356,7 @@ def create_app(settings=None, engine=None, *, dashboard=None):
             service_id,
             UUID(body.build_id),
             request_key(request.headers.get("Idempotency-Key")),
-            sandbox_target(settings),
+            sandbox_target(settings, body.execution_cloud),
         )
         return JSONResponse(jsonable_encoder(result), status_code=202 if created else 200)
 

@@ -137,6 +137,27 @@ async function fixture(page: Page) {
         status: 200,
         json: { items: [service], next_cursor: null },
       });
+    if (path === "/sandbox-targets")
+      return route.fulfill({
+        status: 200,
+        json: {
+          items: [
+            { cloud: "aws", label: "AWS", runtime: "ECS", configured: true },
+            {
+              cloud: "gcp",
+              label: "GCP",
+              runtime: "Cloud Run",
+              configured: false,
+            },
+            {
+              cloud: "onprem",
+              label: "온프레미스",
+              runtime: "미연결",
+              configured: false,
+            },
+          ],
+        },
+      });
     if (path === `/services/${service.id}`)
       return route.fulfill({ status: 200, json: service });
     if (path === `/services/${service.id}/source-checks`)
@@ -213,6 +234,7 @@ test("이전 계획은 고정 빌드·서로 다른 환경으로 만들고 승�
   await page.getByLabel("비밀번호", { exact: true }).fill("test-only");
   await page.getByRole("button", { name: "로그인", exact: true }).click();
   await page.getByRole("button", { name: /이전 계획 대상/ }).click();
+  await page.getByRole("button", { name: "이전 계획", exact: true }).click();
   const panel = page.getByRole("region", { name: "배포·이전 계획" });
   await expect(
     panel.getByText("실제 배포·DB 전환 실행기는 아직 연결되지 않았으며", {

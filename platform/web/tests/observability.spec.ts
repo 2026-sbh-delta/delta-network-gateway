@@ -167,6 +167,11 @@ async function installBoundary(page: Page) {
                 ].concat([
                   environment("env-c", "복제 차단"),
                   environment("env-d", "전환 완료"),
+                  {
+                    ...environment("env-onprem", "온프레미스"),
+                    cloud: "onprem",
+                    region: "onprem-lab",
+                  },
                 ])
               : [environment("env-c", "운영")],
         },
@@ -174,6 +179,33 @@ async function installBoundary(page: Page) {
     const dataMatch = path.match(/^\/services\/(svc-[ab])\/observability$/);
     if (dataMatch) {
       const envId = url.searchParams.get("environment_id") ?? "env-a";
+      if (envId === "env-onprem") {
+        const value = snapshot({
+          ...environment(envId, "온프레미스"),
+          cloud: "onprem",
+          region: "onprem-lab",
+        });
+        return route.fulfill({
+          status: 200,
+          json: {
+            ...value,
+            infra: {
+              status: "no_data",
+              message: "수집 확인 필요",
+              instances: [
+                {
+                  id: "onprem-" + "a".repeat(32),
+                  name: "onprem-test",
+                  state: "reporting",
+                  cpu_percent: metric("ok", 25),
+                  memory_percent: metric("no_data", null),
+                  disk_percent: metric("ok", 38),
+                },
+              ],
+            },
+          },
+        });
+      }
       const degraded = envId === "env-b";
       const migration =
         envId === "env-b"
@@ -241,7 +273,7 @@ test("대시보드에서 환경을 바꾸고 누락·오류·오래된 값을 �
   await page.getByLabel("아이디", { exact: true }).fill("browser-fixture");
   await page.getByLabel("비밀번호", { exact: true }).fill("test-only");
   await page.getByRole("button", { name: "로그인", exact: true }).click();
-  await page.getByRole("button", { name: "대시보드", exact: true }).click();
+  await page.getByRole("button", { name: "모니터링", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "서비스 대시보드" }),
   ).toBeVisible();
@@ -273,6 +305,27 @@ test("대시보드에서 환경을 바꾸고 누락·오류·오래된 값을 �
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
+  await page.getByLabel("환경 선택").selectOption("env-onprem");
+  const vm = page.locator(".obs-instance");
+  await expect(vm).toContainText("수집 중");
+  await expect(vm).toContainText("CPU 25%");
+  await expect(vm).toContainText("디스크 38%");
+  await expect(vm).toContainText("데이터 없음");
+  await expect(vm).not.toContainText("running");
+  await expect(
+    page.getByText(
+      "수신 상태는 Collector의 보고 여부이며 VM 전원 상태와 다릅니다.",
+    ),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await page.screenshot({
+    path: info.outputPath("onprem-mobile.png"),
+    fullPage: true,
+  });
 });
 
 test("DB 이전의 stale·blocked·cleaned 상태와 WAL 바이트를 표시한다", async ({
@@ -283,7 +336,7 @@ test("DB 이전의 stale·blocked·cleaned 상태와 WAL 바이트를 표시한�
   await page.getByLabel("아이디", { exact: true }).fill("browser-fixture");
   await page.getByLabel("비밀번호", { exact: true }).fill("test-only");
   await page.getByRole("button", { name: "로그인", exact: true }).click();
-  await page.getByRole("button", { name: "대시보드", exact: true }).click();
+  await page.getByRole("button", { name: "모니터링", exact: true }).click();
 
   const migration = page.locator(".obs-migration");
   await expect(

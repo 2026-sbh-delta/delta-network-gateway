@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, message, type Page, type Run } from "./api";
+import { api, message, type Page, type Run, type SandboxTarget } from "./api";
 
 const labels: Record<string, string> = {
   REPRODUCED: "취약점 재현",
@@ -21,7 +21,41 @@ export function DastPanel({
   const [error, setError] = useState("");
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [targets, setTargets] = useState<SandboxTarget[]>([]);
+  const [targetsLoaded, setTargetsLoaded] = useState(false);
+  const [executionCloud, setExecutionCloud] =
+    useState<SandboxTarget["cloud"]>("aws");
   const active = run?.status === "queued" || run?.status === "running";
+  const selectedTarget = targets.find(
+    (target) => target.cloud === executionCloud,
+  );
+  const targetLabel = (cloud?: string) => {
+    if (cloud === "aws") return "AWS ECS";
+    if (cloud === "gcp") return "GCP Cloud Run";
+    if (cloud === "onprem") return "온프레미스";
+    return "AWS ECS";
+  };
+  const runCloud = (value: Run) =>
+    value.result?.execution_cloud ?? value.execution_cloud ?? "aws";
+  useEffect(() => {
+    let stopped = false;
+    api<{ items: SandboxTarget[] }>("/sandbox-targets")
+      .then(({ items }) => {
+        if (!stopped) {
+          setTargets(items);
+          setTargetsLoaded(true);
+        }
+      })
+      .catch((e) => {
+        if (!stopped) {
+          setError(message(e));
+          setTargetsLoaded(true);
+        }
+      });
+    return () => {
+      stopped = true;
+    };
+  }, []);
   useEffect(() => {
     const abort = new AbortController();
     api<Page<Run>>(
@@ -48,7 +82,11 @@ export function DastPanel({
       api<Run>(`/dast-checks/${run.id}`, undefined, undefined, abort.signal)
         .then((value) => {
           if (!abort.signal.aborted) {
-            setRun(value);
+            setRun(
+              value.execution_cloud || value.result?.execution_cloud
+                ? value
+                : { ...value, execution_cloud: run.execution_cloud ?? "aws" },
+            );
             setError("");
           }
         })
@@ -62,16 +100,23 @@ export function DastPanel({
     };
   }, [active, run?.id]);
   async function start() {
-    if (!build || !security || busy) return;
+    if (!build || !security || busy || !selectedTarget?.configured) return;
     setBusy(true);
     setError("");
     try {
+      const response = await api<Run>(
+        `/services/${serviceId}/dast-checks`,
+        {
+          build_id: build.id,
+          security_check_id: security.id,
+          execution_cloud: executionCloud,
+        },
+        crypto.randomUUID(),
+      );
       setRun(
-        await api<Run>(
-          `/services/${serviceId}/dast-checks`,
-          { build_id: build.id, security_check_id: security.id },
-          crypto.randomUUID(),
-        ),
+        response.execution_cloud || response.result?.execution_cloud
+          ? response
+          : { ...response, execution_cloud: executionCloud },
       );
     } catch (e) {
       setError(message(e));
@@ -112,7 +157,14 @@ export function DastPanel({
         <button
           className="primary"
           onClick={start}
-          disabled={!loaded || !ready || active || busy}
+          disabled={
+            !loaded ||
+            !targetsLoaded ||
+            !selectedTarget?.configured ||
+            !ready ||
+            active ||
+            busy
+          }
         >
           이 빌드의 DAST 검사
         </button>
@@ -121,10 +173,52 @@ export function DastPanel({
         검사한 XSS 후보의 결과입니다. 미재현이나 검사 대상 없음은 전체 보안
         통과가 아닙니다. AI 수정안·승인·운영 배포는 아직 연결하지 않았습니다.
       </p>
+      <label>
+        실행 환경{" "}
+        <select
+          aria-label="DAST 실행 환경"
+          value={executionCloud}
+          disabled={!targetsLoaded || active || busy}
+          onChange={(event) =>
+            setExecutionCloud(event.target.value as SandboxTarget["cloud"])
+          }
+        >
+          {targets.map((target) => (
+            <option
+              key={target.cloud}
+              value={target.cloud}
+              disabled={!target.configured}
+            >
+              {target.label} · {target.runtime}
+              {target.configured ? "" : " · 미연결"}
+            </option>
+          ))}
+        </select>
+      </label>
+      {selectedTarget && !selectedTarget.configured && (
+        <p className="muted" role="status">
+          {selectedTarget.label} 실행 환경은 아직 연결되지 않아 DAST를 실행할 수
+          없습니다.
+        </p>
+      )}
+      {targets
+        .filter((target) => !target.configured)
+        .map((target) => (
+          <p className="muted" key={`${target.cloud}-unavailable`}>
+            {target.label}: 아직 실행 환경이 연결되지 않아 DAST를 실행할 수
+            없습니다.
+          </p>
+        ))}
       <p className="dast-environment">
-        현재 검사 환경: AWS ECS 샌드박스 · GCP·온프레미스 대상은 연결되지
-        않았으며, 각 환경의 별도 샌드박스 검증이 필요합니다.
+        현재 검사 환경: {targetLabel(executionCloud)} 샌드박스 ·
+        GCP·온프레미스는 연결 상태에 따라 선택할 수 있습니다.
       </p>
+      {executionCloud === "gcp" && selectedTarget?.configured && (
+        <p className="muted">
+          Cloud Run 샌드박스 성공은 최종 VM 네트워크·권한 검증을 인증하지
+          않습니다.
+        </p>
+      )}
       {!ready && (
         <p className="muted">선택한 빌드의 코드 보안 검사를 먼저 완료하세요.</p>
       )}
@@ -167,7 +261,10 @@ export function DastPanel({
                 ? "DAST 완료 · 조치 또는 확인 필요"
                 : "DAST 완료 · 검사한 후보에서 미재현"}
           </strong>
-          <p>샌드박스 앱 종료 확인 · 실행 위치 AWS ECS · 운영 배포 승인 아님</p>
+          <p>
+            샌드박스 앱 종료 확인 · 실행 위치 {targetLabel(runCloud(run))} ·
+            운영 배포 승인 아님
+          </p>
           <p>
             검사한 빌드 <code>{result.build_id?.slice(0, 8)}</code> · 커밋{" "}
             <code>{run.resolved_commit_sha?.slice(0, 12)}</code>

@@ -105,7 +105,11 @@ async def verify(finding: Finding, route: ResolvedRoute, payload_id: str,
             same_origin = f"{parsed.scheme}://{parsed.netloc}" == origin
             if (same_origin and not parsed.query and not parsed.fragment
                     and route.permits(request.method, parsed.path)):
-                response = await playwright_route.fetch(max_redirects=0, timeout=10000)
+                from .cloud_run import authorization
+
+                auth = await asyncio.to_thread(authorization, origin)
+                response = await playwright_route.fetch(max_redirects=0, timeout=10000,
+                                                        headers={**request.headers, **auth})
                 if 300 <= response.status < 400:
                     await playwright_route.abort("blockedbyclient")
                 else:

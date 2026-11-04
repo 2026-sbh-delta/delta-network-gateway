@@ -6,9 +6,9 @@ import time
 from botocore.exceptions import BotoCoreError, ClientError
 
 from delta_platform.adapters.builds import BuildError, build_runner
-from delta_platform.adapters.dast import DastRunner
+from delta_platform.adapters.dast import DastInspector, DastRunner
 from delta_platform.adapters.github import GitHubReader, SourceError
-from delta_platform.adapters.sandbox import SandboxError, SandboxRunner
+from delta_platform.adapters.sandbox import SandboxError, runner_for
 from delta_platform.adapters.security import SecurityRunner
 from delta_platform.config import Settings
 from delta_platform.core.auth import Auth
@@ -51,7 +51,14 @@ def process_one(store, reader, builder=None, sandbox=None, security=None, dast=N
             result = security.execute(claim, store, progress)
         elif claim["kind"] == "dast_check":
             try:
-                dast = dast or DastRunner(Settings())
+                if dast is None:
+                    settings = Settings()
+                    cloud = claim["input_snapshot"]["sandbox_target"].get("cloud", "aws")
+                    dast = (
+                        DastRunner(settings)
+                        if cloud == "aws"
+                        else runner_for(settings, cloud, inspector=DastInspector(settings))
+                    )
             except (SandboxError, Problem):
                 progress(
                     "dast_cleanup_wait",
@@ -60,7 +67,9 @@ def process_one(store, reader, builder=None, sandbox=None, security=None, dast=N
                 raise LeaseLost() from None
             result = dast.execute(claim, store, progress)
         elif claim["kind"] == "sandbox_check":
-            sandbox = sandbox or SandboxRunner(Settings())
+            sandbox = sandbox or runner_for(
+                Settings(), claim["input_snapshot"]["sandbox_target"].get("cloud", "aws")
+            )
             result = sandbox.execute(claim, store, progress)
         else:
             result = reader.inspect(claim["input_snapshot"], claim["resolved_commit_sha"], progress)

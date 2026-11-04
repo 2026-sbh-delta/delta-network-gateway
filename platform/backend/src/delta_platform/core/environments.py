@@ -19,7 +19,7 @@ FIELDS = ("id", "name", "cloud", "region", "version")
 
 class Instance(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    id: str = Field(pattern=r"^(?:i-[0-9a-f]{8,17}|[0-9]{1,24})$")
+    id: str = Field(pattern=r"^(?:i-[0-9a-f]{8,17}|[0-9]{1,24}|onprem-[0-9a-f]{32})$")
     name: str = Field(pattern=r"^[a-zA-Z0-9_-]{1,80}$")
     zone: str = Field(default="", pattern=r"^(?:[a-z]+-[a-z]+[0-9]-[a-z])?$")
 
@@ -47,8 +47,10 @@ class EnvironmentInput(BaseModel):
                 raise ValueError("AWS instance required")
             if self.cloud == "gcp" and (not i.id.isdecimal() or not i.zone):
                 raise ValueError("GCP instance ID and zone required")
-        if self.cloud == "onprem" and (self.instances or self.account_id or self.gcp_project):
-            raise ValueError("On-premise infrastructure metrics are not connected")
+            if self.cloud == "onprem" and (not i.id.startswith("onprem-") or i.zone):
+                raise ValueError("Registered on-premise host ID required")
+        if self.cloud == "onprem" and (self.account_id or self.gcp_project):
+            raise ValueError("On-premise binding cannot contain a cloud account")
         return self
 
 

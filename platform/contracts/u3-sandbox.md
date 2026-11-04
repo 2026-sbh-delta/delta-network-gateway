@@ -1,6 +1,6 @@
 # U3 샌드박스 실행 확인
 
-성공한 빌드의 `repository@sha256:…`를 기존 ECS 실행 라이브러리에 전달한다. 실제 실행 이미지와 ALB 헬스 체크를 확인한 뒤 태스크를 정리한다. 이 결과는 **보안 검사 통과나 운영 배포 승인으로 사용하지 않는다.**
+성공한 빌드의 `repository@sha256:…`를 선택한 환경에서 실행한다. AWS는 ECS·내부 ALB, GCP는 인증된 Cloud Run을 사용하며 실제 이미지와 HTTP 응답을 확인한 뒤 정리한다. 이 결과는 **보안 검사 통과나 운영 배포 승인으로 사용하지 않는다.**
 
 ## HTTP
 
@@ -8,11 +8,13 @@
 
 | 메서드·경로 | 입력 / 결과 |
 | --- | --- |
-| POST `/services/{id}/sandbox-checks` | `{"build_id":"UUID"}`와 `Idempotency-Key`. 신규 202, 같은 요청 재전송 200 |
+| POST `/services/{id}/sandbox-checks` | `{"build_id":"UUID","execution_cloud":"aws 또는 gcp"}`와 `Idempotency-Key`. 신규 202, 같은 요청 재전송 200 |
 | GET `/services/{id}/sandbox-checks` | `limit`, `cursor`로 실행 이력 조회 |
-| GET `/sandbox-checks/{id}` | 상태·고정 커밋·ECS 개정판(`external_id`)·결과·오류 |
+| GET `/sandbox-checks/{id}` | 상태·고정 커밋·실행 자원(`external_id`)·결과·오류 |
 | GET `/sandbox-checks/{id}/events` | `after_sequence`, `limit`으로 진행 기록 조회 |
 | POST `/sandbox-checks/{id}/cancel` | `{}`. 대기 작업은 바로 취소, 실행 중에는 정리를 요청 |
+
+`GET /sandbox-targets`는 cloud/label/runtime/configured 목록을 반환한다. 생략한 `execution_cloud`는 기존 요청과 호환되도록 AWS다. 대상이 다른 요청은 같은 멱등 키로 재사용할 수 없다. 온프레미스는 미구성으로 표시하고 요청을 거절한다.
 
 다른 서비스의 빌드, 실패한 빌드, 다른 내용으로 재사용한 요청 키를 거절한다. 전체 플랫폼에 실행 공간은 1개다. 다른 실행이 진행 중이면 409 `sandbox_busy`를 반환한다. 같은 서비스의 소스 확인·빌드와도 겹치지 않는다.
 
@@ -37,3 +39,11 @@
 API와 Worker 모두 `PLATFORM_SANDBOX_TARGET`에 Terraform `runtime_env` 출력의 JSON 문자열을 받는다. 설정이 없으면 접수를 503으로 거절한다. 실행 도중 대상 설정을 바꿨다면 기존 태스크 정리를 별도로 확인한다. 설정은 클라우드 리소스 식별자이며 Access Key를 담지 않는다.
 
 DB migration `0003`은 작업 종류·중단 요청 필드·전체 샌드박스의 동시 실행 제한을 추가한다. 기존 빌드와 로그인 기록을 보존한다. U2 앱은 `0002`를 요구하므로 U3 이후 단순 이미지 롤백은 불가능하다. 같은 스키마를 이해하는 수정 릴리스를 사용하거나 배포 전 백업을 검증·복원한다. 샌드박스 기록이 있으면 downgrade를 거절한다.
+
+## GCP 실행
+
+`PLATFORM_GCP_SANDBOX_TARGET`은 실행 대상, `PLATFORM_GCP_CREDENTIALS_JSON`은 AWS 역할의 WIF 설정이다. SA 키를 저장하지 않는다. [Terraform 기반과 배포](../deploy/sandbox-gcp/README.md)를 따른다.
+
+실행 전에 run UUID로 결정한 Cloud Run 자원 ID를 저장한다. 이미지는 ECR에서 Artifact Registry로 동일 digest를 복사한다. 결과에 원본 `image`, 목적지 `runtime_image`, 실제 `revision`, `execution_cloud=gcp`, `environment_check=gcp_sandbox_only`를 기록한다. Cloud Run의 인증·고정 revision·격리 설정을 확인하며 IAM 반영 지연은 최대 120초까지 기다린다. 삭제 실패·소유권 불일치 시 작업을 성공 처리하거나 다른 실행에 공간을 넘기지 않는다.
+
+이 검사는 최종 운영 VM의 DB 연결·방화벽·볼륨 동작을 보장하지 않는다. 환경별 결과를 서로 대체하지 않는다.

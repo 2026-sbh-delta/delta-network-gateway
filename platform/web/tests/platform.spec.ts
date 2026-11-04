@@ -10,14 +10,19 @@ for (const mode of ["재현", "없음", "중단"]) {
       page.getByRole("button", { name: "이 커밋 빌드" }),
     ).toBeEnabled({ timeout: 15000 });
     await page.getByRole("button", { name: "이 커밋 빌드" }).click();
+    await page
+      .getByRole("navigation", { name: "빌드와 검사 단계" })
+      .getByRole("button", { name: /보안 검사/ })
+      .click();
     await expect(
       page.getByRole("button", { name: "이 빌드의 코드 검사" }),
     ).toBeEnabled({ timeout: 15000 });
     await page.getByRole("button", { name: "이 빌드의 코드 검사" }).click();
     const panel = page.locator(".dast-panel");
     await expect(panel).toContainText("현재 검사 환경: AWS ECS 샌드박스");
+    await expect(panel.getByLabel("DAST 실행 환경")).toHaveValue("aws");
     await expect(panel).toContainText(
-      "GCP·온프레미스 대상은 연결되지 않았으며",
+      "GCP·온프레미스는 연결 상태에 따라 선택할 수 있습니다.",
     );
     await expect(
       panel.getByRole("button", { name: "이 빌드의 DAST 검사" }),
@@ -37,7 +42,10 @@ for (const mode of ["재현", "없음", "중단"]) {
       await expect(panel).toContainText("실행 위치 AWS ECS");
     }
     await page.reload();
-    await page.getByRole("button", { name: new RegExp(name) }).click();
+    await page
+      .getByRole("navigation", { name: "빌드와 검사 단계" })
+      .getByRole("button", { name: /보안 검사/ })
+      .click();
     await expect(panel).toContainText(expected);
     if (mode !== "중단") {
       await panel.getByText("DAST 검사 근거", { exact: true }).click();
@@ -84,6 +92,7 @@ async function register(page: Page, name: string, dockerfile = "Dockerfile") {
     .getByRole("button", { name: "등록하고 상세 보기", exact: true })
     .click();
   await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "빌드·검사", exact: true }).click();
 }
 
 test("로그인 → 등록 → 실제 DB·Worker 검사 → 새로고침 → 로그아웃", async ({
@@ -110,9 +119,8 @@ test("로그인 → 등록 → 실제 DB·Worker 검사 → 새로고침 → 로
   });
   await page.reload();
   await expect(
-    page.getByRole("button", { name: /검증용 주문 서비스/ }),
+    page.getByRole("heading", { name: "검증용 주문 서비스", exact: true }),
   ).toBeVisible();
-  await page.getByRole("button", { name: /검증용 주문 서비스/ }).click();
   await expect(
     page.getByText("소스 확인 완료", { exact: true }).first(),
   ).toBeVisible();
@@ -181,6 +189,10 @@ test("소스 커밋 빌드 → digest 보존 → 로그를 텍스트로 표시",
   });
   await expect(page.locator(".build-result")).toContainText("@sha256:");
   await page
+    .getByRole("navigation", { name: "빌드와 검사 단계" })
+    .getByRole("button", { name: /실행 확인/ })
+    .click();
+  await page
     .getByRole("button", { name: "이 이미지 실행 확인", exact: true })
     .click();
   await expect(page.getByText("실행 확인 통과", { exact: true })).toBeVisible({
@@ -190,6 +202,10 @@ test("소스 커밋 빌드 → digest 보존 → 로그를 텍스트로 표시",
     "보안 검사 미실행",
   );
   await expect(page.locator(".sandbox-result")).toContainText("@sha256:");
+  await page
+    .getByRole("navigation", { name: "빌드와 검사 단계" })
+    .getByRole("button", { name: /이미지 빌드/ })
+    .click();
   await page.getByRole("button", { name: "빌드 로그 보기" }).click();
   await expect(page.locator(".build-logs")).toContainText("<script>");
   expect(
@@ -202,7 +218,10 @@ test("소스 커밋 빌드 → digest 보존 → 로그를 텍스트로 표시",
     fullPage: true,
   });
   await page.reload();
-  await page.getByRole("button", { name: /빌드 검증 서비스/ }).click();
+  await page
+    .getByRole("navigation", { name: "빌드와 검사 단계" })
+    .getByRole("button", { name: /실행 확인/ })
+    .click();
   await expect(page.locator(".sandbox-result")).toContainText("@sha256:");
   await page.setViewportSize({ width: 390, height: 844 });
   await page.screenshot({
@@ -214,6 +233,189 @@ test("소스 커밋 빌드 → digest 보존 → 로그를 텍스트로 표시",
       () => document.documentElement.scrollWidth <= window.innerWidth,
     ),
   ).toBe(true);
+});
+
+test("GCP 대상 선택은 요청과 결과에 유지되고 기존 AWS 결과는 바뀌지 않는다", async ({
+  page,
+}) => {
+  let postedCloud: string | undefined;
+  let startedRun: Record<string, unknown> | undefined;
+  let postedDastCloud: string | undefined;
+  let startedDast: Record<string, unknown> | undefined;
+  const oldAwsRun = {
+    id: "old-aws-run",
+    service_id: "svc-old-aws",
+    kind: "sandbox_check",
+    external_id: null,
+    status: "succeeded",
+    current_step: null,
+    attempt: 1,
+    resolved_commit_sha: "a".repeat(40),
+    created_at: "2026-11-04T00:00:00Z",
+    result: {
+      runtime_check: "passed",
+      execution_cloud: "aws",
+      runtime: "ecs",
+      image: "example.test/app@sha256:" + "a".repeat(64),
+      build_id: "old-build",
+      container_port: 8080,
+      healthcheck_path: "/health",
+    },
+    error: null,
+  };
+  const oldAwsDastRun = {
+    ...oldAwsRun,
+    id: "old-aws-dast-run",
+    kind: "dast_check",
+    result: {
+      execution_cloud: "aws",
+      runtime: "ecs",
+      dast_check: "not_run",
+      build_id: "old-build",
+      security_check_id: "old-security",
+      scanner_run_id: "old-scanner",
+      dast_evidence_sha256: "b".repeat(64),
+      dast_findings: [],
+      findings_truncated: false,
+      image: "example.test/app@sha256:" + "a".repeat(64),
+    },
+  };
+  await page.route("**/api/v1/sandbox-targets", (route) =>
+    route.fulfill({
+      status: 200,
+      json: {
+        items: [
+          { cloud: "aws", label: "AWS", runtime: "ECS", configured: true },
+          {
+            cloud: "gcp",
+            label: "GCP",
+            runtime: "Cloud Run",
+            configured: true,
+          },
+          {
+            cloud: "onprem",
+            label: "온프레미스",
+            runtime: "미연결",
+            configured: false,
+          },
+        ],
+      },
+    }),
+  );
+  await page.route("**/api/v1/services/*/sandbox-checks", async (route) => {
+    if (route.request().method() === "POST") {
+      const body = route.request().postDataJSON() as {
+        build_id: string;
+        execution_cloud: string;
+      };
+      postedCloud = body.execution_cloud;
+      startedRun = {
+        ...oldAwsRun,
+        id: "new-gcp-run",
+        status: "succeeded",
+        result: {
+          ...oldAwsRun.result,
+          build_id: body.build_id,
+          execution_cloud: body.execution_cloud,
+          runtime: "cloud_run",
+          revision: "rev-17",
+          url: "https://sandbox.example.test",
+        },
+      };
+      return route.fulfill({ status: 201, json: startedRun });
+    }
+    return route.fulfill({
+      status: 200,
+      json: { items: [oldAwsRun], next_cursor: null },
+    });
+  });
+  await page.route("**/api/v1/sandbox-checks/*", async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.endsWith("/events"))
+      return route.fulfill({ status: 200, json: { items: [] } });
+    return route.fulfill({ status: 200, json: startedRun ?? oldAwsRun });
+  });
+  await page.route("**/api/v1/services/*/dast-checks", async (route) => {
+    if (route.request().method() === "POST") {
+      const body = route.request().postDataJSON() as {
+        build_id: string;
+        security_check_id: string;
+        execution_cloud: string;
+      };
+      postedDastCloud = body.execution_cloud;
+      startedDast = {
+        ...oldAwsDastRun,
+        id: "new-gcp-dast-run",
+        status: "succeeded",
+        result: {
+          ...oldAwsDastRun.result,
+          build_id: body.build_id,
+          security_check_id: body.security_check_id,
+          execution_cloud: body.execution_cloud,
+          runtime: "cloud_run",
+        },
+      };
+      return route.fulfill({ status: 201, json: startedDast });
+    }
+    return route.fulfill({
+      status: 200,
+      json: { items: [oldAwsDastRun], next_cursor: null },
+    });
+  });
+  await page.route("**/api/v1/dast-checks/*", (route) =>
+    route.fulfill({ status: 200, json: startedDast ?? oldAwsDastRun }),
+  );
+
+  await login(page);
+  await register(page, "GCP 샌드박스 서비스");
+  await page.getByRole("button", { name: "소스 확인", exact: true }).click();
+  await expect(page.getByRole("button", { name: "이 커밋 빌드" })).toBeEnabled({
+    timeout: 15000,
+  });
+  await page.getByRole("button", { name: "이 커밋 빌드" }).click();
+  await page
+    .getByRole("navigation", { name: "빌드와 검사 단계" })
+    .getByRole("button", { name: /실행 확인/ })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "이 이미지 실행 확인", exact: true }),
+  ).toBeEnabled({ timeout: 15000 });
+  const panel = page.locator(".sandbox-panel");
+  await expect(panel).toContainText("실행 위치: AWS ECS");
+  await panel.getByLabel("샌드박스 실행 환경").selectOption("gcp");
+  await expect(panel).toContainText("실행 위치: AWS ECS");
+  await expect(
+    panel.getByRole("button", { name: "이 이미지 실행 확인", exact: true }),
+  ).toBeEnabled();
+  await expect(
+    panel.getByLabel("샌드박스 실행 환경").locator('option[value="onprem"]'),
+  ).toHaveAttribute("disabled", "");
+  await panel
+    .getByRole("button", { name: "이 이미지 실행 확인", exact: true })
+    .click();
+  await expect.poll(() => postedCloud).toBe("gcp");
+  await expect(panel).toContainText("실행 위치: GCP Cloud Run");
+  await expect(panel.locator(".sandbox-result")).toContainText("GCP Cloud Run");
+  await expect(panel.locator(".sandbox-result")).toContainText("rev-17");
+
+  await page
+    .getByRole("navigation", { name: "빌드와 검사 단계" })
+    .getByRole("button", { name: /보안 검사/ })
+    .click();
+  await page.getByRole("button", { name: "이 빌드의 코드 검사" }).click();
+  const dastPanel = page.locator(".dast-panel");
+  await expect(dastPanel).toContainText("실행 위치 AWS ECS");
+  await dastPanel.getByLabel("DAST 실행 환경").selectOption("gcp");
+  await expect(dastPanel).toContainText("실행 위치 AWS ECS");
+  await expect(
+    dastPanel.getByLabel("DAST 실행 환경").locator('option[value="onprem"]'),
+  ).toHaveAttribute("disabled", "");
+  await expect(
+    dastPanel.getByRole("button", { name: "이 빌드의 DAST 검사" }),
+  ).toBeEnabled({ timeout: 15000 });
+  await dastPanel.getByRole("button", { name: "이 빌드의 DAST 검사" }).click();
+  await expect.poll(() => postedDastCloud).toBe("gcp");
+  await expect(dastPanel).toContainText("실행 위치 GCP Cloud Run");
 });
 
 test("빌드 실패는 이미지 성공으로 표시하지 않는다", async ({ page }) => {
@@ -246,6 +448,10 @@ for (const cancel of [false, true]) {
         page.getByRole("button", { name: "이 커밋 빌드" }),
       ).toBeEnabled({ timeout: 15000 });
       await page.getByRole("button", { name: "이 커밋 빌드" }).click();
+      await page
+        .getByRole("navigation", { name: "빌드와 검사 단계" })
+        .getByRole("button", { name: /실행 확인/ })
+        .click();
       await expect(
         page.getByRole("button", { name: "이 이미지 실행 확인", exact: true }),
       ).toBeEnabled({ timeout: 15000 });
@@ -286,6 +492,10 @@ for (const mismatch of [false, true]) {
         page.getByRole("button", { name: "이 커밋 빌드" }),
       ).toBeEnabled({ timeout: 15000 });
       await page.getByRole("button", { name: "이 커밋 빌드" }).click();
+      await page
+        .getByRole("navigation", { name: "빌드와 검사 단계" })
+        .getByRole("button", { name: /보안 검사/ })
+        .click();
       await expect(
         page.getByRole("button", { name: "이 빌드의 코드 검사" }),
       ).toBeEnabled({ timeout: 15000 });
