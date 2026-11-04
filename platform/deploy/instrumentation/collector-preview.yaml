@@ -1,0 +1,140 @@
+# Verification only. No cloud credentials or persistent telemetry storage.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: delta-otel-preview
+  namespace: delta-notes
+  labels:
+    app.kubernetes.io/managed-by: delta-platform
+data:
+  collector.yaml: |
+    receivers:
+      otlp:
+        protocols:
+          http:
+            endpoint: 0.0.0.0:4318
+            max_request_body_size: 1048576
+    processors:
+      memory_limiter:
+        check_interval: 1s
+        limit_mib: 64
+        spike_limit_mib: 16
+      transform/privacy:
+        error_mode: propagate
+        trace_statements:
+          - context: resource
+            statements:
+              - keep_keys(attributes, ["service.name", "service.version"])
+          - context: span
+            statements:
+              - keep_keys(attributes, ["http.request.method", "http.response.status_code", "http.route"])
+        metric_statements:
+          - context: resource
+            statements:
+              - keep_keys(attributes, ["service.name", "service.version"])
+          - context: datapoint
+            statements:
+              - keep_keys(attributes, ["http.request.method", "http.response.status_code", "http.route"])
+      batch:
+        timeout: 1s
+        send_batch_size: 50
+        send_batch_max_size: 100
+    exporters:
+      debug:
+        verbosity: detailed
+    service:
+      telemetry:
+        logs:
+          level: info
+          encoding: json
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [memory_limiter, transform/privacy, batch]
+          exporters: [debug]
+        metrics:
+          receivers: [otlp]
+          processors: [memory_limiter, transform/privacy, batch]
+          exporters: [debug]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: delta-otel-preview
+  namespace: delta-notes
+  labels:
+    app.kubernetes.io/managed-by: delta-platform
+spec:
+  replicas: 1
+  revisionHistoryLimit: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: delta-otel-preview
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: delta-otel-preview
+    spec:
+      serviceAccountName: runtime
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: collector
+        image: otel/opentelemetry-collector-contrib@sha256:340c9ca6a36617084c6661bdc4f0fe92b7cda5a805d61673ec8db375fddc522b
+        args: [--config=/config/collector.yaml]
+        resources:
+          requests: {cpu: 20m, memory: 64Mi}
+          limits: {cpu: 200m, memory: 128Mi}
+        securityContext:
+          readOnlyRootFilesystem: true
+          allowPrivilegeEscalation: false
+          capabilities: {drop: [ALL]}
+        ports:
+        - {name: otlp, containerPort: 4318}
+        readinessProbe:
+          tcpSocket: {port: otlp}
+          periodSeconds: 3
+        volumeMounts:
+        - {name: config, mountPath: /config, readOnly: true}
+      volumes:
+      - name: config
+        configMap: {name: delta-otel-preview}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: delta-otel-preview
+  namespace: delta-notes
+  labels:
+    app.kubernetes.io/managed-by: delta-platform
+spec:
+  selector:
+    app.kubernetes.io/name: delta-otel-preview
+  ports:
+  - {name: otlp, port: 4318, targetPort: otlp}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: delta-otel-preview
+  namespace: delta-notes
+  labels:
+    app.kubernetes.io/managed-by: delta-platform
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: delta-otel-preview
+  policyTypes: [Ingress, Egress]
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: delta-notes
+    ports:
+    - {protocol: TCP, port: 4318}
+  egress: []

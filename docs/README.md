@@ -1,6 +1,6 @@
 # Delta network gateway
 
-2026-11-05: [온프레미스 FE·BE 구현·실검증](ai-dlc/platform-onprem-release.md). 샌드박스 FE·BE 실행·통신 정책을 준비했다. 샘플 앱은 원복했고 수정 버전 후보는 중지했다. 계측은 플랫폼 배포 시 자동 주입 방식으로 전환 예정이며 중앙 연결·릴리스는 대기다.
+2026-11-05: [플랫폼 자동 계측](ai-dlc/platform-auto-instrumentation.md)을 구현하고 온프레미스의 원본 FE·BE 이미지에서 trace·HTTP 지표 수신을 확인했다. 계측 ON/OFF와 Collector 장애 시 앱 응답도 검증했다. 원본 앱 후보는 실행 중이고 중앙 연결 준비 전까지 계측은 OFF다. 사용자가 플랫폼 브랜치의 커밋·PR 게시를 승인했으며 중앙 릴리스는 미실행이다. [FE·BE 실행기](ai-dlc/platform-onprem-release.md)는 기존 PR #47에서 관리한다.
 
 ## 현재 상태
 
