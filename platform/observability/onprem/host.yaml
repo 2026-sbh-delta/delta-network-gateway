@@ -1,0 +1,64 @@
+# Run as a dedicated VM service (not inside the customer container).
+# Native execution reads /proc and /; a container must mount hostfs read-only.
+receivers:
+  hostmetrics:
+    collection_interval: 60s
+    root_path: ${env:HOST_ROOT}
+    scrapers:
+      cpu:
+        metrics:
+          system.cpu.time:
+            enabled: false
+          system.cpu.logical.count:
+            enabled: false
+          system.cpu.utilization:
+            enabled: true
+      memory:
+        metrics:
+          system.memory.usage:
+            enabled: false
+          system.memory.utilization:
+            enabled: true
+      filesystem:
+        include_mount_points:
+          mount_points: ["/"]
+          match_type: strict
+        metrics:
+          system.filesystem.usage:
+            enabled: false
+          system.filesystem.inodes.usage:
+            enabled: false
+          system.filesystem.utilization:
+            enabled: true
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 64
+    spike_limit_mib: 16
+  batch:
+    timeout: 5s
+    send_batch_size: 64
+    send_batch_max_size: 128
+exporters:
+  otlp_http/host:
+    endpoint: ${env:DELTA_HOST_GATEWAY}
+    tls:
+      ca_file: /etc/delta-otel/server-ca.pem
+      cert_file: /etc/delta-otel/host-client.pem
+      key_file: /etc/delta-otel/host-client-key.pem
+      min_version: "1.2"
+    timeout: 10s
+    retry_on_failure:
+      max_elapsed_time: 30s
+    sending_queue:
+      queue_size: 32
+      num_consumers: 1
+service:
+  telemetry:
+    logs:
+      level: warn
+  pipelines:
+    metrics:
+      receivers: [hostmetrics]
+      processors: [memory_limiter, batch]
+      exporters: [otlp_http/host]

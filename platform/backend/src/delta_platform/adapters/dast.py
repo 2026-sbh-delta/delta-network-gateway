@@ -64,8 +64,11 @@ class DastInspector:
             "sast_evidence_sha256": source["sast_evidence_sha256"],
             "target_url": runtime.get("url") or source["sandbox_target"]["url"],
         }
-        if source["sandbox_target"].get("cloud", "aws") == "gcp":
-            binding.update(execution_cloud="gcp", runtime_resource=runtime["resource"])
+        cloud = source["sandbox_target"].get("cloud", "aws")
+        if cloud in ("gcp", "onprem"):
+            binding.update(execution_cloud=cloud, runtime_resource=runtime["resource"])
+        if cloud == "onprem":
+            binding["runtime_revision"] = runtime["revision"]
         guard()
         progress("dast_evidence", "같은 빌드의 SAST 근거를 확인합니다.")
         try:
