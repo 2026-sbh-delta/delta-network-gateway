@@ -46,3 +46,10 @@ output "jenkins_url" {
   value       = "https://${aws_instance.jenkins["controller"].private_ip}"
   description = "플랫폼과 전용 에이전트에서만 접근하는 사설 HTTPS 주소"
 }
+
+output "service_subnets" {
+  description = "역할별 사설 서브넷과 경로 테이블"
+  value = { for name, subnet in aws_subnet.service : name => {
+    id = subnet.id, cidr = subnet.cidr_block, route_table_id = aws_route_table.service[name].id
+  } }
+}

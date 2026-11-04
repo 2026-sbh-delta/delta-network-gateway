@@ -1,0 +1,9 @@
+output "instance_id" { value = aws_instance.ai.id }
+output "private_ip" { value = aws_instance.ai.private_ip }
+output "api_url" { value = "https://${aws_instance.ai.private_ip}" }
+output "runtime_parameter" { value = local.parameter }
+output "repository_url" { value = aws_ecr_repository.ai.repository_url }
+output "security_group_id" { value = aws_security_group.ai.id }
+output "data_volume_id" { value = aws_ebs_volume.data.id }
+output "account_id" { value = var.account_id }
+output "region" { value = var.region }
