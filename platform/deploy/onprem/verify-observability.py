@@ -276,6 +276,23 @@ def main():
             print(
                 "mTLS: anonymous/cross-client rejected; identity overwritten; app host-metric spoof rejected"
             )
+        except Exception:
+            # Only this isolated fixture's state/logs; no production credentials are used.
+            state = subprocess.run(
+                ["docker", "inspect", "--format", "{{json .State}}", container],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            logs = subprocess.run(
+                ["docker", "logs", "--tail", "30", container],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            print("Test collector state:", state.stdout.strip(), flush=True)
+            print("Test collector logs:", logs.stdout + logs.stderr, flush=True)
+            raise
         finally:
             command(["docker", "rm", "-f", container])
     print("Temporary collector and test credentials removed; AWS writes: none")
