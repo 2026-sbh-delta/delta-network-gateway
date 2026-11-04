@@ -24,6 +24,7 @@ import {
   useWorkspaceRoute,
   type View,
 } from "./AppShell";
+import { DeleteProjectDialog } from "./DeleteProjectDialog";
 import { BuildPanel } from "./BuildPanel";
 import { ObservabilityPanel } from "./ObservabilityPanel";
 import { WorkflowPlanningPanel } from "./WorkflowPlanningPanel";
@@ -628,6 +629,8 @@ function Workspace({
   const [services, setServices] = useState<Service[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [register, setRegister] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Service | null>(null);
+  const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const loadGeneration = useRef(0);
@@ -688,6 +691,28 @@ function Workspace({
       }
     >
       <ErrorBox error={error} />
+      {notice && (
+        <p className="success-note" role="status">
+          {notice}
+        </p>
+      )}
+      {deleteTarget && (
+        <DeleteProjectDialog
+          key={deleteTarget.id}
+          service={deleteTarget}
+          onCancel={() => setDeleteTarget(null)}
+          onDeleted={(deleted) => {
+            loadGeneration.current++;
+            setLoading(false);
+            setServices((items) =>
+              items.filter((item) => item.id !== deleted.id),
+            );
+            setDeleteTarget(null);
+            setNotice(`${deleted.name} 프로젝트를 삭제했습니다.`);
+            if (route.serviceId === deleted.id) navigate("overview", null);
+          }}
+        />
+      )}
       {route.view === "monitoring" && route.serviceId ? (
         <ObservabilityPanel key={route.serviceId} serviceId={route.serviceId} />
       ) : route.serviceId ? (
@@ -798,25 +823,36 @@ function Workspace({
             ) : (
               <div className="service-list">
                 {services.map((s) => (
-                  <button
-                    className="service-row"
-                    key={s.id}
-                    onClick={() => openService(s.id)}
-                  >
-                    <span className="service-icon">
-                      {s.name[0].toUpperCase()}
-                    </span>
-                    <span className="service-text">
-                      <strong>{s.name}</strong>
-                      <small>
-                        {s.repository_url.replace("https://github.com/", "")}
-                      </small>
-                    </span>
-                    <span className="ref">{s.source_ref}</span>
-                    <span className="arrow">
-                      <Icon name="arrow" />
-                    </span>
-                  </button>
+                  <div className="service-list-item" key={s.id}>
+                    <button
+                      className="service-row"
+                      onClick={() => openService(s.id)}
+                    >
+                      <span className="service-icon">
+                        {s.name[0].toUpperCase()}
+                      </span>
+                      <span className="service-text">
+                        <strong>{s.name}</strong>
+                        <small>
+                          {s.repository_url.replace("https://github.com/", "")}
+                        </small>
+                      </span>
+                      <span className="ref">{s.source_ref}</span>
+                      <span className="arrow">
+                        <Icon name="arrow" />
+                      </span>
+                    </button>
+                    <button
+                      className="project-delete-trigger"
+                      aria-label={`${s.name} 프로젝트 삭제`}
+                      onClick={() => {
+                        setNotice("");
+                        setDeleteTarget(s);
+                      }}
+                    >
+                      삭제
+                    </button>
+                  </div>
                 ))}
               </div>
             )}

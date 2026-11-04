@@ -9,7 +9,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import insert
 
 from .errors import LeaseLost, Problem
-from .schema import events, runs, services
+from .schema import environments, events, runs, services, workflows
 
 SERVICE_FIELDS = (
     "id",
@@ -174,6 +174,48 @@ class Store:
                 "latest_build": self._latest(conn, service_id, "image_build"),
                 "latest_sandbox": self._latest(conn, service_id, "sandbox_check"),
             }
+
+    def delete_service(self, service_id, confirmation_name):
+        # Serialize with all run/workflow admission; never remove a live task's owner.
+        with self.engine.begin() as conn:
+            service = (
+                conn.execute(
+                    sa.select(services).where(services.c.id == service_id).with_for_update()
+                )
+                .mappings()
+                .first()
+            )
+            if service is None:
+                return  # Retrying a completed deletion is safe, even after a lost response.
+            if confirmation_name != service["name"]:
+                raise Problem("delete_name_mismatch", "프로젝트 이름이 일치하지 않습니다.", 409)
+            active = conn.scalar(
+                sa.select(runs.c.id)
+                .where(runs.c.service_id == service_id, runs.c.status.in_(["queued", "running"]))
+                .limit(1)
+            )
+            if active:
+                raise Problem(
+                    "service_busy",
+                    "실행 중이거나 대기 중인 작업이 있습니다. 작업 종료와 정리를 확인한 뒤 삭제하세요.",
+                    409,
+                )
+            linked_environment = conn.scalar(
+                sa.select(environments.c.id).where(environments.c.service_id == service_id).limit(1)
+            )
+            linked_workflow = conn.scalar(
+                sa.select(workflows.c.id).where(workflows.c.service_id == service_id).limit(1)
+            )
+            if linked_environment or linked_workflow:
+                raise Problem(
+                    "service_has_dependencies",
+                    "연결된 환경 또는 이전·배포 계획이 있어 삭제할 수 없습니다. 운영자가 연결 상태를 먼저 정리해야 합니다.",
+                    409,
+                )
+            owned_runs = sa.select(runs.c.id).where(runs.c.service_id == service_id)
+            conn.execute(events.delete().where(events.c.run_id.in_(owned_runs)))
+            conn.execute(runs.delete().where(runs.c.service_id == service_id))
+            conn.execute(services.delete().where(services.c.id == service_id))
 
     def list_services(self, limit, cursor):
         with self.engine.connect() as conn:

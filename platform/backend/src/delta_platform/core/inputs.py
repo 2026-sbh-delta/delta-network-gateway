@@ -35,6 +35,10 @@ class EmptyInput(StrictInput):
     pass
 
 
+class DeleteServiceInput(StrictInput):
+    confirmation_name: str = Field(min_length=1, max_length=80)
+
+
 class BuildInput(StrictInput):
     source_check_id: str = Field(min_length=36, max_length=36)
 
