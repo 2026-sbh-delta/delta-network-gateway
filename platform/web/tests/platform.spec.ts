@@ -10,6 +10,10 @@ for (const mode of ["재현", "없음", "중단"]) {
       page.getByRole("button", { name: "이 커밋 빌드" }),
     ).toBeEnabled({ timeout: 15000 });
     await page.getByRole("button", { name: "이 커밋 빌드" }).click();
+    await page
+      .getByRole("navigation", { name: "빌드와 검사 단계" })
+      .getByRole("button", { name: /보안 검사/ })
+      .click();
     await expect(
       page.getByRole("button", { name: "이 빌드의 코드 검사" }),
     ).toBeEnabled({ timeout: 15000 });
@@ -38,7 +42,10 @@ for (const mode of ["재현", "없음", "중단"]) {
       await expect(panel).toContainText("실행 위치 AWS ECS");
     }
     await page.reload();
-    await page.getByRole("button", { name: new RegExp(name) }).click();
+    await page
+      .getByRole("navigation", { name: "빌드와 검사 단계" })
+      .getByRole("button", { name: /보안 검사/ })
+      .click();
     await expect(panel).toContainText(expected);
     if (mode !== "중단") {
       await panel.getByText("DAST 검사 근거", { exact: true }).click();
@@ -85,6 +92,7 @@ async function register(page: Page, name: string, dockerfile = "Dockerfile") {
     .getByRole("button", { name: "등록하고 상세 보기", exact: true })
     .click();
   await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "빌드·검사", exact: true }).click();
 }
 
 test("로그인 → 등록 → 실제 DB·Worker 검사 → 새로고침 → 로그아웃", async ({
@@ -111,9 +119,8 @@ test("로그인 → 등록 → 실제 DB·Worker 검사 → 새로고침 → 로
   });
   await page.reload();
   await expect(
-    page.getByRole("button", { name: /검증용 주문 서비스/ }),
+    page.getByRole("heading", { name: "검증용 주문 서비스", exact: true }),
   ).toBeVisible();
-  await page.getByRole("button", { name: /검증용 주문 서비스/ }).click();
   await expect(
     page.getByText("소스 확인 완료", { exact: true }).first(),
   ).toBeVisible();
@@ -182,6 +189,10 @@ test("소스 커밋 빌드 → digest 보존 → 로그를 텍스트로 표시",
   });
   await expect(page.locator(".build-result")).toContainText("@sha256:");
   await page
+    .getByRole("navigation", { name: "빌드와 검사 단계" })
+    .getByRole("button", { name: /실행 확인/ })
+    .click();
+  await page
     .getByRole("button", { name: "이 이미지 실행 확인", exact: true })
     .click();
   await expect(page.getByText("실행 확인 통과", { exact: true })).toBeVisible({
@@ -191,6 +202,10 @@ test("소스 커밋 빌드 → digest 보존 → 로그를 텍스트로 표시",
     "보안 검사 미실행",
   );
   await expect(page.locator(".sandbox-result")).toContainText("@sha256:");
+  await page
+    .getByRole("navigation", { name: "빌드와 검사 단계" })
+    .getByRole("button", { name: /이미지 빌드/ })
+    .click();
   await page.getByRole("button", { name: "빌드 로그 보기" }).click();
   await expect(page.locator(".build-logs")).toContainText("<script>");
   expect(
@@ -203,7 +218,10 @@ test("소스 커밋 빌드 → digest 보존 → 로그를 텍스트로 표시",
     fullPage: true,
   });
   await page.reload();
-  await page.getByRole("button", { name: /빌드 검증 서비스/ }).click();
+  await page
+    .getByRole("navigation", { name: "빌드와 검사 단계" })
+    .getByRole("button", { name: /실행 확인/ })
+    .click();
   await expect(page.locator(".sandbox-result")).toContainText("@sha256:");
   await page.setViewportSize({ width: 390, height: 844 });
   await page.screenshot({
@@ -355,6 +373,10 @@ test("GCP 대상 선택은 요청과 결과에 유지되고 기존 AWS 결과는
     timeout: 15000,
   });
   await page.getByRole("button", { name: "이 커밋 빌드" }).click();
+  await page
+    .getByRole("navigation", { name: "빌드와 검사 단계" })
+    .getByRole("button", { name: /실행 확인/ })
+    .click();
   await expect(
     page.getByRole("button", { name: "이 이미지 실행 확인", exact: true }),
   ).toBeEnabled({ timeout: 15000 });
@@ -376,6 +398,10 @@ test("GCP 대상 선택은 요청과 결과에 유지되고 기존 AWS 결과는
   await expect(panel.locator(".sandbox-result")).toContainText("GCP Cloud Run");
   await expect(panel.locator(".sandbox-result")).toContainText("rev-17");
 
+  await page
+    .getByRole("navigation", { name: "빌드와 검사 단계" })
+    .getByRole("button", { name: /보안 검사/ })
+    .click();
   await page.getByRole("button", { name: "이 빌드의 코드 검사" }).click();
   const dastPanel = page.locator(".dast-panel");
   await expect(dastPanel).toContainText("실행 위치 AWS ECS");
@@ -422,6 +448,10 @@ for (const cancel of [false, true]) {
         page.getByRole("button", { name: "이 커밋 빌드" }),
       ).toBeEnabled({ timeout: 15000 });
       await page.getByRole("button", { name: "이 커밋 빌드" }).click();
+      await page
+        .getByRole("navigation", { name: "빌드와 검사 단계" })
+        .getByRole("button", { name: /실행 확인/ })
+        .click();
       await expect(
         page.getByRole("button", { name: "이 이미지 실행 확인", exact: true }),
       ).toBeEnabled({ timeout: 15000 });
@@ -462,6 +492,10 @@ for (const mismatch of [false, true]) {
         page.getByRole("button", { name: "이 커밋 빌드" }),
       ).toBeEnabled({ timeout: 15000 });
       await page.getByRole("button", { name: "이 커밋 빌드" }).click();
+      await page
+        .getByRole("navigation", { name: "빌드와 검사 단계" })
+        .getByRole("button", { name: /보안 검사/ })
+        .click();
       await expect(
         page.getByRole("button", { name: "이 빌드의 코드 검사" }),
       ).toBeEnabled({ timeout: 15000 });

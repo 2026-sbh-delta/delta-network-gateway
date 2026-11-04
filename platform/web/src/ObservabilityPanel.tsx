@@ -116,9 +116,15 @@ function Sparkline({ metric }: { metric: Metric }) {
     </svg>
   );
 }
-export function ObservabilityPanel() {
+export function ObservabilityPanel({
+  initialServiceId = "",
+  onServiceChange,
+}: {
+  initialServiceId?: string;
+  onServiceChange?: (id: string) => void;
+}) {
   const [services, setServices] = useState<Service[]>([]);
-  const [serviceId, setServiceId] = useState("");
+  const [serviceId, setServiceId] = useState(initialServiceId);
   const [environments, setEnvironments] = useState<Environment[]>([]);
   const [environmentId, setEnvironmentId] = useState("");
   const [minutes, setMinutes] = useState(15);
@@ -236,7 +242,10 @@ export function ObservabilityPanel() {
           <select
             aria-label="서비스 선택"
             value={serviceId}
-            onChange={(e) => setServiceId(e.target.value)}
+            onChange={(e) => {
+              setServiceId(e.target.value);
+              onServiceChange?.(e.target.value);
+            }}
             disabled={serviceState !== "ready" || !services.length}
           >
             <option value="">

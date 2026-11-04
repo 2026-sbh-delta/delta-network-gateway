@@ -1,6 +1,6 @@
 # 플랫폼 웹
 
-고정 계정 로그인, 서비스 등록·목록, 소스 확인 결과와 이력을 제공한다. React·TypeScript·Vite를 사용하고 `package-lock.json`으로 버전을 고정한다. Node.js 24를 사용한다.
+고정 계정 로그인과 서비스 개요·빌드/검사·이전 계획·모니터링을 제공한다. React·TypeScript·Vite를 사용하고 `package-lock.json`으로 버전을 고정한다. Node.js 24를 사용한다.
 
 ```bash
 npm ci
@@ -8,6 +8,14 @@ npm run build
 ```
 
 API가 `dist/`를 같은 origin에서 제공한다. 전체 실행은 [플랫폼 안내](../README.md)를 따른다. 별도 Vite 개발 서버가 필요하면 백엔드 `PLATFORM_PUBLIC_ORIGIN=http://127.0.0.1:5173`으로 설정하고 `npm run dev`를 실행한다. `/api`는 8088의 API로 전달한다.
+
+## 발표 화면과 탐색
+
+- 데스크톱은 왼쪽 사이드바, 1000px 이하는 메뉴 버튼으로 여는 서랍을 사용한다. 모바일 서랍은 Escape/닫기/배경 클릭으로 닫고 키보드 포커스를 유지한다.
+- 서비스 개요 → 빌드·검사 → 이전 계획 → 모니터링 순서로 설명한다. 서비스 개요의 다음 작업 카드로 각 화면에 바로 이동할 수 있다.
+- 빌드·검사는 이미지 빌드 / 실행 확인 / 보안 검사로 나뉜다. 커밋·소스 기록·등록 정보·이력은 필요할 때 펼친다.
+- `#/overview/{service_id}`, `#/build/{service_id}`, `#/migration/{service_id}`, `#/monitoring/{service_id}`로 현재 서비스와 화면을 보존한다. 새로고침과 브라우저 뒤로가기가 동작한다. 선택한 서비스는 모니터링으로도 전달된다.
+- `AppShell`은 인증과 독립된 화면 틀이며 계정 영역을 선택적으로 받는다. 현재 로그인과 API 인증은 유지한다. 후속 로그인 제거는 프론트만 우회하지 않고 API 인증 정책과 함께 변경해야 한다.
 
 ## 화면 원칙
 
@@ -22,3 +30,5 @@ API가 `dist/`를 같은 origin에서 제공한다. 전체 실행은 [플랫폼 
 시험용 PostgreSQL을 준비하고 웹을 빌드한 뒤 `npm run test:e2e`를 실행한다. Playwright가 시험용 API·별도 Worker를 기동한다. GitHub 응답은 fixture이며 DB와 실행 상태는 실제로 저장한다. 로그인·성공·실패·새로고침·로그아웃·모바일 화면을 확인한다.
 
 `npm run format:check`로 코드 형식을 확인한다. 캡처·시험 결과·빌드 출력은 Git에서 제외한다.
+
+DB 없이 탐색·계획·모니터링 화면을 검사하려면 `npx playwright test --config=playwright.fixture.config.ts`를 실행한다. 이 시험은 API를 브라우저 fixture로 대체하며 실제 운영 결과를 만들지 않는다. 발표용 탐색 시험은 데스크톱·모바일 캡처도 남긴다.
