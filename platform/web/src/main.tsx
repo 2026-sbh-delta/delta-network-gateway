@@ -14,6 +14,7 @@ import {
 } from "./api";
 import "./style.css";
 import "./presentation.css";
+import "./dashboard.css";
 import {
   AppShell,
   Icon,
@@ -730,12 +731,8 @@ function Workspace({
       }
     >
       <ErrorBox error={error} />
-      {route.view === "monitoring" ? (
-        <ObservabilityPanel
-          key={route.serviceId ?? "all"}
-          initialServiceId={route.serviceId ?? undefined}
-          onServiceChange={(id) => navigate("monitoring", id)}
-        />
+      {route.view === "monitoring" && route.serviceId ? (
+        <ObservabilityPanel key={route.serviceId} serviceId={route.serviceId} />
       ) : route.serviceId ? (
         <Detail
           key={route.serviceId}
@@ -760,33 +757,38 @@ function Workspace({
               + 서비스 등록
             </button>
           </div>
-          <section className="workspace-journey" aria-label="서비스 작업 흐름">
-            <div className="journey-copy">
-              <span className="eyebrow">ONE WORKSPACE</span>
-              <h2>
-                준비부터 이전까지.
-                <br />
-                모든 단계를 한곳에서.
-              </h2>
-              <p>
-                검사 결과를 확인하고,
-                <br />
-                다음 환경을 계획하세요.
-              </p>
-            </div>
-            <ol className="journey-steps">
-              {sections.slice(1).map((item, i) => (
-                <li key={item.view}>
-                  <span>0{i + 1}</span>
-                  <div>
-                    <strong>{item.title}</strong>
-                    <small>{item.description}</small>
-                  </div>
-                  <Icon name={item.view} />
-                </li>
-              ))}
-            </ol>
-          </section>
+          {route.view === "overview" && (
+            <section
+              className="workspace-journey"
+              aria-label="서비스 작업 흐름"
+            >
+              <div className="journey-copy">
+                <span className="eyebrow">ONE WORKSPACE</span>
+                <h2>
+                  준비부터 이전까지.
+                  <br />
+                  모든 단계를 한곳에서.
+                </h2>
+                <p>
+                  검사 결과를 확인하고,
+                  <br />
+                  다음 환경을 계획하세요.
+                </p>
+              </div>
+              <ol className="journey-steps">
+                {sections.slice(1).map((item, i) => (
+                  <li key={item.view}>
+                    <span>0{i + 1}</span>
+                    <div>
+                      <strong>{item.title}</strong>
+                      <small>{item.description}</small>
+                    </div>
+                    <Icon name={item.view} />
+                  </li>
+                ))}
+              </ol>
+            </section>
+          )}
           {register && (
             <Register
               onCreated={(s) => {
