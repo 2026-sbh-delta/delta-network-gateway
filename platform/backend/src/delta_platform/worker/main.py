@@ -51,6 +51,15 @@ def process_one(store, reader, builder=None, sandbox=None, security=None, dast=N
             result = security.execute(claim, store, progress)
         elif claim["kind"] == "dast_check":
             try:
+                if (
+                    dast is None
+                    and claim["input_snapshot"]["sandbox_target"].get("cloud", "aws") == "gcp"
+                ):
+                    from delta_platform.adapters.dast import DastInspector
+                    from delta_platform.adapters.gcp_sandbox import GcpSandboxRunner
+
+                    settings = Settings()
+                    dast = GcpSandboxRunner(settings, inspector=DastInspector(settings))
                 dast = dast or DastRunner(Settings())
             except (SandboxError, Problem):
                 progress(
@@ -60,6 +69,13 @@ def process_one(store, reader, builder=None, sandbox=None, security=None, dast=N
                 raise LeaseLost() from None
             result = dast.execute(claim, store, progress)
         elif claim["kind"] == "sandbox_check":
+            if (
+                sandbox is None
+                and claim["input_snapshot"]["sandbox_target"].get("cloud", "aws") == "gcp"
+            ):
+                from delta_platform.adapters.gcp_sandbox import GcpSandboxRunner
+
+                sandbox = GcpSandboxRunner(Settings())
             sandbox = sandbox or SandboxRunner(Settings())
             result = sandbox.execute(claim, store, progress)
         else:

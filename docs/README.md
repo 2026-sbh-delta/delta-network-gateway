@@ -3,6 +3,7 @@
 ## 현재 상태
 
 - 기준일: 2026-11-04 (Asia/Seoul)
+- GCP 샌드박스: `feat/platform-gcp-sandbox`에서 대상 선택·Cloud Run 실행·DAST 검증을 구현 중이다. 별도 VPC/WIF/SA/저장소 28개 추가 Apply와 로컬 테스트를 완료했다. 실제 이미지 실행·릴리스 결과는 [진행 기록](ai-dlc/platform-gcp-sandbox.md)을 따른다. 온프레미스 실행기는 미연결이다.
 - GCP 중앙 네트워크(2026-11-04): 현재 사용자 요청으로 GCP `inspection_mode=disabled` 적용 완료. 검사 Endpoint1개와 연결2개를 제거했고 API404/네 BGP UP, 두 포트 양방향 HTTP200, 일반 방화벽 로그99건의 AWS 중앙 일치와 최종 실제 Plan No changes를 확인했다. AWS ANF도 disabled다. VPC/NCC/VPN/VM/NLB와 기본 허용/거부, 중앙 로그 수집은 유지한다. 초기 enabled의 실제 L7 탐지/장애 검증 기록은 보존했고 게시 전 Terraform mock61개/Python36개 통과. 재개용 공통 AWS/GCP 자동화는 후속이며 구현/테스트/운영 문서는 분할 커밋해 [PR #27](https://github.com/2026-sbh-delta/delta-network-gateway/pull/27)에서 관리한다. 최종 병합 상태는 해당 PR을 따른다. [실제 결과와 검증 한계](ai-dlc/gcp-central-network.md)
 - 플랫폼 관측·서비스 이전(2026-11-04): PR #21~#25를 main에 병합하고 AWS [Release 41700029642](https://github.com/2026-sbh-delta/delta-network-gateway/actions/runs/41700029642)를 완료했다. OTel 대시보드·workflow/AI 식별과 승인·DAST 연결·승인된 DB 이전 CLI의 진행 상태를 반영했다. 실제 로컬 PostgreSQL 복제·앱/세션 이전과 공개 웹의 기존 데이터 보존을 검증했다. 고객 VM/DB·사설 연결·GCP/온프레미스 실제 이전과 웹 자동 전환은 후속이며 현재 등록된 고객 실행 환경은 0개다. [검증·남은 작업](ai-dlc/platform-continuity.md) · [DB 이전 절차](../platform/migration/README.md)
 - 플랫폼 DAST 연결: `feat/platform-dast`에서 팀 DAST API·ECS 수명·취소/복구·결과 화면과 사설 네트워크 확장을 구현했다. 현재 AWS 샌드박스 대상이며 GCP·온프레미스는 각 환경의 별도 검증을 추가한다. 로컬 검증 결과는 [진행 기록](ai-dlc/platform-dast.md), 운영 연결은 [배포 안내](../platform/deploy/dast/README.md)를 따른다. PR #21은 main에 병합됐고 사설 경로·SG 추가 Apply를 완료했다. 도구 이미지 활성화·플랫폼 릴리스를 완료했고 실제 ECS 실행·정리와 후보0건의 DAST 미실행 표시를 검증했다. 실제 XSS 재현 검증은 별도다.

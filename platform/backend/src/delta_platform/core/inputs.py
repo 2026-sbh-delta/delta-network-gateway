@@ -1,5 +1,6 @@
 import re
 from pathlib import PurePosixPath
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -45,6 +46,7 @@ class BuildInput(StrictInput):
 
 class ImageCheckInput(StrictInput):
     build_id: str = Field(min_length=36, max_length=36)
+    execution_cloud: Literal["aws", "gcp", "onprem"] = "aws"
 
     @field_validator("build_id")
     @classmethod

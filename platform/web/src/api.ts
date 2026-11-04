@@ -16,6 +16,7 @@ export type Run = {
   external_id: string | null;
   status: "queued" | "running" | "succeeded" | "failed";
   current_step: string | null;
+  execution_cloud?: string;
   attempt: number;
   resolved_commit_sha: string | null;
   created_at: string;
@@ -25,6 +26,9 @@ export type Run = {
     dast_reason?: string | null;
     execution_cloud?: string;
     environment_check?: string;
+    runtime?: string;
+    revision?: string;
+    url?: string;
     security_check_id?: string;
     dast_evidence_sha256?: string;
     dast_findings?: {
@@ -55,6 +59,12 @@ export type Run = {
     platform?: string;
   } | null;
   error: { code: string; message: string; retry_at?: string } | null;
+};
+export type SandboxTarget = {
+  cloud: "aws" | "gcp" | "onprem";
+  label: string;
+  runtime: string;
+  configured: boolean;
 };
 export type Service = {
   id: string;
