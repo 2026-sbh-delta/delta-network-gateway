@@ -141,8 +141,9 @@ class IngestTests(unittest.TestCase):
             "DESTINATION_LOG_GROUP": "group",
         }
         with patch.dict(os.environ, environment), patch("boto3.client"):
-            _, _, session = collector.runtime()
+            _, writer, session = collector.runtime()
             try:
+                self.assertEqual(writer.stream, "gcp-network-security")
                 request = Mock(side_effect=AssertionError("Unexpected network or metadata access"))
                 token = json.loads(unquote(session.credentials.retrieve_subject_token(request)))
                 request.assert_not_called()
@@ -150,6 +151,12 @@ class IngestTests(unittest.TestCase):
                 self.assertEqual(headers["x-goog-cloud-target-resource"], audience)
                 self.assertIn("sts.ap-northeast-2.amazonaws.com", token["url"])
                 self.assertNotIn("synthetic-secret-key", json.dumps(token))
+            finally:
+                session.close()
+        with patch.dict(os.environ, {**environment, "DESTINATION_LOG_STREAM": "gcp-cloud-logging"}), patch("boto3.client"):
+            _, writer, session = collector.runtime()
+            try:
+                self.assertEqual(writer.stream, "gcp-cloud-logging")
             finally:
                 session.close()
 
