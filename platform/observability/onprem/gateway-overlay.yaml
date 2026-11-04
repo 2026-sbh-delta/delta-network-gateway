@@ -1,0 +1,72 @@
+# Merge AFTER ../collector.yaml using a second --config flag.
+# One gateway per registered environment. Private network + mTLS are both required.
+receivers:
+  otlp:
+    protocols:
+      http:
+        tls:
+          cert_file: /etc/delta-otel/server.pem
+          key_file: /etc/delta-otel/server-key.pem
+          client_ca_file: /etc/delta-otel/app-ca.pem
+          min_version: "1.2"
+  otlp/host:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4319
+        max_request_body_size: 1048576
+        tls:
+          cert_file: /etc/delta-otel/server.pem
+          key_file: /etc/delta-otel/server-key.pem
+          client_ca_file: /etc/delta-otel/host-ca.pem
+          min_version: "1.2"
+processors:
+  filter/app_metrics:
+    error_mode: propagate
+    metrics:
+      metric:
+        - 'name != "http.server.request.duration" and name != "delta.app.up" and name != "delta.db.up"'
+  filter/host_metrics:
+    error_mode: propagate
+    metrics:
+      metric:
+        - 'name != "system.cpu.utilization" and name != "system.memory.utilization" and name != "system.filesystem.utilization"'
+  transform/resource_privacy:
+    error_mode: propagate
+    metric_statements:
+      - context: resource
+        statements:
+          - keep_keys(attributes, ["delta_project_id", "delta_service_id", "delta_environment_id", "service.name", "service.version", "service.instance.id"])
+    log_statements:
+      - context: resource
+        statements:
+          - keep_keys(attributes, ["delta_project_id", "delta_service_id", "delta_environment_id", "service.name", "service.version", "service.instance.id"])
+    trace_statements:
+      - context: resource
+        statements:
+          - keep_keys(attributes, ["delta_project_id", "delta_service_id", "delta_environment_id", "service.name", "service.version", "service.instance.id"])
+  resource/host:
+    attributes:
+      - key: host.id
+        value: ${env:DELTA_HOST_ID}
+        action: upsert
+  transform/host_privacy:
+    error_mode: propagate
+    metric_statements:
+      - context: resource
+        statements:
+          - keep_keys(attributes, ["delta_project_id", "delta_service_id", "delta_environment_id", "host.id"])
+      - context: datapoint
+        statements:
+          - keep_keys(attributes, ["state", "cpu", "mountpoint"])
+service:
+  pipelines:
+    metrics:
+      processors: [memory_limiter, resource/identity, filter/app_metrics, transform/resource_privacy, transform/privacy, batch]
+    logs:
+      processors: [memory_limiter, resource/identity, filter/warnings, transform/resource_privacy, transform/privacy, batch]
+    traces:
+      processors: [memory_limiter, resource/identity, transform/resource_privacy, transform/privacy, batch]
+    metrics/host:
+      receivers: [otlp/host]
+      processors: [memory_limiter, resource/identity, resource/host, filter/host_metrics, transform/host_privacy, batch]
+      exporters: [otlp_http/metrics]

@@ -422,11 +422,27 @@ export function ObservabilityPanel() {
                   {statusText(snapshot.infra.status, snapshot.infra.message)}
                 </span>
               </div>
+              {snapshot.environment.cloud === "onprem" &&
+                snapshot.infra.instances.length > 0 && (
+                  <p className="muted">
+                    수신 상태는 Collector의 보고 여부이며 VM 전원 상태와
+                    다릅니다.
+                  </p>
+                )}
               {snapshot.infra.instances.length ? (
                 snapshot.infra.instances.map((instance) => (
                   <div className="obs-instance" key={instance.id}>
                     <strong>{instance.name}</strong>
-                    <span>상태 {instance.state}</span>
+                    <span>
+                      상태{" "}
+                      {(
+                        {
+                          reporting: "수집 중",
+                          stale: "수집 지연",
+                          unknown: "확인 필요",
+                        } as Record<string, string>
+                      )[instance.state] ?? instance.state}
+                    </span>
                     <span>
                       CPU{" "}
                       <MetricValue metric={instance.cpu_percent} suffix="%" />
@@ -438,6 +454,15 @@ export function ObservabilityPanel() {
                         suffix="%"
                       />
                     </span>
+                    {instance.disk_percent && (
+                      <span>
+                        디스크{" "}
+                        <MetricValue
+                          metric={instance.disk_percent}
+                          suffix="%"
+                        />
+                      </span>
+                    )}
                   </div>
                 ))
               ) : (

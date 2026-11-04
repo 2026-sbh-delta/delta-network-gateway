@@ -30,13 +30,16 @@ class Binding(BaseModel):
     image_digest: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
     sast_evidence_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
     target_url: str = Field(min_length=1, max_length=300)
-    execution_cloud: Literal["aws", "gcp"] = "aws"
+    execution_cloud: Literal["aws", "gcp", "onprem"] = "aws"
     runtime_resource: str | None = Field(default=None, max_length=300)
+    runtime_revision: str | None = Field(default=None, max_length=128)
 
     @model_validator(mode="after")
     def pinned(self):
-        if (self.execution_cloud == "gcp") != (self.runtime_resource is not None):
-            raise ValueError("GCP execution requires its runtime resource")
+        if (self.execution_cloud in ("gcp", "onprem")) != (self.runtime_resource is not None):
+            raise ValueError("Cloud execution requires its runtime resource")
+        if (self.execution_cloud == "onprem") != (self.runtime_revision is not None):
+            raise ValueError("On-premise execution requires its Pod UID")
         if not self.image.endswith("@" + self.image_digest):
             raise ValueError("Pinned image required")
         return self
@@ -126,6 +129,10 @@ class PlatformRuns:
                 from .cloud_run import register
 
                 target_id = await asyncio.to_thread(register, self.catalog, run_id, binding)
+            if args.binding.execution_cloud == "onprem":
+                from .onprem import register
+
+                target_id = await asyncio.to_thread(register, self.catalog, run_id, binding)
             target = self.catalog.resolve_target(target_id, "vulnerable", self.target_port)
             if target.origin != binding["target_url"]:
                 raise ValueError("Registered staging target mismatch")
@@ -158,6 +165,10 @@ class PlatformRuns:
                 from .cloud_run import forget
 
                 forget(self.catalog, run_id, record["binding"])
+            if record.get("binding", {}).get("execution_cloud") == "onprem":
+                from .onprem import forget
+
+                forget(self.catalog, run_id)
             return {"run_id": run_id, "stopped": True}
 
 

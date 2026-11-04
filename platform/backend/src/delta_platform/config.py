@@ -38,6 +38,8 @@ class Settings(BaseSettings):
     sandbox_target: str = ""
     gcp_sandbox_target: str = ""
     gcp_credentials_json: str = ""
+    onprem_sandbox_target: str = ""
+    onprem_sandbox_token: SecretStr = SecretStr("")
     sast_url: str = ""
     sast_token: SecretStr = SecretStr("")
     sast_ca_base64: str = ""

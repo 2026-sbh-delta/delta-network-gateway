@@ -370,11 +370,9 @@ class DashboardReader:
 
                         self.gcp = GcpInfrastructure()
                     return self.gcp.read(env, start, end)
-                return {
-                    "status": "unsupported",
-                    "message": "온프레미스 인프라 관측은 아직 연결하지 않았습니다.",
-                    "instances": [],
-                }
+                from delta_platform.adapters.onprem_observability import OnpremInfrastructure
+
+                return OnpremInfrastructure(self.telemetry).read(env, start, end)
 
             jobs = {
                 "metrics": (lambda: self.telemetry.metrics(env, start, end), empty_metrics),
