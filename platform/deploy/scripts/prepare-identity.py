@@ -37,9 +37,9 @@ def main():
     def state(key, optional=False):
         try:
             return json.loads(
-                s3.get_object(Bucket=bucket, Key=key, ExpectedBucketOwner=args.account_id)[
-                    "Body"
-                ].read()
+                s3.get_object(
+                    Bucket=bucket, Key=key, ExpectedBucketOwner=args.account_id
+                )["Body"].read()
             )
         except ClientError as exc:
             if optional and exc.response["Error"]["Code"] == "NoSuchKey":
@@ -69,7 +69,9 @@ def main():
             OpenIDConnectProviderArn=f"arn:aws:iam::{args.account_id}:oidc-provider/token.actions.githubusercontent.com"
         )
         if "sts.amazonaws.com" not in provider["ClientIDList"]:
-            raise SystemExit("기존 GitHub provider에 sts.amazonaws.com audience가 없습니다.")
+            raise SystemExit(
+                "기존 GitHub provider에 sts.amazonaws.com audience가 없습니다."
+            )
         create_provider = owned
     except iam.exceptions.NoSuchEntityException:
         create_provider = True
@@ -87,10 +89,12 @@ def main():
         "github_subject_prefix": oidc["sub_claim_prefix"],
         "create_oidc_provider": create_provider,
         "state_bucket": bucket,
-        "cloudfront_prefix_list_id": resources["aws_ec2_managed_prefix_list.cloudfront"]["id"],
-        "origin_request_policy_id": resources["aws_cloudfront_origin_request_policy.platform"][
-            "id"
-        ],
+        "cloudfront_prefix_list_id": resources[
+            "aws_ec2_managed_prefix_list.cloudfront"
+        ]["id"],
+        "origin_request_policy_id": resources[
+            "aws_cloudfront_origin_request_policy.platform"
+        ]["id"],
         "platform_vpc_id": resources["aws_vpc.platform"]["id"],
         "platform_subnet_ids": sorted(
             {

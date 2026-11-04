@@ -37,24 +37,35 @@ class RelocationTests(unittest.TestCase):
             "new-keystore",
         )
         self.assertEqual(
-            result[module.CONTROLLER]["admin_password"], self.controller["admin_password"]
+            result[module.CONTROLLER]["admin_password"],
+            self.controller["admin_password"],
         )
         self.assertEqual(
-            result[module.CONTROLLER]["platform_password"], self.controller["platform_password"]
+            result[module.CONTROLLER]["platform_password"],
+            self.controller["platform_password"],
         )
-        self.assertEqual(result[module.AGENT]["agent_secret"], self.agent["agent_secret"])
+        self.assertEqual(
+            result[module.AGENT]["agent_secret"], self.agent["agent_secret"]
+        )
         after = result[module.PLATFORM]
         self.assertEqual(after["db_password"], self.platform["db_password"])
         for key, value in self.platform["app_env"].items():
             self.assertEqual(after["app_env"][key], value)
-        self.assertEqual(after["app_env"]["PLATFORM_JENKINS_URL"], "https://10.80.10.20")
+        self.assertEqual(
+            after["app_env"]["PLATFORM_JENKINS_URL"], "https://10.80.10.20"
+        )
         self.assertNotIn("PLATFORM_JENKINS_CA_BASE64", self.platform["app_env"])
         self.assertEqual(self.controller["url"], "https://10.80.1.20")
 
     def test_unapproved_address_and_missing_tokens_fail_before_update(self):
         with self.assertRaises(ValueError):
             module.replacements(
-                self.controller, self.agent, self.platform, "https://example.com", "ca", "key"
+                self.controller,
+                self.agent,
+                self.platform,
+                "https://example.com",
+                "ca",
+                "key",
             )
         with self.assertRaises(ValueError):
             module.replacements(
