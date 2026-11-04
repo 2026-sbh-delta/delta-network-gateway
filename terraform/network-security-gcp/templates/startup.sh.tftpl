@@ -1,0 +1,21 @@
+#!/bin/bash
+set -euo pipefail
+install -d -m 0755 /opt/delta-demo
+printf '%s' '${app}' | base64 --decode > /opt/delta-demo/server.py
+cat > /etc/systemd/system/delta-demo.service <<'UNIT'
+[Unit]
+Description=Delta GCP network inspection demo
+After=network.target
+[Service]
+User=nobody
+ExecStart=/usr/bin/python3 /opt/delta-demo/server.py
+Restart=on-failure
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+[Install]
+WantedBy=multi-user.target
+UNIT
+systemctl daemon-reload
+systemctl enable --now delta-demo

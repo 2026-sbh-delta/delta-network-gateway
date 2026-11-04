@@ -255,7 +255,7 @@ variable "stateful_rule_capacity" {
 }
 
 variable "inspection_mode" {
-  description = "enabled inspects traffic, bypass keeps the firewall for staged transitions, disabled removes billable endpoints. Bypass modes currently support VPC spokes only."
+  description = "enabled inspects traffic, bypass retains the firewall, disabled removes billable endpoints. Direct modes route VPCs statically and VPNs through propagated BGP routes."
   type        = string
   default     = "enabled"
   nullable    = false

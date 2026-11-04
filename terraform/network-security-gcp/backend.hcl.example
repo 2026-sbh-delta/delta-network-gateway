@@ -1,0 +1,3 @@
+# Existing dedicated bucket with versioning, uniform access and public access prevention.
+bucket = "REPLACE-WITH-VERIFIED-TERM2-DELTA-STATE-BUCKET"
+prefix = "delta/lab/network-security-gcp"

@@ -3,6 +3,7 @@
 ## 현재 상태
 
 - 기준일: 2026-11-04 (Asia/Seoul)
+- GCP 중앙 네트워크(2026-11-04): 현재 사용자 요청으로 GCP `inspection_mode=disabled` 적용 완료. 검사 Endpoint1개와 연결2개를 제거했고 API404/네 BGP UP, 두 포트 양방향 HTTP200, 일반 방화벽 로그99건의 AWS 중앙 일치와 최종 실제 Plan No changes를 확인했다. AWS ANF도 disabled다. VPC/NCC/VPN/VM/NLB와 기본 허용/거부, 중앙 로그 수집은 유지한다. 초기 enabled의 실제 L7 탐지/장애 검증 기록은 보존했고 게시 전 Terraform mock61개/Python36개 통과. 재개용 공통 AWS/GCP 자동화는 후속이며 구현/테스트/운영 문서는 분할 커밋해 [PR #27](https://github.com/2026-sbh-delta/delta-network-gateway/pull/27)에서 관리한다. 최종 병합 상태는 해당 PR을 따른다. [실제 결과와 검증 한계](ai-dlc/gcp-central-network.md)
 - 플랫폼 관측·서비스 이전(2026-11-04): PR #21~#25를 main에 병합하고 AWS [Release 41700029642](https://github.com/2026-sbh-delta/delta-network-gateway/actions/runs/41700029642)를 완료했다. OTel 대시보드·workflow/AI 식별과 승인·DAST 연결·승인된 DB 이전 CLI의 진행 상태를 반영했다. 실제 로컬 PostgreSQL 복제·앱/세션 이전과 공개 웹의 기존 데이터 보존을 검증했다. 고객 VM/DB·사설 연결·GCP/온프레미스 실제 이전과 웹 자동 전환은 후속이며 현재 등록된 고객 실행 환경은 0개다. [검증·남은 작업](ai-dlc/platform-continuity.md) · [DB 이전 절차](../platform/migration/README.md)
 - 플랫폼 DAST 연결: `feat/platform-dast`에서 팀 DAST API·ECS 수명·취소/복구·결과 화면과 사설 네트워크 확장을 구현했다. 현재 AWS 샌드박스 대상이며 GCP·온프레미스는 각 환경의 별도 검증을 추가한다. 로컬 검증 결과는 [진행 기록](ai-dlc/platform-dast.md), 운영 연결은 [배포 안내](../platform/deploy/dast/README.md)를 따른다. PR #21은 main에 병합됐고 사설 경로·SG 추가 Apply를 완료했다. 도구 이미지 활성화·플랫폼 릴리스를 완료했고 실제 ECS 실행·정리와 후보0건의 DAST 미실행 표시를 검증했다. 실제 XSS 재현 검증은 별도다.
 - Jenkins AWS 운영 연결 완료(2026-11-03): PR #19 병합 후 GitHub OIDC로 사설 컨트롤러/전용 에이전트와 플랫폼을 배포했다. 공개 웹에서 실제 Jenkins 빌드 → ECR digest → ECS HTTP 검사·종료 및 데스크톱·모바일 표시를 검증했다. 기존 로그인·DB·서비스와 팀 스테이징을 보존했고 플랫폼/IAM 세 root는 No changes다. 배포 중 발견한 신규 SG 규칙 생성 권한 수정은 `42bbe5b`로 분리했고 운영 문서는 후속 `feat/platform-sast-aws` PR에 함께 포함한다. [진행 기록](ai-dlc/platform-jenkins-aws.md)
@@ -41,11 +42,12 @@
 - 실행 프로필: `AWS_PROFILE=sbh-delta-security`. 이번 DryRun에서 STS로 중앙 계정 `482840608926`을 재확인했다. 코드에서는 계정 ID를 필수 입력으로 받아 검증한다.
 - AWS Workload: 사용자 `이렇게 만들고, public 노출없이 해` 지시로 Inception과 U1~U3 승인 및 구현/Review 완료. Workload mock Plan 26개 및 state bootstrap 보호 테스트 3개 통과. 별도 S3 state와 VPC `10.10.0.0/16`, `/24` Subnet 4개, 사설 EC2 `10.10.1.143` 및 EIC Endpoint 생성 완료. 초기 배포 때 공인 IP/IPv6, IGW/NAT/인터넷 Route 부재와 EIC 사설 SSH 성공을 확인했다. 후속 CloudFront root가 Client VPC에 IGW와 ALB 전용 Subnet/RT를 추가했으며 공인 주소/인터넷 Route는 추가하지 않았다.
 - AWS Server: 같은 Workload 계정의 별도 root/state에 VPC `10.20.0.0/16`, `/24` Subnet 4개, 사설 EC2 `10.20.1.10`와 EIC Endpoint/TGW Attachment를 생성했다. Server mock 31개/로컬 앱 1개, 중앙 회귀 34개, Client 회귀 26개와 기존 bootstrap 보호 3개 통과. 세 root 최종 Plan No changes와 실제 ANF 통신/로그 검증 완료. 구현/검증/배포 기록을 분할 커밋하고 origin/main 게시를 확인했다.
-- GCP: 현재 무료 크레딧 프로젝트 안의 사설 서버/HA VPN 코드와 운영 문서 구현/로컬 Review 완료. Google mock Plan 25개, 실제 입력 mock Plan 1개, 앱/전달 도구 7개 통과. Project `project-5bb650b3-9c21-4c8b-a16` / Number `120643807854`, ADC 접근 및 고정 Ubuntu 이미지 조회 확인. ignored tfvars/backend 작성 완료. 마지막 실제 조회에서 연결된 Billing 계정은 `open=false`, 프로젝트 `billingEnabled=false`, Compute/IAP/OS Login API DISABLED였다. GCS bucket/실제 Plan/Apply/VPN 통신은 미실행이다. 구현/검증/준비 기록을 분할 커밋하고 origin/main 게시를 확인했다.
+- 이전 GCP 프로젝트의 과거 기록: 사설 서버/HA VPN 구현과 Google mock Plan 25개, 실제 입력 mock Plan 1개, 앱/전달 도구 7개 통과를 기록했지만 현재 tracked tree에는 당시 `terraform/gcp-server` 코드가 없다. 이전 Project `project-5bb650b3-9c21-4c8b-a16` / Number `120643807854`의 2026-11-01 조회는 Billing 계정 `open=false`, 프로젝트 `billingEnabled=false`, Compute/IAP/OS Login API DISABLED였다. GCS bucket/실제 Plan/Apply/VPN 통신은 미실행이었다. 당시 준비/게시 기록은 [과거 AI-DLC](ai-dlc/gcp-server-vpn.md)에 보존하고 새 프로젝트의 상태와 구분한다.
 - 스테이징 도구: 관리 에이전트가 호출하는 파이프라인 스테이징 도구를 `services/delta-staging/`, AWS 기반을 `terraform/staging-aws/`에 추가했다. 2026-11-03 도구 단위 테스트 34개 통과, Apply 후 실제 ECS 배포 확인(첫 배포 56초, 이미지 교체 57초). GCP 구현은 미실행이다. [AI-DLC](ai-dlc/staging-tool.md)를 따른다.
 
 ## 문서
 
+- [GCP 중앙 네트워크와 AWS 로그 수집 요구사항/구현 계획](ai-dlc/gcp-central-network.md)
 - [ANF 비용 절감과 검사 경로 원복](ai-dlc/anf-cost-mode.md)
 
 - [AWS → GCP 매핑 판단](ai-dlc/migration-mapping.md)
@@ -74,13 +76,17 @@
 - [Workload 실행 및 전체 입력/출력](../terraform/workload-client/README.md)
 - [Server 실행 및 전체 입력/출력](../terraform/workload-server/README.md)
 - [두 VPC 실제 관제 Runbook](../terraform/workload-server/RUNBOOK.md)
-- [GCP 실행 및 전체 입력/출력](../terraform/gcp-server/README.md)
-- [GCP와 AWS VPN 연결/관제 검증](../terraform/gcp-server/RUNBOOK.md)
+- [GCP 중앙 네트워크 실행과 전체 입력/출력](../terraform/network-security-gcp/README.md)
+- [GCP 검사 중단/재개와 관제 Runbook](../terraform/network-security-gcp/RUNBOOK.md)
+- [AWS 중앙 GCP 로그 수집기 입력/출력과 운영](../terraform/gcp-log-ingest-aws/README.md)
+- [이전 GCP와 AWS VPN 준비/검증 기록](ai-dlc/gcp-server-vpn.md)
 - [파이프라인 스테이징 도구 설계/검증 상태](ai-dlc/staging-tool.md)
 
 ## 다음 작업
 
-ANF는 비용 중단 모드로 유지한다. ignored `terraform/network-security/inspection-mode.auto.tfvars`를 보존하고, 검사가 필요할 때 [전환 Runbook](../terraform/network-security/RUNBOOK.md#anf-비용-중단과-원복)의 `disabled -> bypass -> enabled` 순서로 원복한다. 우회 중에는 기존 8081 차단 시험도 HTTP 200으로 응답한다.
+GCP `term2-delta`의 기반, NCC/HA VPN과 AWS 중앙 로그 수집을 실제 적용하고 인터넷 허용/거부, 초기 L7 탐지, 양방향 사설 HTTP와 원본 로그 도착을 검증했다. 사용자 요청으로 현재 GCP Endpoint와 AWS ANF는 disabled를 유지한다. 재개할 때는 [GCP Runbook](../terraform/network-security-gcp/RUNBOOK.md)의 단계별 Plan과 통신 확인을 따른다. AWS/GCP 공통 재개 자동화와 AWS ANF의 GCP 허용 규칙 보완, 물리 터널/Zone 장애 검증은 후속이다.
+
+ANF는 비용 중단 모드로 유지한다. ignored `terraform/network-security/inspection-mode.auto.tfvars`를 보존하며 이번 GCP 작업에서 원복하지 않았다. 기존 [전환 Runbook](../terraform/network-security/RUNBOOK.md#anf-비용-중단과-원복)은 별도 검사 원복 요청이 있을 때 참고한다. 현재 우회 중에는 기존 8081 차단 시험도 HTTP 200으로 응답한다.
 
 플랫폼의 Jenkins 운영 전환·ECR·ECS 실행/종료와 공개 웹 SAST 검증을 완료했다. PR #20은 사용자가 병합했고 설정 활성화와 GitHub Release도 성공했다. DAST 코드·화면·취소/정리 계약을 구현했다. PR #21/#22를 병합했고 DAST 사설 네트워크와 관측 조회 IAM Apply를 마쳤다. 도구 이미지·런타임 갱신·GitHub Release와 실제 후보0건 처리를 확인했다. 실제 XSS 재현은 별도 후속이다. GCP·온프레미스로 이전할 때에는 각 대상 환경의 실행기를 연결하고 별도로 검사한다. 이후 AI 수정 제안·사람 승인·재빌드/재검증, 고정 digest의 Terraform/VM 배포로 연결한다. 이 후속 전체 흐름은 아직 플랫폼에서 구현·검증되지 않았다.
 
@@ -88,10 +94,10 @@ CloudFront 두 버튼 웹의 실제 ANF 허용/차단 대조는 확인했다. �
 
 현재 요청의 **동일 Workload 계정 두 VPC 간 ANF 왕복 검사**는 완료했다. 기존 Client `10.10.1.143`에서 새 Server `10.20.1.10`에 HTTP 200으로 도달했고, 미허용 8081은 실제 blocked/drop SID로 확인했다. 양방향 FLOW와 허용 마커 ALERT를 요청 tuple/flow_id/AZ로 대조했다. 중앙/Client/Server 최종 Plan은 모두 No changes다.
 
-다음 연결 대상을 GCP 또는 온프레미스로 확정하면 해당 환경과 비중복 CIDR/공인 Gateway/BGP 정보를 준비해 VPN을 추가한다. 이번 두 VPC 검증 결과를 멀티클라우드나 계정 간 통신 검증으로 확대하지 않는다. 코드/실제 결과와 남은 범위는 [Server AI-DLC](ai-dlc/aws-workload-server.md)를 따른다.
+GCP `term2-delta`와 AWS 중앙 TGW 사이에 총4개 IPsec/BGP 터널을 적용했고, AWS Client와 GCP VM, GCP VM과 AWS Server의 두 포트 사설 HTTP200을 실제 확인했다. 네 단일 BGP 세션의 경로 철회/복구를 검증했으며 물리 터널이나 Zone 장애 검증과 구분한다. GCP 검증은 [GCP AI-DLC](ai-dlc/gcp-central-network.md), 앞선 AWS 두 VPC 검사 기록은 [Server AI-DLC](ai-dlc/aws-workload-server.md)를 따른다.
 
-GCP 연결은 후속 작업으로 남긴다. 공개 Ubuntu 이미지 이름은 조회/고정했고 GCP 기반 코드와 mock 검증은 완료했다. Billing 활성 상태와 기존 CIDR/쿼터 확인, 실제 GCP/VPN 배포와 양방향 Route/허용 정책은 미완료다. GCP 앱 로컬 성공은 GCP 연결의 ANF 통과 증거가 아니다.
+이전 GCP 프로젝트의 공개 이미지 조회와 mock/앱 검증은 과거 기록이다. 새 프로젝트는 Billing 활성, Project Number/권한, 기존 CIDR/쿼터와 Provider 지원을 별도로 확인했고 실제 배포와 통신/탐지/로그 도착을 검증했다. 현재 Endpoint 비용 중단 후에도 라우팅과 기본 규칙/중앙 로그를 유지하며 새 L7 탐지는 중지 상태다.
 
-중앙 실행 CIDR/AZ 입력은 작성됐고, 입력 작성 시 조회한 중앙 계정 서울 리전의 기존 VPC와 CIDR이 겹치지 않았다. 다른 계정/GCP/온프레미스의 CIDR 중복 여부는 연결 등록 시 확인한다. 소비자/VPN 계약은 준비되면 추가한다.
+중앙 실행 CIDR/AZ와 GCP 중앙/업무 CIDR은 기존 AWS/GCP Subnet과 비중복을 확인했고 GCP VPN 계약을 등록/적용했다. 추가 계정이나 온프레미스를 연결할 때는 각 Prefix와 기존 경로의 중복을 별도로 확인한다.
 
 RAM 오류 진단은 두 Association의 실제 성공 확인으로 종료했다. 관리 계정 프로필 로그인은 더 이상 요청하지 않는다. Organizations 변경과 Destroy는 실행하지 않았다. 실제 `terraform.tfvars`, `backend.hcl`, state/Plan, 검증 로그와 Provider 캐시는 커밋 대상에서 제외했다.
