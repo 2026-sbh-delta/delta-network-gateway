@@ -9,6 +9,8 @@ output "deployment" {
     url                    = "${var.config.certificate_arn == null ? "http" : "https"}://${coalesce(var.config.hostname, aws_lb.app.dns_name)}"
     artifact_bucket        = aws_s3_bucket.artifacts.id
     instance_architecture  = data.aws_ami.selected.architecture
+    deployment_mode        = var.config.deployment_mode
+    service_hosts          = { for role in local.services : role => local.compose ? "frontend" : role }
     instances = { for role, instance in aws_instance.app : role => {
       id            = instance.id, private_ip = instance.private_ip, az = instance.availability_zone,
       instance_type = instance.instance_type, public_ip_enabled = instance.associate_public_ip_address

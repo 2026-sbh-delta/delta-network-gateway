@@ -4,6 +4,10 @@
 
 ## Plan과 계정 확인
 
+단일 EC2 Compose는 `application.deployment_mode="compose"`를 사용한다. 기존 native 두 EC2에서 전환할 때 `retain_legacy_backend=true`로 먼저 호스트 권한/DB 경로만 적용하고 [Compose 배포 절차](../../deploy/workload/README.md#단일-ec2-docker-compose)를 수행한다. 공개 CRUD와 BE 컨테이너/EC2 재시작 검증 후 false로 별도 Plan/Apply해 기존 BE만 제거한다. FE/ALB/RDS 교체나 의도하지 않은 삭제가 나오면 적용하지 않고 원인을 해결한다. 기존 user_data를 변경하는 방식으로 Docker를 설치하지 않는다.
+
+Compose의 현재/직전 이미지와 systemd/secret/방화벽 부팅 순서, 실패 복귀는 [전환 기록](../../docs/ai-dlc/aws-compose-consolidation.md)과 배포 도구를 따른다. `application_enabled=false`는 전체 앱 삭제이므로 버전 복귀에 사용하지 않는다.
+
 ```bash
 aws sts get-caller-identity --profile sbh-delta-workload
 AWS_PROFILE=sbh-delta-workload terraform -chdir=terraform/workload output -json

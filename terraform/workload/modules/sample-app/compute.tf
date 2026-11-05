@@ -1,5 +1,5 @@
 resource "aws_instance" "app" {
-  for_each                    = local.services
+  for_each                    = local.hosts
   ami                         = data.aws_ami.selected.id
   instance_type               = var.config.instance_type
   subnet_id                   = var.workload_subnets[var.instance_az_id].id

@@ -1,4 +1,49 @@
-# Sample App의 개별 빌드와 EC2 배포
+# Sample App의 Compose 및 개별 EC2 배포
+
+## 단일 EC2 Docker Compose
+
+`application.deployment_mode="compose"`는 기존 frontend EC2 한 대에 FE/BE 컨테이너를 실행한다. ALB와 RDS는 유지한다. 실제 승인/진행 상태는 [Compose 전환 기록](../../docs/ai-dlc/aws-compose-consolidation.md)을 따른다.
+
+기존 두 EC2에서 이전할 때 먼저 `retain_legacy_backend=true`로 Plan/Apply해 기존 BE를 보존하면서 FE 호스트의 앱 secret/이미지/로그 권한과 RDS SG 경로를 준비한다. EC2 user_data는 변경하지 않는다. 아래 배포와 공개 CRUD/재시작 검증이 끝난 뒤 `retain_legacy_backend=false`로 별도 Plan/Apply해 기존 BE EC2/전용 역할/SG를 제거한다. 신규 배포는 false를 사용한다. 새 RDS를 처음 만드는 경우에만 배포 전 `release.py init-db --sample-root ../delta-sample-app`을 실행한다. 이 명령은 Compose에서도 운영자 인증과 frontend 호스트의 SSH 터널을 사용한다. 기존 RDS를 재사용하는 이번 전환에서는 재실행하지 않는다.
+
+```sh
+python3 deploy/workload/compose.py deploy --sample-root ../delta-sample-app
+python3 deploy/workload/compose.py status
+python3 deploy/workload/compose.py restart --service backend
+python3 deploy/workload/compose.py restart --service frontend
+python3 deploy/workload/compose.py rollback
+```
+
+소스는 clean Git 커밋만 허용한다. 두 서비스의 Dockerfile/패키지/소스 경로만 검증한 context와 운영 도구를 `releases/compose/{commit}/{sha256}.tar.gz`에 저장한다. `.env`, node_modules와 비밀값을 context에 포함하지 않는다. 호스트는 SHA-256/압축 경로를 검사하고 각 이미지를 순서대로 빌드한다. Node 24.19.0 Alpine의 실제 digest를 고정하며 최종 amd64 image ID를 Compose에 사용한다. Docker는 AL2023 `25.0.18-1.amzn2023.0.2`, Compose는 공식 x86 바이너리 `v5.7.0`과 고정 SHA-256으로 설치한다. 설치/빌드/배포는 EIC SSH와 기존 NAT를 사용한다.
+
+호스트는 기존 앱 secret을 조회해 `/run/delta-compose/db-password`에 UID1000/0400으로 저장한다. 해당 파일을 BE에만 mount하고 시작 wrapper가 PGPASSWORD를 앱 프로세스에 전달한다. Docker inspect의 Config.Env/Compose 환경/이미지에는 비밀번호를 저장하지 않는다. RDS CA/호스트 이름 검증을 유지한다. 호스트 IAM 역할에는 마스터 secret 조회를 허용하지 않는다.
+
+FE 3000만 publish하며 BE 8080은 내부에서 사용한다. `172.30.240.0/24` bridge와 실제 VPC/호스트 경로가 겹치면 배포를 중단한다. FE는 BE8080과 응답 트래픽만 허용하고 컨테이너 metadata/호스트 신규 접속을 차단한다. 앱은 비루트, read-only rootfs, cap_drop ALL로 실행하며 Docker socket/host network를 사용하지 않는다. 두 역할별 기존 CloudWatch 그룹에 Docker daemon이 로그를 전송한다.
+
+`delta-compose-prepare.service`가 비밀번호/방화벽을 준비한 뒤 Docker와 `delta-compose.service`가 시작된다. native `delta-sample.service`는 전환 때 비활성화한다. EC2 부팅/전체 secret 갱신에는 `sudo systemctl restart delta-compose`를 사용하며 새 파일을 mount하도록 컨테이너를 재생성한다. 개별 restart는 기존 비밀번호를 그대로 쓴다.
+
+호스트의 `/opt/delta-compose/current`, `previous`와 각 `releases/{sha256}/release.json`에 이미지 ID/소스/설치 버전을 기록한다. 설치 실패 시 이전 Compose 포인터로 복귀하며, 최초 전환 실패는 native FE를 다시 시작한다. 처음 성공한 Compose에는 직전 Compose 릴리스가 없어 rollback이 거부된다. 기존 BE 제거 이후 두 EC2 구조로 복구하려면 이전 입력/코드의 Plan으로 BE 재생성이 필요하다. DB를 재초기화하지 않는다.
+
+상태 확인은 위 status, `systemctl status delta-compose docker delta-compose-prepare`, 공개 `/api/health`와 ALB target health를 사용한다. 전체 `docker inspect`, Compose 환경 출력이나 비밀번호 파일은 일반 로그에 출력하지 않는다. 활성/직전 이미지를 prune하지 않는다.
+
+### EC2를 유지한 채 Compose만 내리기
+
+호스트에서 메인 앱 자동 시작을 해제하고 현재 프로젝트만 내린다. EC2/RDS/ALB/이미지/릴리스는 유지한다.
+
+```sh
+sudo systemctl disable --now delta-compose
+sudo docker compose --project-name delta-notes \
+  --env-file /opt/delta-compose/current/.env \
+  --file /opt/delta-compose/current/compose.yaml down
+```
+
+`docker ps -a --filter label=com.docker.compose.project=delta-notes`가 비어 있고 `delta-compose`가 inactive/disabled인지 확인한다. Docker daemon과 기존 native 서비스 상태는 별도로 확인한다. 앱이 내려가면 공개 URL은 더 이상 정상 서비스하지 않으며, 실제 중지 때 ALB는502를 반환했다. `-v`, 이미지 삭제 옵션, prune이나 Terraform 앱 비활성화는 이 절차에 사용하지 않는다.
+
+재개할 때는 `sudo systemctl enable --now delta-compose`를 실행하고 공개 `/api/health`와 두 컨테이너 health를 확인한다. 현재 이미지/설정으로 secret/방화벽을 준비하고 네트워크/컨테이너를 재생성한다. 현재 중지/재개 실행 여부는 [실제 운영 기록](../../docs/ai-dlc/aws-compose-consolidation.md)을 따른다.
+
+## 기존 native 모드
+
+아래 `release.py` 설치/재시작/상태/rollback 절차는 `deployment_mode="native"`에서만 사용한다. Compose 모드에서는 잘못된 호스트/서비스 제어를 막기 위해 거부한다. 운영자 DB 초기화는 두 모드를 지원하고 service_hosts의 BE 배치를 따라 SSH 터널 호스트를 선택한다.
 
 `terraform/workload`의 선택적 앱 모드는 공개 ALB, 사설 x86 FE/BE EC2 각 1대와 사설 RDS PostgreSQL을 준비한다. 이 디렉터리는 FE/BE 산출물 생성, 비공개 S3 게시, EIC를 통한 설치, DB 초기화와 rollback을 담당한다. 앱 소스는 별도 `delta-sample-app` 저장소에서 관리한다.
 

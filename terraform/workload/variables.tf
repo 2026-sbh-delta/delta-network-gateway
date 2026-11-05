@@ -147,7 +147,7 @@ variable "tags" {
 }
 
 variable "application_enabled" {
-  description = "Explicit opt-in for the public ALB, private x86 EC2 pair and RDS application resources."
+  description = "Explicit opt-in for the public ALB, private x86 EC2 hosts and RDS application resources."
   type        = bool
   default     = false
 }
@@ -155,19 +155,25 @@ variable "application_enabled" {
 variable "application" {
   description = "Optional sample app configuration. Existing network resources and backend remain unchanged."
   type = object({
-    public_subnet_cidrs  = optional(map(string), { apne2-az1 = "10.10.10.0/24", apne2-az2 = "10.10.11.0/24" })
-    db_subnet_cidrs      = optional(map(string), { apne2-az1 = "10.10.20.0/24", apne2-az2 = "10.10.21.0/24" })
-    ami_id               = optional(string)
-    instance_type        = optional(string, "t3.small")
-    db_engine_version    = optional(string, "18.3")
-    db_instance_class    = optional(string, "db.t3.micro")
-    db_allocated_storage = optional(number, 20)
-    certificate_arn      = optional(string)
-    hostname             = optional(string)
-    node_version         = optional(string, "24.19.0")
-    node_sha256          = optional(string, "14b342e71204f811bde6153be8e04b62aef63c236fef92b55f9c83154b409647")
+    deployment_mode       = optional(string, "native")
+    retain_legacy_backend = optional(bool, false)
+    public_subnet_cidrs   = optional(map(string), { apne2-az1 = "10.10.10.0/24", apne2-az2 = "10.10.11.0/24" })
+    db_subnet_cidrs       = optional(map(string), { apne2-az1 = "10.10.20.0/24", apne2-az2 = "10.10.21.0/24" })
+    ami_id                = optional(string)
+    instance_type         = optional(string, "t3.small")
+    db_engine_version     = optional(string, "18.3")
+    db_instance_class     = optional(string, "db.t3.micro")
+    db_allocated_storage  = optional(number, 20)
+    certificate_arn       = optional(string)
+    hostname              = optional(string)
+    node_version          = optional(string, "24.19.0")
+    node_sha256           = optional(string, "14b342e71204f811bde6153be8e04b62aef63c236fef92b55f9c83154b409647")
   })
   default = {}
+  validation {
+    condition     = contains(["native", "compose"], var.application.deployment_mode) && (!var.application.retain_legacy_backend || var.application.deployment_mode == "compose")
+    error_message = "Choose native or compose; retain_legacy_backend is only valid during a Compose migration."
+  }
   validation {
     condition     = can(regex("^24[.][0-9]+[.][0-9]+$", var.application.node_version)) && can(regex("^[a-f0-9]{64}$", var.application.node_sha256)) && var.application.db_allocated_storage >= 20 && floor(var.application.db_allocated_storage) == var.application.db_allocated_storage && can(regex("^[0-9]+[.][0-9]+$", var.application.db_engine_version))
     error_message = "Use a pinned Node.js 24 version and SHA-256, integer DB storage >=20 GiB and a major.minor PostgreSQL version."

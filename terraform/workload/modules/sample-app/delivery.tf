@@ -38,7 +38,7 @@ resource "aws_cloudwatch_log_group" "app" {
   retention_in_days = 14
 }
 resource "aws_iam_role" "app" {
-  for_each = local.services
+  for_each = local.hosts
   name     = "${local.prefix}-${each.key}"
   assume_role_policy = jsonencode({
     Version   = "2012-10-17"
@@ -46,12 +46,12 @@ resource "aws_iam_role" "app" {
   })
 }
 resource "aws_iam_instance_profile" "app" {
-  for_each = local.services
+  for_each = local.hosts
   name     = "${local.prefix}-${each.key}"
   role     = aws_iam_role.app[each.key].name
 }
 resource "aws_iam_role_policy" "app" {
-  for_each = local.services
+  for_each = local.hosts
   role     = aws_iam_role.app[each.key].id
   name     = "application-runtime"
   policy = jsonencode({
@@ -59,8 +59,11 @@ resource "aws_iam_role_policy" "app" {
     Statement = concat([
       { Effect = "Allow", Action = ["s3:GetObject"], Resource = "${aws_s3_bucket.artifacts.arn}/releases/${each.key}/*" },
       { Effect = "Allow", Action = ["logs:CreateLogStream", "logs:DescribeLogStreams", "logs:PutLogEvents"], Resource = "${aws_cloudwatch_log_group.app[each.key].arn}:*" }
-      ], each.key == "backend" ? [
+      ], each.key == "backend" || (local.compose && each.key == "frontend") ? [
       { Effect = "Allow", Action = ["secretsmanager:GetSecretValue"], Resource = aws_secretsmanager_secret.app.arn }
+      ] : [], local.compose && each.key == "frontend" ? [
+      { Effect = "Allow", Action = ["s3:GetObject"], Resource = "${aws_s3_bucket.artifacts.arn}/releases/compose/*" },
+      { Effect = "Allow", Action = ["logs:CreateLogStream", "logs:DescribeLogStreams", "logs:PutLogEvents"], Resource = "${aws_cloudwatch_log_group.app["backend"].arn}:*" }
     ] : [])
   })
 }

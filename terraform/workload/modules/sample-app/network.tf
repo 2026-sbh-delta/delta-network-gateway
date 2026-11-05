@@ -64,7 +64,7 @@ resource "aws_route_table_association" "database" {
 }
 
 resource "aws_security_group" "app" {
-  for_each    = toset(["alb", "frontend", "backend", "database"])
+  for_each    = setunion(toset(["alb", "database"]), local.hosts)
   name_prefix = "${local.prefix}-${each.key}-"
   description = "Sample application ${each.key}; explicit service flows only"
   vpc_id      = var.vpc_id
@@ -86,11 +86,14 @@ resource "aws_vpc_security_group_ingress_rule" "public_https" {
   to_port           = 443
 }
 locals {
-  flows = {
+  flows = merge({
     frontend = { source = "alb", target = "frontend", port = 3000 }
+    }, contains(local.hosts, "backend") ? {
     backend  = { source = "frontend", target = "backend", port = 8080 }
     database = { source = "backend", target = "database", port = 5432 }
-  }
+    } : {}, local.compose ? {
+    compose_database = { source = "frontend", target = "database", port = 5432 }
+  } : {})
 }
 resource "aws_vpc_security_group_ingress_rule" "service" {
   for_each                     = local.flows
@@ -109,7 +112,7 @@ resource "aws_vpc_security_group_egress_rule" "service" {
   to_port                      = each.value.port
 }
 resource "aws_vpc_security_group_ingress_rule" "ssh" {
-  for_each                     = local.services
+  for_each                     = local.hosts
   security_group_id            = aws_security_group.app[each.key].id
   referenced_security_group_id = var.management_security_group_id
   ip_protocol                  = "tcp"
@@ -117,7 +120,7 @@ resource "aws_vpc_security_group_ingress_rule" "ssh" {
   to_port                      = 22
 }
 resource "aws_vpc_security_group_egress_rule" "management" {
-  for_each                     = local.services
+  for_each                     = local.hosts
   security_group_id            = var.management_security_group_id
   referenced_security_group_id = aws_security_group.app[each.key].id
   ip_protocol                  = "tcp"
@@ -125,7 +128,7 @@ resource "aws_vpc_security_group_egress_rule" "management" {
   to_port                      = 22
 }
 resource "aws_vpc_security_group_egress_rule" "https" {
-  for_each          = local.services
+  for_each          = local.hosts
   security_group_id = aws_security_group.app[each.key].id
   cidr_ipv4         = "0.0.0.0/0"
   ip_protocol       = "tcp"

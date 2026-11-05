@@ -111,7 +111,7 @@ def publish(args, info):
 
 def remote(args, info, role, command, **kwargs):
     with connection(args, info, role) as (base, destination):
-        return run([*base, destination, shlex.join(command)], timeout=600, **kwargs)
+        return run([*base, destination, shlex.join(command)], timeout=kwargs.pop('remote_timeout', 600), **kwargs)
 
 
 def install(args, info):
@@ -145,7 +145,7 @@ def database_tunnel(args, info):
     host = info['database']['endpoint']
     if not re.fullmatch(r'[a-z0-9.-]+', host):
         raise ValueError('Invalid database endpoint')
-    with connection(args, info, 'backend') as (base, destination):
+    with connection(args, info, info.get('service_hosts', {}).get('backend', 'backend')) as (base, destination):
         process = subprocess.Popen([*base, '-o', 'ExitOnForwardFailure=yes', '-N', '-L',
                                     '127.0.0.1:{}:{}:5432'.format(port, host), destination],
                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -226,6 +226,8 @@ def main():
         build(args)
         return
     info = inventory(args)
+    if info.get('deployment_mode', 'native') != 'native' and args.action != 'init-db':
+        raise ValueError('Use compose.py for Compose hosts; native service operations are disabled')
     if args.action == 'publish': publish(args, info)
     elif args.action == 'install': install(args, info)
     elif args.action == 'init-db': initialize_database(args, info)

@@ -1,6 +1,6 @@
 # 공통 AWS 워크로드 네트워크
 
-기본값은 기존 `10.10.0.0/16` 공통 네트워크만 관리하는 root다. `application_enabled=true`를 명시하면 공개 ALB와 NAT, 사설 x86 FE/BE EC2 각 1대와 RDS PostgreSQL을 추가한다. 기존 VPC/네 서브넷/TGW/EIC의 ID와 backend key는 유지한다. [앱 설계와 실제 검증 상태](../../docs/ai-dlc/aws-sample-app.md)를 확인한다.
+기본값은 기존 `10.10.0.0/16` 공통 네트워크만 관리하는 root다. `application_enabled=true`를 명시하면 공개 ALB와 NAT, 사설 x86 앱 EC2와 RDS PostgreSQL을 추가한다. native는 FE/BE 각 1대, compose는 기존 frontend EC2 한 대에 두 컨테이너를 배치한다. 기존 VPC/네 서브넷/TGW/EIC의 ID와 backend key는 유지한다. [앱 설계와 실제 검증 상태](../../docs/ai-dlc/aws-sample-app.md)를 확인한다.
 
 승인과 실행 결과는 [통합 AI-DLC](../../docs/ai-dlc/aws-workload-consolidation.md)를 따른다. 코드 변경과 실제 Apply 상태는 구분한다.
 
@@ -48,16 +48,18 @@ VPC의 Name 태그는 `vpc_name`으로 지정하며 기본값은 `delta-board-vp
 
 | 속성명 | 타입 | 기본값 | 역할 |
 | --- | --- | --- | --- |
+| deployment_mode | string | `native` | `native`: FE/BE 별도 EC2, `compose`: FE EC2 한 대에서 FE/BE 컨테이너 실행 |
+| retain_legacy_backend | bool | `false` | compose 전환 검증 중에만 이전 BE EC2/역할/SG를 보존. 검증 후 false로 바꾸면 제거 |
 | public_subnet_cidrs | map(string) | `{apne2-az1="10.10.10.0/24", apne2-az2="10.10.11.0/24"}` | ALB/NAT용 신규 public 서브넷, 기존 두 AZ 키와 일치 |
 | db_subnet_cidrs | map(string) | `{apne2-az1="10.10.20.0/24", apne2-az2="10.10.21.0/24"}` | 인터넷 기본 경로가 없는 DB 전용 서브넷 |
 | ami_id | string | `null` | null이면 공식 AL2023 x86_64 SSM 조회. 실제 배포 입력은 조회한 AMI를 고정 |
-| instance_type | string | `t3.small` | FE/BE 각 EC2의 x86_64 유형 |
+| instance_type | string | `t3.small` | 앱 EC2의 x86_64 유형 |
 | db_engine_version | string | `18.3` | PostgreSQL 엔진 major.minor. minor 자동 갱신은 끔 |
 | db_instance_class | string | `db.t3.micro` | x86 RDS 인스턴스 유형 |
 | db_allocated_storage | number | `20` | 암호화 gp3 DB 용량 GiB, 정수 20 이상 |
 | certificate_arn | string | `null` | 선택적 서울 ACM 인증서. 지정 시 HTTP redirect와 HTTPS listener |
 | hostname | string | `null` | 인증서에 해당하는 공개 도메인. certificate_arn 사용 시 필수 |
-| node_version | string | `24.19.0` | Linux x64 Node.js 고정 버전 |
+| node_version | string | `24.19.0` | 공통 bootstrap의 Linux x64 Node.js 고정 버전. Compose 이미지 버전은 배포 도구에서 별도 고정 |
 | node_sha256 | string | `14b342e71204f811bde6153be8e04b62aef63c236fef92b55f9c83154b409647` | 해당 Node.js Linux x64 tar.xz의 공식 SHA-256 |
 
 ## 출력 속성
@@ -89,7 +91,7 @@ AWS_PROFILE=sbh-delta-workload terraform -chdir=terraform/workload plan \
 
 현재 공통 대역은 `10.10.0.0/16`이다. GCP `10.32.1.0/24` 경로를 유지하며 폐기된 Server 대역으로 향하는 경로를 등록하지 않는다. 샘플 앱은 선택적 child module [sample-app](modules/sample-app/README.md)을 사용한다. 앱 기본값은 비활성화이며 실제 배포 입력을 별도로 관리한다.
 
-[운영과 검증](RUNBOOK.md)을 따른다. 네트워크 전용 모드에는 EIC 접속 대상 EC2가 없다. 앱 모드는 역할별 EC2를 생성하며 기존 EIC를 관리 경로로 사용한다. 기존 두 VPC의 ANF 시험은 과거 기록이며 단일 VPC local 통신의 검사 보장을 의미하지 않는다.
+[운영과 검증](RUNBOOK.md)을 따른다. 네트워크 전용 모드에는 EIC 접속 대상 EC2가 없다. native 앱 모드는 역할별 EC2를 생성하고 compose 모드는 frontend EC2 한 대에 두 서비스를 배치한다. 기존 EIC를 관리 경로로 사용한다. application 출력의 deployment_mode/service_hosts/instances로 실행 모드와 실제 호스트를 구분한다. 기존 두 VPC의 ANF 시험은 과거 기록이며 단일 VPC local 통신의 검사 보장을 의미하지 않는다.
 
 ## 앱 실행과 상태
 

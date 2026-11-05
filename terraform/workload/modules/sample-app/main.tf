@@ -1,6 +1,8 @@
 locals {
   prefix   = substr(var.prefix, 0, 24)
   services = toset(["frontend", "backend"])
+  compose  = var.config.deployment_mode == "compose"
+  hosts    = local.compose && !var.config.retain_legacy_backend ? toset(["frontend"]) : local.services
   cidrs    = concat(var.existing_subnet_cidrs, values(var.config.public_subnet_cidrs), values(var.config.db_subnet_cidrs))
   ranges = [for cidr in local.cidrs : {
     start = try(sum([for i, octet in split(".", cidrhost(cidr, 0)) : tonumber(octet) * pow(256, 3 - i)]), -1)

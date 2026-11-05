@@ -77,3 +77,41 @@ run "reject_arm_instance_type" {
   }
   expect_failures = [terraform_data.contract]
 }
+
+run "compose_retains_backend_during_cutover" {
+  command = plan
+  variables {
+    config = { ami_id = "ami-00000000000000001", deployment_mode = "compose", retain_legacy_backend = true }
+  }
+  assert {
+    condition     = length(aws_instance.app) == 2 && output.deployment.service_hosts.backend == "frontend" && contains(keys(aws_vpc_security_group_ingress_rule.service), "database") && contains(keys(aws_vpc_security_group_ingress_rule.service), "compose_database")
+    error_message = "Cutover must keep the original backend and DB path while preparing the Compose host."
+  }
+}
+
+run "compose_single_host_keeps_database_and_log_history" {
+  command = plan
+  variables {
+    config = { ami_id = "ami-00000000000000001", deployment_mode = "compose" }
+  }
+  assert {
+    condition     = keys(aws_instance.app) == ["frontend"] && keys(aws_iam_role.app) == ["frontend"] && length(aws_cloudwatch_log_group.app) == 2 && length(aws_security_group.app) == 3 && keys(aws_vpc_security_group_ingress_rule.service) == ["compose_database", "frontend"]
+    error_message = "The final stack must have one host/role, no inter-host backend port and retain both log groups."
+  }
+  assert {
+    condition     = aws_vpc_security_group_ingress_rule.service["compose_database"].referenced_security_group_id == aws_security_group.app["frontend"].id && aws_vpc_security_group_ingress_rule.service["compose_database"].from_port == 5432 && aws_instance.app["frontend"].user_data_replace_on_change && aws_db_instance.app.deletion_protection && output.deployment.service_hosts.frontend == "frontend" && output.deployment.service_hosts.backend == "frontend"
+    error_message = "Compose needs the host DB path, explicit role mapping and the existing DB/EC2 protection contract."
+  }
+}
+
+run "reject_undefined_runtime_mode" {
+  command = plan
+  variables { config = { deployment_mode = "other" } }
+  expect_failures = [var.config]
+}
+
+run "reject_native_legacy_migration_flag" {
+  command = plan
+  variables { config = { retain_legacy_backend = true } }
+  expect_failures = [var.config]
+}
