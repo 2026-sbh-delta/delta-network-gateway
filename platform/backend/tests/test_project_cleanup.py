@@ -244,3 +244,43 @@ def test_k3s_cleanup_checks_all_owners_and_uses_delete_preconditions(monkeypatch
             d["preconditions"] == {"uid": "owned-uid", "resourceVersion": "7"} for d in deletes
         )
         assert all("default-deny" not in args for args, _ in calls)
+
+
+@pytest.mark.parametrize("encrypted", [True, False])
+def test_onprem_credentials_resolve_from_separate_encrypted_parameter(
+    setup_runtime, monkeypatch, encrypted
+):
+    from types import SimpleNamespace
+
+    from delta_platform.adapters.onprem_removal import runtime_settings
+
+    v = setup_runtime
+    config = v["config"].model_copy(
+        update={
+            "onprem_runtime_config_parameter": "/delta-platform/runtime/onprem-removal",
+            "onprem_runtime_target": "",
+        }
+    )
+
+    def get_parameter(**args):
+        assert args == {"Name": "/delta-platform/runtime/onprem-removal", "WithDecryption": True}
+        return {
+            "Parameter": {
+                "Type": "SecureString" if encrypted else "String",
+                "Value": json.dumps({"target": v["target"], "token": "private-only"}),
+            }
+        }
+
+    monkeypatch.setattr(
+        "delta_platform.adapters.onprem_removal.boto3.client",
+        lambda *a, **kw: SimpleNamespace(get_parameter=get_parameter),
+    )
+    if not encrypted:
+        with pytest.raises(Problem) as rejected:
+            runtime_settings(config)
+        assert rejected.value.code == "runtime_config_unavailable"
+    else:
+        resolved = runtime_settings(config)
+        assert json.loads(resolved.onprem_runtime_target) == v["target"]
+        assert resolved.onprem_runtime_token.get_secret_value() == "private-only"
+        assert not resolved.onprem_runtime_config_parameter
