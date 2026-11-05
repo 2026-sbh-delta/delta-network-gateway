@@ -232,7 +232,9 @@ class JenkinsRunner:
                     external = "jenkins:queue:" + match[1]
             store.attach_build(run_id, token, external)
         prepared = store.prepare_submission(run_id, token, parameters)
-        deadline = datetime.fromisoformat(prepared["prepared_at"]).timestamp() + self.execution_timeout
+        deadline = (
+            datetime.fromisoformat(prepared["prepared_at"]).timestamp() + self.execution_timeout
+        )
         previous = None
         while datetime.now(UTC).timestamp() < deadline:
             store.heartbeat(run_id, token)
