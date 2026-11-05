@@ -313,6 +313,10 @@ class ProbeBrowser:
         return self.evidence["impact"] is None and (
             bool(self.evidence["executed"]) or "html_unescaped" in self.contexts())
 
+    def csp_settled(self) -> bool:
+        # 검사 문자열이 출력됐고 CSP가 실행을 막았다. 다른 문자열도 같은 정책에 막히므로 더 시도할 이유가 없다.
+        return self.evidence["csp_blocked"] and bool(self.evidence["rendered"])
+
     def status(self) -> dict:
         return {
             "marker_reflection": self.contexts(),
@@ -324,6 +328,7 @@ class ProbeBrowser:
             "probe_typed": self.evidence["probe_typed"],
             "probe_rendered": bool(self.evidence["rendered"]),
             "probe_executed": bool(self.evidence["executed"]),
+            "probe_blocked_by_csp": self.csp_settled(),
             "actions_left": MAX_ACTIONS - len(self.evidence["actions"]),
         }
 
@@ -397,6 +402,8 @@ class ProbeBrowser:
             raise ActionError("등록되지 않은 카나리다.")
         if len(self.evidence["canaries"]) >= MAX_CANARIES:
             raise ActionError(f"카나리는 최대 {MAX_CANARIES}회까지 시도한다. finish로 종료하라.")
+        if self.csp_settled():
+            raise ActionError("CSP가 이미 실행을 막았다. 다른 검사 문자열도 같은 정책에 막히므로 not_executed로 finish하라.")
         await self._require_focus()
         self.phase = "detect"
         self.evidence["canaries"].append(canary_id)

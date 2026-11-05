@@ -415,3 +415,20 @@ footer{color:#6f7a86}
 .sast-v-uncertain{color:var(--amber)}
 .sast-v-safe{color:var(--green)}
 #llm-runtime[data-location="server"]{background:#123a2a;color:#7fe0a8}#llm-runtime[data-location="local"]{background:#3a2a12;color:#f2c48f}
+
+/* 조치 우선순위: 점검이 끝나면 담당자가 가장 먼저 보는 패널이라 크게 쓰고 항목 사이를 넉넉히 둔다. */
+.priority{margin:20px 0 24px;padding:22px 24px;background:var(--surface);border:1px solid var(--line);border-radius:6px}
+.priority h2{display:flex;align-items:baseline;gap:12px;margin:0 0 8px;font-size:19px;font-weight:700;color:#fff}
+.priority h2 small{font:12px var(--mono);color:var(--muted)}
+.priority>p{margin:0 0 18px;font-size:15px;line-height:1.6;color:var(--ink)}
+.priority ol{gap:16px;margin:0}
+.priority li{padding:16px 20px;background:var(--surface-2);border:1px solid var(--line);border-left-width:6px;border-radius:6px}
+.priority li strong{display:flex;flex-wrap:wrap;align-items:center;gap:12px;font-size:16px;line-height:1.45;color:#fff}
+.priority .lv{flex-shrink:0;padding:4px 12px;border-radius:999px;font-size:13px;font-weight:700;color:#fff;background:var(--muted)}
+.priority li p{margin:12px 0 0;font-size:15px;line-height:1.8;color:#cfd5db}
+.priority li[data-level="urgent"]{border-left-color:var(--red)}.priority li[data-level="urgent"] .lv{background:var(--red)}
+.priority li[data-level="high"]{border-left-color:var(--amber)}.priority li[data-level="high"] .lv{background:var(--amber)}
+.priority li[data-level="medium"]{border-left-color:var(--blue)}.priority li[data-level="medium"] .lv{background:var(--blue)}
+.priority li[data-level="low"]{border-left-color:var(--green)}.priority li[data-level="low"] .lv{background:var(--green)}
+/* 큰 박스 사이 간격 */
+.scans,.vulns,.sast-panel{margin-top:20px}

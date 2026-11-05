@@ -42,7 +42,15 @@ class Step(_Model):
     detail: str = ""
 
 
+class Scope(_Model):
+    """점검 범위 증거. 정상적인 0건과 잘못된 범위(다른 커밋, 빈 폴더, 기대 밖 언어)를 가른다."""
+    commit: str | None = Field(default=None, description="실제로 점검한 커밋(원격은 받아 온 HEAD, 로컬은 요청 커밋)")
+    files: int = Field(description="점검 대상 소스 파일 수(제외 목록 밖)")
+    languages: dict[str, int] = Field(default_factory=dict, description="언어 → 파일 수")
+
+
 class Summary(_Model):
+    scope: Scope | None = Field(default=None, description="점검 범위 증거")
     counts: dict[str, int] = Field(default_factory=dict, description="판정 주체:판정 → 개수, secrets → 비밀값 수")
     dast_targets: int = Field(default=0, description="DAST가 공격할 결과 수. 0이면 DAST를 건너뛸 수 있다")
     llm: dict[str, int] = Field(default_factory=dict, description="LLM 호출 수·캐시 적중 수·실패 수")

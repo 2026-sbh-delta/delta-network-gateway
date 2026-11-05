@@ -9,7 +9,8 @@ import asyncio
 import json
 import os
 
-from .agent import SYSTEM_PROMPT, agent_prompt, model_name, playwright_key, scroll_delta
+from .agent import (SYSTEM_PROMPT, agent_prompt, agent_timeout, model_name, playwright_key, run_tag, scroll_delta,
+                    timeout_error)
 from .contracts import Finding
 from .probe_browser import MAX_ACTIONS, ActionError, ProbeBrowser
 from .registry import ResolvedTarget
@@ -150,10 +151,10 @@ async def investigate(finding: Finding, target: ResolvedTarget, payload_id: str,
                   "configs": {member: {"enabled": False} for member in DISABLED_MEMBERS}},
                  *custom_tools(sorted(browser.canaries))]
         messages = [{"role": "user", "content": [
-            {"type": "text", "text": agent_prompt(finding, target, hypothesis, impact)},
+            {"type": "text", "text": agent_prompt(finding, target, hypothesis, impact, run_tag())},
             *_image(await browser.screenshot()),
         ]}]
-        async with asyncio.timeout(float(os.environ.get("DAST_AGENT_TIMEOUT", "300"))):
+        async with asyncio.timeout(agent_timeout()):
             for _turn in range(MAX_ACTIONS):
                 response = await client.messages.create(
                     model=model, max_tokens=16000, system=SYSTEM_PROMPT, tools=tools,
@@ -193,6 +194,8 @@ async def investigate(finding: Finding, target: ResolvedTarget, payload_id: str,
                 messages.append({"role": "user", "content": results})
                 if browser.done is not None:
                     break
+    except TimeoutError:
+        error = timeout_error()
     except Exception as exc:
         error = exc
     finally:

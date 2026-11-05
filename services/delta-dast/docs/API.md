@@ -76,6 +76,7 @@ SAST 결과 ─▶ POST /api/runs ─▶ run_id
 | `concurrency` | 1~5, 기본 2 | 취약점을 동시에 몇 개 점검할지. 취약점마다 브라우저·에이전트를 따로 쓴다 |
 | `impact` | bool, 기본 `true` | 취약이 확인되면 영향 시연 화면(HACKED 등)을 실행할지 여부. 끄면 무해한 검사 문자열만 쓴다 |
 | `project_id` | 프로젝트 ID(생략하면 기본 프로젝트) | 점검을 묶을 프로젝트 |
+| `payload_id` | `bsod_v1` \| `visual_svg_v1`, 생략 가능 | 영향 시연 화면. 생략하면 입력 힌트 → `DAST_DEFAULT_PAYLOAD`(기본 `visual_svg_v1`) 순 |
 | `report` | 아래 SAST 형식 | 점검할 취약점 목록 |
 
 응답 `200`: `{"run_id": "1d236fb7-b130-4ff2-ad63-87e58596be49"}`
@@ -145,6 +146,9 @@ SAST 결과 ─▶ POST /api/runs ─▶ run_id
 ```
 
 - `status`: `running` → `done`(모든 항목 판정 완료) 또는 `error`(하나 이상 판정 불가).
+- `error`일 때 `error_kind`로 종류를 나눈다. `preflight`: 에이전트를 띄우기 전 확인에서 멈춤(LLM 인증 없음, 브라우저 없음, 대상 403·404·5xx·연결 안 됨). 원인이 `error`에 그대로 들어가고 몇 초 안에 끝난다. `inconclusive`: 돌렸지만 일부 항목 판정 불가. `failed`: 그 밖의 실행 실패.
+- 에이전트 제한 시간: 가설 20초, 항목당 탐색 `DAST_AGENT_TIMEOUT`(기본 100초). 넘으면 그 항목만 판정 불가로 끝난다.
+- 둘 이상 판정하면 `priority`가 붙는다: `{"summary", "items": [{"finding_id", "rank", "level": "urgent|high|medium|low", "rationale"}], "model", "duration_ms"}`. SAST 근거와 DAST 결과(실행·CSP 차단)를 LLM이 함께 보고 정한 조치 순서다. 판단에 실패하면 `{"error"}`만 있고 점검 결과는 그대로다. `status`는 우선순위까지 정한 뒤 `done`이 된다.
 - 점검 상태는 서버 메모리에 있다. 서버가 재시작된 뒤에는 `/view`로 조회한다.
 - `reverify_of`는 재검증일 때만 있다.
 

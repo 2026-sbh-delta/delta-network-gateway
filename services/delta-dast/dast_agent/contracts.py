@@ -88,6 +88,8 @@ class RunRequest(StrictModel):
     sast_run_id: str | None = Field(default=None, pattern=r"^[A-Za-z0-9._-]{1,64}$")
     # 점검할 대상(registry target). 비우면 프로젝트에 묶인 대상을 쓴다.
     target_id: str | None = Field(default=None, pattern=ID_PATTERN)
+    # 영향 시연 화면(등록된 payload ID, 예: bsod_v1). 비우면 입력 힌트 → DAST_DEFAULT_PAYLOAD 순으로 고른다.
+    payload_id: str | None = Field(default=None, pattern=ID_PATTERN)
 
 
 class Decision(StrictModel):

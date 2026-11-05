@@ -35,7 +35,8 @@ def tool_catalog() -> dict[str, Any]:
             {
                 "name": "staging_stop",
                 "description": (
-                    "스테이징을 내린다(태스크 0개, 스캐너 IP 규칙 삭제). 스테이징은 상시로 띄워 두고 실행마다 "
+                    "스테이징을 내린다(AWS 는 태스크 0개와 스캐너 IP 규칙 삭제, GCP 는 Cloud Armor 스캐너 규칙 삭제). "
+                    "스테이징은 상시로 띄워 두고 실행마다 "
                     "staging_deploy 로 이미지만 바꾸므로 점검 회차마다 부르지 않는다. 시연·작업 세션을 마칠 때만 부른다."
                 ),
                 "input_schema": _run_id_schema(),

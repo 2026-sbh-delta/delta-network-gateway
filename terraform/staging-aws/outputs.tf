@@ -47,7 +47,6 @@ output "tool_config" {
     target_group_arn       = aws_lb_target_group.app.arn
     alb_security_group_id  = aws_security_group.alb.id
     dynamic_scanner_access = var.alb_internet_facing
-    url                    = "http://${aws_lb.staging.dns_name}"
     allowed_image_prefixes = local.allowed_image_prefixes
   }
 }

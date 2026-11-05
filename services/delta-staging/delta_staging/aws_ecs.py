@@ -88,6 +88,18 @@ class AwsEcsStaging:
     async def _call(self, client: str, method: str, **kwargs: Any) -> dict[str, Any]:
         return await asyncio.to_thread(getattr(self._client(client), method), **kwargs)
 
+    async def endpoint(self) -> str:
+        """스테이징 주소. 설정에 없으면 대상 그룹이 붙은 ALB 의 DNS 이름을 조회한다."""
+        if self.target.url:
+            return self.target.url.rstrip("/")
+        groups = (await self._call("elbv2", "describe_target_groups",
+                                   TargetGroupArns=[self.target.target_group_arn]))["TargetGroups"]
+        arns = groups[0].get("LoadBalancerArns") if groups else None
+        if not arns:
+            raise StagingError("대상 그룹에 붙은 ALB 가 없다")
+        balancers = (await self._call("elbv2", "describe_load_balancers", LoadBalancerArns=arns[:1]))["LoadBalancers"]
+        return f"http://{balancers[0]['DNSName']}"
+
     async def deploy(self, req: DeployRequest, report: Report) -> Outcome:
         self.check_image(req.image)
         identity = await self._call("sts", "get_caller_identity")
@@ -108,8 +120,9 @@ class AwsEcsStaging:
             raise StagingError(f"실행 중인 이미지 digest가 요청과 다르다: {digest}")
         report("image_digest", digest)
         await self._wait_healthy(ip)
-        report("healthy", self.target.url)
-        return Outcome(url=self.target.url, revision=revision, image_digest=digest, task_arn=task_arn,
+        url = await self.endpoint()
+        report("healthy", url)
+        return Outcome(url=url, revision=revision, image_digest=digest, task_arn=task_arn,
                        scanner_ip=scanner_ip)
 
     async def register_image(self, req: DeployRequest, container_port: int) -> str:
@@ -125,7 +138,7 @@ class AwsEcsStaging:
         if digest != expected_digest:
             raise StagingError("실행 중인 이미지 digest가 요청과 다르다")
         await self._wait_healthy(ip)
-        return Outcome(self.target.url, revision, digest, task_arn)
+        return Outcome(await self.endpoint(), revision, digest, task_arn)
 
     async def _register(self, req: DeployRequest, container_port: int | None = None) -> str:
         current = (await self._call("ecs", "describe_task_definition", taskDefinition=self.target.task_family))["taskDefinition"]

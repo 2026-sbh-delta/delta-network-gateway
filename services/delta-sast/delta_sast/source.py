@@ -97,3 +97,23 @@ def scan_root(base: Path, subdir: str | None) -> Path:
     if not root.is_dir():
         raise SourceRejected("subdir가 없다")
     return root
+
+
+LANGUAGES = {".py": "python", ".js": "javascript", ".mjs": "javascript", ".cjs": "javascript", ".jsx": "javascript",
+             ".ts": "typescript", ".tsx": "typescript", ".java": "java", ".go": "go", ".rb": "ruby", ".php": "php",
+             ".html": "template", ".jinja": "template", ".jinja2": "template", ".j2": "template"}
+
+
+def scope_of(base: Path, root: Path, requested: str | None, excludes: tuple[str, ...]) -> dict:
+    """점검 범위 증거: 실제 커밋, 소스 파일 수, 언어별 파일 수."""
+    commit = requested
+    if (base / ".git").exists():
+        commit = _git("rev-parse", "HEAD", cwd=base).strip()
+    languages: dict[str, int] = {}
+    for path in root.rglob("*"):
+        if path.is_symlink() or not path.is_file() or any(part in excludes for part in path.relative_to(root).parts):
+            continue
+        language = LANGUAGES.get(path.suffix.lower())
+        if language:
+            languages[language] = languages.get(language, 0) + 1
+    return {"commit": commit, "files": sum(languages.values()), "languages": dict(sorted(languages.items()))}

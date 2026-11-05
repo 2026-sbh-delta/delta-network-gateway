@@ -2,7 +2,8 @@
 
 수정안: SAST(파일·줄·설명)와 DAST(입력 지점·실행 지점·출력 위치·CSP) 맥락을 합쳐 Claude가
 대상 저장소의 작업 사본만 고친다. 결과는 git diff 패치로 남긴다.
-PR: 사용자가 승인했을 때만 만든다. 원격 저장소가 비어 있으면 로컬 브랜치 커밋까지만 한다.
+원본: 원격 저장소가 있으면 점검한 커밋(없으면 base_branch 끝)을 얕게 받아 쓴다. 없으면 로컬 path를 쓴다.
+PR: 사용자가 승인했을 때만 만든다. 수정안을 만든 커밋에서 브랜치를 딴다. 원격 저장소가 비어 있으면 로컬 브랜치 커밋까지만 한다.
 """
 
 import asyncio
@@ -13,6 +14,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import threading
 import urllib.request
 
 from .agent import model_name
@@ -22,6 +24,8 @@ from .registry import RepoDefinition
 PACKAGE_ROOT = Path(__file__).resolve().parent.parent
 IGNORE = shutil.ignore_patterns(".git", "node_modules", "__pycache__", ".venv", "*.pyc")
 GIT_ID = ["-c", "user.name=DAST Agent", "-c", "user.email=dast-agent@users.noreply.github.com"]
+REF_PATTERN = re.compile(r"^[A-Za-z0-9._][A-Za-z0-9._/-]{0,99}$")
+_source_lock = threading.Lock()
 FIX_SCHEMA = {
     "type": "object", "additionalProperties": False,
     "required": ["summary", "changes", "verification", "trace"],
@@ -65,6 +69,46 @@ def repo_source(repo: RepoDefinition) -> Path:
     return (path if path.is_absolute() else PACKAGE_ROOT / path).resolve()
 
 
+def _remote_git(*args: str, cwd: Path | None = None) -> subprocess.CompletedProcess:
+    # 토큰은 명령줄·로그에 남기지 않고 헤더로만 전달한다. 공개 저장소는 토큰 없이 받는다.
+    token = os.environ.get("GITHUB_TOKEN")
+    auth = ["-c", f"http.extraHeader=Authorization: Bearer {token}"] if token else []
+    env = os.environ | {"GIT_TERMINAL_PROMPT": "0"}
+    return subprocess.run(["git", *GIT_ID, *auth, *args], cwd=cwd, env=env,
+                          capture_output=True, text=True, timeout=180)
+
+
+def checkout(repo: RepoDefinition, dest: Path, ref: str | None = None) -> str:
+    """원격 저장소의 커밋 하나를 dest에 얕게 받는다. ref가 없으면 base_branch 끝. 받은 커밋 SHA를 돌려준다."""
+    ref = ref or repo.base_branch
+    if not REF_PATTERN.fullmatch(ref):
+        raise RuntimeError("커밋·브랜치 이름 형식이 아닙니다.")
+    owner, name = _github(repo.remote)
+    dest.mkdir(parents=True, exist_ok=True)
+    for step in (("init", "-q"), ("fetch", "-q", "--depth", "1", f"https://github.com/{owner}/{name}.git", ref),
+                 ("checkout", "-q", "--detach", "FETCH_HEAD")):
+        if _remote_git(*step, cwd=dest).returncode:
+            raise RuntimeError(f"대상 저장소를 받지 못했습니다: git {step[0]}")
+    return _git(dest, "rev-parse", "HEAD").strip()
+
+
+def source_root(repo: RepoDefinition, cache: Path, ref: str | None = None) -> tuple[Path, str | None]:
+    """수정안·코드 확인에 쓸 원본 소스와 그 커밋. 원격은 점검 실행마다 한 번만 받아 cache에 둔다."""
+    if not repo.remote:
+        return repo_source(repo), None
+    root, meta = cache / "source", cache / "source.json"
+    with _source_lock:
+        if meta.is_file() and root.is_dir():
+            saved = json.loads(meta.read_text())
+            if saved.get("remote") == repo.remote:
+                return root, saved["commit"]
+        if root.exists():
+            shutil.rmtree(root)
+        commit = checkout(repo, root, ref)
+        meta.write_text(json.dumps({"remote": repo.remote, "commit": commit}))
+    return root, commit
+
+
 def fix_context(record: dict, finding_id: str) -> dict:
     """수정 에이전트에 넘길 SAST·DAST 맥락. 페이로드 원문은 넣지 않는다."""
     inputs = (record.get("report") or record.get("input") or {}).get("findings", [])
@@ -87,13 +131,13 @@ def fix_context(record: dict, finding_id: str) -> dict:
     }
 
 
-async def propose_fix(record: dict, finding_id: str, repo: RepoDefinition, workdir: Path) -> dict:
-    """대상 저장소 작업 사본을 만들고 Claude가 수정한 뒤 패치를 돌려준다."""
+async def propose_fix(record: dict, finding_id: str, repo: RepoDefinition, workdir: Path,
+                      source: Path, base_commit: str | None = None) -> dict:
+    """원본(source)의 작업 사본을 만들고 Claude가 수정한 뒤 패치를 돌려준다. base_commit은 원본의 원격 커밋."""
     from claude_agent_sdk import (
         ClaudeAgentOptions, PermissionResultAllow, PermissionResultDeny, ResultMessage, query,
     )
 
-    source = repo_source(repo)
     if not source.is_dir():
         raise RuntimeError("수정 대상 저장소 경로를 찾을 수 없습니다.")
     copy = workdir / "repo"
@@ -137,7 +181,7 @@ async def propose_fix(record: dict, finding_id: str, repo: RepoDefinition, workd
     fix = {"status": "ready", "finding_id": finding_id, "files": files, "patch": patch,
            "summary": summary.get("summary", ""), "changes": summary.get("changes", []),
            "verification": summary.get("verification", []), "trace": summary.get("trace", []),
-           "context": context,
+           "context": context, "base_commit": base_commit,
            "cost_usd": getattr(result, "total_cost_usd", None)}
     (workdir / "fix.patch").write_text(patch)
     (workdir / "fix.json").write_text(json.dumps(fix, ensure_ascii=False, indent=2))
@@ -194,21 +238,16 @@ def create_pr(fix: dict, repo: RepoDefinition, workdir: Path, run_id: str) -> di
     if not token:
         raise RuntimeError("GITHUB_TOKEN이 설정되지 않았습니다.")
     owner, name = _github(repo.remote)
-    # 토큰은 명령줄·로그에 남기지 않고 헤더로만 전달한다.
     with tempfile.TemporaryDirectory(prefix="dast-pr-") as directory:
         clone = Path(directory) / "clone"
-        auth = ["-c", f"http.extraHeader=Authorization: Bearer {token}"]
-        env = os.environ | {"GIT_TERMINAL_PROMPT": "0"}
-        run = lambda *args, cwd=None: subprocess.run(["git", *GIT_ID, *auth, *args], cwd=cwd, env=env,
-                                                     capture_output=True, text=True, timeout=180)
-        if run("clone", "-q", "--depth", "1", "-b", repo.base_branch,
-               f"https://github.com/{owner}/{name}.git", str(clone)).returncode:
-            raise RuntimeError("대상 저장소를 받지 못했습니다.")
+        # 수정안을 만든 커밋에서 브랜치를 딴다(기록이 없으면 base_branch 끝).
+        checkout(repo, clone, fix.get("base_commit"))
         (Path(directory) / "fix.patch").write_text(fix["patch"])
         steps = [("checkout", "-q", "-b", branch), ("apply", str(Path(directory) / "fix.patch")),
-                 ("add", "-A"), ("commit", "-q", "-m", title, "-m", body), ("push", "-q", "origin", branch)]
+                 ("add", "-A"), ("commit", "-q", "-m", title, "-m", body),
+                 ("push", "-q", f"https://github.com/{owner}/{name}.git", f"HEAD:refs/heads/{branch}")]
         for step in steps:
-            if run(*step, cwd=clone).returncode:
+            if _remote_git(*step, cwd=clone).returncode:
                 raise RuntimeError(f"PR 준비 중 실패했습니다: git {step[0]}")
     request = urllib.request.Request(
         f"https://api.github.com/repos/{owner}/{name}/pulls", method="POST",

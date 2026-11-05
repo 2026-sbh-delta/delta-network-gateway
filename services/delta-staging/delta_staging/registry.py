@@ -24,6 +24,7 @@ class Provider(Protocol):
     def check_request(self, req: DeployRequest) -> None: ...
     async def deploy(self, req: DeployRequest, report: Report) -> Outcome: ...
     async def stop(self) -> None: ...
+    async def endpoint(self) -> str: ...
 
 
 class Unsupported(Exception):
@@ -161,3 +162,14 @@ class StagingRegistry:
             task.cancel()
         await self.providers[current.cloud].stop()
         return self._put(current.model_copy(update={"state": "stopped", "url": None, "ended_at": _now()}))
+
+
+async def endpoints(providers: dict[str, Provider]) -> list[dict[str, str]]:
+    """클라우드별 현재 스테이징 주소. DAST 가 점검 대상 주소를 이 값으로 받는다."""
+    async def one(cloud: str, provider: Provider) -> dict[str, str]:
+        try:
+            return {"cloud": cloud, "url": await provider.endpoint()}
+        except Exception as exc:  # 한 클라우드 조회 실패가 다른 클라우드 주소를 가리지 않게 한다
+            logger.warning("스테이징 주소 조회 실패: %s", cloud, exc_info=not isinstance(exc, StagingError))
+            return {"cloud": cloud, "error": str(exc) if isinstance(exc, StagingError) else type(exc).__name__}
+    return list(await asyncio.gather(*(one(cloud, p) for cloud, p in sorted(providers.items()))))

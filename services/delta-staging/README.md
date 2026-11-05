@@ -2,7 +2,7 @@
 
 파이프라인 스테이징 도구. 관리 에이전트가 "스테이징이 필요하다"고 판단하면 이 도구를 호출한다. 빌드된 이미지를 클라우드별 스테이징에 띄우고, DAST 스캐너만 닿는 내부 주소를 돌려준다.
 
-기반 인프라(클러스터, 서비스, 내부 ALB, 보안 그룹)는 Terraform이 한 번 만든다([staging-aws](../../terraform/staging-aws/README.md)). 이 도구는 실행마다 **이미지만 바꾼다**.
+기반 인프라는 Terraform이 한 번 만든다. AWS는 ECS 서비스·ALB·보안 그룹([staging-aws](../../terraform/staging-aws/README.md)), GCP는 Cloud Run 서비스·외부 LB·Cloud Armor([staging-gcp](../../terraform/staging-gcp/README.md))다. 이 도구는 실행마다 **이미지만 바꾼다**. 호출 계약은 클라우드와 상관없이 같고 `cloud`만 다르다.
 
 ## 실행
 
@@ -16,6 +16,8 @@ uv venv --python 3.12 .venv && uv pip install --python .venv/bin/python -e '.[de
 ```bash
 terraform -chdir=../../terraform/staging-aws output -json tool_config > staging.json
 ```
+
+두 클라우드를 함께 쓰면 두 `tool_config`를 JSON 배열 하나로 넣는다(`[{aws}, {gcp}]`).
 
 서버로 띄우기(관리 에이전트가 HTTP로 호출):
 
@@ -49,6 +51,8 @@ AWS 자격 증명은 boto3 기본 경로(`AWS_PROFILE` 등)를 쓴다. 이 도�
 | `staging_status` | `GET /v1/staging/deployments/{run_id}` | 상태와 단계 기록. `ready`면 `url`을 DAST에 넘긴다 |
 | `staging_stop` | `POST /v1/staging/deployments/{run_id}/stop` | 태스크를 0개로 내린다. 상시 운영이라 시연·작업 세션을 마칠 때만 부른다 |
 
+`GET /v1/staging/targets`는 클라우드별 현재 스테이징 주소 `{"targets": [{"cloud", "url"}]}`를 돌려준다(조회에 실패한 클라우드는 `url` 대신 `error`). 주소는 설정에 적어 두지 않고 부를 때마다 클라우드에서 조회한다. GCP는 전역 IP 이름(`address`)으로, AWS는 대상 그룹이 붙은 ALB로 찾는다. 스테이징을 다시 만들어 주소가 바뀌어도 설정을 고치지 않는다. DAST는 이 값으로 점검 주소를 받는다.
+
 모든 요청에 `Authorization: Bearer <DELTA_STAGING_TOKEN>`이 필요하다(`/healthz` 제외).
 
 요청 예시:
@@ -62,7 +66,7 @@ AWS 자격 증명은 boto3 기본 경로(`AWS_PROFILE` 등)를 쓴다. 이 도�
 |---|---|---|
 | `run_id` | 예 | 파이프라인 실행 ID. 같은 값으로 다시 부르면 새로 띄우지 않는다 |
 | `image` | 예 | 빌드된 이미지. `@sha256:` digest를 권장한다. 태그면 `pinned=false`로 기록한다 |
-| `cloud` | 아니오 | `aws`(기본). `gcp`는 계약에만 있고 아직 `501`이다 |
+| `cloud` | 아니오 | `aws`(기본) 또는 `gcp`. 설정 파일에 없는 클라우드면 `501` |
 | `commit` | 아니오 | 이미지를 만든 커밋. 컨테이너 env `DELTA_COMMIT`으로도 넣는다 |
 | `env` | 아니오 | 비밀이 아닌 env. `PASSWORD`·`TOKEN`·`SECRET`·`API_KEY` 등이 든 이름은 거부한다 |
 | `replace` | 아니오 | 다른 실행이 스테이징을 쓰는 중이면 교체한다. 배포 중인 실행은 교체하지 않는다 |
@@ -78,9 +82,11 @@ AWS 자격 증명은 boto3 기본 경로(`AWS_PROFILE` 등)를 쓴다. 이 도�
 | `stopped` | 내렸다(세션 종료) |
 | `replaced` | 다른 실행이 스테이징을 가져갔다 |
 
-`steps`는 `accepted → (scanner_allowed) → task_definition → service_updated → rollout_completed → image_digest → healthy` 순서다. `scanner_ip`를 준 실행은 응답의 `scanner_ip`에 허용한 IP가 남는다.
+`steps`는 AWS가 `accepted → (scanner_allowed) → task_definition → service_updated → image_digest → healthy`, GCP가 `accepted → (scanner_allowed) → image_digest → service_updated → traffic_switched → healthy` 순서다. `scanner_ip`를 준 실행은 응답의 `scanner_ip`에 허용한 IP가 남는다.
 
 `image_digest`는 요청 값이 아니라 새 개정판으로 **실행 중인 태스크**에서 ECS가 실제로 받은 이미지 digest(`sha256:<64자리>`)다. 빌드 기록과 대조하는 빌드 식별자로 쓴다. 요청 이미지를 digest로 줬는데 실행 중인 digest와 다르면 `failed`로 끝낸다. 확인한 태스크는 `task_arn`에 남는다.
+
+GCP(Cloud Run v2)는 개정판에 실제로 받은 digest를 돌려주는 필드가 없다. 그래서 태그 이미지는 Artifact Registry에서 지금 가리키는 digest로 바꾼 뒤 **그 digest로 개정판을 만든다**. 개정판이 digest로 고정되므로 다른 이미지를 실행할 수 없고, 도구는 새 개정판의 이미지가 그 값과 같은지 다시 확인한다. `task_arn`에는 개정판 이름이 들어간다. `scanner_ip=auto`(도구가 곧 스캐너)면 LB·Cloud Armor를 거친 실제 응답까지 확인한 뒤 `ready`로 알린다.
 
 빌드는 아키텍처별 단일 매니페스트로 만든다. `docker buildx`는 플랫폼 하나만 지정해도 기본으로 provenance 증명을 붙여 이미지 인덱스를 만들기 때문에, `--platform linux/amd64 --provenance=false --sbom=false`로 빌드해야 빌드 기록의 digest와 ECS가 보고하는 digest가 같다.
 
@@ -104,15 +110,23 @@ AWS 자격 증명은 boto3 기본 경로(`AWS_PROFILE` 등)를 쓴다. 이 도�
 - `sts:GetCallerIdentity`
 - `ecs:DescribeTaskDefinition`, `ecs:RegisterTaskDefinition`, `ecs:TagResource`, 해당 서비스의 `ecs:UpdateService`·`ecs:DescribeServices`
 - 실행 중 digest 확인: `ecs:ListTasks`, `ecs:DescribeTasks`
-- `elasticloadbalancing:DescribeTargetHealth`
+- `elasticloadbalancing:DescribeTargetHealth`, 주소 조회용 `elasticloadbalancing:DescribeTargetGroups`·`elasticloadbalancing:DescribeLoadBalancers`
 - `iam:PassRole`(실행 역할·태스크 역할 두 개만)
 - 공개 모드: ALB 보안 그룹의 `ec2:DescribeSecurityGroupRules`, `ec2:AuthorizeSecurityGroupIngress`, `ec2:RevokeSecurityGroupIngress`, `ec2:CreateTags`
 
 실제 배포 환경에서는 장기 키 대신 OIDC(웹 아이덴티티)나 태스크 역할로 받는다. boto3 기본 체인이 둘 다 읽으므로 코드 변경은 없다.
 
+## 필요한 GCP 권한(배포 주체)
+
+GCP 자격 증명은 ADC(`gcloud auth application-default login`, 서비스 계정, 워크로드 아이덴티티 페더레이션)를 쓴다.
+
+- 주소 조회: `compute.addresses.get`
+- Cloud Run: `run.services.get`, `run.services.update`, `run.revisions.get`, `run.operations.get`, 런타임 서비스 계정의 `iam.serviceAccounts.actAs`
+- Artifact Registry(태그 이미지): `artifactregistry.tags.get`
+- 동적 스캐너 접근: Cloud Armor 정책의 `compute.securityPolicies.get`·`compute.securityPolicies.update`, `compute.globalOperations.get`
+
 ## 현재 한계
 
-- AWS ECS만 구현했다. GCP(Cloud Run)는 같은 계약으로 추가할 예정이다.
-- 실제 AWS 계정에서는 아직 돌리지 않았다. 테스트는 ECS/ELB/STS 응답을 흉내 낸 단위 테스트다.
+- GCP(Cloud Run)는 구현과 단위 테스트(Cloud Run·Compute·Artifact Registry REST 응답 흉내)까지다. 실제 프로젝트에는 아직 apply·배포하지 않았다.
 - 실행마다 앱 데이터를 초기화하는 단계가 없다. 저장형 XSS 점검 뒤 남은 데이터가 다음 점검에 섞일 수 있다.
 - 배포 기록은 프로세스 1개 전제의 JSON 파일이다. 재시작하면 진행 중이던 배포는 `failed`로 표시한다.

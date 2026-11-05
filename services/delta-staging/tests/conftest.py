@@ -76,6 +76,14 @@ class FakeElb:
         self.states = states or ["initial", "healthy"]
         self.old = old or [None]
 
+    dns = "delta-lab-staging-alb-1.ap-northeast-2.elb.amazonaws.com"
+
+    def describe_target_groups(self, **kwargs: Any) -> dict[str, Any]:
+        return {"TargetGroups": [{"LoadBalancerArns": ["arn:aws:elasticloadbalancing:ap-northeast-2:444455556666:loadbalancer/app/x/1"]}]}
+
+    def describe_load_balancers(self, **kwargs: Any) -> dict[str, Any]:
+        return {"LoadBalancers": [{"DNSName": self.dns}]}
+
     def describe_target_health(self, **kwargs: Any) -> dict[str, Any]:
         state = self.states.pop(0) if len(self.states) > 1 else self.states[0]
         old = self.old.pop(0) if len(self.old) > 1 else self.old[0]

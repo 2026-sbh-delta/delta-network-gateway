@@ -1,2 +1,4 @@
 .delta-sast-cache.json
 *.sarif
+.venv/
+__pycache__/

@@ -1,0 +1,48 @@
+// 빌드 에이전트에서만 돈다. 저장소 코드(Dockerfile)는 에이전트의 자체 Docker 데몬 안에서 실행된다.
+// 푸시 자격 증명: 에이전트 인스턴스 역할 → GCP WIF(delta-build-push@, 스테이징 저장소 쓰기만).
+pipeline {
+  agent { label 'delta-builder' }
+  options { timestamps(); timeout(time: 15, unit: 'MINUTES') }
+  stages {
+    stage('입력 확인') {
+      steps {
+        sh '''
+          set -eu
+          echo "$RUN_ID" | grep -Eq '^[A-Za-z0-9._-]{1,100}$'
+          echo "$REPO" | grep -Eq '^https://github\\.com/2026-sbh-delta/[A-Za-z0-9._-]+$'
+          echo "$COMMIT" | grep -Eq '^[0-9a-f]{40}$'
+          echo "$IMAGE_REPO" | grep -Eq '^asia-northeast3-docker\\.pkg\\.dev/term2-delta/delta-lab-staging/[a-z0-9._/-]+$'
+        '''
+      }
+    }
+    stage('체크아웃') {
+      steps {
+        sh '''
+          set -eu
+          rm -rf src && git init -q src
+          git -C src fetch -q --depth 1 "$REPO" "$COMMIT" && git -C src checkout -q FETCH_HEAD
+          test "$(git -C src rev-parse HEAD)" = "$COMMIT"
+        '''
+      }
+    }
+    stage('빌드·푸시') {
+      steps {
+        sh '''
+          set -eu
+          python3 /opt/delta/ar-token.py | docker login -u oauth2accesstoken --password-stdin https://asia-northeast3-docker.pkg.dev >/dev/null
+          docker buildx build --platform linux/amd64 --provenance=false --sbom=false \
+            -t "$IMAGE_REPO:$RUN_ID" --push --metadata-file meta.json src
+          docker logout https://asia-northeast3-docker.pkg.dev >/dev/null
+          python3 - <<'PY'
+import json, os
+digest = json.load(open("meta.json"))["containerimage.digest"]
+json.dump({"commit": os.environ["COMMIT"], "image_ref": f"{os.environ['IMAGE_REPO']}@{digest}", "image_digest": digest},
+          open("result.json", "w"))
+print("image", digest)
+PY
+        '''
+        archiveArtifacts artifacts: 'result.json', fingerprint: false
+      }
+    }
+  }
+}

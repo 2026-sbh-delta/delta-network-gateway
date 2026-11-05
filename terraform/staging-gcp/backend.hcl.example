@@ -1,0 +1,2 @@
+bucket = "REPLACE_WITH_STAGING_STATE_BUCKET"
+prefix = "delta/lab/staging-gcp"

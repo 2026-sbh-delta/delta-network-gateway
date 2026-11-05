@@ -1,0 +1,8 @@
+# 오케스트레이터 이미지(빌드 경로 services/)는 delta-pipeline·delta-orchestrator 소스만 쓴다
+*
+!delta-pipeline/pyproject.toml
+!delta-pipeline/README.md
+!delta-pipeline/delta_pipeline/
+!delta-orchestrator/pyproject.toml
+!delta-orchestrator/delta_orchestrator/
+**/__pycache__

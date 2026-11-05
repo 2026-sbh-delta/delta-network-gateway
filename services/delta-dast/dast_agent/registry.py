@@ -54,16 +54,25 @@ class RouteDefinition(RegistryModel):
 
 
 class RepoDefinition(RegistryModel):
-    """수정안·PR 대상 저장소. path는 dast-agent 기준 상대 경로 또는 절대 경로, remote는 비워 두면 PR 없이 로컬 커밋까지만 한다."""
-    path: str = Field(min_length=1, max_length=500)
+    """수정안·PR 대상 저장소. remote(GitHub 주소)가 있으면 그 저장소를 받아 고치고 PR을 만든다.
+    remote가 비어 있으면 path(dast-agent 기준 상대 경로 또는 절대 경로)를 고치고 로컬 커밋까지만 한다."""
+    path: str = Field(default="", max_length=500)
     remote: str = Field(default="", max_length=300)
     base_branch: str = Field(default="main", pattern=r"^[A-Za-z0-9._/-]{1,100}$")
+
+    @model_validator(mode="after")
+    def source_given(self):
+        if not self.path and not self.remote:
+            raise ValueError("repo에는 remote 또는 path가 필요합니다.")
+        return self
 
 
 class TargetDefinition(RegistryModel):
     id: str = Field(pattern=ID_PATTERN)
     label: str = Field(min_length=1, max_length=120)
-    origin: str = Field(min_length=1, max_length=300)
+    # 고정 주소(origin) 또는 스테이징 도구가 알려 주는 클라우드별 주소(staging) 중 하나.
+    origin: str | None = Field(default=None, min_length=1, max_length=300)
+    staging: Literal["aws", "gcp"] | None = None
     scenarios: list[str] = Field(default_factory=list, max_length=20)
     # 에이전트 모드는 셀렉터 없이 시작 경로와 허용 경로 범위만 사용한다.
     entry_path: str = "/"
@@ -84,6 +93,12 @@ class TargetDefinition(RegistryModel):
         if any(not item.startswith("/") or "?" in item or "#" in item for item in values):
             raise ValueError("allowed_path_prefixes는 절대 경로여야 합니다.")
         return values
+
+    @model_validator(mode="after")
+    def one_origin_source(self):
+        if (self.origin is None) == (self.staging is None):
+            raise ValueError("target에는 origin과 staging 중 하나만 둡니다.")
+        return self
 
     @model_validator(mode="after")
     def unique_routes(self):
@@ -139,6 +154,14 @@ def _render(value: str, scenario: str) -> str:
     if "{scenario}" in rendered:
         raise ValueError("scenario 경로를 해석하지 못했습니다.")
     return rendered
+
+
+def _target_origin(target: TargetDefinition, target_port: int, origin: str | None) -> str:
+    if target.staging is None:
+        return _origin(target.origin, target_port)
+    if not origin:
+        raise ValueError("스테이징 주소를 받지 못했습니다.")
+    return _origin(origin, target_port)
 
 
 def _origin(value: str, target_port: int) -> str:
@@ -220,7 +243,8 @@ class RegistryCatalog:
                    and (field is None or route.field == field)]
         return matches[0] if len(matches) == 1 else None
 
-    def resolve_target(self, target_id: str, scenario: str, target_port: int) -> ResolvedTarget:
+    def resolve_target(self, target_id: str, scenario: str, target_port: int,
+                       origin: str | None = None) -> ResolvedTarget:
         target = self.targets.get(target_id)
         if target is None:
             raise ValueError("등록되지 않은 target입니다.")
@@ -229,13 +253,13 @@ class RegistryCatalog:
         return ResolvedTarget(
             target_id=target.id,
             target_label=target.label,
-            origin=_origin(target.origin, target_port),
+            origin=_target_origin(target, target_port, origin),
             entry_path=_render(target.entry_path, scenario),
             allowed_path_prefixes=tuple(_render(item, scenario) for item in target.allowed_path_prefixes),
         )
 
     def resolve(self, target_id: str, route_id: str, field: str, payload_id: str,
-                scenario: str, target_port: int) -> tuple[ResolvedRoute, str]:
+                scenario: str, target_port: int, origin: str | None = None) -> tuple[ResolvedRoute, str]:
         target = self.targets.get(target_id)
         if target is None:
             raise ValueError("등록되지 않은 target입니다.")
@@ -246,7 +270,7 @@ class RegistryCatalog:
             raise ValueError("등록되지 않은 payload입니다.")
         if target.scenarios and scenario not in target.scenarios:
             raise ValueError("target에 등록되지 않은 scenario입니다.")
-        origin = _origin(target.origin, target_port)
+        origin = _target_origin(target, target_port, origin)
         regex = re.compile(_render(route.detail_path_regex, scenario))
         resolved = ResolvedRoute(
             target_id=target.id,

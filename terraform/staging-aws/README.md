@@ -55,7 +55,7 @@ DAST는 앱 자체를 점검하므로 이 경로는 WAF를 거치지 않는다. 
 | `log_group_name` | 태스크 로그 그룹 |
 | `tool_config` | 스테이징 도구 설정 파일에 그대로 넣는 객체 |
 
-`tool_config`는 `cloud`, `region`, `account_id`, `cluster`, `service`, `task_family`, `container_name`, `target_group_arn`, `alb_security_group_id`, `dynamic_scanner_access`, `url`, `allowed_image_prefixes`를 담는다.
+`tool_config`는 `cloud`, `region`, `account_id`, `cluster`, `service`, `task_family`, `container_name`, `target_group_arn`, `alb_security_group_id`, `dynamic_scanner_access`, `allowed_image_prefixes`를 담는다. 주소(`url`)는 넣지 않고 스테이징 도구가 대상 그룹이 붙은 ALB에서 조회한다.
 
 ## 준비와 검증
 

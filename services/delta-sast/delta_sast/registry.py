@@ -16,14 +16,14 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from .classify import RuleCache
-from .contract import BaselineSummary, DastFeedback, FeedbackOutcome, Scan, ScanRequest, Step, Summary
+from .contract import BaselineSummary, DastFeedback, FeedbackOutcome, Scan, ScanRequest, Scope, Step, Summary
 from .judge import LlmClient, judge_all
-from .locate import LocateError
+from .locate import EXCLUDES, LocateError
 from .sarif import annotate_baseline
 from .scan import scan
 from .secret_judge import attach_actions
 from .secret_judge import judge_all as judge_secrets
-from .source import SourceError, SourcePolicy, SourceRejected, fetch, scan_root
+from .source import SourceError, SourcePolicy, SourceRejected, fetch, scan_root, scope_of
 
 logger = logging.getLogger(__name__)
 
@@ -149,6 +149,8 @@ class SastRegistry:
                 self._step(req.run_id, "fetch")
                 base, cleanup = await asyncio.to_thread(fetch, req.repo, req.commit, work, self.source_policy)
                 root = scan_root(base, req.subdir)
+                scope = Scope(**await asyncio.to_thread(scope_of, base, root, req.commit, EXCLUDES))
+                self._step(req.run_id, "scope", f"커밋 {(scope.commit or '-')[:12]} · 파일 {scope.files}")
                 self._step(req.run_id, "scan", "목록 → 경로 → 분류")
                 started = time.perf_counter()
                 result = await asyncio.to_thread(scan, root, None, self.cache)  # 서버 이벤트 루프를 막지 않게
@@ -172,7 +174,7 @@ class SastRegistry:
                 self._sarif_file(req.run_id).write_text(json.dumps(sarif, ensure_ascii=False), encoding="utf-8")
                 self.cache.save()
             props = sarif["runs"][0]["properties"]
-            summary = Summary(counts=props["counts"], dast_targets=props["dast_targets"],
+            summary = Summary(scope=scope, counts=props["counts"], dast_targets=props["dast_targets"],
                               llm=props["llm"], timings=props["timings"], baseline=baseline)
             cur = self._scans[req.run_id]
             self._put(cur.model_copy(update={"state": "done", "summary": summary, "ended_at": _now()}))

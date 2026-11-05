@@ -55,7 +55,7 @@ async def analyze(finding: Finding, target: ResolvedTarget) -> dict:
             output_format={"type": "json_schema", "schema": HYPOTHESIS_SCHEMA},
         )
         result = None
-        async with asyncio.timeout(60):
+        async with asyncio.timeout(20):  # 실측 5~9초
             async for message in query(prompt=finding_prompt(finding, target).rsplit("\n", 1)[0],
                                        options=options):
                 if isinstance(message, ResultMessage):

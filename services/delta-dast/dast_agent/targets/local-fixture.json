@@ -34,8 +34,7 @@
     }
   ],
   "repo": {
-    "path": "sample-target",
-    "remote": "",
+    "remote": "https://github.com/2026-sbh-delta/delta-sample-app",
     "base_branch": "main"
   }
 }

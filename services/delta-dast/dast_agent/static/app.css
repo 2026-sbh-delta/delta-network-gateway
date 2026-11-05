@@ -38,3 +38,6 @@
 @media(prefers-reduced-motion:reduce){.qi,#queue-bar-fill{transition:none}.qi[data-state="RUNNING"] .qi-icon,#execution-alert{animation:none}}
 .queue-head h2{white-space:nowrap}.queue-head .pill{min-width:0;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #llm-runtime[data-location="server"]{background:#e6f6ec;color:#17733f}#llm-runtime[data-location="local"]{background:#fff3e0;color:#9a5b00}
+
+.priority{margin:12px 0;padding:12px 16px;border:1px solid var(--line);border-radius:9px;background:var(--surface)}.priority h2{font-size:14px;margin:0 0 4px}.priority h2 small{font-weight:400;color:var(--muted);font-size:11px}.priority>p{margin:0;color:var(--muted);font-size:13px}.priority ol{list-style:none;margin:10px 0 0;padding:0;display:grid;gap:8px}.priority li{border-left:4px solid var(--line);padding:6px 10px}.priority li p{margin:4px 0 0;font-size:13px;line-height:1.55}.priority li[data-level="urgent"]{border-color:var(--red)}.priority li[data-level="high"]{border-color:var(--amber)}.priority li[data-level="medium"]{border-color:var(--blue)}.priority li[data-level="low"]{border-color:var(--green)}
+.logout{margin-left:auto}.logout button{font-size:12px}

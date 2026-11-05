@@ -1,7 +1,10 @@
-"""실행: python -m dast_agent serve --port 8765 --target-port 8766"""
+"""실행: python -m dast_agent serve --port 8765 --target-port 8766 [--host 0.0.0.0]
+
+제어 화면만 --host(기본 127.0.0.1, 환경 변수 DAST_BIND_HOST)에 연다. 실습 게시판은 항상 127.0.0.1이다."""
 
 import argparse
 import asyncio
+import os
 import socket
 
 import uvicorn
@@ -10,7 +13,7 @@ from .fixture import create_fixture_app
 from .server import create_app
 
 
-async def serve(port: int, target_port: int):
+async def serve(port: int, target_port: int, host: str = "127.0.0.1"):
     target = create_fixture_app(port=target_port)
     control = create_app(port=port, target_port=target_port, on_run_start=target.state.reset)
     # Bind both sockets before starting either server; never leave a half-started pair.
@@ -18,15 +21,15 @@ async def serve(port: int, target_port: int):
     servers = []
     tasks = []
     try:
-        for selected_port, app in ((port, control), (target_port, target)):
+        for selected_host, selected_port, app in ((host, port, control), ("127.0.0.1", target_port, target)):
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sockets.append(sock)
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            sock.bind(("127.0.0.1", selected_port))
+            sock.bind((selected_host, selected_port))
             sock.listen(128)
             sock.setblocking(False)
             servers.append(uvicorn.Server(uvicorn.Config(
-                app, host="127.0.0.1", port=selected_port, log_level="warning", access_log=False,
+                app, host=selected_host, port=selected_port, log_level="warning", access_log=False,
             )))
         print(f"제어 화면: http://127.0.0.1:{port}", flush=True)
         print(f"격리된 보안 실습용 게시판: http://127.0.0.1:{target_port}/vulnerable/board", flush=True)
@@ -47,9 +50,10 @@ def main():
     parser.add_argument("command", nargs="?", choices=["serve"], default="serve")
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--target-port", type=int, default=8766)
+    parser.add_argument("--host", default=os.environ.get("DAST_BIND_HOST", "127.0.0.1"))
     args = parser.parse_args()
     try:
-        asyncio.run(serve(args.port, args.target_port))
+        asyncio.run(serve(args.port, args.target_port, args.host))
     except (OSError, ValueError) as exc:
         parser.exit(1, f"서버를 시작하지 못했습니다: {type(exc).__name__}\n")
     except KeyboardInterrupt:

@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Delta 플랫폼</title>
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <header class="top">
+    <span class="brand">◈ Delta 플랫폼</span>
+    <span class="sub">제어 영역 상태 · 임시 메인</span>
+    <span id="checked" class="checked">확인 중…</span>
+    <form id="logout" method="post" action="/logout" hidden><button type="submit">로그아웃</button></form>
+  </header>
+  <main>
+    <section class="summary" id="summary" aria-live="polite"></section>
+
+    <section>
+      <h2>파이프라인 <span class="sub">빌드 → SAST → 스테이징 → DAST</span></h2>
+      <form id="run-form" class="panel runform">
+        <input id="run-repo" value="https://github.com/2026-sbh-delta/delta-sample-app" aria-label="저장소" size="48">
+        <input id="run-commit" placeholder="커밋 SHA(40자리)" aria-label="커밋" size="44" pattern="[0-9a-f]{40}" required>
+        <button type="submit">실행</button>
+        <span id="run-msg" class="meta"></span>
+      </form>
+      <div id="pipeline" class="panel"></div>
+    </section>
+
+    <section>
+      <h2>서비스</h2>
+      <div class="grid" id="services"></div>
+    </section>
+
+    <div class="two">
+      <section>
+        <h2>스테이징</h2>
+        <div id="staging" class="panel"></div>
+      </section>
+      <section>
+        <h2>Jenkins</h2>
+        <div id="jenkins" class="panel"></div>
+      </section>
+    </div>
+
+    <section>
+      <h2>DAST 최근 점검 <a id="dast-link" target="_blank" rel="noopener noreferrer">작업실 열기 ↗</a></h2>
+      <div id="dast" class="panel"></div>
+    </section>
+
+    <section>
+      <h2>공개 주소</h2>
+      <div id="urls" class="panel urls"></div>
+    </section>
+  </main>
+</body>
+</html>

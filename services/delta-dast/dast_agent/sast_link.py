@@ -2,20 +2,22 @@
 
 환경 변수
 - DELTA_SAST_URL(기본 http://127.0.0.1:8790), DELTA_SAST_TOKEN: SAST 서버 주소와 Bearer 토큰
-- DELTA_SAST_REPO: 점검할 소스 경로(기본: 실습 게시판과 같은 코드인 sample-target)
+- DELTA_SAST_REPO: 점검할 저장소(기본: 시연 게시판 delta-sample-app). 로컬 경로도 된다
+- DELTA_SAST_REF: 원격 저장소에서 점검할 브랜치(기본 main). 시작할 때 그 브랜치 끝 커밋으로 고정한다
 """
 
 from __future__ import annotations
 
 import json
 import os
+import re
 import secrets
+import subprocess
 import time
 import urllib.error
 import urllib.request
 
 from .adapters import SARIF_ID_PREFIX, from_sarif, sarif_targets
-from .contracts import ROOT
 
 # DAST 결과 → SAST 피드백 상태. BLOCKED는 필터가 못 막은 것(CSP가 막음)이라 재현으로 본다.
 FEEDBACK_STATUS = {"REPRODUCED": "REPRODUCED", "BLOCKED": "REPRODUCED", "NOT_REPRODUCED": "NOT_REPRODUCED"}
@@ -32,7 +34,8 @@ class SastUnavailable(Exception):
 def settings() -> dict:
     return {"url": os.environ.get("DELTA_SAST_URL", "http://127.0.0.1:8790").rstrip("/"),
             "token": os.environ.get("DELTA_SAST_TOKEN", ""),
-            "repo": os.environ.get("DELTA_SAST_REPO", str(ROOT / "sample-target"))}
+            "repo": os.environ.get("DELTA_SAST_REPO", "https://github.com/2026-sbh-delta/delta-sample-app"),
+            "ref": os.environ.get("DELTA_SAST_REF", "main")}
 
 
 def call(method: str, path: str, body: dict | None = None, timeout: float = 20) -> dict:
@@ -68,7 +71,23 @@ def status() -> dict:
 
 def start() -> dict:
     run_id = time.strftime("sast-%Y%m%d-%H%M%S-") + secrets.token_hex(2)
-    return call("POST", "/v1/sast/scans", {"run_id": run_id, "repo": settings()["repo"], "mode": "fast"})
+    cfg = settings()
+    body = {"run_id": run_id, "repo": cfg["repo"], "mode": "fast"}
+    if cfg["repo"].startswith("https://"):
+        # SAST는 원격 저장소를 커밋 단위로만 받는다.
+        body["commit"] = remote_head(cfg["repo"], cfg["ref"])
+    return call("POST", "/v1/sast/scans", body)
+
+
+def remote_head(repo: str, ref: str) -> str:
+    try:
+        out = subprocess.run(["git", "ls-remote", repo, f"refs/heads/{ref}"], capture_output=True, text=True,
+                             timeout=30, env=os.environ | {"GIT_TERMINAL_PROMPT": "0"}).stdout.split()
+    except (OSError, subprocess.TimeoutExpired):
+        out = []
+    if not out or not re.fullmatch(r"[0-9a-f]{40}", out[0]):
+        raise SastUnavailable(f"점검할 저장소의 {ref} 커밋을 확인하지 못했습니다.")
+    return out[0]
 
 
 def _route(value: dict | None) -> str:

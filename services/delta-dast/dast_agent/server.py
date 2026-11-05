@@ -10,26 +10,33 @@ import re
 import secrets
 import subprocess
 import time
+from urllib.parse import parse_qs
 from uuid import UUID, uuid4
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.responses import (
+    FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, StreamingResponse,
+)
 from fastapi.staticfiles import StaticFiles
 from pydantic import ValidationError
 
+from .access import COOKIE, Access, login_page
 from .adapters import normalize_report
 from .contracts import MAX_REPORT_BYTES, ROOT, SCENARIOS, Report, RunRequest, sample_report
 from .agent import investigate
 from .orchestrator import orchestrate
 from .chat import ChatStore, ask as ask_chat, chat_context
-from .fixer import create_pr, propose_fix, repo_source
+from .fixer import create_pr, propose_fix, source_root
 from . import projects
 from . import sast_link
+from . import staging_link
 from .report import build as build_report
 from .computer_use import investigate as investigate_computer_use
 from .planner import DEFAULT_MODEL, apply_target, plan
 from .registry import load_catalog
 from .runner import browser_available, verify
+from .preflight import PreflightError, check_target
+from .priority import prioritize
 
 
 def _claude_auth() -> dict:
@@ -102,6 +109,16 @@ def create_app(port: int = 8765, target_port: int = 8766,
     if output_root == static_root or static_root in output_root.parents:
         raise ValueError("아티팩트는 static 외부에 저장해야 합니다.")
     token = secrets.token_urlsafe(32)
+    access = Access.from_env()
+    internal_hosts = {h for h in os.environ.get("DAST_INTERNAL_HOSTS", "").split(",") if h}
+    machine_token = os.environ.get("DAST_MACHINE_TOKEN", "")
+    machine_paths = (re.compile(r"/api/runs"), re.compile(r"/api/runs/[A-Za-z0-9-]{1,64}/findings/[A-Za-z0-9._-]{1,128}/fix"))
+
+    def machine_allowed(request: Request) -> bool:
+        supplied = request.headers.get("authorization", "")
+        return (len(machine_token) >= 16 and request.method == "POST"
+                and secrets.compare_digest(supplied, "Bearer " + machine_token)
+                and any(p.fullmatch(request.url.path) for p in machine_paths))
     runs: dict[str, dict] = {}
     tasks: set[asyncio.Task] = set()
     model_runtime = {
@@ -168,19 +185,7 @@ def create_app(port: int = 8765, target_port: int = 8766,
     app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
     app.state.runs = runs
 
-    @app.middleware("http")
-    async def guard(request: Request, call_next):
-        host = request.headers.get("host", "")
-        origin = request.headers.get("origin")
-        if (host not in {f"127.0.0.1:{port}", f"localhost:{port}"}
-                or (origin is not None and origin != f"http://{host}")
-                or request.headers.get("sec-fetch-site") == "cross-site"):
-            return JSONResponse({"detail": "허용되지 않은 요청 출처입니다."}, status_code=403)
-        if request.method not in {"GET", "HEAD"} and not secrets.compare_digest(
-            request.headers.get("x-dast-token", ""), token,
-        ):
-            return JSONResponse({"detail": "제어 토큰이 유효하지 않습니다."}, status_code=403)
-        response = await call_next(request)
+    def secured(response):
         response.headers["Cache-Control"] = "no-store"
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "same-origin"
@@ -190,6 +195,60 @@ def create_app(port: int = 8765, target_port: int = 8766,
             "base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
         )
         return response
+
+    async def login(request: Request):
+        if request.method != "POST":
+            return secured(HTMLResponse(login_page()))
+        if access.locked():
+            return secured(HTMLResponse(login_page("잠시 뒤 다시 시도하세요. 실패가 너무 많습니다."), status_code=429))
+        body = (await request.body())[:4096].decode("utf-8", "replace")
+        given = parse_qs(body).get("password", [""])[0]
+        if not access.check_password(given):
+            return secured(HTMLResponse(login_page("비밀번호가 맞지 않습니다."), status_code=401))
+        response = RedirectResponse("/", status_code=303)
+        response.headers["Set-Cookie"] = access.cookie(access.issue())
+        return secured(response)
+
+    @app.middleware("http")
+    async def guard(request: Request, call_next):
+        path = request.url.path
+        # ALB 헬스 체크는 대상 IP로 들어온다. 내용 없이 살아 있는지만 답한다.
+        if path == "/healthz" and request.method in {"GET", "HEAD"}:
+            return PlainTextResponse("ok", headers={"Cache-Control": "no-store"})
+        host = request.headers.get("host", "")
+        origin = request.headers.get("origin")
+        public = access.is_public(host)
+        if public:
+            expected_origin = access.public_origin
+        elif host in {f"127.0.0.1:{port}", f"localhost:{port}"}:
+            expected_origin = f"http://{host}"
+        elif host in internal_hosts and request.method in {"GET", "HEAD"}:
+            # 플랫폼 내부망(보안 그룹으로 오케스트레이터만 닿음)의 상태 조회. 읽기만 허용한다.
+            expected_origin = f"http://{host}"
+        elif host in internal_hosts and machine_allowed(request):
+            # 오케스트레이터(기계용 토큰): 점검 시작·수정안만. 화면·관리 경로는 받지 않는다.
+            return secured(await call_next(request))
+        else:
+            return JSONResponse({"detail": "허용되지 않은 요청 출처입니다."}, status_code=403)
+        if ((origin is not None and origin != expected_origin)
+                or request.headers.get("sec-fetch-site") == "cross-site"):
+            return JSONResponse({"detail": "허용되지 않은 요청 출처입니다."}, status_code=403)
+        if public:
+            if path == "/login":
+                return await login(request)
+            if path == "/logout" and request.method == "POST":
+                response = RedirectResponse("/login", status_code=303)
+                response.headers["Set-Cookie"] = access.cookie("", max_age=0)
+                return secured(response)
+            if not access.valid(request.cookies.get(COOKIE)):
+                if request.method == "GET" and not path.startswith(("/api/", "/static/")):
+                    return secured(RedirectResponse("/login", status_code=303))
+                return secured(JSONResponse({"detail": "로그인이 필요합니다."}, status_code=401))
+        if request.method not in {"GET", "HEAD"} and not secrets.compare_digest(
+            request.headers.get("x-dast-token", ""), token,
+        ):
+            return JSONResponse({"detail": "제어 토큰이 유효하지 않습니다."}, status_code=403)
+        return secured(await call_next(request))
 
     def summary(run):
         result = {key: run[key] for key in (
@@ -203,8 +262,11 @@ def create_app(port: int = 8765, target_port: int = 8766,
                       source_label=run.get("source_label", "검증되지 않은 입력"))
         if run.get("plan"):
             result["plan"] = run["plan"]
+        if run.get("priority"):
+            result["priority"] = run["priority"]
         if run.get("error"):
             result["error"] = run["error"]
+            result["error_kind"] = run.get("error_kind", "failed")
         if run["status"] != "running":
             result["report_url"] = f'/api/artifacts/{run["run_id"]}/report.json'
         result.update(started_at=run.get("started_at"), **tally(run.get("report"), run["results"]))
@@ -242,8 +304,41 @@ def create_app(port: int = 8765, target_port: int = 8766,
         changed, run["changed"] = run["changed"], asyncio.Event()
         changed.set()
 
+    def choose(run, finding):
+        """항목의 점검 대상과 영향 화면. 프로젝트 대상과 화면에서 고른 영향 화면이 입력 힌트보다 우선한다."""
+        hint = finding.trigger.model_dump() if finding.trigger else {}
+        target_id = run.get("target_id") or hint.get("target_id") or sorted(catalog.targets)[0]
+        default_payload = os.environ.get("DAST_DEFAULT_PAYLOAD", "visual_svg_v1")
+        payload_id = run.get("payload_id") or hint.get("payload_id") or (
+            default_payload if default_payload in catalog.payloads else sorted(catalog.payloads)[0])
+        return target_id, payload_id
+
+    async def origin_for(run, target_id):
+        """스테이징 대상은 주소를 점검할 때 스테이징 도구에서 받는다. 한 회차 안에서는 같은 값을 쓴다."""
+        origins = run.setdefault("origins", {})
+        if target_id not in origins:
+            target = catalog.targets.get(target_id)
+            origins[target_id] = (await asyncio.to_thread(staging_link.origin, target.staging)
+                                  if target is not None and target.staging else None)
+        return origins[target_id]
+
+    async def preflight(run, report):
+        """에이전트를 띄우기 전에 LLM 인증·브라우저·대상 응답을 몇 초 안에 확인한다."""
+        model_id = "claude_computer" if run["planner"] == "computer_use" else "claude_agent"
+        statuses = {m["id"]: m for m in await asyncio.to_thread(model_statuses)}
+        if not statuses[model_id]["credential_present"]:
+            raise PreflightError("LLM 인증이 없습니다. API 키·OIDC 설정 또는 Claude 로그인을 확인하세요.")
+        if not await browser_available():
+            raise PreflightError("브라우저 실행 파일을 찾지 못했습니다. DAST_BROWSER_EXECUTABLE을 확인하세요.")
+        for target_id in dict.fromkeys(choose(run, finding)[0] for finding in report.findings):
+            try:
+                target = catalog.resolve_target(target_id, run["scenario"], target_port,
+                                                await origin_for(run, target_id))
+            except (ValueError, staging_link.StagingUnavailable) as exc:
+                raise PreflightError(str(exc)) from None
+            await check_target(target.origin, target.entry_path)
+
     async def run_agent(run, report, output, publish):
-        default_target = sorted(catalog.targets)[0]
         limit = asyncio.Semaphore(run.get("concurrency", 1))
 
         async def check(finding):
@@ -251,10 +346,7 @@ def create_app(port: int = 8765, target_port: int = 8766,
             async def tagged(event):
                 await publish(event if "finding_id" in event else {**event, "finding_id": finding.id})
 
-            hint = finding.trigger.model_dump() if finding.trigger else {}
-            target_id = hint.get("target_id") or run.get("target_id") or default_target
-            payload_id = hint.get("payload_id") or (
-                "visual_svg_v1" if "visual_svg_v1" in catalog.payloads else sorted(catalog.payloads)[0])
+            target_id, payload_id = choose(run, finding)
             mapping = {"target_id": target_id, "payload_id": payload_id, "planner_mode": run["planner"],
                        "model_name": os.environ.get("DAST_CLAUDE_MODEL", DEFAULT_MODEL),
                        "reason": "AI 에이전트가 화면을 보고 입력 위치를 찾습니다."}
@@ -262,7 +354,8 @@ def create_app(port: int = 8765, target_port: int = 8766,
                 await tagged({"type": "finding", "status": "running",
                               "message": mapping["reason"], "mapping": mapping})
                 try:
-                    target = catalog.resolve_target(target_id, run["scenario"], target_port)
+                    target = catalog.resolve_target(target_id, run["scenario"], target_port,
+                                                    (run.get("origins") or {}).get(target_id))
                     if payload_id not in catalog.payloads:
                         raise ValueError("등록되지 않은 payload입니다.")
                     template = catalog.payloads[payload_id]
@@ -293,10 +386,25 @@ def create_app(port: int = 8765, target_port: int = 8766,
         await asyncio.gather(*(check(finding) for finding in report.findings))
         order = {finding.id: index for index, finding in enumerate(report.findings)}
         run["results"].sort(key=lambda item: order.get(item["finding_id"], 0))
-        run["status"] = "done"
-        if any(item["status"] == "INCONCLUSIVE" for item in run["results"]):
+
+    async def rank(run, report, publish):
+        """둘 이상 판정하면 SAST·DAST 결과를 함께 보고 조치 우선순위를 정한다. 실패해도 점검 결과는 그대로 둔다."""
+        if len([r for r in run["results"] if r["status"] != "INCONCLUSIVE"]) < 2:
+            return
+        await publish({"type": "state", "phase": "observe", "message": "SAST·DAST 결과로 조치 우선순위를 판단합니다."})
+        try:
+            run["priority"] = await prioritize(report.findings, run["results"])
+        except Exception as exc:
+            run["priority"] = {"error": str(exc) if isinstance(exc, RuntimeError) else "우선순위를 판단하지 못했습니다."}
+        await publish({"type": "priority", "priority": run["priority"]})
+
+    def mark_inconclusive(run):
+        # status 계약(판정 불가가 있으면 error)은 그대로 두고, error_kind로 실패 종류를 나눈다.
+        missed = [item for item in run["results"] if item["status"] == "INCONCLUSIVE"]
+        if missed:
             run["status"] = "error"
-            run["error"] = "하나 이상의 항목에서 검증을 완료하지 못했습니다."
+            run["error_kind"] = "inconclusive"
+            run["error"] = f"{len(missed)}개 항목 판정 불가: " + missed[0]["message"]
 
     async def execute(run, raw_report):
         start = time.monotonic()
@@ -316,8 +424,16 @@ def create_app(port: int = 8765, target_port: int = 8766,
             run["source_label"] = report.source_label
             await publish({"type": "log", "message": "SAST 입력 출처: " + report.source_label})
             if run["planner"] in {"agent", "computer_use"}:
+                phase = "preflight"
+                await publish({"type": "state", "phase": phase,
+                               "message": "LLM 인증·브라우저·점검 대상 응답을 먼저 확인합니다."})
+                await preflight(run, report)
                 phase = "browser"
                 await run_agent(run, report, output, publish)
+                await rank(run, report, publish)
+                # 우선순위까지 정한 뒤에 끝났다고 알린다. 상태를 보고 결과를 가져가는 쪽이 우선순위를 놓치지 않게 한다.
+                run["status"] = "done"
+                mark_inconclusive(run)
                 model_id = "claude_computer" if run["planner"] == "computer_use" else "claude_agent"
                 evidence = [item.get("evidence", {}) for item in run["results"]]
                 called = any(
@@ -365,6 +481,7 @@ def create_app(port: int = 8765, target_port: int = 8766,
                         route, payload_template = catalog.resolve(
                             decision.target_id, decision.route_id, decision.field,
                             decision.payload_id, run["scenario"], target_port,
+                            await origin_for(run, decision.target_id),
                         )
                         hint = finding.trigger.model_dump() if finding.trigger else {}
                         if any(value is not None and value != getattr(decision, key)
@@ -372,7 +489,7 @@ def create_app(port: int = 8765, target_port: int = 8766,
                             raise ValueError("모델 선택이 입력 힌트와 일치하지 않습니다.")
                         if finding.payload is not None and finding.payload != payload_template:
                             raise ValueError("원문 payload가 등록 템플릿과 일치하지 않습니다.")
-                    except ValueError as exc:
+                    except (ValueError, staging_link.StagingUnavailable) as exc:
                         result = {"finding_id": finding.id, "title": finding.title,
                                   "status": "INCONCLUSIVE", "message": str(exc),
                                   "evidence": {"browser_started": False}, "duration_ms": 0}
@@ -388,14 +505,14 @@ def create_app(port: int = 8765, target_port: int = 8766,
                                "mapping": mapping})
                 await publish({"type": "result", "result": result})
             run["status"] = "done"
-            if any(item["status"] == "INCONCLUSIVE" for item in run["results"]):
-                run["status"] = "error"
-                run["error"] = "하나 이상의 항목에서 검증을 완료하지 못했습니다."
+            mark_inconclusive(run)
         except Exception as exc:
             run["status"] = "error"
-            message = {
+            run["error_kind"] = "preflight" if phase == "preflight" else "failed"
+            message = str(exc) if isinstance(exc, PreflightError) else {
                 "validate": "입력이 등록된 SAST·payload·경로 계약과 일치하지 않습니다.",
                 "plan": "계획 생성에 실패했습니다. 다른 planner로 자동 대체하지 않습니다.",
+                "preflight": "사전 확인을 완료하지 못했습니다.",
                 "browser": "브라우저 검증을 완료하지 못했습니다.",
             }[phase]
             run["error"] = message
@@ -533,6 +650,7 @@ def create_app(port: int = 8765, target_port: int = 8766,
                 "target_origin": local_route.origin,
                 "target_ids": sorted(catalog.targets),
                 "payload_ids": sorted(catalog.payloads),
+                "default_payload": os.environ.get("DAST_DEFAULT_PAYLOAD", "visual_svg_v1"),
                 "claude_model": os.environ.get("DAST_CLAUDE_MODEL", DEFAULT_MODEL),
                 "llm_runtime": await asyncio.to_thread(llm_runtime),
                 "models": await asyncio.to_thread(model_statuses)}
@@ -586,6 +704,8 @@ def create_app(port: int = 8765, target_port: int = 8766,
         target_id = args.target_id or project.get("target_id")
         if target_id is not None and target_id not in catalog.targets:
             raise HTTPException(422, "등록되지 않은 점검 대상입니다.")
+        if args.payload_id is not None and args.payload_id not in catalog.payloads:
+            raise HTTPException(422, "등록되지 않은 영향 화면입니다.")
         running = [run for run in runs.values() if run["status"] == "running"]
         if len(running) >= MAX_PARALLEL:
             raise HTTPException(429, f"동시에 {MAX_PARALLEL}개까지 점검할 수 있습니다. 진행 중인 점검이 끝난 뒤 다시 요청하세요.")
@@ -600,7 +720,7 @@ def create_app(port: int = 8765, target_port: int = 8766,
                "auto_fix": args.auto_fix, "sast_run_id": args.sast_run_id, "results": [], "duration_ms": 0,
                "events": deque(maxlen=2000), "sequence": 0, "changed": asyncio.Event(),
                "report": args.report, "started_at": time.time(), **(extra or {}), "project_id": project_id,
-               "target_id": target_id}
+               "target_id": target_id, "payload_id": args.payload_id}
         runs[run_id] = run
         if on_run_start is not None and not running:
             # 로컬 실습 대상은 매 점검을 같은 초기 상태에서 시작한다.
@@ -641,7 +761,16 @@ def create_app(port: int = 8765, target_port: int = 8766,
         target = catalog.targets.get(target_id)
         if not target or not target.repo:
             raise HTTPException(409, "대상에 수정할 저장소(repo)가 설정되지 않았습니다.")
-        return target.repo
+        # 원격 저장소는 프로젝트의 Git 주소를 우선한다(비어 있으면 대상 설정의 remote).
+        project = projects.get_project(record.get("project_id") or DEFAULT_PROJECT)
+        return target.repo.model_copy(update={"remote": (project or {}).get("repo_url") or target.repo.remote})
+
+    async def run_source(run_id: str, record: dict, repo):
+        """수정안·코드 확인에 쓸 원본. 원격이면 점검한 커밋을 실행마다 한 번 받아 둔다."""
+        try:
+            return await asyncio.to_thread(source_root, repo, output_root / run_id, record.get("commit"))
+        except RuntimeError as exc:
+            raise HTTPException(502, str(exc)) from None
 
     def fix_target(record: dict, finding_id: str):
         result = next((r for r in record.get("results", []) if r.get("finding_id") == finding_id), None)
@@ -662,7 +791,8 @@ def create_app(port: int = 8765, target_port: int = 8766,
 
         async def job():
             try:
-                await propose_fix(record, finding_id, repo, directory)
+                source, commit = await asyncio.to_thread(source_root, repo, output_root / run_id, record.get("commit"))
+                await propose_fix(record, finding_id, repo, directory, source, commit)
                 fix_jobs[key] = {"status": "ready"}
             except Exception as exc:
                 fix_jobs[key] = {"status": "failed",
@@ -733,16 +863,14 @@ def create_app(port: int = 8765, target_port: int = 8766,
         if key in chat_busy:
             raise HTTPException(409, "이전 질문에 답하는 중입니다.")
         result = next(r for r in record["results"] if r.get("finding_id") == finding_id)
-        target = catalog.targets.get((result.get("evidence") or {}).get("target_id", ""))
-        if not target or not target.repo:
-            raise HTTPException(409, "대상에 저장소(repo)가 설정되지 않았습니다.")
+        source, _ = await run_source(run_id, record, repo_of(record, finding_id))
         fix = fix_state(run_id, finding_id) if result.get("status") in {"REPRODUCED", "BLOCKED"} else None
         context = chat_context(record, finding_id, fix)
         chat_busy.add(key)
 
         async def stream():
             try:
-                async for event in ask_chat(store, question, context, repo_source(target.repo)):
+                async for event in ask_chat(store, question, context, source):
                     yield json.dumps(event, ensure_ascii=False) + "\n"
             finally:
                 chat_busy.discard(key)
@@ -770,8 +898,8 @@ def create_app(port: int = 8765, target_port: int = 8766,
             record = record_of(run_id, finished=False)
             if not record:
                 raise HTTPException(404, "실행 기록을 찾을 수 없습니다.")
-            repo = repo_of(record, finding_id)
-            base = repo_source(repo)
+            base, _ = await run_source(run_id, record, repo_of(record, finding_id))
+            base = base.resolve()
             path = (base / file).resolve()
             if base not in path.parents or not path.is_file() or path.is_symlink():
                 raise HTTPException(404, "파일을 찾을 수 없습니다.")
@@ -797,9 +925,6 @@ def create_app(port: int = 8765, target_port: int = 8766,
             raise HTTPException(409, "먼저 수정안을 만드세요.")
         record = record_of(run_id)
         repo = fix_target(record, finding_id)
-        # PR 대상 원격 저장소는 프로젝트의 Git 주소를 쓴다(비어 있으면 로컬 커밋까지만).
-        project = projects.get_project(record.get("project_id") or DEFAULT_PROJECT)
-        repo = repo.model_copy(update={"remote": (project or {}).get("repo_url") or repo.remote})
         fix = json.loads((directory / "fix.json").read_text())
         try:
             result = await asyncio.to_thread(create_pr, fix, repo, directory, run_id)
@@ -835,6 +960,7 @@ def create_app(port: int = 8765, target_port: int = 8766,
         scenario = options.get("scenario") if options.get("scenario") in {s["id"] for s in SCENARIOS} else record.get("scenario")
         args = RunRequest(scenario=scenario, planner="agent", concurrency=1,
                           impact=bool(options.get("impact", record.get("impact", True))),
+                          payload_id=((result or {}).get("mapping") or {}).get("payload_id"),
                           report={"source": inputs.get("source", "fixture"),
                                   "source_label": inputs.get("source_label", "재검증"),
                                   "findings": [finding]})
