@@ -23,7 +23,7 @@
     "subnets": [
       {
         "name": "delta-workload-az1-server",
-        "cidr": "10.20.1.0/24",
+        "cidr": "10.10.1.0/24",
         "tier": "private",
         "zone": "apne2-az1",
         "origin": "operator"
