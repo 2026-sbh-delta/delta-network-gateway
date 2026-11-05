@@ -64,6 +64,8 @@ class AwsIngestTests(unittest.TestCase):
     def test_control_messages_and_recursive_groups_do_not_loop(self):
         for body in (
             envelope(messageType="CONTROL_MESSAGE"),
+            envelope(logGroup="/delta-cp/central/aws"),
+            envelope(logGroup="/delta-cp/platform/dast"),
             envelope(logGroup="/delta-platform/central/aws"),
             envelope(logGroup="/aws/lambda/delta-platform-logs-aws"),
         ):

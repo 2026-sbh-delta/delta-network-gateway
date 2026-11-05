@@ -75,3 +75,17 @@ variable "spot" {
   type        = bool
   default     = false
 }
+
+variable "log_group_name" {
+  description = "이 서비스 컨테이너 로그를 쓸 플랫폼 중앙 CloudWatch 로그 그룹(/delta-cp/platform/<서비스>)."
+  type        = string
+  validation {
+    condition     = startswith(var.log_group_name, "/delta-cp/platform/")
+    error_message = "플랫폼 서비스 로그는 /delta-cp/platform/ 아래에만 둔다(A 기업 로그 그룹과 섞지 않는다)."
+  }
+}
+
+variable "log_retention_days" {
+  type    = number
+  default = 3
+}

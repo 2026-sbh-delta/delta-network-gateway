@@ -4,9 +4,10 @@ locals {
     Effect = "Allow", Principal = { Service = "lambda.amazonaws.com" }, Action = "sts:AssumeRole"
   }] })
 }
+# 플랫폼 중앙 로그는 /delta-cp/ 아래에 둔다. 같은 계정의 A 기업 로그(/delta/…, /aws/…)와 이름으로 나눈다(11/5).
 resource "aws_cloudwatch_log_group" "central" {
   for_each          = local.functions
-  name              = "/delta-platform/central/${each.key}"
+  name              = "/delta-cp/central/${each.key}"
   retention_in_days = var.retention_days
 }
 resource "aws_cloudwatch_log_group" "runtime" {

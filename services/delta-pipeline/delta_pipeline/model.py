@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import threading
 import time
 from copy import deepcopy
@@ -11,6 +12,8 @@ from pathlib import Path
 from typing import Any
 
 REPO_PREFIX = "https://github.com/2026-sbh-delta/"
+# 노드 상태가 바뀔 때마다 한 줄(JSON)을 남긴다. 오케스트레이터 컨테이너 표준 출력 → 플랫폼 중앙 CloudWatch(/delta-cp/platform/orchestrator).
+EVENTS = logging.getLogger("delta_pipeline.events")
 
 
 @dataclass(frozen=True)
@@ -87,6 +90,10 @@ class Board:
     def update(self, node_id: str, **fields: Any) -> None:
         with self._lock:
             node = self._nodes[node_id]
+            if "state" in fields and fields["state"] != node.state:
+                EVENTS.info(json.dumps({"event": "node", "run_id": self._run_id, "node": node_id, "round": node.round,
+                                        "from": node.state, "to": fields["state"],
+                                        "summary": str(fields.get("summary", node.summary))[:200]}, ensure_ascii=False))
             for key, value in fields.items():
                 setattr(node, key, value)
             if fields.get("state") == "running" and node.started_at is None:
@@ -131,4 +138,6 @@ class Board:
                     node.state, node.ended_at, node.decision = "fail", time.time(), None
             self._outcome = outcome
             self._save()
+        EVENTS.info(json.dumps({"event": "run_end", "run_id": self._run_id, "outcome": outcome, "summary": summary[:200]},
+                               ensure_ascii=False))
         self.update("result", state=result or ("pass" if passed else "fail"), summary=summary)

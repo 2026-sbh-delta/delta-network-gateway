@@ -2,7 +2,8 @@
 : "${SERVICE:?}" "${PORT:?}"
 pull_image
 docker rm -f "delta-$SERVICE" >/dev/null 2>&1 || true
-docker run -d --name "delta-$SERVICE" --restart unless-stopped --network host \
+platform_logs "$SERVICE" "$SERVICE"
+docker run -d --name "delta-$SERVICE" --restart unless-stopped --network host "${log_opts[@]}" \
   -e SERVICE_NAME="$SERVICE" -e PORT="$PORT" "$IMAGE" >/dev/null
 llm_auth=n/a
 wait_healthy "http://127.0.0.1:$PORT/healthz" "delta-$SERVICE"

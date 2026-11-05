@@ -41,6 +41,12 @@ data "aws_iam_policy_document" "assume" {
   }
 }
 
+# 플랫폼 서비스 로그는 플랫폼 중앙 CloudWatch(접두사 /delta-cp/)에 바로 쓴다. A 기업 로그(/delta/…)와 이름으로 나눈다.
+resource "aws_cloudwatch_log_group" "this" {
+  name              = var.log_group_name
+  retention_in_days = var.log_retention_days
+}
+
 resource "aws_iam_role" "this" {
   name               = var.name
   assume_role_policy = data.aws_iam_policy_document.assume.json
@@ -84,6 +90,11 @@ data "aws_iam_policy_document" "this" {
       variable = "kms:ViaService"
       values   = ["ssm.${var.region}.amazonaws.com"]
     }
+  }
+  statement {
+    sid       = "WriteOwnLogGroup"
+    actions   = ["logs:CreateLogStream", "logs:PutLogEvents", "logs:DescribeLogStreams"]
+    resources = ["${aws_cloudwatch_log_group.this.arn}:*"]
   }
   dynamic "statement" {
     for_each = var.llm_role_arn == null ? [] : [1]

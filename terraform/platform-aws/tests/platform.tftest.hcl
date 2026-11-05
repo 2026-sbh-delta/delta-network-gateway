@@ -60,6 +60,7 @@ run "service_host_is_private" {
   variables {
     name              = "delta-cp-test"
     service           = "test"
+    log_group_name    = "/delta-cp/platform/test"
     region            = "ap-northeast-2"
     security_group_id = "sg-00000000000000001"
     subnet_id         = "subnet-00000000000000001"

@@ -7,7 +7,8 @@ model=$(param sast/llm_model)
 install -d -o 10001 -g 10001 -m 0750 "$base/state/sast" "$base/state/sources"
 
 docker rm -f delta-sast >/dev/null 2>&1 || true
-docker run -d --name delta-sast --restart unless-stopped --network host \
+platform_logs sast sast
+docker run -d --name delta-sast --restart unless-stopped --network host "${log_opts[@]}" \
   --env-file "$base/secrets.env" --env-file "$base/llm.env" \
   -e SAST_LLM_BACKEND="$backend" -e SAST_LOCAL_ROOTS=/srv/sources \
   -v "$base/state/sast:/var/lib/delta-sast" -v "$base/state/sources:/srv/sources:ro" "${llm_mounts[@]}" \

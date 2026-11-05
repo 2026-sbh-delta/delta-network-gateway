@@ -41,6 +41,18 @@ variable "tfstate_bucket" {
   type        = string
 }
 
+variable "app_tfstate_prefixes" {
+  description = "이관 대상 앱 인프라(EC2·RDS·ALB, terraform/workload 앱 모드) state 키 접두사."
+  type        = list(string)
+  default     = ["delta/lab/workload-client/"]
+}
+
+variable "central_tfstate_bucket" {
+  description = "중앙 네트워크·보안 Terraform state 버킷(호원님 관리). 버킷 정책이 이 계정을 허용한다."
+  type        = string
+  default     = "sbh-delta-central-tf"
+}
+
 variable "tfstate_prefixes" {
   description = "차분 에이전트가 읽을 A 기업 state 키 접두사(플랫폼 state는 넣지 않는다)."
   type        = list(string)

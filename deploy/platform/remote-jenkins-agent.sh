@@ -8,7 +8,8 @@ param jenkins-agent/gcp_build_credentials > "$base/agent/gcp-build.json"
 [ -s "$base/agent/gcp-build.json" ] || { echo "GCP 빌드 푸시 설정이 없다(onboarding-gcp 적용 필요)" >&2; exit 1; }
 chmod 644 "$base/agent/gcp-build.json"
 docker rm -f delta-jenkins-agent >/dev/null 2>&1 || true
-docker run -d --name delta-jenkins-agent --restart unless-stopped --network host --privileged \
+platform_logs jenkins-agent jenkins-agent
+docker run -d --name delta-jenkins-agent --restart unless-stopped --network host --privileged "${log_opts[@]}" \
   -e JENKINS_URL="$JENKINS_URL" -v "$base/agent/agent_secret:/run/secrets/agent_secret:ro" \
   -v "$base/agent/gcp-build.json:/run/delta/gcp-build.json:ro" \
   -v "$base/state/agent:/home/jenkins/agent" "$IMAGE" >/dev/null

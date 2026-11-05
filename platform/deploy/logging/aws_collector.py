@@ -13,6 +13,10 @@ from collector import MAX_BATCH_BYTES, MAX_EVENT_BYTES, CloudWatchWriter
 MAX_ENVELOPE_BYTES = 8 * 1024 * 1024
 
 
+# 플랫폼 자신의 로그(중앙 그룹·플랫폼 서비스 그룹)는 다시 받지 않는다. 예전 이름도 함께 막는다.
+PLATFORM_GROUP_PREFIXES = ("/delta-cp/", "/delta-platform/central/")
+
+
 def decode(record, allowed_accounts, stream_arn, collector_prefix):
     if record.get("eventSourceARN") != stream_arn or record.get("eventSource") != "aws:kinesis":
         raise ValueError("Unexpected source stream")
@@ -30,7 +34,7 @@ def decode(record, allowed_accounts, stream_arn, collector_prefix):
     ):
         raise ValueError("Unexpected message type or source account")
     group = envelope["logGroup"]
-    if group.startswith("/delta-platform/central/") or group.startswith(
+    if group.startswith(PLATFORM_GROUP_PREFIXES) or group.startswith(
         f"/aws/lambda/{collector_prefix}"
     ):
         # Stop accidental recursion. The sender must also exclude these groups.

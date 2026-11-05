@@ -104,6 +104,11 @@ data "aws_iam_policy_document" "log_setup" {
 }
 
 # 차분 에이전트: 설정 조회(관리형 정책) + A 기업 Terraform state 읽기. 쓰기·잠금 없음.
+# 차분 에이전트 입력: A 기업 Terraform state 읽기만. 플랫폼 자신의 state(platform-aws 등)는 넣지 않는다.
+locals {
+  readonly_prefixes = distinct(concat(var.tfstate_prefixes, var.app_tfstate_prefixes))
+}
+
 data "aws_iam_policy_document" "readonly" {
   statement {
     sid       = "ListStatePrefixes"
@@ -112,12 +117,23 @@ data "aws_iam_policy_document" "readonly" {
     condition {
       test     = "StringLike"
       variable = "s3:prefix"
-      values   = [for p in var.tfstate_prefixes : "${p}*"]
+      values   = [for p in local.readonly_prefixes : "${p}*"]
     }
   }
   statement {
     sid       = "ReadState"
     actions   = ["s3:GetObject"]
-    resources = [for p in var.tfstate_prefixes : "arn:aws:s3:::${var.tfstate_bucket}/${p}*"]
+    resources = [for p in local.readonly_prefixes : "arn:aws:s3:::${var.tfstate_bucket}/${p}*"]
+  }
+  # 중앙 네트워크·보안 state(호원님 관리, 11/5 공유 정책): TGW·ANF·WAF 등 이관 대응 근거
+  statement {
+    sid       = "ListSecurityBucket"
+    actions   = ["s3:ListBucket", "s3:GetBucketLocation"]
+    resources = ["arn:aws:s3:::${var.central_tfstate_bucket}"]
+  }
+  statement {
+    sid       = "ReadSecurityBucketObjects"
+    actions   = ["s3:GetObject"]
+    resources = ["arn:aws:s3:::${var.central_tfstate_bucket}/*"]
   }
 }

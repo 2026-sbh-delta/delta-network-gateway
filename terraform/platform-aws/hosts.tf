@@ -36,6 +36,7 @@ module "host" {
   extra_parameter_names = [for n in lookup(local.extra_parameters, each.key, []) : "/${local.prefix}/${n}"]
   spot                  = contains(var.spot_services, each.key)
   user_data             = templatefile("${path.module}/templates/user_data.sh.tftpl", { service = each.key })
+  log_group_name        = "/${local.prefix}/platform/${each.key}"
 
   # 송신 규칙과 NAT 경로가 생긴 뒤에 부팅해야 SSM 에이전트가 첫 등록에 성공한다.
   depends_on = [

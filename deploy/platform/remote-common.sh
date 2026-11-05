@@ -8,6 +8,14 @@ umask 077
 param() { aws ssm get-parameter --region "$REGION" --name "${PREFIX}$1" --query Parameter.Value --output text 2>/dev/null || true; }
 secret() { aws ssm get-parameter --region "$REGION" --name "${PREFIX}$1" --with-decryption --query Parameter.Value --output text; }
 
+# 플랫폼 서비스 로그는 플랫폼 중앙 CloudWatch(/delta-cp/platform/<서비스>)로 바로 보낸다. 로그 서버 인스턴스는 두지 않는다.
+# 그룹은 Terraform(platform-aws)이 만들고, 역할은 자기 그룹에만 쓸 수 있다. 전송이 늦어도 서비스가 멈추지 않게 non-blocking.
+# docker logs 는 Docker 이중 로깅(로컬 캐시)으로 그대로 볼 수 있다.
+platform_logs() {
+  log_opts=(--log-driver awslogs --log-opt awslogs-region="$REGION" --log-opt awslogs-group="${PREFIX}platform/$1"
+            --log-opt awslogs-stream="$2" --log-opt mode=non-blocking --log-opt max-buffer-size=4m)
+}
+
 pull_image() {
   local registry="${IMAGE%%/*}"
   aws ecr get-login-password --region "$REGION" | docker login --username AWS --password-stdin "$registry" >/dev/null

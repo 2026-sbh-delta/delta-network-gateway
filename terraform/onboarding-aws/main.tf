@@ -13,13 +13,21 @@ locals {
   }
 }
 
+# 신뢰 대상을 역할 ARN 이 아니라 플랫폼 계정 + aws:PrincipalArn 조건으로 둔다.
+# 역할 ARN 을 principal 로 두면 플랫폼 역할을 지웠다 다시 만들 때(야간 정리 후 재생성) 신뢰 정책에 옛 고유 ID 가 남아
+# 위임이 끊긴다(11/5 실측: delta-readonly 가 삭제된 delta-cp-diff 의 ID 를 가리킴). 조건은 같은 역할 이름만 허용한다.
 data "aws_iam_policy_document" "trust" {
   for_each = local.roles
   statement {
     actions = ["sts:AssumeRole"]
     principals {
       type        = "AWS"
-      identifiers = [each.value.trusted]
+      identifiers = ["arn:aws:iam::${var.platform_account_id}:root"]
+    }
+    condition {
+      test     = "ArnEquals"
+      variable = "aws:PrincipalArn"
+      values   = [each.value.trusted]
     }
     condition {
       test     = "StringEquals"

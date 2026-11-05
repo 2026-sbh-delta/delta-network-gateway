@@ -49,7 +49,6 @@ SERVICES = [
     {"id": "sast", "label": "SAST", "role": "소스 점검", "health": url("sast", 8790, "/healthz")},
     {"id": "dast", "label": "DAST", "role": "스테이징 점검", "health": url("dast", 8765, "/healthz")},
     {"id": "diff", "label": "차분 에이전트", "role": "AWS ↔ GCP 비교", "health": url("diff", 8095, "/healthz")},
-    {"id": "log", "label": "로그", "role": "중앙 수집", "health": url("log", 8099, "/healthz")},
 ]
 
 
@@ -124,8 +123,7 @@ async def collect() -> dict:
     async with httpx.AsyncClient() as client:
         probes = await asyncio.gather(*(probe(client, s["health"]) if s["health"] else asyncio.sleep(0, None)
                                         for s in SERVICES))
-        placeholders = await asyncio.gather(*(placeholder_of(client, n, p)
-                                              for n, p in (("diff", 8095), ("log", 8099))))
+        diff_placeholder = await placeholder_of(client, "diff", 8095)
         jenkins, staging, dast = await asyncio.gather(jenkins_state(client), staging_state(client), dast_state(client))
     services = []
     for svc, state in zip(SERVICES, probes):
@@ -139,9 +137,10 @@ async def collect() -> dict:
         else:
             entry.update(state)
         services.append(entry)
+    # 로그는 별도 서버 없이 플랫폼 중앙 CloudWatch(/delta-cp/…)에 모은다(11/5 결정)
     for svc in services:
-        if svc["id"] in ("diff", "log"):
-            svc["placeholder"] = placeholders[0 if svc["id"] == "diff" else 1]
+        if svc["id"] == "diff":
+            svc["placeholder"] = diff_placeholder
     return {
         "checked_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "services": services,
@@ -156,6 +155,8 @@ async def collect() -> dict:
 
 
 LOG = logging.getLogger(__name__)
+# 파이프라인 노드 이벤트·경고를 표준 출력으로 낸다(컨테이너 로그 드라이버가 플랫폼 중앙 CloudWatch 로 보낸다)
+logging.basicConfig(level=logging.INFO, format="%(message)s")
 GITHUB_API = "https://api.github.com"
 REPO_RE = re.compile(re.escape(REPO_PREFIX) + r"([A-Za-z0-9._-]+?)(?:\.git)?/?")
 BRANCH_RE = re.compile(r"[A-Za-z0-9._/-]{1,100}")

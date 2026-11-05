@@ -22,7 +22,6 @@ locals {
     sast          = { port = 8790, instance_type = var.sast_instance_type, volume_gb = 30, llm = true, arch = "arm64" }
     dast          = { port = 8765, instance_type = var.dast_instance_type, volume_gb = 40, llm = true, arch = "arm64" }
     diff          = { port = 8095, instance_type = var.small_instance_type, volume_gb = 20, llm = true, arch = "arm64" }
-    log           = { port = 8099, instance_type = var.small_instance_type, volume_gb = 30, llm = false, arch = "arm64" }
   }
 
   # 서비스 사이 연결. 여기 적은 것만 열린다(그 밖은 모두 차단).
@@ -36,11 +35,6 @@ locals {
     { from = "dast", to = "sast", port = 8790 },
     { from = "dast", to = "jenkins", port = 8091 },         # 스테이징 도구(주소 조회)
     { from = "orchestrator", to = "jenkins", port = 8091 }, # 스테이징 도구(배포 상태)
-    { from = "orchestrator", to = "log", port = 8099 },
-    { from = "jenkins", to = "log", port = 8099 },
-    { from = "sast", to = "log", port = 8099 },
-    { from = "dast", to = "log", port = 8099 },
-    { from = "diff", to = "log", port = 8099 },
   ]
   link_map = { for l in local.links : "${l.from}>${l.to}:${l.port}" => l }
 
@@ -53,7 +47,6 @@ locals {
     orchestrator = { priority = 5, health_path = "/healthz", paths = [] }
     dast         = { priority = 10, health_path = "/healthz", paths = [] }
     jenkins      = { priority = 20, health_path = "/login", paths = ["/github-webhook/*"] }
-    log          = { priority = 30, health_path = "/healthz", paths = ["/v1/ingest/*"] }
   }
 }
 

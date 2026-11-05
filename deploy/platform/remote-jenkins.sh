@@ -25,9 +25,11 @@ fi
 chown 10001:10001 "$base/state/staging/"*.json
 
 docker rm -f delta-jenkins delta-staging >/dev/null 2>&1 || true
-docker run -d --name delta-jenkins --restart unless-stopped --network host \
+platform_logs jenkins jenkins
+docker run -d --name delta-jenkins --restart unless-stopped --network host "${log_opts[@]}" \
   --env-file "$base/jenkins.env" -v "$base/state/jenkins:/var/jenkins_home" "$IMAGE" >/dev/null
-docker run -d --name delta-staging --restart unless-stopped --network host \
+platform_logs jenkins staging
+docker run -d --name delta-staging --restart unless-stopped --network host "${log_opts[@]}" \
   --env-file "$base/staging.env" -e DELTA_STAGING_CONFIG=/state/staging.json -e DELTA_STAGING_STATE=/state/deployments.json "${gcp_env[@]}" \
   -v "$base/state/staging:/state" "$STAGING_IMAGE" >/dev/null
 llm_auth=n/a
