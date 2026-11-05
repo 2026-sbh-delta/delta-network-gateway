@@ -6,6 +6,8 @@
 
 AWS ANF는 사용자 지시대로 disabled를 유지한다. AWS 측은 [중앙 모듈](../network-security/README.md)의 직접 BGP 전파를 사용한다. 이 root는 AWS 리소스를 소유하지 않는다.
 
+AWS 연결 대상은 공통 `10.10.0.0/16` VPC 하나다. `aws_cidrs`는 NCC export 범위와 private ingress/egress에 함께 적용한다. 과거 Server 대역과 두 EC2 시험의 정리 및 실제 경로 철회는 [통합 기록](../../docs/ai-dlc/aws-workload-consolidation.md)을 따른다.
+
 현재 사용자 후속 요청으로 `inspection_mode=disabled`다. Endpoint1개/association2개를 제거했고 네 BGP/두 방향 HTTP와 기본 규칙 로그의 중앙 도착, 실제 No changes를 확인했다. 아래 초기 검사 검증은 중단 전의 기록이다.
 
 2026-11-04 실제 배포를 완료했다. 프로젝트 `366844544284`, Billing 활성과 필요한 권한/API를 확인했고 기존 업무 `10.30.1.0/24`를 보존했다. 새 중앙 `10.31.0.0/24`, 업무 `10.32.1.0/24`와 공유 endpoint를 생성했다. 인터넷 허용/거부 및 ALERT 위협 로그, AWS 양방향 사설 HTTP와 중앙 원본 로그 일치를 확인했다. 네 단일 BGP 경로 철회/복구와 저장 실패 ack0/재수집도 검증했고 총5개 root의 최종 Plan은 No changes다. [승인/실제 결과](../../docs/ai-dlc/gcp-central-network.md), [실행 Runbook](RUNBOOK.md)을 따른다.

@@ -132,7 +132,7 @@ Jenkins 파라미터: `DIRECTION`(`aws-to-gcp` | `gcp-to-aws`), `SCENARIO`(`good
 
 - 실제 실행기: 대상 root 에 tfvars 적용, 대상 배포, 적용 후 대상 환경 재수집, 실제 LB 에 공격 시험. 대상 root 에 없는 변수는 빌드마다 `terraform-gaps.json` 으로 남는다.
   - GCP 대상(`terraform/network-security-gcp`, main #27 이 `gcp-server` 를 대체): `e2-micro` 서버 한 대가 박혀 있고, 앱은 startup script 가 `app/server.py` 를 넣는다. 앞단이 패스스루 NLB 라 **Cloud Armor WAF 규칙을 붙일 수 없다**(외부 Application LB 나 프록시 NLB 가 필요). `subnets` 는 central·workload 를 같이 받는 객체라 workload 하나로 채우지 않는다. 모두 `terraform-gaps.json` 에 나온다.
-  - AWS 대상(`terraform/workload-server`): `t4g.nano` 와 arm64 AMI 검사가 박혀 있어 **t3(x86) 대상은 지금 root 로 만들 수 없다.** WAF(WebACL)·GuardDuty 기능 변수도 없다. `azs` 는 AZ 두 개와 TGW 서브넷을 받아 서브넷 하나로는 채우지 않는다.
+  - AWS 대상(`terraform/workload`): 공통 VPC의 네트워크 전용 root다. EC2나 앱 배포를 지원하지 않으며 이전 계획의 `compute_deployment.supported=false`로 명시한다. 별도 컴퓨트 구성과 WAF/GuardDuty 구성을 준비해야 한다. 기존 네 서브넷과 주소 중복도 확인한다. [통합 기록](aws-workload-consolidation.md)을 따른다.
 - DB 이전 단계를 `platform-db-move` 와 연결.
 - GCP 출발 인벤토리: `inventory-gcp.json` 은 AWS 인벤토리를 거꾸로 둔 시험 값이다. 실제 프로젝트는 `pipeline/scripts/gcp_inventory.py` 로 읽는다. gcloud 읽기 전용 결과(instances·subnets·security-policies·enabled services)를 받아 서버·서브넷·WAF·권한 방식을 채우고, API 로 알 수 없는 secrets·logging·ingress·network 는 base 값을 둔다. SCC 는 프로젝트 API 가 꺼져 있어도 조직에서 켤 수 있어 모른다(None)로 둔다.
-  - 2026-11-04 `term2-delta` 실측: `delta-lab-server`(e2-micro, ubuntu, 사설 `10.32.1.0/24`, 서비스 계정 없음), Cloud Armor 정책 0개, SCC API 꺼짐. 판단은 `needs_human` — SCC 를 모른다는 한 건만 사람 확인이 필요하고, 승인하면 t3.micro·x86·ubuntu 로 계획이 나온다(월 $7.84 → $9.49). AWS 대상 root 는 여전히 t4g.nano·arm64 라 만들 수 없다.
+  - 2026-11-04 `term2-delta` 실측: `delta-lab-server`(e2-micro, ubuntu, 사설 `10.32.1.0/24`, 서비스 계정 없음), Cloud Armor 정책 0개, SCC API 꺼짐. 당시 판단은 `needs_human`이며 SCC를 모른다는 한 건에 사람 확인이 필요했다. 승인 시 t3.micro, x86, ubuntu 계획과 월 $7.84에서 $9.49로의 비교가 나왔다. 이는 과거 관측 기록이다. 현재 AWS 대상 root는 네트워크 전용이므로 머신 타입 판단 결과와 별개로 컴퓨트 배포 구성이 필요하다.

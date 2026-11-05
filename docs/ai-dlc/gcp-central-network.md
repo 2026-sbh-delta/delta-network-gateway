@@ -110,8 +110,7 @@ flowchart LR
 | `terraform/network-security/` | 기존 중앙 TGW/ANF와 AWS VPN 추가 | 기존 중앙 S3 backend 유지 |
 | `terraform/gcp-log-ingest-aws/` | 중앙 계정의 Lambda, 실행 역할, 주기 실행, CloudWatch와 관측 | 기존 중앙 네트워크와 다른 S3 state key |
 | `services/gcp-log-collector/` | Pub/Sub pull, 로그 변환, CloudWatch 저장/ack와 재시도 | 애플리케이션 코드. Terraform state 소유 없음 |
-| `terraform/workload-client/` | 기존 Client의 GCP 목적지 Route/송신 규칙 | 기존 Client S3 state. 런타임 입력만 갱신 |
-| `terraform/workload-server/` | 기존 Server의 GCP 반환 Route/시험 VM /32 수신 | 기존 Server S3 state. 런타임 입력만 갱신 |
+| `terraform/workload/` | 공통 AWS VPC의 GCP 목적지 Route/송신 규칙. 컴퓨트 없음 | 기존 Client S3 key를 유지. 통합의 실제 적용 상태는 [기록](aws-workload-consolidation.md)을 따름 |
 
 초기 배포 때 전용 GCS/S3 backend를 초기화했고 GCP 부분 Apply를 복구했다. 2026-11-05에는 GCP 네트워크 root의 state도 중앙 S3의 별도 key로 이전했다. AWS 수집기는 기존 별도 S3 state를 유지한다. 새 네트워크/수집 리소스와 기존 Route/SG는 해당 소유 state에서만 변경한다. 기존 활성 API는 프로젝트의 공유 기능으로 import했고 `disable_on_destroy=false`로 보존한다.
 
@@ -240,7 +239,7 @@ GCP 복구 state/Plan과 실제 입력은 ignored 경로에만 보존한다. 이
 | 2026-11-04 | GCP Gateway 실제 GET과 AWS 중앙 VPN 목록 | 두 Gateway 주소/중앙 VPC/ASN/Prefix 확인. 기존 중앙 TGW VPN 목록은 빈 배열로 Inside CIDR 비중복 확인. 비밀값 없는 handoff와 ignored 입력 작성 |
 | 2026-11-04 | 중앙 `plan -out=.validation/gcp-vpn.tfplan`와 JSON Review | 12개 추가/정책2개 갱신/삭제0. 2 CGW, 2 VPN, 2 Association, Spoke/Inspected 전파4개, 기존 Inspection subnet의 신규 목적지 Route2개. 정책 갱신은 보존 HOME_NET에 GCP CIDR 추가뿐. Firewall 생성0/모드disabled 확인 후 Apply 완료 |
 
-AWS Workload의 경로/SG 추가는 해당 `workload-client`와 `workload-server` state에서만 관리한다. GCP root가 AWS SG를 중복 소유하지 않는다.
+AWS Workload의 경로/SG는 공통 `workload` root와 기존 Client backend key에서 관리한다. 과거 Server root는 [통합 작업](aws-workload-consolidation.md)에서 종료했다. GCP root가 AWS SG를 중복 소유하지 않는다. 아래의 기존 두 EC2 HTTP 시험은 당시 검증 기록이다.
 
 ## 2026-11-04 WIF와 사설 관리 확인
 

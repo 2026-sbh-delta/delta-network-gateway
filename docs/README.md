@@ -8,6 +8,8 @@
 
 ## 현재 상태
 
+- AWS 워크로드 통합 완료(2026-11-05): 사용자 승인으로 CloudFront 시연37개, 기존 Server 기반29개, Client EC2와 폐기 경로5개를 실제 삭제했다. 두 EC2 terminated와 두 루트 EBS 삭제, `10.20` VPC 부재를 API로 확인했다. 기존 `10.10` VPC/서브넷/TGW/EIC ID와 backend key를 유지하는 공통 `terraform/workload` root로 정리했다. 중앙6개 삭제/정책2개 갱신과 GCP 범위3개 갱신으로 폐기 CIDR을 철회했고 BGP4개 UP을 확인했다. 최종 세 root No changes, Terraform mock82개/Python24개와 AI/Jenkins125개 통과. GCP Plan은 별도 로그 정리의 로컬 코드가 포함된 상태에서 확인했다. EC2가 없어 삭제 후 HTTP 검증은 미실행이다. [설계와 실제 검증](ai-dlc/aws-workload-consolidation.md)
+
 - GCP state S3 통합(2026-11-05): 사용자 승인으로 `network-security-gcp`의 state를 기존 중앙 S3 버킷의 전용 key `delta/lab/network-security-gcp/terraform.tfstate`로 이전했다. 관리 리소스67개와 출력/검사 결과, GCS 원본과 다른 root state 보존 및 실제 Plan No changes/종료0을 확인했다. mock14개와 Python10개 통과. 리소스 Apply는 미실행이며 커밋과 원격 반영은 Git 이력을 따른다. [이전과 검증 기록](ai-dlc/gcp-central-network.md#2026-11-05-gcp-state의-중앙-s3-이전)
 
 - 프로젝트 삭제(2026-11-05): 사용자 승인으로 목록의 삭제 버튼·이름 확인창과 최소 백엔드 API를 추가했다. 실행/정리 중인 작업 및 연결된 환경·계획은 차단하며 다른 서비스·실제 클라우드 자원은 삭제하지 않는다. 로컬 API 40개·전체 브라우저 37개·빌드 검사를 통과했으며 운영 배포·데이터 삭제는 하지 않았다. [설계·검증 기록](ai-dlc/platform-project-delete.md)
@@ -86,15 +88,14 @@
 - [파이프라인 스테이징 도구 설계/검증 상태](ai-dlc/staging-tool.md)
 - [CloudFront 웹의 중앙 ANF 허용/차단 시험](ai-dlc/cloudfront-anf-demo.md)
 - [CloudFront 직접 EC2 VPC Origin](ai-dlc/cloudfront-server.md)
-- [CloudFront 실행 및 전체 입력/출력](../terraform/cloudfront-server/README.md)
+- [CloudFront 시연 제거와 워크로드 통합](ai-dlc/aws-workload-consolidation.md)
 - [승인된 요구사항과 구현 단위](ai-dlc/central-network.md)
 - [AWS Workload 클라이언트 구성안과 승인 상태](ai-dlc/aws-workload-client.md)
 - [같은 Workload 계정의 Server VPC와 실제 ANF 검증](ai-dlc/aws-workload-server.md)
 - [GCP 사설 서버와 HA VPN 설계/실제 상태](ai-dlc/gcp-server-vpn.md)
 - [실행 및 연결 안내](../terraform/network-security/README.md)
-- [Workload 실행 및 전체 입력/출력](../terraform/workload-client/README.md)
-- [Server 실행 및 전체 입력/출력](../terraform/workload-server/README.md)
-- [두 VPC 실제 관제 Runbook](../terraform/workload-server/RUNBOOK.md)
+- [공통 Workload 실행 및 전체 입력/출력](../terraform/workload/README.md)
+- [공통 Workload 운영 Runbook](../terraform/workload/RUNBOOK.md)
 - [GCP 중앙 네트워크 실행과 전체 입력/출력](../terraform/network-security-gcp/README.md)
 - [GCP 검사 중단/재개와 관제 Runbook](../terraform/network-security-gcp/RUNBOOK.md)
 - [AWS 중앙 GCP 로그 수집기 입력/출력과 운영](../terraform/gcp-log-ingest-aws/README.md)
@@ -109,9 +110,9 @@ ANF는 비용 중단 모드로 유지한다. ignored `terraform/network-security
 
 플랫폼의 Jenkins 운영 전환·ECR·ECS 실행/종료와 공개 웹 SAST 검증을 완료했다. PR #20은 사용자가 병합했고 설정 활성화와 GitHub Release도 성공했다. DAST 코드·화면·취소/정리 계약을 구현했다. PR #21/#22를 병합했고 DAST 사설 네트워크와 관측 조회 IAM Apply를 마쳤다. 도구 이미지·런타임 갱신·GitHub Release와 실제 후보0건 처리를 확인했다. 실제 XSS 재현은 별도 후속이다. GCP·온프레미스로 이전할 때에는 각 대상 환경의 실행기를 연결하고 별도로 검사한다. 이후 AI 수정 제안·사람 승인·재빌드/재검증, 고정 digest의 Terraform/VM 배포로 연결한다. 이 후속 전체 흐름은 아직 플랫폼에서 구현·검증되지 않았다.
 
-CloudFront 두 버튼 웹의 실제 ANF 허용/차단 대조는 확인했다. 직접 EC2 Origin/Server IGW와 SG rule/임시 ALB ingress 정리와 실제 검증 JSON 게시를 마쳤고 네 root 최종 Plan은 No changes다. 남은 화면 검증은 UI 도구가 안정된 환경에서 차단 버튼 완료 화면/최종 검증 문구를 확인하는 것이다. 페이지 하단 검증 기록은 배포 당시 로그 대조 결과이며 개별 요청의 실시간 관제 판정은 아니다.
+CloudFront 두 버튼 웹의 ANF 허용/차단 대조와 네 root의 No changes는 과거 시연 검증 기록이다. 현재는 사용자 승인으로 시연 환경을 정리하며, 남은 화면 재검증은 진행하지 않는다. 실제 삭제와 최종 네트워크 상태는 [통합 기록](ai-dlc/aws-workload-consolidation.md)을 따른다.
 
-현재 요청의 **동일 Workload 계정 두 VPC 간 ANF 왕복 검사**는 완료했다. 기존 Client `10.10.1.143`에서 새 Server `10.20.1.10`에 HTTP 200으로 도달했고, 미허용 8081은 실제 blocked/drop SID로 확인했다. 양방향 FLOW와 허용 마커 ALERT를 요청 tuple/flow_id/AZ로 대조했다. 중앙/Client/Server 최종 Plan은 모두 No changes다.
+과거 **동일 Workload 계정 두 VPC 간 ANF 왕복 검사**에서 기존 Client와 Server 사이 HTTP 200, 미허용 8081의 blocked/drop, 양방향 FLOW와 허용 마커 ALERT 및 당시 세 root의 No changes를 확인했다. 해당 두 EC2와 Server VPC는 현재 통합 작업의 삭제 대상이다.
 
 GCP `term2-delta`와 AWS 중앙 TGW 사이에 총4개 IPsec/BGP 터널을 적용했고, AWS Client와 GCP VM, GCP VM과 AWS Server의 두 포트 사설 HTTP200을 실제 확인했다. 네 단일 BGP 세션의 경로 철회/복구를 검증했으며 물리 터널이나 Zone 장애 검증과 구분한다. GCP 검증은 [GCP AI-DLC](ai-dlc/gcp-central-network.md), 앞선 AWS 두 VPC 검사 기록은 [Server AI-DLC](ai-dlc/aws-workload-server.md)를 따른다.
 
@@ -119,4 +120,4 @@ GCP `term2-delta`와 AWS 중앙 TGW 사이에 총4개 IPsec/BGP 터널을 적용
 
 중앙 실행 CIDR/AZ와 GCP 중앙/업무 CIDR은 기존 AWS/GCP Subnet과 비중복을 확인했고 GCP VPN 계약을 등록/적용했다. 추가 계정이나 온프레미스를 연결할 때는 각 Prefix와 기존 경로의 중복을 별도로 확인한다.
 
-RAM 오류 진단은 두 Association의 실제 성공 확인으로 종료했다. 관리 계정 프로필 로그인은 더 이상 요청하지 않는다. Organizations 변경과 Destroy는 실행하지 않았다. 실제 `terraform.tfvars`, `backend.hcl`, state/Plan, 검증 로그와 Provider 캐시는 커밋 대상에서 제외했다.
+RAM 오류 진단은 두 Association의 실제 성공 확인으로 종료했다. 관리 계정 프로필 로그인은 더 이상 요청하지 않는다. Organizations는 이번 작업에서 변경하지 않는다. Destroy의 최신 실행 결과는 [워크로드 통합 기록](ai-dlc/aws-workload-consolidation.md)을 따른다. 실제 `terraform.tfvars`, `backend.hcl`, state/Plan, 검증 로그와 Provider 캐시는 커밋 대상에서 제외한다.
