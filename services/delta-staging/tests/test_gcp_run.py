@@ -173,6 +173,7 @@ async def test_new_runner_ip_patches_the_same_rule_and_stop_removes_it(gcp_targe
     registry = StagingRegistry({"gcp": _provider(gcp_target, gcp)})
     await registry.start(_req(scanner_ip="auto"))
     await registry.wait("Run.1")
+    registry.release("gcp", "Run.1")
 
     await registry.start(_req(run_id="run-2", scanner_ip="3.35.120.9", replace=True))
     await registry.wait("run-2")

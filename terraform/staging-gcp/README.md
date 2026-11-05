@@ -1,6 +1,6 @@
 # GCP 스테이징 기반
 
-파이프라인 스테이징의 GCP 기반을 만든다. AWS 스테이징([staging-aws](../staging-aws/README.md))과 같은 역할이다. Cloud Run 서비스 1개와 외부 Application Load Balancer, 그 앞의 Cloud Armor를 둔다. 이미지는 [스테이징 도구](../../services/delta-staging/README.md)가 실행마다 새 개정판으로 바꾼다. 이 root는 기반만 소유하며 컨테이너의 `image`·`env`와 개정판 라벨은 `ignore_changes`로 넘긴다.
+파이프라인 스테이징의 GCP 기반을 만든다. AWS 스테이징([staging-aws](../staging-aws/README.md))과 같은 역할이다. Cloud Run 서비스 1개와 외부 Application Load Balancer, 그 앞의 Cloud Armor를 둔다. 이미지는 [스테이징 도구](../../services/delta-staging/README.md)가 실행마다 새 개정판으로 바꾼다. 이 root는 기반만 소유하며 컨테이너의 `image`와 개정판 라벨은 `ignore_changes`로 넘긴다. 환경 변수(`SERVED_BY=gcp`, `APP_ENV=staging`, `DATABASE_URL` 비밀값 참조)는 이 root가 정한다.
 
 | AWS 스테이징 | GCP 스테이징 |
 | --- | --- |
@@ -9,6 +9,7 @@
 | ALB 보안 그룹의 스캐너 /32 | Cloud Armor 정책의 스캐너 /32(기본 규칙은 전부 거부) |
 | ECR | Artifact Registry(태그 변경 불가, 최근 20개 보존) |
 | 정책 없는 태스크 역할 | 역할 없는 런타임 서비스 계정 |
+| AWS 전용 스테이징 PostgreSQL(같은 계약, GCP 뒤에 적용) | GCP 전용 스테이징 Cloud SQL PostgreSQL 16 |
 
 Cloud Run은 LB를 거친 요청만 받는다(`INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER`). 스캐너 브라우저가 AWS와 같은 평범한 요청을 보내도록 호출자 IAM 검사는 끈다(`invoker_iam_disabled`). 접근 통제는 Cloud Armor가 한다.
 
@@ -16,6 +17,15 @@ Cloud Run은 LB를 거친 요청만 받는다(`INGRESS_TRAFFIC_INTERNAL_LOAD_BAL
 - 고정 대역: `scanner_public_cidrs`(/24 이하 공인 대역, 10개까지)를 우선순위 1001 규칙으로 둔다. `0.0.0.0/0`은 받지 않는다.
 
 교체 배포는 새 개정판을 이전 개정판 옆에 띄운 뒤 준비되면 트래픽을 100% 옮긴다. 도구는 새 개정판이 트래픽 100%를 받을 때 `ready`로 알린다.
+
+## 스테이징 DB
+
+- **버전:** PostgreSQL 16(`POSTGRES_16`). 개발(로컬 Compose)·스테이징 공통 기준이다. 운영 DB 버전은 아직 정하지 않았다.
+- **구성:** Cloud SQL 가장 작은 구성(db-f1-micro, 단일 영역, HDD 10GiB, 백업·삭제 보호 없음). 시연 뒤 사용자가 지시하면 삭제한다. 허용 네트워크 없이 Cloud Run 내장 연결(`/cloudsql` 소켓)로만 접속하고, 접속 주소는 Secret Manager의 `DATABASE_URL`로 넘긴다.
+- **분리:** 이 DB는 GCP 스테이징 앱만 쓴다. AWS 스테이징 DB·운영 DB와 동기화하지 않는다. 같은 이미지·마이그레이션으로 각각 준비한다.
+- **초기화:** 점검 회차마다 스테이징 도구가 배포 직전에 `<prefix>-db-reset` Job을 **배포할 이미지로** 실행한다. Job은 앱 저장소의 `python -m app.reset`(스키마 적용 → 게시글·댓글 비우기 → 남은 행 0 확인)을 `APP_ENV=staging`으로 돌린다. 실패하면 새 개정판을 띄우지 않는다.
+- **운영 보호:** 운영에는 이 Job을 만들지 않는다. 스테이징 도구는 `environment = "staging"` 대상에만 초기화 Job을 허용하고, `app.reset`은 `APP_ENV=staging`이 아니면 거부한다.
+- **점검 보호:** 스테이징 도구가 배포 때 실행 ID로 점유를 잡는다. 점유 중에는 다른 실행의 배포(=초기화)를 409로 거부한다.
 
 ## 입력 속성
 
@@ -38,6 +48,7 @@ Cloud Run은 LB를 거친 요청만 받는다(`INGRESS_TRAFFIC_INTERNAL_LOAD_BAL
 | `create_repository` | `bool` | `true` | 스테이징 이미지 Artifact Registry 저장소 생성 |
 | `allowed_image_prefixes` | `list(string)` | `[]` | 도구가 받을 이미지 저장소. 비우면 이 프로젝트의 스테이징 저장소 |
 | `labels` | `map(string)` | `{}` | 공통 라벨 추가/재정의 |
+| `database_enabled` | `bool` | `true` | 스테이징 Cloud SQL·DB 비밀값·초기화 Job 생성 |
 
 ## 출력 속성
 
@@ -48,7 +59,7 @@ Cloud Run은 LB를 거친 요청만 받는다(`INGRESS_TRAFFIC_INTERNAL_LOAD_BAL
 | `url` | 스캐너 출처만 닿는 스테이징 주소 |
 | `repository_url` | 스테이징 이미지 저장소 접두사. 만들지 않으면 `null` |
 | `security_policy` | 스테이징 앞의 Cloud Armor 정책 |
-| `tool_config` | 스테이징 도구 설정 파일에 그대로 넣는 객체. 주소 대신 전역 IP 이름(`address`)만 담아 다시 apply해도 바뀌지 않는다 |
+| `tool_config` | 스테이징 도구 설정 파일에 그대로 넣는 객체. 주소 대신 전역 IP 이름(`address`)만 담아 다시 apply해도 바뀌지 않는다. `environment = "staging"`과 초기화 Job 이름(`reset_job`)을 포함한다 |
 
 ## 준비와 검증
 

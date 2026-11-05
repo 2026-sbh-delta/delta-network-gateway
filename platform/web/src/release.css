@@ -1,0 +1,454 @@
+.release-workspace {
+  display: grid;
+  gap: 24px;
+  margin-bottom: 28px;
+}
+.release-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 28px;
+  border-top: 3px solid #5278eb;
+  background: linear-gradient(110deg, #fff 35%, #f2f6ff);
+}
+.release-summary h2 {
+  font-size: clamp(1.3rem, 2vw, 1.8rem);
+  margin: 10px 0;
+  letter-spacing: -0.04em;
+}
+.release-summary p {
+  max-width: 660px;
+  color: #63718a;
+  line-height: 1.65;
+  margin-bottom: 0;
+}
+.release-summary button {
+  flex-shrink: 0;
+}
+.release-steps {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border: 1px solid #dce4f0;
+  border-radius: 12px;
+  background: #fff;
+  overflow: hidden;
+}
+.release-steps button {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 18px;
+  text-align: left;
+  border: 0;
+  border-right: 1px solid #e6ebf3;
+  border-radius: 0;
+  background: transparent;
+}
+.release-steps button:hover {
+  background: #f3f6ff;
+}
+.release-steps button:last-child {
+  border-right: 0;
+}
+.release-steps button > span {
+  color: #6c84b4;
+  font:
+    600 0.8rem ui-monospace,
+    monospace;
+}
+.release-steps strong,
+.release-steps small {
+  display: block;
+}
+.release-steps small {
+  margin-top: 5px;
+  font-size: 0.72rem;
+  font-weight: 400;
+}
+.release-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.release-line h3,
+.release-line h4 {
+  margin: 0;
+}
+.release-state {
+  display: inline-flex;
+  width: fit-content;
+  padding: 5px 9px;
+  font-size: 0.73rem;
+  border-radius: 6px;
+  font-weight: 650;
+  color: #65748b;
+  background: #edf1f7;
+  white-space: normal;
+}
+.release-state.good {
+  color: #17684e;
+  background: #e8f5ee;
+}
+.release-state.bad {
+  color: #a13a3a;
+  background: #fff0ed;
+}
+.release-bundle .section-heading {
+  margin-top: 0;
+}
+.release-components {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  gap: 16px;
+}
+.release-component {
+  min-width: 0;
+  border: 1px solid #dce4f0;
+  border-radius: 10px;
+  padding: 20px;
+  background: #fafcff;
+}
+.release-component h3 {
+  font-size: 1.2rem;
+  margin: 18px 0 8px;
+}
+.release-role {
+  color: #456292;
+  font-size: 0.8rem;
+  font-weight: 650;
+}
+.release-commit {
+  font:
+    0.85rem ui-monospace,
+    monospace;
+  color: #3c4a63;
+  overflow-wrap: anywhere;
+}
+.release-commit span {
+  color: #7b879a;
+}
+.release-check-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 11px 0;
+  font-size: 0.82rem;
+  border-bottom: 1px solid #e6ebf3;
+}
+.release-check-row b {
+  text-align: right;
+}
+.release-workspace details,
+.release-ai details {
+  margin-top: 16px;
+  border-top: 1px solid #e4e9f1;
+  padding-top: 12px;
+}
+.release-workspace summary,
+.release-ai summary {
+  color: #546987;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.release-workspace dl {
+  font-size: 0.8rem;
+}
+.release-workspace dl > div {
+  display: grid;
+  grid-template-columns: 100px minmax(0, 1fr);
+  gap: 14px;
+  margin: 12px 0;
+}
+.release-workspace dt {
+  color: #718097;
+}
+.release-workspace dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.release-database {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid #e6ebf3;
+  font-size: 0.82rem;
+}
+.release-database span {
+  color: #65748b;
+}
+.release-environments {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+.release-environment {
+  min-width: 0;
+  margin: 0;
+  padding: 22px;
+}
+.release-environment h3 {
+  font-size: 1.1rem;
+  margin-top: 0;
+}
+.release-environment.cloud-aws {
+  border-top: 3px solid #d3a054;
+}
+.release-environment.cloud-gcp {
+  border-top: 3px solid #5981d9;
+}
+.release-environment.cloud-onprem {
+  border-top: 3px solid #8879bb;
+}
+.release-env-instance {
+  padding-top: 18px;
+  margin-top: 18px;
+  border-top: 1px solid #e7ecf3;
+}
+.release-env-instance strong {
+  font-size: 0.85rem;
+}
+.release-caption {
+  color: #78859a;
+  font-size: 0.73rem;
+  line-height: 1.6;
+}
+.release-empty {
+  padding: 26px 0 12px;
+  color: #69778e;
+}
+.release-empty strong {
+  color: #50617d;
+}
+.release-empty p {
+  font-size: 0.83rem;
+  line-height: 1.7;
+}
+.release-notice {
+  padding: 14px 16px;
+  background: #f3f6fb;
+  border-left: 3px solid #a6b7d4;
+  border-radius: 4px;
+  color: #596a85;
+  font-size: 0.82rem;
+  line-height: 1.7;
+}
+.release-target-check {
+  padding: 18px 0;
+  border-top: 1px solid #e5eaf2;
+}
+.release-target-check > strong {
+  font-size: 0.82rem;
+}
+.release-target-check p {
+  font-size: 0.78rem;
+}
+.release-target-check small {
+  display: block;
+  margin-top: 10px;
+}
+.release-remediation {
+  padding: 22px;
+  border: 1px solid #ead7bc;
+  border-radius: 10px;
+  background: #fffbf5;
+  margin-top: 20px;
+}
+.release-remediation span {
+  font-size: 0.8rem;
+  color: #7a6b59;
+}
+.release-comparison {
+  border-top: 1px solid #e2e8f1;
+  padding-top: 24px;
+  margin-top: 28px;
+}
+.release-comparison .section-heading {
+  margin-top: 0;
+}
+.release-comparison h3 {
+  margin: 8px 0 0;
+}
+.release-target-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 20px 0;
+}
+.release-target-tabs button {
+  padding: 9px 14px;
+  font-size: 0.82rem;
+}
+.release-target-tabs [aria-pressed="true"] {
+  border-color: #5378db;
+  color: #2e53b7;
+  background: #edf2ff;
+}
+.release-compare-route {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 24px;
+  padding: 20px;
+  background: #f5f7fc;
+  border-radius: 10px;
+  margin: 16px 0;
+}
+.release-compare-route span {
+  color: #6b7a91;
+  font-size: 0.73rem;
+}
+.release-compare-route strong {
+  display: block;
+  margin-top: 6px;
+  font-size: 0.87rem;
+  color: #2f405c;
+}
+.release-compare-route > span:last-child {
+  margin-left: auto;
+}
+.release-table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid #dfe6f0;
+  border-radius: 10px;
+}
+.release-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  min-width: 640px;
+  font-size: 0.82rem;
+}
+.release-table th,
+.release-table td {
+  padding: 16px;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid #e5eaf2;
+  overflow-wrap: anywhere;
+  line-height: 1.6;
+}
+.release-table thead {
+  background: #f5f7fb;
+  color: #61728e;
+}
+.release-table th:first-child {
+  width: 16%;
+}
+.release-table th:last-child {
+  width: 16%;
+}
+.release-table small {
+  display: block;
+  font-size: 0.72rem;
+  margin-top: 8px;
+}
+.release-table tbody tr:last-child > * {
+  border-bottom: 0;
+}
+.release-ai {
+  background: #fafbfe;
+  border: 1px solid #e0e6f1;
+  border-radius: 10px;
+  padding: 22px;
+  margin-top: 20px;
+}
+.release-ai p {
+  font-size: 0.85rem;
+  line-height: 1.75;
+}
+.release-ai small {
+  overflow-wrap: anywhere;
+}
+.release-diff {
+  overflow: auto;
+  max-height: 360px;
+  background: #17243a;
+  color: #d8e3f5;
+  padding: 16px;
+  border-radius: 8px;
+  font-size: 0.75rem;
+  line-height: 1.7;
+}
+.release-diff span {
+  display: block;
+  white-space: pre;
+}
+.diff-add {
+  color: #91dfb0;
+}
+.diff-remove {
+  color: #ffb4ae;
+}
+.release-error {
+  margin-bottom: 24px;
+}
+@media (max-width: 1050px) {
+  .release-environments {
+    grid-template-columns: 1fr;
+  }
+  .release-steps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .release-steps button {
+    border-bottom: 1px solid #e6ebf3;
+  }
+}
+@media (max-width: 600px) {
+  .release-summary {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 20px;
+  }
+  .release-summary button {
+    width: 100%;
+  }
+  .release-steps button {
+    gap: 8px;
+    padding: 13px 10px;
+  }
+  .release-steps strong {
+    font-size: 0.8rem;
+  }
+  .release-steps small {
+    font-size: 0.66rem;
+  }
+  .release-component,
+  .release-environment,
+  .release-ai {
+    padding: 16px;
+  }
+  .release-compare-route {
+    gap: 14px;
+    padding: 16px;
+  }
+  .release-compare-route > span:last-child {
+    margin-left: 0;
+    flex-basis: 100%;
+  }
+  .release-workspace {
+    gap: 18px;
+  }
+}
+
+.release-plan-create {
+  margin-top: 20px;
+}
+.release-plan-create > summary,
+.release-plan-details > summary {
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: #4e6487;
+  padding: 12px 0;
+}
+.release-plan-create .workflow-form {
+  max-width: none;
+  margin-top: 16px;
+}
+.release-runtime-components code {
+  overflow-wrap: anywhere;
+}

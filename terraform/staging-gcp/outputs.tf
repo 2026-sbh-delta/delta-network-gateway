@@ -22,6 +22,7 @@ output "tool_config" {
   description = "Target entry for the staging tool config file (gcp)."
   value = {
     cloud                  = "gcp"
+    environment            = "staging" # 초기화 Job 은 staging 대상에만 허용된다(운영 DB 보호)
     project_id             = var.project_id
     region                 = var.region
     service                = google_cloud_run_v2_service.app.name

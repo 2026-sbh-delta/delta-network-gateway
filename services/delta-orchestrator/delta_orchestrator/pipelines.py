@@ -1,6 +1,6 @@
 """delta-pipeline 실행을 이 서버 안에서 돌린다. 한 번에 하나(스테이징은 하나뿐), 재시작하면 끝나지 못한 실행을 이어 간다.
 
-환경 변수: ORCH_STATE_DIR, JENKINS_PLATFORM_PASSWORD, DELTA_SAST_TOKEN, DAST_MACHINE_TOKEN,
+환경 변수: ORCH_STATE_DIR, JENKINS_PLATFORM_PASSWORD, DELTA_SAST_TOKEN, DAST_PLATFORM_TOKEN, DELTA_STAGING_TOKEN(조회),
 DELTA_IMAGE_REPO(선택), DELTA_INTERNAL_ZONE(선택)
 """
 
@@ -13,7 +13,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from delta_pipeline.clients import Dast, Jenkins, Sast
+from delta_pipeline.clients import Dast, Jenkins, Sast, Staging
 from delta_pipeline.model import Options
 from delta_pipeline.run import BOARD_DIR, Run, latest_unfinished
 
@@ -27,10 +27,12 @@ def platform_run(options: Options, store_dir: Path, run_id: str | None) -> Run:
     password = os.environ.get("JENKINS_PLATFORM_PASSWORD", "")
     return Run(options,
                sast=Sast(f"http://sast.{zone}:8790", os.environ.get("DELTA_SAST_TOKEN", "")),
-               # Host 가 DAST_INTERNAL_HOSTS(dast.cp.internal:8765)와 맞아야 기계용 토큰이 통한다
-               dast=Dast(f"http://dast.{zone}:8765", os.environ.get("DAST_MACHINE_TOKEN", "")),
+               # Host 가 DAST_INTERNAL_HOSTS(dast.cp.internal:8765)와 맞아야 플랫폼 토큰이 통한다
+               dast=Dast(f"http://dast.{zone}:8765", os.environ.get("DAST_PLATFORM_TOKEN", "")),
                build_jenkins=Jenkins(jenkins, "platform", password, job="delta-build"),
                deploy_jenkins=Jenkins(jenkins, "platform", password, job="delta-deploy"),
+               # 조회 토큰: 점검을 끝낸 뒤 자기 스테이징 점유를 푸는 데만 쓴다(배포·초기화는 못 한다)
+               staging=Staging(f"http://jenkins.{zone}:8091", os.environ.get("DELTA_STAGING_TOKEN", "")),
                image_repo=os.environ.get("DELTA_IMAGE_REPO", IMAGE_REPO), store_dir=store_dir, run_id=run_id)
 
 

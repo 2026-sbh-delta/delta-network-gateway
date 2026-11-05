@@ -61,6 +61,10 @@ services:
     command: ["python", "-c", "from delta_platform.worker.main import main; main()"]
     depends_on:
       db: {condition: service_healthy}
+    environment:
+      TMPDIR: /var/lib/delta-platform/tmp
+    volumes:
+      - registry-copy:/var/lib/delta-platform/tmp
     mem_limit: 256m
     read_only: true
     tmpfs: [/tmp]
@@ -69,3 +73,6 @@ services:
     logging:
       driver: json-file
       options: {max-size: "10m", max-file: "3"}
+
+volumes:
+  registry-copy:

@@ -85,11 +85,11 @@ resource "aws_ec2_transit_gateway_route_table_association" "spoke" {
 }
 
 resource "aws_ec2_transit_gateway_route" "before_inspection" {
-  for_each                       = local.inspected_cidrs
+  for_each                       = local.static_spoke_cidrs
   destination_cidr_block         = each.key
   transit_gateway_route_table_id = aws_ec2_transit_gateway_route_table.spoke.id
   # Keep route tables, destinations, associations and resource addresses stable.
-  # VPN bypass is rejected by terraform_data.contract before any writes.
+  # In direct modes, VPN destinations use propagated BGP routes instead.
   transit_gateway_attachment_id = var.inspection_mode == "enabled" ? aws_ec2_transit_gateway_vpc_attachment.inspection.id : lookup(
     local.direct_spoke_targets, each.key, aws_ec2_transit_gateway_vpc_attachment.inspection.id
   )
@@ -113,4 +113,10 @@ resource "aws_ec2_transit_gateway_route_table_propagation" "vpn" {
   for_each                       = var.vpn_peers
   transit_gateway_attachment_id  = aws_vpn_connection.peer[each.key].transit_gateway_attachment_id
   transit_gateway_route_table_id = aws_ec2_transit_gateway_route_table.inspected.id
+}
+
+resource "aws_ec2_transit_gateway_route_table_propagation" "vpn_direct" {
+  for_each                       = var.inspection_mode == "enabled" ? {} : var.vpn_peers
+  transit_gateway_attachment_id  = aws_vpn_connection.peer[each.key].transit_gateway_attachment_id
+  transit_gateway_route_table_id = aws_ec2_transit_gateway_route_table.spoke.id
 }

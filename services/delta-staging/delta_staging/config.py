@@ -17,6 +17,7 @@ class AwsTarget(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     cloud: Literal["aws"] = "aws"
+    environment: Literal["staging", "production"] = "staging"
     region: str
     account_id: str = Field(pattern=r"^[0-9]{12}$")
     cluster: str
@@ -34,6 +35,8 @@ class GcpTarget(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     cloud: Literal["gcp"] = "gcp"
+    # 이 대상이 어떤 환경인가. 데이터 초기화(reset_job)는 staging 에서만 허용한다(운영 DB 보호).
+    environment: Literal["staging", "production"] = "staging"
     project_id: str = Field(pattern=r"^[a-z][a-z0-9-]{4,28}[a-z0-9]$")
     region: str
     service: str
@@ -55,6 +58,8 @@ class GcpTarget(BaseModel):
             raise ValueError("dynamic_scanner_access 에는 security_policy 가 필요하다")
         if not (self.address or self.url):
             raise ValueError("address(전역 IP 이름) 또는 url 이 필요하다")
+        if self.reset_job and self.environment != "staging":
+            raise ValueError("데이터 초기화(reset_job)는 staging 대상에만 둘 수 있다")
         return self
 
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import http.cookiejar
 import json
 import time
@@ -75,23 +76,42 @@ class Sast:
         return self._get(f"/v1/sast/scans/{run_id}/sarif")
 
 
+def evidence_hash(value: Any) -> str:
+    """DAST 플랫폼 API 의 근거 해시와 같은 방식(정렬한 키, 공백 없는 JSON 의 SHA-256)."""
+    return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
 class Dast:
-    """플랫폼 내부 주소 + 기계용 토큰. DAST는 이 토큰으로 점검 시작·수정안 POST만 받는다."""
+    """DAST 플랫폼 API(/api/platform/runs). 내부 주소 + 플랫폼 토큰.
+
+    같은 점검 ID·같은 입력은 같은 점검을 돌려준다(재개해도 두 번 돌지 않는다). 입력이 다르면 409.
+    점검 서버가 재시작돼 사라진 점검은 interrupted 로 남고 자동으로 다시 돌지 않는다.
+    """
 
     def __init__(self, url: str, token: str) -> None:
         self._url, self._headers = url, {"Authorization": f"Bearer {token}"}
 
-    def start(self, report: dict[str, Any], *, target_id: str, sast_run_id: str, planner: str) -> str:
-        # 수정 루프는 그래프가 맡는다(명세 v1.1 6-2). 점검 서버가 스스로 수정안을 만들지 않게 끈다.
-        body = {"scenario": "vulnerable", "planner": planner, "report": report, "target_id": target_id,
-                "sast_run_id": sast_run_id, "auto_fix": False}
-        request = urllib.request.Request(f"{self._url}/api/runs", json.dumps(body).encode(), method="POST",
+    def submit(self, run_id: str, binding: dict[str, Any], report: dict[str, Any]) -> dict[str, Any]:
+        request = urllib.request.Request(f"{self._url}/api/platform/runs/{run_id}",
+                                         json.dumps({"binding": binding, "report": report}).encode(), method="PUT",
                                          headers={**self._headers, "Content-Type": "application/json"})
-        return _json(request, timeout=DEFAULT_TIMEOUT_SECONDS)["run_id"]
+        return _json(request, timeout=DEFAULT_TIMEOUT_SECONDS)
 
-    def run(self, run_id: str) -> dict[str, Any]:
-        return _json(urllib.request.Request(f"{self._url}/api/runs/{run_id}", headers=self._headers),
+    def view(self, run_id: str) -> dict[str, Any]:
+        return _json(urllib.request.Request(f"{self._url}/api/platform/runs/{run_id}", headers=self._headers),
                      timeout=DEFAULT_TIMEOUT_SECONDS)
+
+
+class Staging:
+    """스테이징 도구(조회 토큰). 점검을 끝낸 실행이 자기 점유를 푼다."""
+
+    def __init__(self, url: str, token: str) -> None:
+        self._url, self._headers = url, {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+
+    def release(self, cloud: str, holder: str) -> bool:
+        request = urllib.request.Request(f"{self._url}/v1/staging/leases/{cloud}/release",
+                                         json.dumps({"holder": holder}).encode(), method="POST", headers=self._headers)
+        return bool(_json(request, timeout=DEFAULT_TIMEOUT_SECONDS).get("released"))
 
 
 class Jenkins:

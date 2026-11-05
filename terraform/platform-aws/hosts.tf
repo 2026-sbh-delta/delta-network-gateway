@@ -51,8 +51,8 @@ module "host" {
 locals {
   # 자기 경로 밖에서 읽는 파라미터(정확한 이름만). 그 밖은 모듈의 명시적 거부로 막힌다.
   extra_parameters = {
-    # 오케스트레이터: Jenkins 'platform' 사용자(읽기·빌드만) 비밀번호, 스테이징 조회 토큰, DAST 기계용 토큰
-    orchestrator = ["jenkins/platform_password", "jenkins/staging_read_token", "dast/machine_token"]
+    # 오케스트레이터: Jenkins 'platform' 사용자(읽기·빌드만) 비밀번호, 스테이징 조회 토큰, DAST 플랫폼 토큰
+    orchestrator = ["jenkins/platform_password", "jenkins/staging_read_token", "dast/platform_token"]
     # DAST: 스테이징 조회 토큰 하나(변경 토큰·Jenkins 경로 전체는 못 읽음)
     dast = ["jenkins/staging_read_token"]
   }

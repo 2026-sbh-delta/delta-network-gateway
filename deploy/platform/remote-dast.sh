@@ -6,8 +6,8 @@ setup_llm dast
   printf 'DELTA_SAST_TOKEN=%s\n' "$(secret shared/sast_token)"
   printf 'DAST_ADMIN_PASSWORD=%s\n' "$(secret dast/admin_password)"
   printf 'DAST_SESSION_SECRET=%s\n' "$(secret dast/session_secret)"
-  # 오케스트레이터 전용(내부 주소 + POST 점검 시작·수정안만)
-  printf 'DAST_MACHINE_TOKEN=%s\n' "$(secret dast/machine_token)"
+  # 오케스트레이터 전용(내부 주소: /api/platform/* 와 수정안 요청만)
+  printf 'DAST_PLATFORM_TOKEN=%s\n' "$(secret dast/platform_token)"
   # 스테이징 조회 토큰만 받는다(배포·중단 불가)
   printf 'DELTA_STAGING_TOKEN=%s\n' "$(secret jenkins/staging_read_token)"
 } > "$base/secrets.env"

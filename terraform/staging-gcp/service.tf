@@ -69,6 +69,15 @@ resource "google_cloud_run_v2_service" "app" {
       ports {
         container_port = var.container_port
       }
+      # 환경 식별값. 클라우드마다 다른 것은 이 값과 DB 주소·접속 설정뿐이다(앱 이미지·스키마는 같다).
+      env {
+        name  = "SERVED_BY"
+        value = "gcp"
+      }
+      env {
+        name  = "APP_ENV"
+        value = "staging"
+      }
       dynamic "env" {
         for_each = var.database_enabled ? [1] : []
         content {

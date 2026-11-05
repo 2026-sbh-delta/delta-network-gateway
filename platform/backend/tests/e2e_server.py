@@ -10,8 +10,7 @@ from alembic import command
 from alembic.config import Config
 from build_fixture import BrowserBuilder
 from support import configure_env
-from test_sandbox import config as sandbox_config
-from test_security import config as security_config
+from test_dast import config as dast_config
 
 import delta_platform.api.app as app_module
 from delta_platform.api.app import create_app
@@ -19,16 +18,17 @@ from delta_platform.core.database import engine_for
 
 if __name__ == "__main__":
     configure_env()
-    security = security_config()
-    config = sandbox_config().model_copy(
-        update={"sast_url": security.sast_url, "sast_token": security.sast_token}
-    )
+    config = dast_config()
     app_module.build_runner = lambda settings, run: BrowserBuilder(settings)
     engine = engine_for(config)
     assert engine.url.database == "platform_test" and engine.url.host == "127.0.0.1"
     command.upgrade(Config("alembic.ini"), "head")
     with engine.begin() as conn:
-        conn.execute(sa.text("TRUNCATE sessions, auth_rate_limits, run_events, runs, services"))
+        conn.execute(
+            sa.text(
+                "TRUNCATE sessions, auth_rate_limits, run_events, workflow_executions, workflows, runs, service_environments, services"
+            )
+        )
     child = subprocess.Popen([sys.executable, str(Path(__file__).with_name("e2e_worker.py"))])
     try:
         uvicorn.run(

@@ -13,10 +13,11 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from functools import wraps
 from typing import Annotated, Any, Protocol, TypedDict, TypeVar
+from uuid import NAMESPACE_URL, uuid5
 
 from langgraph.types import interrupt
 
-from delta_pipeline.clients import ServiceUnavailable
+from delta_pipeline.clients import ServiceUnavailable, evidence_hash
 from delta_pipeline.model import REPO_PREFIX, Board, Options
 
 POLL_SECONDS = 3
@@ -29,7 +30,7 @@ RUNNING_JENKINS_STATES = ("IN_PROGRESS", "NOT_EXECUTED", "PAUSED_PENDING_INPUT",
 PROCEED = ("approve", "확인, 계속 진행")
 PASSING_GATE_RECORDS = ("pass", "approved")
 DAST_PASS = ("NOT_REPRODUCED",)
-DAST_TARGET = "staging-gcp"
+CLOUD = "gcp"  # GCP 스테이징을 먼저 완주한다. AWS 는 같은 계약을 적용한 뒤 붙인다
 READ_ATTEMPTS = 5  # Jenkins 는 빌드 중이나 재시작 직후 조회가 15초를 넘기기도 한다(빌드 #88)
 COMMIT_RE = re.compile(r"[0-9a-f]{40}")
 ROWS_RE = re.compile(r"남은 행 (\d+)")
@@ -59,6 +60,7 @@ class PipelineState(TypedDict, total=False):
     dast_targets: int
     deploy_build: int
     staging_url: str
+    staging_revision: str | None
     dast_run_id: str | None
 
 
@@ -73,8 +75,12 @@ class SastClient(Protocol):
 
 
 class DastClient(Protocol):
-    def start(self, report: dict[str, Any], *, target_id: str, sast_run_id: str, planner: str) -> str: ...
-    def run(self, run_id: str) -> dict[str, Any]: ...
+    def submit(self, run_id: str, binding: dict[str, Any], report: dict[str, Any]) -> dict[str, Any]: ...
+    def view(self, run_id: str) -> dict[str, Any]: ...
+
+
+class StagingClient(Protocol):
+    def release(self, cloud: str, holder: str) -> bool: ...
 
 
 class JenkinsClient(Protocol):
@@ -94,6 +100,7 @@ class Deps:
     dast: DastClient
     build_jenkins: JenkinsClient   # delta-build: 빌드 에이전트
     deploy_jenkins: JenkinsClient  # delta-deploy: 컨트롤러 배포 전용 실행기
+    staging: StagingClient
     image_repo: str
     sleep: Callable[[float], None]
 
@@ -249,8 +256,9 @@ class Steps:
         assert_gates_passed(state.get("gates") or {}, ("sast",))
         jenkins = self._deps.deploy_jenkins
         self._board.update("stage", state="running", summary="스테이징 데이터 초기화 후 같은 digest 배포 중")
-        build = self._ensure_build(jenkins, {"IMAGE": state["image"], "COMMIT": self._deps.options.commit, "CLOUD": "gcp"},
-                                   f"{self._deps.run_id}-stage")
+        # HOLDER: 스테이징(과 DB)을 이 실행이 점유한다. 점검이 끝나 풀기 전에는 다른 실행이 배포·초기화하지 못한다.
+        build = self._ensure_build(jenkins, {"IMAGE": state["image"], "COMMIT": self._deps.options.commit, "CLOUD": CLOUD,
+                                             "HOLDER": self._deps.run_id}, f"{self._deps.run_id}-stage")
         self._board.add_detail("stage", build=build, url=jenkins.console_url(build))
         return {"deploy_build": build}
 
@@ -271,7 +279,7 @@ class Steps:
         self._board.add_detail("stage", url=result.get("url"), revision=result.get("revision"),
                                scanner_ip=result.get("scanner_ip"), rows_remaining=0)
         self._board.update("stage", state="pass", summary=f"{result.get('url')} · 초기화 남은 행 0")
-        return {"staging_url": str(result.get("url"))}
+        return {"staging_url": str(result.get("url")), "staging_revision": result.get("revision")}
 
     # ── DAST ────────────────────────────────────────────
     def dast_start(self, state: PipelineState) -> dict[str, Any]:
@@ -281,40 +289,67 @@ class Steps:
             return {"dast_run_id": None, "gates": {"dast": "pass"}}
         self._board.update("dast", state="running", summary="스테이징을 실제 브라우저로 점검 중")
         report = self._read(lambda: self._deps.sast.sarif(state["sast_run_id"]))
-        run_id = self._deps.dast.start(report, target_id=DAST_TARGET, sast_run_id=state["sast_run_id"],
-                                       planner=self._deps.options.planner)
-        self._board.add_detail("dast", run_id=run_id, target=DAST_TARGET)
+        # 점검 ID 를 실행에서 정해 재개해도 같은 점검을 받는다(입력이 같으면 DAST 가 기존 점검을 돌려준다)
+        run_id = str(uuid5(NAMESPACE_URL, f"delta-pipeline/{self._deps.run_id}/dast"))
+        binding = {"build_id": f"{self._deps.run_id}-build", "sast_run_id": state["sast_run_id"],
+                   "commit_sha": self._deps.options.commit, "image": state["image"],
+                   "image_digest": state["image_digest"], "sast_evidence_sha256": evidence_hash(report),
+                   "target_url": state["staging_url"], "execution_cloud": CLOUD}
+        if state.get("staging_revision"):
+            binding["runtime_revision"] = state["staging_revision"]
+        self._deps.dast.submit(run_id, binding, report)
+        self._board.add_detail("dast", run_id=run_id, target_url=state["staging_url"])
         return {"dast_run_id": run_id}
 
     def dast_wait(self, state: PipelineState) -> dict[str, Any]:
         run_id = str(state["dast_run_id"])
         deadline = time.time() + DAST_DEADLINE_SECONDS
         while time.time() < deadline:
-            run = self._read(lambda: self._deps.dast.run(run_id))
-            if run.get("status") != "running":
-                return self._dast_gate(run)
+            view = self._read(lambda: self._deps.dast.view(run_id))
+            if view.get("status") not in ("running", "cancelling"):
+                return self._dast_gate(view)
             self._deps.sleep(POLL_SECONDS)
         raise ServiceUnavailable("DAST 점검이 제한 시간 안에 끝나지 않았다")
 
-    def _dast_gate(self, run: Mapping[str, Any]) -> dict[str, Any]:
+    def _dast_gate(self, view: Mapping[str, Any]) -> dict[str, Any]:
         """명세 v1.1 7-2 의 최소판. 모두 NOT_REPRODUCED 일 때만 자동 통과, 나머지는 사람 확인(D3: 자동 통과 금지)."""
-        results = [{key: r.get(key) for key in ("finding_id", "title", "status", "message")} for r in run.get("results", ())]
-        self._board.add_detail("dast", results=results, counts=run.get("counts") or {}, report_url=run.get("report_url"))
-        if run.get("status") != "done":
-            self._board.update("dast", state="fail", summary=f"점검 오류: {run.get('error_kind')}")
-            raise Stopped(f"DAST 점검 오류: {run.get('error_kind')} {run.get('error') or ''}".strip())
+        status = view.get("status")
+        results = [{"finding_id": r.get("finding_id"), "status": r.get("status")} for r in view.get("results", ())]
+        self._board.add_detail("dast", results=results, evidence_sha256=view.get("evidence_sha256"))
+        if status == "skipped":
+            return self._pass("dast", "dast", "점검할 후보가 없다(DAST 가 확인)")
+        if status != "done":
+            # interrupted(점검 서버 재시작)·cancelled·error 는 통과가 아니다
+            self._board.update("dast", state="fail", summary=f"점검이 끝나지 않았다: {status}")
+            raise Stopped(f"DAST 점검이 끝나지 않았다: {status}")
+        missing = len(view.get("finding_ids") or ()) - len(results)
         labels = ", ".join(f"{s} {sum(r['status'] == s for r in results)}" for s in sorted({str(r["status"]) for r in results}))
-        if results and all(r["status"] in DAST_PASS for r in results):
+        if results and missing <= 0 and all(r["status"] in DAST_PASS for r in results):
             return self._pass("dast", "dast", f"재현 없음 ({labels})")
-        return self._ask("dast", "dast", f"DAST ({labels or '결과 없음'})", sum(r["status"] not in DAST_PASS for r in results))
+        # 재현·판정 불가·결과 누락은 사람이 본다
+        unresolved = sum(r["status"] not in DAST_PASS for r in results) + max(missing, 0)
+        return self._ask("dast", "dast", f"DAST ({labels or '결과 없음'}{f', 누락 {missing}' if missing > 0 else ''})",
+                         unresolved)
+
+    def _release(self) -> None:
+        """스테이징 점유를 푼다. 실패해도 만료(기본 1시간)로 풀리므로 실행 결과를 바꾸지 않는다."""
+        try:
+            released = self._deps.staging.release(CLOUD, self._deps.run_id)
+            self._board.add_detail("stage", lease="released" if released else "none")
+        except ServiceUnavailable as exc:
+            LOG.warning("스테이징 점유를 풀지 못했다(만료로 풀린다): %s", exc)
+            self._board.add_detail("stage", lease="release_failed")
 
     # ── 끝 ──────────────────────────────────────────────
     def done(self, state: PipelineState) -> dict[str, Any]:
         assert_gates_passed(state.get("gates") or {}, ("sast", "dast"))
+        self._release()
         self._board.finish("verified", f"스테이징 검증 완료 · {state['image_digest'][:19]}", passed=True)
         return {"halt": None}
 
     def halted(self, state: PipelineState) -> dict[str, Any]:
+        if state.get("deploy_build") is not None:
+            self._release()
         self._board.finish("stopped", str(state.get("halt")))
         return {"halt": state.get("halt")}
 

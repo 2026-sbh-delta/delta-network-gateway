@@ -18,7 +18,7 @@ from langgraph.types import Command
 from delta_pipeline.clients import ServiceUnavailable
 from delta_pipeline.graph import build_graph
 from delta_pipeline.model import Board, Options
-from delta_pipeline.steps import DastClient, Deps, JenkinsClient, SastClient
+from delta_pipeline.steps import DastClient, Deps, JenkinsClient, SastClient, StagingClient
 
 DECISION_DEADLINE_SECONDS = 1800
 DECISION_POLL_SECONDS = 0.5
@@ -39,7 +39,7 @@ def latest_unfinished(store_dir: Path) -> tuple[str, Options] | None:
 
 class Run:
     def __init__(self, options: Options, *, sast: SastClient, dast: DastClient, build_jenkins: JenkinsClient,
-                 deploy_jenkins: JenkinsClient, image_repo: str, store_dir: Path,
+                 deploy_jenkins: JenkinsClient, staging: StagingClient, image_repo: str, store_dir: Path,
                  sleep: Callable[[float], None] = time.sleep, run_id: str | None = None) -> None:
         self.run_id = run_id or uuid.uuid4().hex
         self.options = options
@@ -47,7 +47,8 @@ class Run:
         self._board = Board(store_dir / BOARD_DIR / f"{self.run_id}.json", options, self.run_id)
         self._store_dir = store_dir
         self._deps = Deps(run_id=self.run_id, options=options, board=self._board, sast=sast, dast=dast,
-                          build_jenkins=build_jenkins, deploy_jenkins=deploy_jenkins, image_repo=image_repo, sleep=sleep)
+                          build_jenkins=build_jenkins, deploy_jenkins=deploy_jenkins, staging=staging,
+                          image_repo=image_repo, sleep=sleep)
         self._answer: str | None = None
         self._answered = threading.Event()
 

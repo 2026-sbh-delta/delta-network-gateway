@@ -22,6 +22,7 @@ COPY --from=python-build /app/backend/.venv /app/backend/.venv
 COPY --from=web /web/dist /app/web/dist
 COPY platform/backend/alembic.ini ./
 COPY platform/backend/migrations ./migrations
+RUN mkdir -p /var/lib/delta-platform/tmp && chown 10001:10001 /var/lib/delta-platform/tmp
 USER 10001:10001
 EXPOSE 8088
 CMD ["uvicorn", "delta_platform.api.app:create_app", "--factory", "--host", "0.0.0.0", "--port", "8088", "--no-proxy-headers", "--no-access-log"]

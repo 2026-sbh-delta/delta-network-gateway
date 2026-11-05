@@ -287,3 +287,22 @@ curl -s $BASE/api/runs/$RUN/report
 - 지금 점검 유형은 저장형·반사형 XSS(CWE-79)다. 대상은 `dast_agent/targets/*.json`에 등록된 출처·경로로 제한된다.
 - 스테이징을 연결하려면 대상 파일에 `origin`, `entry_path`, `allowed_path_prefixes`를 추가한다. 코드는 바꾸지 않는다.
 - 점검 1건은 약 55~75초가 걸리고, Claude 사용 비용은 약 $0.11~0.13이다(재검증은 이어받은 맥락 때문에 약 $0.27).
+
+## 13. 플랫폼 전용 실행 API
+
+`DAST_PLATFORM_TOKEN` 설정 시에만 활성화한다. 모든 호출은 별도 Bearer 토큰이 필요하다. 기존 작업실의 `X-DAST-Token`과 구분한다. Host·Origin 제한은 유지하고 사설 프록시에서 Host를 loopback 주소로 전달한다.
+
+| 경로 | 역할 |
+| --- | --- |
+| PUT `/api/platform/runs/{UUID}` | 같은 ID·입력은 같은 검사. 변경 입력과 취소한 ID는 409 |
+| GET `/api/platform/runs/{UUID}` | 제한한 결과·빌드 연결·근거 해시 조회 |
+| POST `/api/platform/runs/{UUID}/cancel` | 취소 표식을 저장하고 모든 자식 검사 종료를 기다림 |
+| GET `/api/platform/target` | 운영 연결 확인용 현재 대상. 사설 프록시에는 이 경로를 노출하지 않음 |
+
+접수 본문은 `binding`과 원본 `report`(SARIF 2.1.0, run 1개)이며 최대 2MB다. `binding`은 `build_id`, `sast_run_id`, `commit_sha`, `image`, `image_digest`, `sast_evidence_sha256`, `target_url`을 포함한다. SHA-256은 `json.dumps(report, sort_keys=True, separators=(",", ":"))`의 UTF-8 바이트로 계산한다. image는 `@sha256:...`로 고정해야 한다.
+
+`target_url`은 등록된 `DAST_PLATFORM_TARGET_ID`(기본 `platform-sandbox`)의 origin과 정확히 같아야 한다. 요청 URL을 새 대상으로 자동 등록하지 않는다. 기존 SARIF 변환·에이전트 검사를 재사용하며 `auto_fix=false`, `impact=false`, 동시 항목 1개, 최대 후보 10개, 전체 시간 제한 900초로 실행한다. 후보 없음은 `skipped`, 서버 재시작으로 사라진 실행은 `interrupted`이며 자동 재실행하지 않는다.
+
+실행 ID·입력 해시·취소 표식은 `runs/.platform`에 저장한다. 완료 원본은 기존 실행별 `report.json`에 남긴다. 플랫폼 응답에는 코드·브라우저 원문을 넣지 않으며 검사 항목 ID·상태·해시만 반환한다. 단일 서버 프로세스로 운영한다. 여러 Uvicorn Worker 간 분산 잠금은 지원하지 않는다.
+
+플랫폼이 ECS 앱 수명과 풀 소유권을 관리한다. 검사·앱 정리를 확인한 뒤 풀을 재사용한다. 자세한 연결은 [플랫폼 DAST 계약](../../../platform/contracts/dast-checks.md)을 따른다.

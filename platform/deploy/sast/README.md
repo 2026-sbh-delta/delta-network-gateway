@@ -7,7 +7,7 @@
                  └─ 빌드 커밋·이미지 digest와 검사 결과·SARIF 해시 연결
 ```
 
-서버를 추가하지 않는다. `network/`는 기존 두 VM의 `/32` 왕복 경로와 플랫폼 SG의 443 수신만 관리한다. `aws/install.py`는 도구 VM의 사설 IP에 NGINX HTTPS를 구성하고 SAST 접수·상태·SARIF 경로만 전달한다. DAST 포트와 컨테이너는 그대로 둔다.
+서버를 추가하지 않는다. `network/`는 기존 두 VM의 `/32` 왕복 경로와 플랫폼 SG의 443 수신만 관리한다. `aws/install.py`는 도구 VM의 사설 IP에 NGINX HTTPS를 구성하고 SAST 접수·상태·SARIF 경로만 전달한다. 현재 운영 배포에서는 DAST 포트와 컨테이너를 그대로 둔다. 후속 [DAST 연결](../dast/README.md)은 같은 HTTPS 진입점의 플랫폼 전용 경로와 내부 ALB 접근만 확장한다.
 
 ## 적용 순서
 
@@ -31,6 +31,7 @@ uv run --project platform/deploy python platform/deploy/sast/aws/connect.py acti
 
 ## 저장소 정책과 운영
 
+- 검사 요청 전 기존 도구 VM이 실행 중이고 사설 HTTPS `/healthz`가 정상인지 확인한다. VM을 중지하면 함께 실행 중인 SAST와 DAST가 모두 중단된다. 플랫폼 자체는 계속 동작하지만 코드 검사는 완료할 수 없다. 재가동 후 HTTPS와 두 컨테이너의 복구를 확인한다.
 - SAST 허용 조직은 기존 `2026-sbh-delta`와 공개 검증 저장소의 `docker`다. 공개 저장소만 받는 플랫폼 정책과 검사 서버의 허용 목록은 별개다. 추가 조직이 필요하면 목록을 검토해 변경한다.
 - `/opt/delta/sast-runtime.env`에 저장소 정책을 보존한다. 갱신된 `deploy/tooling/remote.sh`도 이 파일을 읽으므로 도구 재배포 후 유지된다.
 - 기존 SAST/DAST 모델 인증과 로컬 검사 경로·상태 볼륨은 유지한다. 이번 작업은 LLM 설정을 바꾸지 않는다.

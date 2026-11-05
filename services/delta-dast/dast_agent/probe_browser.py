@@ -213,7 +213,11 @@ class ProbeBrowser:
                 await route.abort("blockedbyclient")
                 return
             self._note_input(request)
-            response = await route.fetch(max_redirects=0, timeout=10000)
+            from .cloud_run import authorization
+
+            auth = await asyncio.to_thread(authorization, self.target.origin)
+            response = await route.fetch(max_redirects=0, timeout=10000,
+                                         headers={**request.headers, **auth})
             location = response.headers.get("location")
             # 범위 안의 redirect만 전달한다. 브라우저의 후속 요청은 이 guard를 다시 지난다.
             if 300 <= response.status < 400 and (

@@ -4,6 +4,7 @@ import time
 
 import httpx
 from build_fixture import BrowserBuilder
+from dast_fixture import BrowserDast
 from github_fixture import handler
 from sandbox_fixture import BrowserSandbox
 from security_fixture import BrowserSecurity
@@ -20,7 +21,12 @@ if __name__ == "__main__":
     try:
         while True:
             if not process_one(
-                Store(engine), reader, BrowserBuilder(), BrowserSandbox(), BrowserSecurity()
+                Store(engine),
+                reader,
+                BrowserBuilder(),
+                BrowserSandbox(),
+                BrowserSecurity(),
+                BrowserDast(),
             ):
                 time.sleep(0.2)
     finally:

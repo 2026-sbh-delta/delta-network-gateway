@@ -16,31 +16,44 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy.exc import SQLAlchemyError
 
 from delta_platform.adapters.builds import BuildError, build_runner, build_target
+from delta_platform.adapters.dast import dast_target
+from delta_platform.adapters.observability import DashboardReader
 from delta_platform.adapters.sandbox import sandbox_target
 from delta_platform.adapters.security import security_target
 from delta_platform.config import Settings
 from delta_platform.core.auth import COOKIE, Auth
 from delta_platform.core.database import engine_for, ready
+from delta_platform.core.environments import EnvironmentStore
 from delta_platform.core.errors import Problem
 from delta_platform.core.inputs import (
     BuildInput,
+    DastCheckInput,
+    DeleteServiceInput,
     EmptyInput,
     ImageCheckInput,
     LoginInput,
+    RemoveRuntimeInput,
+    SandboxCheckInput,
     ServiceInput,
     request_key,
 )
 from delta_platform.core.store import Store
+from delta_platform.core.workflows import ApprovalInput, WorkflowInput, WorkflowStore
+from delta_platform.migration.tracking import MigrationTrackingStore
 
 logger = logging.getLogger("delta_platform")
 Limit = Annotated[int, Query(ge=1, le=100)]
 
 
-def create_app(settings=None, engine=None):
+def create_app(settings=None, engine=None, *, dashboard=None):
     settings = settings or Settings()
     owned_engine = engine is None
     engine = engine or engine_for(settings)
     auth, store = Auth(engine, settings), Store(engine)
+    environments = EnvironmentStore(engine)
+    workflows = WorkflowStore(engine)
+    migrations = MigrationTrackingStore(engine)
+    dashboard = dashboard or DashboardReader(settings.observability_region)
 
     @asynccontextmanager
     async def lifespan(app):
@@ -178,6 +191,77 @@ def create_app(settings=None, engine=None):
     def service_detail(service_id: UUID):
         return store.service(service_id)
 
+    @protected.post("/services/{service_id}/delete", status_code=204)
+    def delete_service(service_id: UUID, body: DeleteServiceInput):
+        store.delete_service(service_id, body.confirmation_name)
+        return Response(status_code=204)
+
+    @protected.get("/services/{service_id}/environments")
+    def service_environments(service_id: UUID):
+        return environments.list(service_id)
+
+    @protected.get("/services/{service_id}/environments/{environment_id}/removal")
+    def removal_preview(service_id: UUID, environment_id: UUID):
+        from delta_platform.adapters.onprem_removal import configured_target
+        from delta_platform.core.removals import RemovalStore
+
+        env = environments.get(service_id, environment_id)
+        try:
+            target = configured_target(settings)
+        except Problem:
+            target = None
+        return RemovalStore(engine).preview(env, target)
+
+    @protected.post("/services/{service_id}/environments/{environment_id}/removal")
+    def remove_runtime(
+        service_id: UUID, environment_id: UUID, body: RemoveRuntimeInput, request: Request
+    ):
+        from delta_platform.adapters.onprem_removal import configured_target
+        from delta_platform.core.removals import RemovalStore
+
+        result, created = RemovalStore(engine).enqueue(
+            service_id,
+            environment_id,
+            body.confirmation_name,
+            body.binding_hash,
+            request_key(request.headers.get("Idempotency-Key")),
+            configured_target(settings),
+        )
+        return JSONResponse(jsonable_encoder(result), status_code=202 if created else 200)
+
+    @protected.get("/services/{service_id}/observability")
+    def service_observability(
+        service_id: UUID,
+        environment_id: UUID,
+        minutes: Annotated[int, Query(ge=1, le=120)] = 15,
+    ):
+        result = dashboard.read(environments.get(service_id, environment_id), minutes)
+        result["migration"] = migrations.latest(service_id, environment_id)
+        return result
+
+    @protected.post("/services/{service_id}/workflows")
+    def workflow_create(service_id: UUID, body: WorkflowInput, request: Request):
+        result, created = workflows.create(
+            service_id, body, request_key(request.headers.get("idempotency-key"))
+        )
+        return JSONResponse(jsonable_encoder(result), status_code=201 if created else 200)
+
+    @protected.get("/services/{service_id}/workflows")
+    def workflow_list(service_id: UUID):
+        return workflows.list(service_id)
+
+    @protected.get("/workflows/{workflow_id}")
+    def workflow_detail(workflow_id: UUID):
+        return workflows.get(workflow_id)
+
+    @protected.get("/workflows/{workflow_id}/executions")
+    def execution_list(workflow_id: UUID):
+        return workflows.executions(workflow_id)
+
+    @protected.post("/workflows/{workflow_id}/approval")
+    def workflow_approve(workflow_id: UUID, body: ApprovalInput, summary=Depends(authenticated)):
+        return workflows.approve(workflow_id, body.input_hash, summary["login_id"])
+
     @protected.post("/services/{service_id}/source-checks")
     def source_check(service_id: UUID, body: EmptyInput, request: Request):
         result, created = store.enqueue(
@@ -254,13 +338,64 @@ def create_app(settings=None, engine=None):
         store.run(run_id, "security_check")
         return store.run_events(run_id, after_sequence, limit)
 
-    @protected.post("/services/{service_id}/sandbox-checks")
-    def sandbox_check(service_id: UUID, body: ImageCheckInput, request: Request):
+    @protected.get("/sandbox-targets")
+    def sandbox_targets():
+        items = []
+        for cloud, label, runtime in (
+            ("aws", "AWS", "ecs"),
+            ("gcp", "GCP", "cloud_run"),
+            ("onprem", "온프레미스", "k3s"),
+        ):
+            try:
+                sandbox_target(settings, cloud)
+                configured = True
+            except Problem:
+                configured = False
+            items.append(
+                {"cloud": cloud, "label": label, "runtime": runtime, "configured": configured}
+            )
+        return {"items": items}
+
+    @protected.post("/services/{service_id}/dast-checks")
+    def dast_check(service_id: UUID, body: DastCheckInput, request: Request):
         result, created = store.enqueue_sandbox(
             service_id,
             UUID(body.build_id),
             request_key(request.headers.get("Idempotency-Key")),
-            sandbox_target(settings),
+            sandbox_target(settings, body.execution_cloud),
+            backend_build_id=UUID(body.backend_build_id) if body.backend_build_id else None,
+            security_check_id=UUID(body.security_check_id),
+            dast_target=dast_target(settings),
+        )
+        return JSONResponse(jsonable_encoder(result), status_code=202 if created else 200)
+
+    @protected.get("/services/{service_id}/dast-checks")
+    def dast_list(service_id: UUID, limit: Limit = 50, cursor: str | None = None):
+        return store.list_runs(service_id, limit, cursor, "dast_check")
+
+    @protected.get("/dast-checks/{run_id}")
+    def dast_detail(run_id: UUID):
+        return store.run(run_id, "dast_check")
+
+    @protected.get("/dast-checks/{run_id}/events")
+    def dast_events(
+        run_id: UUID, after_sequence: Annotated[int, Query(ge=0)] = 0, limit: Limit = 100
+    ):
+        store.run(run_id, "dast_check")
+        return store.run_events(run_id, after_sequence, limit)
+
+    @protected.post("/dast-checks/{run_id}/cancel")
+    def dast_cancel(run_id: UUID, body: EmptyInput):
+        return store.cancel_sandbox(run_id, "dast_check")
+
+    @protected.post("/services/{service_id}/sandbox-checks")
+    def sandbox_check(service_id: UUID, body: SandboxCheckInput, request: Request):
+        result, created = store.enqueue_sandbox(
+            service_id,
+            UUID(body.build_id),
+            request_key(request.headers.get("Idempotency-Key")),
+            sandbox_target(settings, body.execution_cloud),
+            backend_build_id=UUID(body.backend_build_id) if body.backend_build_id else None,
         )
         return JSONResponse(jsonable_encoder(result), status_code=202 if created else 200)
 

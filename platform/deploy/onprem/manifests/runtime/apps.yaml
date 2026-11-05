@@ -1,0 +1,191 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: delta-notes
+  labels:
+    app.kubernetes.io/managed-by: delta-platform
+spec:
+  replicas: 1
+  revisionHistoryLimit: 2
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels: &id001
+      app: delta-notes
+      component: frontend
+  template:
+    metadata:
+      labels: *id001
+    spec:
+      serviceAccountName: runtime
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      imagePullSecrets:
+      - name: registry
+      containers:
+      - name: frontend
+        image: RELEASE_FRONTEND_IMAGE
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: http
+          containerPort: 3000
+        env:
+        - name: PORT
+          value: '3000'
+        - name: APP_ENV
+          value: onprem
+        - name: APP_VERSION
+          value: RELEASE_COMMIT
+        - name: API_HOST
+          value: backend
+        - name: API_PORT
+          value: '8080'
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 256Mi
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: http
+          periodSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: http
+          initialDelaySeconds: 15
+          periodSeconds: 15
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+      volumes:
+      - name: tmp
+        emptyDir:
+          sizeLimit: 64Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+  namespace: delta-notes
+  labels:
+    app.kubernetes.io/managed-by: delta-platform
+spec:
+  selector:
+    app: delta-notes
+    component: frontend
+  ports:
+  - name: http
+    port: 3000
+    targetPort: http
+    nodePort: 32081
+  type: NodePort
+  externalTrafficPolicy: Local
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: delta-notes
+  labels:
+    app.kubernetes.io/managed-by: delta-platform
+spec:
+  replicas: 1
+  revisionHistoryLimit: 2
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels: &id001
+      app: delta-notes
+      component: backend
+  template:
+    metadata:
+      labels: *id001
+    spec:
+      serviceAccountName: runtime
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      imagePullSecrets:
+      - name: registry
+      containers:
+      - name: backend
+        image: RELEASE_BACKEND_IMAGE
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: http
+          containerPort: 8080
+        env:
+        - name: PORT
+          value: '8080'
+        - name: APP_ENV
+          value: onprem
+        - name: APP_VERSION
+          value: RELEASE_COMMIT
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 256Mi
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: http
+          periodSeconds: 5
+        livenessProbe:
+          tcpSocket:
+            port: http
+          initialDelaySeconds: 15
+          periodSeconds: 15
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+      volumes:
+      - name: tmp
+        emptyDir:
+          sizeLimit: 64Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: delta-notes
+  labels:
+    app.kubernetes.io/managed-by: delta-platform
+spec:
+  selector:
+    app: delta-notes
+    component: backend
+  ports:
+  - name: http
+    port: 8080
+    targetPort: http

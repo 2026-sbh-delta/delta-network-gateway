@@ -1,3 +1,4 @@
+import type { ApplicationBundle } from "./application-model";
 export type Session = {
   login_id: string;
   expires_at: string;
@@ -6,16 +7,37 @@ export type Session = {
 export type Run = {
   id: string;
   service_id: string;
-  kind: "source_preflight" | "image_build" | "sandbox_check" | "security_check";
+  kind:
+    | "source_preflight"
+    | "image_build"
+    | "sandbox_check"
+    | "security_check"
+    | "runtime_remove"
+    | "dast_check";
   cancel_requested?: boolean;
   external_id: string | null;
   status: "queued" | "running" | "succeeded" | "failed";
   current_step: string | null;
+  execution_cloud?: string;
   attempt: number;
   resolved_commit_sha: string | null;
   created_at: string;
   result: {
     requires_review?: boolean;
+    dast_check?: string;
+    dast_reason?: string | null;
+    execution_cloud?: string;
+    environment_check?: string;
+    runtime?: string;
+    revision?: string;
+    url?: string;
+    security_check_id?: string;
+    dast_evidence_sha256?: string;
+    dast_findings?: {
+      finding_id: string;
+      status: string;
+      evidence_sha256: string;
+    }[];
     counts?: Record<string, number>;
     findings?: {
       rule: string;
@@ -40,7 +62,15 @@ export type Run = {
   } | null;
   error: { code: string; message: string; retry_at?: string } | null;
 };
+export type SandboxTarget = {
+  cloud: "aws" | "gcp" | "onprem";
+  label: string;
+  runtime: string;
+  configured: boolean;
+};
 export type Service = {
+  project_id?: string;
+  application_bundle?: ApplicationBundle;
   id: string;
   name: string;
   repository_url: string;
@@ -54,7 +84,11 @@ export type Service = {
 };
 export type ServiceInput = Omit<
   Service,
-  "id" | "created_at" | "latest_source_check"
+  | "id"
+  | "created_at"
+  | "latest_source_check"
+  | "application_bundle"
+  | "project_id"
 >;
 export type RunEvent = {
   sequence: number;

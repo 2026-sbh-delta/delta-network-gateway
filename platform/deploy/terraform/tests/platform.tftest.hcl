@@ -72,3 +72,24 @@ run "jenkins_is_private_and_separate" {
     error_message = "컨트롤러 ingress는 플랫폼/에이전트 SG의 HTTPS로 제한해야 합니다."
   }
 }
+
+run "role_subnets_reuse_private_nat" {
+  command = plan
+  assert {
+    condition = (
+      length(aws_subnet.service) == 5 &&
+      length(distinct([for subnet in aws_subnet.service : subnet.cidr_block])) == 5 &&
+      alltrue([for subnet in aws_subnet.service :
+        !subnet.map_public_ip_on_launch &&
+        !contains(["10.80.0.0/24", "10.80.1.0/24", "10.80.2.0/24", "10.80.3.0/24"], subnet.cidr_block)
+      ])
+    )
+    error_message = "역할별 서브넷은 기존 네 대역과 겹치지 않고 공인 IP를 자동 할당하지 않아야 합니다."
+  }
+  assert {
+    condition = alltrue([for rule in aws_vpc_security_group_ingress_rule.service_nat :
+      rule.from_port == 443 && rule.to_port == 443 && rule.ip_protocol == "tcp" && rule.cidr_ipv4 != "0.0.0.0/0"
+    ])
+    error_message = "공유 NAT에는 배정한 서브넷의 HTTPS 송신만 추가해야 합니다."
+  }
+}

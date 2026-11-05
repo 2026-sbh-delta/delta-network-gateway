@@ -1,0 +1,6 @@
+fields @timestamp, @log,
+       coalesce(cloud, if(ispresent(firewall_name), "aws", "unknown")) as source_cloud,
+       project_id, insert_id, event_id, source_timestamp,
+       original.jsonPayload as gcp_detail, event as aws_detail
+| sort @timestamp desc
+| limit 100

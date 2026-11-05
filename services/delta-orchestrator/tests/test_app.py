@@ -49,11 +49,16 @@ class _Sast:
 
 
 class _Dast:
-    def start(self, report, **kw):
-        return "d1"
+    def submit(self, run_id, binding, report):
+        return {}
 
-    def run(self, run_id):
-        return {"status": "done", "results": [{"finding_id": "F", "status": "REPRODUCED"}]}
+    def view(self, run_id):
+        return {"status": "done", "finding_ids": ["F"], "results": [{"finding_id": "F", "status": "REPRODUCED"}]}
+
+
+class _Staging:
+    def release(self, cloud, holder):
+        return True
 
 
 class _Jenkins:
@@ -83,7 +88,7 @@ def fake_run(options, store_dir, run_id):
                build_jenkins=_Jenkins({"commit": COMMIT, "image_ref": "repo/app@" + DIGEST}),
                deploy_jenkins=_Jenkins({"state": "ready", "url": "http://s", "image_digest": DIGEST,
                                         "steps": [{"name": "data_reset", "detail": "job: 남은 행 0"}]}),
-               image_repo="repo/app", store_dir=store_dir, sleep=lambda _: None, run_id=run_id)
+               staging=_Staging(), image_repo="repo/app", store_dir=store_dir, sleep=lambda _: None, run_id=run_id)
 
 
 def test_pipeline_api_needs_login_runs_and_takes_a_human_answer(monkeypatch, tmp_path):

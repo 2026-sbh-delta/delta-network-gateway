@@ -78,20 +78,33 @@ def test_status_uses_plain_api(body, status):
     assert _jenkins(_Opener(body=body)).status(1) == status
 
 
-def test_sast_and_dast_send_their_own_bearer_tokens(monkeypatch):
+def test_sast_dast_staging_send_their_own_bearer_tokens(monkeypatch):
     from delta_pipeline import clients
 
     seen = []
 
     def fake_json(request, *, timeout, opener=None):
-        seen.append((request.full_url, request.get_header("Authorization"), request.data))
-        return {"run_id": "d1"}
+        seen.append((request.get_method(), request.full_url, request.get_header("Authorization"), request.data))
+        return {"released": True}
 
     monkeypatch.setattr(clients, "_json", fake_json)
     clients.Sast("http://sast", "s" * 32).start("r-sast", "R", "C")
-    clients.Dast("http://dast.cp.internal:8765", "m" * 32).start({"version": "2.1.0"}, target_id="staging-gcp",
-                                                               sast_run_id="r-sast", planner="agent")
-    (sast_url, sast_auth, _), (dast_url, dast_auth, dast_body) = seen
+    clients.Dast("http://dast.cp.internal:8765", "p" * 32).submit("u-1", {"build_id": "b"}, {"version": "2.1.0"})
+    assert clients.Staging("http://jenkins:8091", "r" * 32).release("gcp", "run-a") is True
+    (_, sast_url, sast_auth, _), (dast_method, dast_url, dast_auth, dast_body), (_, rel_url, rel_auth, rel_body) = seen
     assert sast_url == "http://sast/v1/sast/scans" and sast_auth == "Bearer " + "s" * 32
-    assert dast_url == "http://dast.cp.internal:8765/api/runs" and dast_auth == "Bearer " + "m" * 32
-    assert json.loads(dast_body)["auto_fix"] is False
+    assert dast_method == "PUT" and dast_url == "http://dast.cp.internal:8765/api/platform/runs/u-1"
+    assert dast_auth == "Bearer " + "p" * 32 and json.loads(dast_body) == {"binding": {"build_id": "b"},
+                                                                          "report": {"version": "2.1.0"}}
+    assert rel_url == "http://jenkins:8091/v1/staging/leases/gcp/release" and json.loads(rel_body) == {"holder": "run-a"}
+
+
+def test_evidence_hash_matches_the_dast_platform_fingerprint():
+    import hashlib
+
+    from delta_pipeline.clients import evidence_hash
+
+    value = {"b": [1, "가"], "a": None}
+    # DAST platform_api.fingerprint 와 같은 식: sort_keys, 공백 없는 구분자, 기본 ensure_ascii
+    expected = hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    assert evidence_hash(value) == expected

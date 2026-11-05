@@ -6,19 +6,20 @@ import time
 from botocore.exceptions import BotoCoreError, ClientError
 
 from delta_platform.adapters.builds import BuildError, build_runner
+from delta_platform.adapters.dast import DastInspector, DastRunner
 from delta_platform.adapters.github import GitHubReader, SourceError
-from delta_platform.adapters.sandbox import SandboxError, SandboxRunner
+from delta_platform.adapters.sandbox import SandboxError, runner_for
 from delta_platform.adapters.security import SecurityRunner
 from delta_platform.config import Settings
 from delta_platform.core.auth import Auth
 from delta_platform.core.database import engine_for, ready
-from delta_platform.core.errors import LeaseLost
+from delta_platform.core.errors import LeaseLost, Problem
 from delta_platform.core.store import Store
 
 logger = logging.getLogger("delta_platform.worker")
 
 
-def process_one(store, reader, builder=None, sandbox=None, security=None):
+def process_one(store, reader, builder=None, sandbox=None, security=None, dast=None, remover=None):
     claim = store.claim()
     if claim is None:
         return False
@@ -42,14 +43,41 @@ def process_one(store, reader, builder=None, sandbox=None, security=None):
     beat = threading.Thread(target=heartbeat, daemon=True)
     beat.start()
     try:
-        if claim["kind"] == "image_build":
+        if claim["kind"] == "runtime_remove":
+            from delta_platform.adapters.onprem_removal import OnpremRemover
+
+            try:
+                remover = remover or OnpremRemover(Settings())
+            except Problem as exc:
+                raise SandboxError(exc.code, exc.message) from None
+            result = remover.execute(claim, store, progress)
+        elif claim["kind"] == "image_build":
             builder = builder or build_runner(Settings(), claim)
             result = builder.execute(claim, store, progress)
         elif claim["kind"] == "security_check":
             security = security or SecurityRunner(Settings())
             result = security.execute(claim, store, progress)
+        elif claim["kind"] == "dast_check":
+            try:
+                if dast is None:
+                    settings = Settings()
+                    cloud = claim["input_snapshot"]["sandbox_target"].get("cloud", "aws")
+                    dast = (
+                        DastRunner(settings)
+                        if cloud == "aws"
+                        else runner_for(settings, cloud, inspector=DastInspector(settings))
+                    )
+            except (SandboxError, Problem):
+                progress(
+                    "dast_cleanup_wait",
+                    "검사 연결 설정을 복원해야 합니다. 기존 실행 공간은 잠금 상태로 유지합니다.",
+                )
+                raise LeaseLost() from None
+            result = dast.execute(claim, store, progress)
         elif claim["kind"] == "sandbox_check":
-            sandbox = sandbox or SandboxRunner(Settings())
+            sandbox = sandbox or runner_for(
+                Settings(), claim["input_snapshot"]["sandbox_target"].get("cloud", "aws")
+            )
             result = sandbox.execute(claim, store, progress)
         else:
             result = reader.inspect(claim["input_snapshot"], claim["resolved_commit_sha"], progress)

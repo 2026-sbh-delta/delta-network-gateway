@@ -38,7 +38,7 @@ ensure_secret() {
 }
 # 스테이징 토큰은 조회·변경 둘로 나눈다. 변경 토큰은 Jenkins 경로에만 두고(shared/ 아님) 새로 만든다.
 # 예전 shared/staging_token은 스테이징 API가 더 이상 받지 않는다.
-for s in shared/sast_token dast/admin_password dast/session_secret dast/machine_token \
+for s in shared/sast_token dast/admin_password dast/session_secret dast/platform_token \
          jenkins/admin_password jenkins/platform_password jenkins/staging_read_token jenkins/staging_write_token \
          orchestrator/admin_password orchestrator/session_secret; do
   ensure_secret "${prefix}$s"

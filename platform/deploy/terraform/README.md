@@ -13,6 +13,8 @@
 - 로그인·DB 비밀값은 배포 도구가 SSM SecureString에 별도로 기록한다. Terraform 변수·state·user data에 비밀값을 넣지 않는다.
 - 최초 Origin 생성 때만 `bootstrap_origin_access=true`로 CloudFront 관리 prefix list를 허용한다. 서비스 SG가 준비되면 false로 바꾸고 재적용한다.
 
+역할별 전용 subnet은 Jenkins Controller `10.80.10.0/24`, Agent `10.80.11.0/24`, AI `10.80.20.0/24`, SAST `10.80.30.0/24`, DAST `10.80.40.0/24`이다. 실제 이전 상태는 [분리 기록](../../../docs/ai-dlc/platform-subnets.md)을 따른다. 기존 관리형 로그 수신 주소는 변경하지 않는다.
+
 ## 입력 속성
 
 | 속성명 | 타입 | 기본값 | 역할 |
@@ -43,6 +45,7 @@
 | `account_id` | 배포 계정 |
 | `jenkins_instances` | controller/agent별 SSM 대상 VM ID |
 | `jenkins_url` | 사설 컨트롤러 HTTPS 주소 |
+| `service_subnets` | 역할별 subnet ID, CIDR, route table ID |
 
 ## 검증과 적용
 

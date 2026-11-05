@@ -96,21 +96,15 @@ resource "google_cloud_run_v2_job" "db_reset" {
         }
       }
       containers {
-        name    = "reset"
+        name = "reset"
+        # 앱 저장소의 초기화 코드(app.reset: 스키마 적용 → 비우기 → 남은 행 0 확인)를 배포 이미지 그대로 쓴다.
+        # APP_ENV=staging 이 아니면 app.reset 이 거부한다. 운영에는 이 Job 을 만들지 않는다.
         image   = var.bootstrap_image
-        command = ["python", "-c"]
-        args = [<<-PY
-          import os, psycopg
-          from app.db import migrate
-          url = os.environ["DATABASE_URL"]
-          migrate(url)
-          with psycopg.connect(url, autocommit=True) as conn:
-              conn.execute("TRUNCATE comments, posts RESTART IDENTITY CASCADE")
-              left = conn.execute("SELECT (SELECT count(*) FROM posts) + (SELECT count(*) FROM comments)").fetchone()[0]
-          print(f"reset rows_remaining={left}", flush=True)
-          raise SystemExit(1 if left else 0)
-        PY
-        ]
+        command = ["python", "-m", "app.reset"]
+        env {
+          name  = "APP_ENV"
+          value = "staging"
+        }
         env {
           name = "DATABASE_URL"
           value_source {

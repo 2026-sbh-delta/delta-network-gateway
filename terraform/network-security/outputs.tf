@@ -49,7 +49,7 @@ output "inspection_mode" {
 }
 
 output "inspection_route_targets" {
-  description = "Desired Spoke RT next hop for every registered CIDR; use for staged ReplaceTransitGatewayRoute operations."
+  description = "Desired static Spoke RT next hops. In direct modes VPN destinations use BGP propagation and are excluded from this map."
   value       = { for cidr, route in aws_ec2_transit_gateway_route.before_inspection : cidr => route.transit_gateway_attachment_id }
 }
 

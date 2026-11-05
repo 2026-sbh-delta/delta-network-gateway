@@ -1,0 +1,5 @@
+bucket       = "delta-platform-tf-616723161368"
+key          = "platform/observability/identity.tfstate"
+region       = "ap-northeast-2"
+encrypt      = true
+use_lockfile = true

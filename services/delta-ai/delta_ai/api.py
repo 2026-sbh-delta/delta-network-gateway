@@ -7,6 +7,7 @@ DELTA_LLM_TIMEOUT_SECONDS(기본 60).
 from __future__ import annotations
 
 import hmac
+import asyncio
 import logging
 import os
 from collections.abc import Awaitable, Callable
@@ -17,6 +18,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from delta_ai.contract import AssessmentRequest, AssessmentResult, CandidateDecision, RuleCandidate
 from delta_ai.errors import TransientError
+from delta_ai.execution import AssessmentLedger, ExecutionConflict, payload_hash
 from delta_ai.fake_llm import FakeLLM
 from delta_ai.judge import LlmOutput
 from delta_ai.llm import ClaudeLLM, LlmClient
@@ -34,6 +36,8 @@ def create_app(*, llm: LlmClient | None, store: RuleStore, token: str) -> FastAP
         raise ValueError("DELTA_API_TOKEN 이 필요하다")
     app = FastAPI(title="Delta AI 판단 서비스", version="0.1.0")
     bearer = HTTPBearer(auto_error=False)
+    ledger = AssessmentLedger(store.assessment_directory)
+    assessment_lock = asyncio.Lock()
 
     def require_token(credentials: HTTPAuthorizationCredentials | None = Depends(bearer)) -> None:
         supplied = credentials.credentials if credentials else ""
@@ -52,9 +56,24 @@ def create_app(*, llm: LlmClient | None, store: RuleStore, token: str) -> FastAP
         return {"status": "ok"}
 
     @app.post("/v1/assessments", dependencies=[Depends(require_token)])
-    async def create_assessment(req: AssessmentRequest) -> AssessmentResult:
+    async def create_assessment(req: AssessmentRequest, request: Request) -> AssessmentResult:
         try:
-            return await assess(req, llm=llm, store=store)
+            async with assessment_lock:
+                if not req.execution_context:
+                    return await assess(req, llm=llm, store=store)
+                raw = await request.json()
+                body = {k: v for k, v in raw.items() if k not in ("assessment_id", "execution_context")}
+                if payload_hash(body) != req.execution_context.payload_hash:
+                    raise HTTPException(status_code=409, detail="실행 입력 해시가 다르다")
+                cached = ledger.bind(req.execution_context, raw)
+                if cached is not None:
+                    return AssessmentResult.model_validate(cached)
+                result = await assess(req, llm=llm, store=store)
+                result = result.model_copy(update={"execution_context": req.execution_context})
+                ledger.complete(req.execution_context, result.model_dump(mode="json"))
+                return result
+        except ExecutionConflict as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         except TransientError as exc:
             logger.warning("LLM 일시 오류: %s", exc)
             raise HTTPException(status_code=503, detail="LLM 일시 오류 — 다시 시도한다") from exc

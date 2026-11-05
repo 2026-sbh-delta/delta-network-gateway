@@ -13,7 +13,21 @@ import {
   type Page,
 } from "./api";
 import "./style.css";
+import "./presentation.css";
+import "./dashboard.css";
+import "./release.css";
+import { ApplicationPanel } from "./ApplicationPanel";
+import {
+  AppShell,
+  Icon,
+  sections,
+  useWorkspaceRoute,
+  type View,
+} from "./AppShell";
+import { DeleteProjectDialog } from "./DeleteProjectDialog";
 import { BuildPanel } from "./BuildPanel";
+import { ObservabilityPanel } from "./ObservabilityPanel";
+import { WorkflowPlanningPanel } from "./WorkflowPlanningPanel";
 
 const labels = {
   queued: "확인 대기",
@@ -71,19 +85,19 @@ function Login({ onLogin }: { onLogin: (s: Session) => void }) {
       <section className="login-copy">
         <div className="eyebrow">DELTA PLATFORM</div>
         <h1>
-          서비스의 시작을,
+          서비스의 다음 환경을,
           <br />
           하나의 작업 공간에서.
         </h1>
         <p>
-          공개 저장소를 등록하고
+          소스 확인부터 빌드·검사, 이전 계획과 모니터링까지.
           <br />
-          배포할 소스가 준비됐는지 확인하세요.
+          서비스의 다음 단계를 준비하세요.
         </p>
         <div className="scope">
-          <span>01 소스 확인</span>
-          <span>02 이미지 빌드</span>
-          <span>03 배포 · 후속 단계</span>
+          <span>01 빌드·검사</span>
+          <span>02 이전 계획</span>
+          <span>03 모니터링</span>
         </div>
       </section>
       <section className="login-card">
@@ -228,7 +242,17 @@ function Register({
   );
 }
 
-function Detail({ id, onBack }: { id: string; onBack: () => void }) {
+function Detail({
+  id,
+  onBack,
+  view,
+  onNavigate,
+}: {
+  id: string;
+  onBack: () => void;
+  view: View;
+  onNavigate: (view: View) => void;
+}) {
   const [service, setService] = useState<Service | null>(null);
   const [run, setRun] = useState<Run | null>(null);
   const [history, setHistory] = useState<Run[]>([]);
@@ -381,172 +405,213 @@ function Detail({ id, onBack }: { id: string; onBack: () => void }) {
         <button onClick={() => setReload((n) => n + 1)}>다시 조회</button>
       )}
       {!service ? (
-        <p className="muted">서비스를 불러오는 중입니다.</p>
+        <p className="muted">
+          {error
+            ? "서비스를 불러오지 못했습니다."
+            : "서비스를 불러오는 중입니다."}
+        </p>
       ) : (
         <>
           <div className="detail-heading">
             <div>
-              <div className="eyebrow">SERVICE</div>
+              <div className="eyebrow">
+                {sections.find((s) => s.view === view)?.title}
+              </div>
               <h1>{service.name}</h1>
               <a href={service.repository_url} target="_blank" rel="noreferrer">
                 {service.repository_url.replace("https://", "")} ↗
               </a>
             </div>
-            <button
-              className="primary"
-              onClick={check}
-              disabled={busy || active(run)}
-            >
-              {busy ? "접수 중…" : active(run) ? "소스 확인 중…" : "소스 확인"}
-            </button>
-          </div>
-          <div className="detail-grid">
-            <section className="panel">
-              <div className="panel-top">
-                <h2>소스 확인 결과</h2>
-                <Status run={run} />
-              </div>
-              <p className="muted">
-                저장소 · 커밋 · 빌드 경로 · Dockerfile을 확인합니다.
-              </p>
-              <ol className="check-steps">
-                {Object.entries(steps).map(([step, label], i) => (
-                  <li
-                    key={step}
-                    className={
-                      run?.status === "succeeded"
-                        ? "complete"
-                        : run?.current_step === step
-                          ? "current"
-                          : ""
-                    }
-                  >
-                    <span>{String(i + 1).padStart(2, "0")}</span>
-                    {label}
-                  </li>
-                ))}
-              </ol>
-              {!run && (
-                <div className="empty small">
-                  <h3>아직 확인하지 않았습니다</h3>
-                  <p>소스 확인을 눌러 등록한 경로를 검사하세요.</p>
-                </div>
-              )}
-              {run?.resolved_commit_sha && (
-                <div className="commit">
-                  <span>확정 커밋</span>
-                  <a
-                    href={`${service.repository_url}/commit/${run.resolved_commit_sha}`}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    <code>{run.resolved_commit_sha}</code> ↗
-                  </a>
-                </div>
-              )}
-              {run?.error && (
-                <div className="error">
-                  <strong>{run.error.message}</strong>
-                  <small>{run.error.code}</small>
-                  {run.error.retry_at && (
-                    <p>다시 시도 가능 시각: {time(run.error.retry_at)}</p>
-                  )}
-                </div>
-              )}
-              {run?.status === "succeeded" && (
-                <p className="success-note">
-                  등록한 소스 위치를 확인했습니다. 이미지 빌드는 아래에서 별도로
-                  요청합니다. 소스 확인 성공은 실행 검사·배포 성공을 뜻하지
-                  않습니다.
-                </p>
-              )}
-              <h3 className="subhead">
-                진행 기록 {run && <small>· 시도 {run.attempt}/3</small>}
-              </h3>
-              <ul className="timeline">
-                {events.map((e) => (
-                  <li key={e.sequence}>
-                    <span className="dot" />
-                    <div>
-                      {e.message}
-                      <time>{time(e.created_at)}</time>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </section>
-            <aside className="panel">
-              <h2>등록 정보</h2>
-              <dl>
-                {[
-                  ["브랜치 / 커밋", service.source_ref],
-                  ["빌드 경로", service.build_context],
-                  ["Dockerfile", service.dockerfile_path],
-                  ["앱 포트", service.container_port],
-                  ["헬스 체크", service.healthcheck_path],
-                ].map(([label, value]) => (
-                  <div key={label}>
-                    <dt>{label}</dt>
-                    <dd>{value}</dd>
-                  </div>
-                ))}
-              </dl>
-              <p className="notice">
-                소스 확인 후 별도 빌드 환경에서 이미지를 만들 수 있습니다.
-                <br />
-                비밀값은 등록 정보에 넣지 마세요.
-              </p>
-            </aside>
-          </div>
-          <BuildPanel key={id} serviceId={id} source={run} />
-          <section className="panel history">
-            <h2>검사 이력</h2>
-            {history.length === 0 ? (
-              <p className="muted">저장된 검사 이력이 없습니다.</p>
-            ) : (
-              <div className="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>접수 시각</th>
-                      <th>결과</th>
-                      <th>커밋</th>
-                      <th>상세</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {history.map((item) => (
-                      <tr key={item.id}>
-                        <td>{time(item.created_at)}</td>
-                        <td>
-                          <Status run={item} />
-                        </td>
-                        <td>
-                          <code>
-                            {item.resolved_commit_sha?.slice(0, 12) ?? "—"}
-                          </code>
-                        </td>
-                        <td>
-                          <button
-                            disabled={active(run) && run?.id !== item.id}
-                            onClick={() => setRun(item)}
-                            aria-pressed={run?.id === item.id}
-                          >
-                            기록 보기
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-            {historyCursor && (
-              <button disabled={loadingHistory} onClick={moreHistory}>
-                이력 더 보기
+            {view === "build" && (
+              <button
+                className="primary"
+                onClick={check}
+                disabled={busy || active(run)}
+              >
+                {busy
+                  ? "접수 중…"
+                  : active(run)
+                    ? "소스 확인 중…"
+                    : "소스 확인"}
               </button>
             )}
-          </section>
+          </div>
+          {view === "overview" && (
+            <ApplicationPanel service={service} onNavigate={onNavigate} />
+          )}
+          {view === "migration" && (
+            <WorkflowPlanningPanel key={`${id}-workflows`} serviceId={id} />
+          )}
+          {view === "build" && (
+            <>
+              <ApplicationPanel
+                service={service}
+                mode="build"
+                onNavigate={onNavigate}
+              />
+              <div className="work-stage-heading">
+                <span>01</span>
+                <div>
+                  <h2>소스 확인</h2>
+                  <p>이후 빌드와 검사의 기준이 될 커밋을 확인합니다.</p>
+                </div>
+              </div>
+              <div className="detail-grid">
+                <section className="panel">
+                  <div className="panel-top">
+                    <h2>소스 확인 결과</h2>
+                    <Status run={run} />
+                  </div>
+                  <p className="muted">
+                    저장소 · 커밋 · 빌드 경로 · Dockerfile을 확인합니다.
+                  </p>
+                  <ol className="check-steps">
+                    {Object.entries(steps).map(([step, label], i) => (
+                      <li
+                        key={step}
+                        className={
+                          run?.status === "succeeded"
+                            ? "complete"
+                            : run?.current_step === step
+                              ? "current"
+                              : ""
+                        }
+                      >
+                        <span>{String(i + 1).padStart(2, "0")}</span>
+                        {label}
+                      </li>
+                    ))}
+                  </ol>
+                  {!run && (
+                    <div className="empty small">
+                      <h3>아직 확인하지 않았습니다</h3>
+                      <p>소스 확인을 눌러 등록한 경로를 검사하세요.</p>
+                    </div>
+                  )}
+                  {run?.error && (
+                    <div className="error">
+                      <strong>{run.error.message}</strong>
+                      <small>{run.error.code}</small>
+                      {run.error.retry_at && (
+                        <p>다시 시도 가능 시각: {time(run.error.retry_at)}</p>
+                      )}
+                    </div>
+                  )}
+                  {run?.status === "succeeded" && (
+                    <p className="success-note">
+                      등록한 소스 위치를 확인했습니다. 이미지 빌드는 아래에서
+                      별도로 요청합니다. 소스 확인 성공은 실행 검사·배포 성공을
+                      뜻하지 않습니다.
+                    </p>
+                  )}
+                  <details className="technical-details">
+                    <summary>커밋과 소스 확인 기록</summary>
+                    {run?.resolved_commit_sha && (
+                      <div className="commit">
+                        <span>확정 커밋</span>
+                        <a
+                          href={`${service.repository_url}/commit/${run.resolved_commit_sha}`}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          <code>{run.resolved_commit_sha}</code> ↗
+                        </a>
+                      </div>
+                    )}
+
+                    <h3 className="subhead">
+                      진행 기록 {run && <small>· 시도 {run.attempt}/3</small>}
+                    </h3>
+                    <ul className="timeline">
+                      {events.map((e) => (
+                        <li key={e.sequence}>
+                          <span className="dot" />
+                          <div>
+                            {e.message}
+                            <time>{time(e.created_at)}</time>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                </section>
+                <details className="panel source-settings technical-details">
+                  <summary>등록 정보</summary>
+                  <p className="muted">
+                    {service.source_ref} · 포트 {service.container_port}
+                  </p>
+                  <dl>
+                    {[
+                      ["브랜치 / 커밋", service.source_ref],
+                      ["빌드 경로", service.build_context],
+                      ["Dockerfile", service.dockerfile_path],
+                      ["앱 포트", service.container_port],
+                      ["헬스 체크", service.healthcheck_path],
+                    ].map(([label, value]) => (
+                      <div key={label}>
+                        <dt>{label}</dt>
+                        <dd>{value}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                  <p className="notice">
+                    소스 확인 후 별도 빌드 환경에서 이미지를 만들 수 있습니다.
+                    <br />
+                    비밀값은 등록 정보에 넣지 마세요.
+                  </p>
+                </details>
+              </div>
+              <BuildPanel key={id} serviceId={id} source={run} />
+              <details className="panel history technical-details">
+                <summary>소스 검사 이력</summary>
+                {history.length === 0 ? (
+                  <p className="muted">저장된 검사 이력이 없습니다.</p>
+                ) : (
+                  <div className="table-wrap">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>접수 시각</th>
+                          <th>결과</th>
+                          <th>커밋</th>
+                          <th>상세</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {history.map((item) => (
+                          <tr key={item.id}>
+                            <td>{time(item.created_at)}</td>
+                            <td>
+                              <Status run={item} />
+                            </td>
+                            <td>
+                              <code>
+                                {item.resolved_commit_sha?.slice(0, 12) ?? "—"}
+                              </code>
+                            </td>
+                            <td>
+                              <button
+                                disabled={active(run) && run?.id !== item.id}
+                                onClick={() => setRun(item)}
+                                aria-pressed={run?.id === item.id}
+                              >
+                                기록 보기
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                {historyCursor && (
+                  <button disabled={loadingHistory} onClick={moreHistory}>
+                    이력 더 보기
+                  </button>
+                )}
+              </details>
+            </>
+          )}
         </>
       )}
     </>
@@ -560,13 +625,17 @@ function Workspace({
   session: Session;
   onLogout: () => void;
 }) {
+  const { route, navigate } = useWorkspaceRoute();
   const [services, setServices] = useState<Service[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
-  const [selected, setSelected] = useState<string | null>(null);
   const [register, setRegister] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Service | null>(null);
+  const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const loadGeneration = useRef(0);
   async function load(more = false) {
+    const generation = ++loadGeneration.current;
     setLoading(true);
     setError("");
     try {
@@ -574,17 +643,24 @@ function Workspace({
         "/services" +
           (more && cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""),
       );
+      if (generation !== loadGeneration.current) return;
       setServices((old) => (more ? [...old, ...page.items] : page.items));
       setCursor(page.next_cursor);
     } catch (e) {
-      setError(message(e));
+      if (generation === loadGeneration.current) setError(message(e));
     } finally {
-      setLoading(false);
+      if (generation === loadGeneration.current) setLoading(false);
     }
   }
   useEffect(() => {
-    if (!selected) load();
-  }, [selected]);
+    load();
+    return () => {
+      loadGeneration.current++;
+    };
+  }, []);
+  useEffect(() => {
+    setRegister(false);
+  }, [route.serviceId, route.view]);
   async function logout() {
     try {
       await api("/auth/logout", {});
@@ -593,93 +669,164 @@ function Workspace({
       setError(message(e));
     }
   }
+  function openService(id: string) {
+    navigate(route.view, id);
+  }
   return (
-    <>
-      <header className="topbar">
-        <a
-          className="brand"
-          href="#"
-          onClick={() => {
-            setSelected(null);
-            setRegister(false);
-          }}
-        >
-          <span>δ</span> DELTA <small>Platform</small>
-        </a>
-        <div className="account">
-          <span>{session.login_id} · 공통 작업 공간</span>
+    <AppShell
+      route={route}
+      navigate={navigate}
+      services={services}
+      account={
+        <>
+          <div className="account-avatar">
+            {session.login_id.slice(0, 1).toUpperCase()}
+          </div>
+          <div>
+            <strong>{session.login_id}</strong>
+            <small>공통 작업 공간</small>
+          </div>
           <button onClick={logout}>로그아웃</button>
-        </div>
-      </header>
-      <main className="workspace">
-        <ErrorBox error={error} />
-        {selected ? (
-          <Detail
-            key={selected}
-            id={selected}
-            onBack={() => setSelected(null)}
-          />
-        ) : (
-          <>
-            <div className="page-heading">
-              <div>
-                <div className="eyebrow">WORKSPACE / SERVICES</div>
-                <h1>내 서비스</h1>
-                <p>소스를 등록하고, 배포 준비를 시작하세요.</p>
-              </div>
-              <button className="primary" onClick={() => setRegister(true)}>
-                + 서비스 등록
-              </button>
+        </>
+      }
+    >
+      <ErrorBox error={error} />
+      {notice && (
+        <p className="success-note" role="status">
+          {notice}
+        </p>
+      )}
+      {deleteTarget && (
+        <DeleteProjectDialog
+          key={deleteTarget.id}
+          service={deleteTarget}
+          onCancel={() => setDeleteTarget(null)}
+          onDeleted={(deleted) => {
+            loadGeneration.current++;
+            setLoading(false);
+            setServices((items) =>
+              items.filter((item) => item.id !== deleted.id),
+            );
+            setDeleteTarget(null);
+            setNotice(`${deleted.name} 프로젝트를 삭제했습니다.`);
+            if (route.serviceId === deleted.id) navigate("overview", null);
+          }}
+        />
+      )}
+      {route.view === "monitoring" && route.serviceId ? (
+        <ObservabilityPanel key={route.serviceId} serviceId={route.serviceId} />
+      ) : route.serviceId ? (
+        <Detail
+          key={route.serviceId}
+          id={route.serviceId}
+          view={route.view}
+          onNavigate={(view) => navigate(view)}
+          onBack={() => navigate("overview", null)}
+        />
+      ) : (
+        <>
+          <div className="page-heading">
+            <div>
+              <div className="eyebrow">YOUR CLOUD, YOUR NEXT MOVE</div>
+              <h1>내 서비스</h1>
+              <p>
+                {route.view === "overview"
+                  ? "서비스를 준비하고, 다음 환경으로 이어가세요."
+                  : `${sections.find((s) => s.view === route.view)?.title}를 진행할 서비스를 선택하세요.`}
+              </p>
             </div>
-            <div className="stage-banner">
-              <span className="stage-number">01</span>
-              <div>
-                <strong>소스 확인부터 이미지 빌드까지.</strong>
+            <button className="primary" onClick={() => setRegister(true)}>
+              + 서비스 등록
+            </button>
+          </div>
+          {route.view === "overview" && (
+            <section
+              className="workspace-journey"
+              aria-label="서비스 작업 흐름"
+            >
+              <div className="journey-copy">
+                <span className="eyebrow">ONE WORKSPACE</span>
+                <h2>
+                  준비부터 이전까지.
+                  <br />
+                  모든 단계를 한곳에서.
+                </h2>
                 <p>
-                  공개 저장소의 커밋을 확인하고 이미지를 만듭니다. 실행 검사와
-                  배포는 후속 단계입니다.
+                  검사 결과를 확인하고,
+                  <br />
+                  다음 환경을 계획하세요.
                 </p>
               </div>
-              <span className="status running">소스 · 빌드</span>
+              <ol className="journey-steps">
+                {sections.slice(1).map((item, i) => (
+                  <li key={item.view}>
+                    <span>0{i + 1}</span>
+                    <div>
+                      <strong>{item.title}</strong>
+                      <small>{item.description}</small>
+                    </div>
+                    <Icon name={item.view} />
+                  </li>
+                ))}
+              </ol>
+            </section>
+          )}
+          {register && (
+            <Register
+              onCreated={(s) => {
+                setRegister(false);
+                setServices((old) => [
+                  s,
+                  ...old.filter((item) => item.id !== s.id),
+                ]);
+                navigate("overview", s.id);
+              }}
+              onCancel={() => setRegister(false)}
+            />
+          )}
+          <section className="panel service-catalog">
+            <div className="panel-top">
+              <h2>
+                등록한 서비스{" "}
+                <span className="count">
+                  {services.length}
+                  {cursor ? "+" : ""}
+                </span>
+              </h2>
+              <button onClick={() => load()} disabled={loading}>
+                {loading ? "조회 중…" : "새로고침"}
+              </button>
             </div>
-            {register && (
-              <Register
-                onCreated={(s) => {
-                  setRegister(false);
-                  setSelected(s.id);
-                }}
-                onCancel={() => setRegister(false)}
-              />
-            )}
-            <section className="panel">
-              <div className="panel-top">
-                <h2>
-                  등록한 서비스{" "}
-                  <span className="count">
-                    {services.length}
-                    {cursor ? "+" : ""}
-                  </span>
-                </h2>
-                <button onClick={() => load()} disabled={loading}>
-                  새로고침
-                </button>
-              </div>
-              {loading && services.length === 0 ? (
-                <p className="muted">서비스를 불러오는 중입니다.</p>
-              ) : services.length === 0 ? (
-                <div className="empty">
-                  <div className="empty-icon">⌘</div>
-                  <h3>첫 서비스를 등록해 보세요</h3>
-                  <p>공개 GitHub 저장소 주소와 Dockerfile만 준비하면 됩니다.</p>
-                  <button onClick={() => setRegister(true)}>서비스 등록</button>
+            {loading && services.length === 0 ? (
+              <p className="muted" role="status">
+                서비스를 불러오는 중입니다.
+              </p>
+            ) : services.length === 0 ? (
+              <div className="empty">
+                <div className="empty-icon">
+                  <Icon name="overview" />
                 </div>
-              ) : (
-                <div className="service-list">
-                  {services.map((s) => (
+                <h3>
+                  {error
+                    ? "서비스 목록을 확인하지 못했습니다"
+                    : "첫 서비스를 등록해 보세요"}
+                </h3>
+                <p>
+                  {error
+                    ? "잠시 후 다시 조회해 주세요."
+                    : "공개 GitHub 저장소 주소와 Dockerfile을 준비하세요."}
+                </p>
+                {!error && (
+                  <button onClick={() => setRegister(true)}>서비스 등록</button>
+                )}
+              </div>
+            ) : (
+              <div className="service-list">
+                {services.map((s) => (
+                  <div className="service-list-item" key={s.id}>
                     <button
                       className="service-row"
-                      key={s.id}
-                      onClick={() => setSelected(s.id)}
+                      onClick={() => openService(s.id)}
                     >
                       <span className="service-icon">
                         {s.name[0].toUpperCase()}
@@ -691,25 +838,33 @@ function Workspace({
                         </small>
                       </span>
                       <span className="ref">{s.source_ref}</span>
-                      <span className="arrow">→</span>
+                      <span className="arrow">
+                        <Icon name="arrow" />
+                      </span>
                     </button>
-                  ))}
-                </div>
-              )}
-              {cursor && (
-                <button onClick={() => load(true)} disabled={loading}>
-                  서비스 더 보기
-                </button>
-              )}
-            </section>
-          </>
-        )}
-        <footer>
-          DELTA PLATFORM{" "}
-          <span>실제 저장된 서비스와 검사 결과를 표시합니다.</span>
-        </footer>
-      </main>
-    </>
+                    <button
+                      className="project-delete-trigger"
+                      aria-label={`${s.name} 프로젝트 삭제`}
+                      onClick={() => {
+                        setNotice("");
+                        setDeleteTarget(s);
+                      }}
+                    >
+                      삭제
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {cursor && (
+              <button onClick={() => load(true)} disabled={loading}>
+                서비스 더 보기
+              </button>
+            )}
+          </section>
+        </>
+      )}
+    </AppShell>
   );
 }
 

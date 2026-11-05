@@ -9,12 +9,12 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Protocol
 
 from delta_staging.aws_ecs import Outcome, Report, StagingError
-from delta_staging.contract import Deployment, DeployRequest, Step
+from delta_staging.contract import Deployment, DeployRequest, Lease, Step
 
 logger = logging.getLogger(__name__)
 ACTIVE = ("deploying", "ready")
@@ -56,8 +56,48 @@ class StagingRegistry:
         self.providers = providers
         self.state_path = Path(state_path) if state_path else None
         self._deployments: dict[str, Deployment] = self._load()
+        self._leases: dict[str, Lease] = self._load_leases()
         self._tasks: dict[str, asyncio.Task[None]] = {}
         self._lock = asyncio.Lock()
+
+    # ----- 점유: 진행 중인 점검이 쓰는 스테이징(DB 포함)을 다른 실행이 배포·초기화하지 못하게 한다 -----
+
+    def _lease_path(self) -> Path | None:
+        return self.state_path.with_name(self.state_path.stem + ".leases.json") if self.state_path else None
+
+    def _load_leases(self) -> dict[str, Lease]:
+        path = self._lease_path()
+        if not path or not path.exists():
+            return {}
+        # 재시작해도 점유는 유지한다. 점검이 아직 진행 중일 수 있기 때문이다(만료 시각은 그대로 지킨다).
+        return {item["cloud"]: Lease.model_validate(item) for item in json.loads(path.read_text(encoding="utf-8"))}
+
+    def _save_leases(self) -> None:
+        path = self._lease_path()
+        if not path:
+            return
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps([lease.model_dump(mode="json") for lease in self._leases.values()],
+                                  ensure_ascii=False, indent=1), encoding="utf-8")
+        tmp.replace(path)
+
+    def leases(self) -> tuple[Lease, ...]:
+        now = _now()
+        return tuple(lease for lease in self._leases.values() if lease.expires_at > now)
+
+    def release(self, cloud: str, holder: str) -> bool:
+        """점유를 푼다. 이미 없거나 만료됐으면 False(다시 불러도 안전하다). 다른 실행의 점유는 풀지 못한다."""
+        lease = self._leases.get(cloud)
+        if lease is None or lease.expires_at <= _now():
+            self._leases.pop(cloud, None)
+            self._save_leases()
+            return False
+        if lease.holder != holder:
+            raise Conflict(f"{lease.holder} 의 점유는 그 실행만 풀 수 있다")
+        del self._leases[cloud]
+        self._save_leases()
+        return True
 
     def _load(self) -> dict[str, Deployment]:
         if not self.state_path or not self.state_path.exists():
@@ -104,11 +144,19 @@ class StagingRegistry:
                 provider.check_request(req)
             except StagingError as exc:
                 raise RequestRejected(str(exc)) from exc
+            holder, now = req.lease_holder or req.run_id, _now()
+            lease = self._leases.get(req.cloud)
+            if lease is not None and lease.expires_at > now and lease.holder != holder:
+                # 배포는 DB 초기화를 포함한다. 다른 실행의 점검이 쓰는 데이터를 지우지 않게 막는다.
+                raise Busy(f"{lease.holder} 가 스테이징을 점유하고 있다(점검 중, {lease.expires_at:%H:%M}Z 까지)")
             active = [d for d in self._deployments.values() if d.cloud == req.cloud and d.state in ACTIVE]
             for current in active:
                 if not req.replace or current.state == "deploying":
                     raise Busy(f"{current.run_id} 가 스테이징을 쓰고 있다 ({current.state})")
                 self._put(current.model_copy(update={"state": "replaced", "ended_at": _now(), "url": None}))
+            self._leases[req.cloud] = Lease(cloud=req.cloud, holder=holder, deployment=req.run_id, acquired_at=now,
+                                            expires_at=now + timedelta(seconds=req.lease_seconds))
+            self._save_leases()
             deployment = self._put(Deployment(
                 run_id=req.run_id, cloud=req.cloud, state="deploying", image=req.image, pinned=req.pinned,
                 commit=req.commit, started_at=_now(),

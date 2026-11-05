@@ -4,9 +4,17 @@ version = "0.1.0"
 description = "개발자용 멀티 클라우드 플랫폼 API와 Worker"
 requires-python = ">=3.12,<3.13"
 dependencies = [
-  "fastapi>=0.115,<1", "uvicorn>=0.30,<1", "pydantic-settings>=2.6,<3",
-  "sqlalchemy>=2.0,<2.1", "psycopg[binary]>=3.2,<4", "alembic>=1.14,<2",
-  "delta-staging", "httpx>=0.28,<1", "argon2-cffi>=23.1,<26", "boto3>=1.40,<2",
+  "fastapi>=0.115,<1",
+  "uvicorn>=0.30,<1",
+  "pydantic-settings>=2.6,<3",
+  "sqlalchemy>=2.0,<2.1",
+  "psycopg[binary]>=3.2,<4",
+  "alembic>=1.14,<2",
+  "delta-staging",
+  "httpx>=0.28,<1",
+  "argon2-cffi>=23.1,<26",
+  "boto3>=1.40,<2",
+  "google-auth[requests]>=2.40,<3",
 ]
 [dependency-groups]
 dev = ["pytest>=8,<10", "ruff>=0.9,<1"]
@@ -14,6 +22,9 @@ dev = ["pytest>=8,<10", "ruff>=0.9,<1"]
 platform-api = "delta_platform.api.app:main"
 platform-worker = "delta_platform.worker.main:main"
 platform-init = "delta_platform.config:initialize"
+platform-db-move = "delta_platform.migration.cli:main"
+platform-db-register = "delta_platform.migration.tracking:main"
+platform-environment = "delta_platform.core.environments:main"
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

@@ -2,10 +2,10 @@ name: Platform checks
 
 on:
   pull_request:
-    paths: ['platform/**', 'services/delta-staging/**', '.github/workflows/platform-*.yml']
+    paths: ['platform/**', 'services/delta-staging/**', 'services/delta-dast/**', 'services/delta-ai/**', 'services/gcp-log-collector/**', '.github/workflows/platform-*.yml']
   push:
     branches: [main, feat/platform]
-    paths: ['platform/**', 'services/delta-staging/**', '.github/workflows/platform-*.yml']
+    paths: ['platform/**', 'services/delta-staging/**', 'services/delta-dast/**', 'services/delta-ai/**', 'services/gcp-log-collector/**', '.github/workflows/platform-*.yml']
   workflow_call:
   workflow_dispatch:
 
@@ -13,6 +13,30 @@ permissions:
   contents: read
 
 jobs:
+  auto-instrumentation:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: 2026-sbh-delta/delta-sample-app
+          ref: e29af5449dbccc7e6c9bff11e4cb2f0ce5812ee8
+          path: platform/.runtime/otel-sample
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: '0.10.0'
+          python-version: '3.12'
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+      - name: Unchanged Node.js app, ON/OFF and Collector failure
+        run: |
+          python3 platform/deploy/instrumentation/prepare-agent.py --output platform/.runtime/otel-agent
+          uv run --project platform/deploy --frozen --with opentelemetry-proto==1.45.2 python platform/deploy/instrumentation/verify-node.py --app-dir platform/.runtime/otel-sample --agent-dir platform/.runtime/otel-agent --node "$(command -v node)" --output platform/.runtime/otel-proof.json
   test:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -49,11 +73,53 @@ jobs:
           uv run pytest -q
       - name: Staging library
         run: uv run --project platform/backend --with pytest-asyncio pytest -q -c services/delta-staging/pyproject.toml services/delta-staging/tests
+      - name: Session example and OTel configuration
+        env:
+          DATABASE_URL: postgresql://platform_test:local-test-only@127.0.0.1:55433/platform_test
+          APP_SECRET_KEY: isolated-ci-test-key-at-least-32-characters
+          APP_SECURE_COOKIES: 'false'
+          AWS_REGION: ap-northeast-2
+          AWS_ACCESS_KEY_ID: validation-only
+          AWS_SECRET_ACCESS_KEY: validation-only
+          AWS_EC2_METADATA_DISABLED: 'true'
+          DELTA_PROJECT_ID: 496562be-f67b-5f7e-a16b-929fd347b9ad
+          DELTA_SERVICE_ID: 00000000-0000-0000-0000-000000000001
+          DELTA_ENVIRONMENT_ID: 00000000-0000-0000-0000-000000000002
+        run: |
+          cd platform/examples/session-app
+          uv run --frozen python manage.py test demo.notes --noinput
+          cd ../../..
+          docker run --rm -e AWS_REGION -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -e AWS_EC2_METADATA_DISABLED -e DELTA_PROJECT_ID -e DELTA_SERVICE_ID -e DELTA_ENVIRONMENT_ID -v "$PWD/platform/observability/collector.yaml:/config.yaml:ro" otel/opentelemetry-collector-contrib:0.164.0@sha256:340c9ca6a36617084c6661bdc4f0fe92b7cda5a805d61673ec8db375fddc522b validate --config=/config.yaml
+      - name: DAST platform contract
+        run: uv run --project services/delta-dast --python 3.12 --frozen --with pytest --with pytest-asyncio --with httpx python -m pytest -q services/delta-dast/tests/test_platform_api.py services/delta-dast/tests/test_cloud_run.py services/delta-dast/tests/test_onprem.py services/delta-dast/tests/test_sarif_adapter.py services/delta-dast/tests/test_llm_runtime.py
+      - name: On-premise telemetry boundaries
+        run: python3 platform/deploy/onprem/verify-observability.py
+      - name: Platform AI deployment boundaries
+        run: |
+          uv run --project platform/deploy python -m unittest discover -s platform/deploy/ai/tests -v
+          uv run --project platform/backend ruff check --config platform/backend/pyproject.toml platform/deploy/ai
+          uv run --project platform/backend ruff format --check --config platform/backend/pyproject.toml platform/deploy/ai
+      - name: Central logging contracts
+        env:
+          PYTHONPATH: services/gcp-log-collector:platform/deploy/logging
+        run: |
+          python3 -m unittest discover -s platform/deploy/logging/tests -v
+          uv run --project platform/backend python -m unittest discover -s services/gcp-log-collector/tests -v
+          uv run --project platform/backend ruff check --config platform/backend/pyproject.toml platform/deploy/logging
+          uv run --project platform/backend ruff format --check --config platform/backend/pyproject.toml platform/deploy/logging
+      - name: Platform to team DAST integration
+        working-directory: platform/backend
+        run: uv run --with-editable ../../services/delta-dast pytest -q tests/integration_dast.py
+      - name: AI execution identity
+        run: uv run --project services/delta-ai --python 3.12 --frozen --extra dev pytest -q services/delta-ai/tests
+      - name: Platform to team AI integration
+        working-directory: platform/backend
+        run: uv run --with-editable ../../services/delta-ai pytest -q tests/integration_assessments.py
       - name: Deployment boundaries
         run: |
-          python3 -m unittest discover -s platform/deploy/tests -v
-          uv run --project platform/backend ruff check platform/deploy/scripts platform/deploy/tests platform/deploy/builds platform/deploy/sandbox platform/deploy/jenkins platform/deploy/sast/aws
-          uv run --project platform/backend ruff format --check platform/deploy/scripts platform/deploy/tests platform/deploy/builds platform/deploy/sandbox platform/deploy/jenkins platform/deploy/sast/aws
+          uv run --project platform/deploy --frozen python -m unittest discover -s platform/deploy/tests -v
+          uv run --project platform/backend ruff check platform/deploy/scripts platform/deploy/tests platform/deploy/builds platform/deploy/sandbox platform/deploy/sandbox-gcp platform/deploy/jenkins platform/deploy/sast/aws platform/deploy/dast platform/deploy/onprem platform/deploy/instrumentation
+          uv run --project platform/backend ruff format --check platform/deploy/scripts platform/deploy/tests platform/deploy/builds platform/deploy/sandbox platform/deploy/sandbox-gcp platform/deploy/jenkins platform/deploy/sast/aws platform/deploy/dast platform/deploy/onprem platform/deploy/instrumentation
       - name: Browser
         working-directory: platform/web
         run: |
@@ -62,11 +128,22 @@ jobs:
           npm run build
           npx playwright install --with-deps chromium
           npm run test:e2e
+      - name: PostgreSQL copy and cutover
+        run: |
+          trap 'docker compose -f platform/migration/compose.test.yaml down -v' EXIT
+          uv run --project platform/backend ruff check --config platform/backend/pyproject.toml platform/migration
+          uv run --project platform/backend ruff format --check --config platform/backend/pyproject.toml platform/migration
+          docker compose -f platform/migration/compose.test.yaml build test
+          docker compose -f platform/migration/compose.test.yaml run --rm test
+      - name: Fullstack session continuity
+        run: |
+          trap 'docker compose --env-file platform/.runtime/migration-demo/.env -f platform/migration/compose.demo.yaml --profile target-app --profile runner down -v' EXIT
+          uv run --project platform/backend python platform/migration/demo.py
   terraform:
     strategy:
       fail-fast: false
       matrix:
-        root: [platform/deploy/terraform, platform/deploy/identity, platform/deploy/builds, platform/deploy/sandbox, platform/deploy/jenkins/identity, platform/deploy/sast/network]
+        root: [platform/deploy/terraform, platform/deploy/identity, platform/deploy/builds, platform/deploy/sandbox, platform/deploy/jenkins/identity, platform/deploy/sast/network, platform/deploy/observability/identity, platform/deploy/sandbox-gcp, platform/deploy/logging, platform/deploy/ai]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:

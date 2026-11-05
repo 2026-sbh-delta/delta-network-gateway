@@ -57,6 +57,7 @@ jobs:
           stringParam('IMAGE', '', 'digest로 고정한 이미지')
           stringParam('COMMIT', '', '커밋 SHA')
           stringParam('CLOUD', 'gcp', '대상 클라우드')
+          stringParam('HOLDER', '', '스테이징 점유 실행 ID(오케스트레이터 실행). 비우면 RUN_ID')
         }
         definition {
           cps {

@@ -22,7 +22,19 @@ class SandboxError(Exception):
         super().__init__(code)
 
 
-def sandbox_target(settings):
+def sandbox_target(settings, cloud="aws"):
+    if cloud == "onprem":
+        from delta_platform.adapters.onprem_sandbox import configured_target
+
+        return configured_target(settings)
+    if cloud == "gcp":
+        from delta_platform.adapters.gcp_sandbox import configured_target
+
+        return configured_target(settings)
+    if cloud != "aws":
+        raise Problem(
+            "sandbox_not_configured", "선택한 환경의 샌드박스가 아직 연결되지 않았습니다.", 503
+        )
     if not settings.sandbox_target:
         raise Problem("sandbox_not_configured", "샌드박스 실행기가 아직 연결되지 않았습니다.", 503)
     try:
@@ -35,6 +47,22 @@ def sandbox_target(settings):
     except (ValueError, TypeError):
         raise Problem("sandbox_config_invalid", "샌드박스 실행기 설정을 확인하세요.", 503) from None
     return target.model_dump(mode="json")
+
+
+def runner_for(settings, cloud, *, inspector=None):
+    if cloud == "gcp":
+        from delta_platform.adapters.gcp_sandbox import GcpSandboxRunner
+
+        return GcpSandboxRunner(settings, inspector=inspector)
+    if cloud == "onprem":
+        from delta_platform.adapters.onprem_sandbox import OnpremSandboxRunner
+
+        return OnpremSandboxRunner(settings, inspector=inspector)
+    if cloud != "aws":
+        raise Problem("sandbox_not_configured", "지원하지 않는 실행 환경입니다.", 503)
+    runner = SandboxRunner(settings)
+    runner.inspector = inspector
+    return runner
 
 
 class GuardedStaging(AwsEcsStaging):
@@ -57,6 +85,7 @@ class SandboxRunner:
                 "실행기 설정을 사용할 수 없습니다. 이미 시작한 ECS 태스크가 있다면 운영자가 정리를 확인하세요.",
             ) from exc
         self.clients = clients
+        self.inspector = None
         self.poll_seconds, self.timeout = poll_seconds, timeout
 
     def execute(self, claim, store, progress):
@@ -70,6 +99,12 @@ class SandboxRunner:
         run_id, token = claim["id"], claim["lease_token"]
         source = claim["input_snapshot"]
         if source["sandbox_target"] != self.target:
+            if self.inspector:
+                progress(
+                    "dast_cleanup_wait",
+                    "실행기 설정이 바뀌어 공간을 잠갔습니다. 기존 설정을 복원해 정리를 확인하세요.",
+                )
+                raise LeaseLost()
             raise SandboxError(
                 "sandbox_target_changed",
                 "실행기 설정이 바뀌었습니다. 기존 실행의 정리 상태를 먼저 확인하세요.",
@@ -216,6 +251,9 @@ class SandboxRunner:
                         "image_digest": checked.image_digest,
                         "commit_sha": req.commit,
                         "platform": "linux/amd64",
+                        "execution_cloud": "aws",
+                        "environment_check": "aws_sandbox_only",
+                        "runtime": "ecs",
                         "task_arn": checked.task_arn,
                         "revision": revision,
                         "runtime_check": "passed",
@@ -225,6 +263,13 @@ class SandboxRunner:
                         "checked_at": datetime.now(UTC).isoformat(),
                     }
                 }
+                if self.inspector:
+                    outcome["result"].update(
+                        await asyncio.to_thread(
+                            self.inspector.execute, claim, store, progress, guard, outcome["result"]
+                        )
+                    )
+                    await provider.verify_revision(revision, source["image_digest"])
                 outcome = store.sandbox_checkpoint(run_id, token, outcome)
         except LeaseLost:
             raise
@@ -241,6 +286,9 @@ class SandboxRunner:
             outcome = store.sandbox_checkpoint(run_id, token, {"error": error})
         # Persist the terminal intent BEFORE stopping. A restarted worker only completes cleanup.
         cleaning = True
+        inspection_stopped = True
+        if self.inspector:
+            inspection_stopped = await asyncio.to_thread(self.inspector.stop, claim)
         try:
             if revision:
                 await identity()
@@ -273,10 +321,22 @@ class SandboxRunner:
         except LeaseLost:
             raise
         except (SandboxError, StagingError, BotoCoreError, ClientError):
+            if self.inspector:
+                progress(
+                    "dast_cleanup_wait",
+                    "앱 종료를 확인하지 못해 공간을 잠갔습니다. 연결 복구 후 정리를 재시도합니다.",
+                )
+                raise LeaseLost() from None
             raise SandboxError(
                 "sandbox_cleanup_required",
                 "샌드박스 정리를 확인하지 못했습니다. 운영자가 이 실행의 ECS 상태를 확인해야 합니다.",
             ) from None
+        if not inspection_stopped:
+            progress(
+                "dast_cleanup_wait",
+                "앱은 종료했습니다. 검사 서버의 종료 확인 후 실행 공간을 해제합니다.",
+            )
+            raise LeaseLost()
         if store.sandbox_control(run_id, token):
             raise SandboxError("sandbox_cancelled", "샌드박스를 중단하고 정리했습니다.")
         if "error" in outcome:

@@ -1,5 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { api, message, type Page, type Run, type RunEvent } from "./api";
+import {
+  api,
+  message,
+  type Page,
+  type Run,
+  type RunEvent,
+  type SandboxTarget,
+} from "./api";
 
 const active = (run: Run | null) =>
   run?.status === "queued" || run?.status === "running";
@@ -11,10 +18,10 @@ const labels = {
 };
 const steps: Record<string, string> = {
   sandbox_queued: "샌드박스 실행을 준비하고 있습니다.",
-  sandbox_prepare: "실행할 이미지와 ECS 개정판을 준비합니다.",
+  sandbox_prepare: "실행할 이미지와 샌드박스 개정판을 준비합니다.",
   sandbox_deploy: "샌드박스에서 앱을 실행합니다.",
   sandbox_verify: "실제 이미지와 앱의 헬스 체크를 확인합니다.",
-  sandbox_cleanup: "실행한 태스크를 종료하고 있습니다.",
+  sandbox_cleanup: "샌드박스 실행 자원을 정리하고 있습니다.",
   sandbox_complete: "실행 확인과 정리를 마쳤습니다.",
 };
 export function SandboxPanel({
@@ -31,8 +38,41 @@ export function SandboxPanel({
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const [targets, setTargets] = useState<SandboxTarget[]>([]);
+  const [targetsLoaded, setTargetsLoaded] = useState(false);
+  const [executionCloud, setExecutionCloud] =
+    useState<SandboxTarget["cloud"]>("aws");
   const [refresh, setRefresh] = useState(0);
-  const key = useRef<{ build: string; key: string } | null>(null);
+  const key = useRef<{ selection: string; key: string } | null>(null);
+  const selectedTarget = targets.find(
+    (target) => target.cloud === executionCloud,
+  );
+  const runCloud = (value: Run) =>
+    value.result?.execution_cloud ?? value.execution_cloud ?? "aws";
+  const targetLabel = (cloud?: string) => {
+    if (cloud === "gcp") return "GCP Cloud Run";
+    if (cloud === "onprem") return "온프레미스";
+    return "AWS ECS";
+  };
+  useEffect(() => {
+    let stopped = false;
+    api<{ items: SandboxTarget[] }>("/sandbox-targets")
+      .then(({ items }) => {
+        if (!stopped) {
+          setTargets(items);
+          setTargetsLoaded(true);
+        }
+      })
+      .catch((e) => {
+        if (!stopped) {
+          setError(message(e));
+          setTargetsLoaded(true);
+        }
+      });
+    return () => {
+      stopped = true;
+    };
+  }, []);
   useEffect(() => {
     let stopped = false;
     setLoaded(false);
@@ -65,8 +105,11 @@ export function SandboxPanel({
           api<{ items: RunEvent[] }>(`/sandbox-checks/${id}/events`),
         ]);
         if (stopped) return;
-        setRun(current);
-        setHistory((h) => h.map((r) => (r.id === id ? current : r)));
+        const identified = current.execution_cloud
+          ? current
+          : { ...current, execution_cloud: run ? runCloud(run) : "aws" };
+        setRun(identified);
+        setHistory((h) => h.map((r) => (r.id === id ? identified : r)));
         setEvents(log.items);
         if (active(current)) timer = setTimeout(poll, 3000);
       } catch (e) {
@@ -83,17 +126,22 @@ export function SandboxPanel({
     };
   }, [run?.id]);
   async function start() {
-    if (!build) return;
+    if (!build || !selectedTarget?.configured) return;
     setBusy(true);
     setError("");
-    if (key.current?.build !== build.id)
-      key.current = { build: build.id, key: crypto.randomUUID() };
+    const selection = `${build.id}:${executionCloud}`;
+    if (key.current?.selection !== selection)
+      key.current = { selection, key: crypto.randomUUID() };
     try {
-      const current = await api<Run>(
+      const response = await api<Run>(
         `/services/${serviceId}/sandbox-checks`,
-        { build_id: build.id },
+        { build_id: build.id, execution_cloud: executionCloud },
         key.current.key,
       );
+      const current =
+        response.execution_cloud || response.result?.execution_cloud
+          ? response
+          : { ...response, execution_cloud: executionCloud };
       key.current = null;
       setRun(current);
       setHistory((h) => [current, ...h.filter((r) => r.id !== current.id)]);
@@ -141,13 +189,20 @@ export function SandboxPanel({
         <div>
           <h2>샌드박스 실행 확인</h2>
           <p className="muted">
-            선택한 빌드 이미지를 ECS에서 실행하고, 같은 이미지인지와 앱의 응답
-            상태를 확인합니다.
+            선택한 빌드 이미지를 대상 샌드박스에서 실행하고, 같은 이미지인지와
+            앱의 응답 상태를 확인합니다.
           </p>
         </div>
         <button
           className="primary"
-          disabled={!loaded || busy || pending || build?.status !== "succeeded"}
+          disabled={
+            !loaded ||
+            !targetsLoaded ||
+            !selectedTarget?.configured ||
+            busy ||
+            pending ||
+            build?.status !== "succeeded"
+          }
           onClick={start}
         >
           {pending ? "실행 확인 진행 중…" : "이 이미지 실행 확인"}
@@ -161,9 +216,51 @@ export function SandboxPanel({
             : "성공한 이미지 빌드가 필요합니다"}
         </code>
       </p>
+      <label>
+        실행 환경{" "}
+        <select
+          aria-label="샌드박스 실행 환경"
+          value={executionCloud}
+          disabled={!targetsLoaded || busy || pending}
+          onChange={(event) =>
+            setExecutionCloud(event.target.value as SandboxTarget["cloud"])
+          }
+        >
+          {targets.map((target) => (
+            <option
+              key={target.cloud}
+              value={target.cloud}
+              disabled={!target.configured}
+            >
+              {target.label} · {target.runtime}
+              {target.configured ? "" : " · 미연결"}
+            </option>
+          ))}
+        </select>
+      </label>
+      {selectedTarget && !selectedTarget.configured && (
+        <p className="muted" role="status">
+          {selectedTarget.label} 실행 환경은 아직 연결되지 않아 실행할 수
+          없습니다.
+        </p>
+      )}
+      {targets
+        .filter((target) => !target.configured)
+        .map((target) => (
+          <p className="muted" key={`${target.cloud}-unavailable`}>
+            {target.label}: 아직 실행 환경이 연결되지 않았습니다.
+          </p>
+        ))}
+      {executionCloud === "gcp" && selectedTarget?.configured && (
+        <p className="muted">
+          Cloud Run 샌드박스 성공은 최종 VM 네트워크·권한 검증을 인증하지
+          않습니다.
+        </p>
+      )}
       <p className="sandbox-boundary">
         실행 확인은 보안 검사와 다릅니다. SAST는 아래 코드 보안 검사에서 별도로
-        실행합니다. DAST·AI 보안 검사와 운영 배포는 아직 연결하지 않았습니다.
+        실행합니다. DAST는 아래에서 별도로 실행합니다. AI 수정안과 운영 배포는
+        아직 연결하지 않았습니다.
       </p>
       {error && (
         <p className="error" role="alert">
@@ -181,6 +278,7 @@ export function SandboxPanel({
       {run ? (
         <>
           <span className={`status ${run.status}`}>{status(run)}</span>
+          <p className="muted">실행 위치: {targetLabel(runCloud(run))}</p>
           <p className="muted">
             커밋 {run.resolved_commit_sha?.slice(0, 12)} ·{" "}
             {new Date(run.created_at).toLocaleString("ko-KR")}
@@ -206,14 +304,21 @@ export function SandboxPanel({
           )}
           {run.result?.runtime_check === "passed" && (
             <div className="build-result sandbox-result">
-              <strong>실제 실행 이미지 일치 · 헬스 체크 통과</strong>
+              <strong>
+                {targetLabel(runCloud(run))} · 실제 실행 이미지 일치 · 헬스 체크
+                통과
+              </strong>
               <code>{run.result.image}</code>
+              {run.result.revision && (
+                <small>개정판: {run.result.revision}</small>
+              )}
+              {run.result.url && <small>앱 주소: {run.result.url}</small>}
               <small>
                 확인한 빌드: {run.result.build_id?.slice(0, 8)} · 앱 포트:{" "}
                 {run.result.container_port} · 헬스 체크:{" "}
                 {run.result.healthcheck_path}
               </small>
-              <small>샌드박스 태스크 종료 확인 · 보안 검사 미실행</small>
+              <small>샌드박스 자원 정리 확인 · 보안 검사 미실행</small>
             </div>
           )}
           {events.length > 0 && (
@@ -238,6 +343,7 @@ export function SandboxPanel({
                 <th>접수 시각</th>
                 <th>커밋</th>
                 <th>결과</th>
+                <th>실행 위치</th>
                 <th>상세</th>
               </tr>
             </thead>
@@ -249,6 +355,7 @@ export function SandboxPanel({
                     <code>{r.resolved_commit_sha?.slice(0, 12)}</code>
                   </td>
                   <td>{status(r)}</td>
+                  <td>{targetLabel(runCloud(r))}</td>
                   <td>
                     <button
                       onClick={() => setRun(r)}

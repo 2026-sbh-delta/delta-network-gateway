@@ -28,18 +28,39 @@ class FakeSast:
 
 
 class FakeDast:
-    def __init__(self, statuses=("NOT_REPRODUCED",), *, status="done"):
-        self.statuses, self.status, self.started = list(statuses), status, []
+    """DAST 플랫폼 API 흉내. 같은 ID·같은 입력은 같은 점검, 다른 입력은 409 와 같은 오류."""
 
-    def start(self, report, *, target_id, sast_run_id, planner):
-        assert report["version"] == "2.1.0" and target_id == "staging-gcp"
-        self.started.append(sast_run_id)
-        return f"dast-{len(self.started)}"
+    def __init__(self, statuses=("NOT_REPRODUCED",), *, status="done", expected=None):
+        self.statuses, self.status, self.started, self.bindings = list(statuses), status, [], {}
+        self.expected = len(self.statuses) if expected is None else expected
 
-    def run(self, run_id):
-        return {"status": self.status, "error_kind": None if self.status == "done" else "failed", "counts": {},
-                "results": [{"finding_id": f"F{i}", "title": "XSS", "status": s, "message": "m"}
-                            for i, s in enumerate(self.statuses)]}
+    def submit(self, run_id, binding, report):
+        from delta_pipeline.clients import evidence_hash
+
+        assert report["version"] == "2.1.0" and binding["sast_evidence_sha256"] == evidence_hash(report)
+        assert binding["execution_cloud"] == "gcp" and binding["image"].endswith(binding["image_digest"])
+        if run_id in self.bindings:
+            if self.bindings[run_id] != binding:
+                raise ServiceUnavailable("HTTP 409")
+            return self.view(run_id)
+        self.bindings[run_id] = binding
+        self.started.append(binding["sast_run_id"])
+        return self.view(run_id)
+
+    def view(self, run_id):
+        return {"run_id": run_id, "status": self.status, "finding_ids": [f"F{i}" for i in range(self.expected)],
+                "results": [{"finding_id": f"F{i}", "status": s} for i, s in enumerate(self.statuses)]}
+
+
+class FakeStaging:
+    def __init__(self, fail=False):
+        self.released, self.fail = [], fail
+
+    def release(self, cloud, holder):
+        if self.fail:
+            raise ServiceUnavailable("죽음")
+        self.released.append((cloud, holder))
+        return True
 
 
 class FakeJenkins:

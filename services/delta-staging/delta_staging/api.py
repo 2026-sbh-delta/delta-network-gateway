@@ -1,7 +1,7 @@
 """HTTP 진입점. uvicorn delta_staging.api:app 으로 띄운다.
 
 권한은 둘로 나눈다.
-- 조회(read): 점검 대상 주소, 배포 상태·목록, 도구 목록. DAST·오케스트레이터가 쓴다.
+- 조회(read): 점검 대상 주소, 배포 상태·목록, 도구 목록, 점유 조회·해제. DAST·오케스트레이터가 쓴다.
 - 변경(write): 배포·중단. Jenkins 배포 단계만 쓴다. 변경 토큰은 조회도 할 수 있다.
 조회 토큰으로 변경을 요청하면 403이고 배포·중단 함수는 실행되지 않는다. 토큰이 없거나 틀리면 401이다.
 
@@ -19,7 +19,7 @@ from typing import Any
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from delta_staging.contract import Deployment, DeployRequest
+from delta_staging.contract import Cloud, Deployment, DeployRequest, Lease, LeaseRelease
 from delta_staging.registry import Busy, Conflict, RequestRejected, NotFound, StagingRegistry, Unsupported, endpoints
 from delta_staging.tools import tool_catalog
 
@@ -93,6 +93,18 @@ def create_app(*, registry: StagingRegistry, read_token: str, write_token: str) 
             return registry.get(run_id)
         except NotFound as exc:
             raise HTTPException(status_code=404, detail="배포 없음") from exc
+
+    @app.get("/v1/staging/leases", dependencies=[Depends(require_read)])
+    async def leases() -> tuple[Lease, ...]:
+        return registry.leases()
+
+    # 점유 해제는 조회 토큰으로도 된다(오케스트레이터가 점검을 끝낸 뒤 부른다). 풀어도 배포·초기화는 변경 토큰만 할 수 있다.
+    @app.post("/v1/staging/leases/{cloud}/release", dependencies=[Depends(require_read)])
+    async def release(cloud: Cloud, body: LeaseRelease) -> dict[str, bool]:
+        try:
+            return {"released": registry.release(cloud, body.holder)}
+        except Conflict as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     @app.post("/v1/staging/deployments/{run_id}/stop", dependencies=[Depends(require_write)])
     async def stop(run_id: str) -> Deployment:

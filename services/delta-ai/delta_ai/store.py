@@ -22,6 +22,10 @@ class RuleStore:
     def __init__(self, path: Path | str) -> None:
         self._path = Path(path)
 
+    @property
+    def assessment_directory(self) -> Path:
+        return self._path.parent / (self._path.stem + "-assessments")
+
     def _load(self) -> dict[str, RuleCandidate]:
         if not self._path.exists():
             return {}

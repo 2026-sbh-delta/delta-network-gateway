@@ -1,5 +1,7 @@
 # ANF 비용 절감과 검사 경로 원복
 
+2026-11-04 후속: 새 GCP 작업에서 사용자가 ANF 원복 금지와 VPN 연결을 승인했다. disabled/bypass에서 VPN을 Spoke RT에 BGP로 전파하도록 구현하고 실제 연결을 적용했다. 아래의 2026-11-03 VPC 전용 제약과 실제 전환 검증은 당시 기록이며, 새 VPN 코드/검증/배포 상태는 [GCP AI-DLC](gcp-central-network.md)를 따른다. 이번 작업에서 ANF는 재생성하지 않았다.
+
 ## 승인과 현재 상태
 
 - 기준일: 2026-11-03 (Asia/Seoul).

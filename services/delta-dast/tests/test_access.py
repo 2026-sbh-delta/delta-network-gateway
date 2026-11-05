@@ -95,17 +95,19 @@ def test_internal_host_can_only_read(monkeypatch, tmp_path):
         assert client.post("/api/sast/scans", headers={"X-DAST-Token": "x"}).status_code == 403
 
 
-def test_machine_token_allows_only_run_start_and_fix(monkeypatch, tmp_path):
+def test_platform_token_only_on_internal_hosts_and_platform_or_fix_paths(monkeypatch, tmp_path):
     monkeypatch.setenv("DAST_INTERNAL_HOSTS", "dast.cp.internal:8765")
-    monkeypatch.setenv("DAST_MACHINE_TOKEN", "m" * 32)
+    monkeypatch.setenv("DAST_PLATFORM_TOKEN", "p" * 32)
     app = server.create_app(port=18765, target_port=18766, runs_dir=tmp_path)
-    good = {"Authorization": "Bearer " + "m" * 32}
+    good = {"Authorization": "Bearer " + "p" * 32}
+    run = "00000000-0000-4000-8000-000000000001"
     with TestClient(app, base_url="http://dast.cp.internal:8765") as client:
-        # 토큰이 맞으면 점검 시작 경로까지는 들어간다(본문이 비어 422 = 인증은 통과)
-        assert client.post("/api/runs", json={}, headers=good).status_code == 422
-        assert client.post("/api/runs", json={}, headers={"Authorization": "Bearer wrong"}).status_code == 403
-        assert client.post("/api/runs", json={}).status_code == 403
-        assert client.post("/api/projects", json={}, headers=good).status_code == 403
-        assert client.post("/api/sast/scans", headers=good).status_code == 403
-    with TestClient(app, base_url="http://evil.example") as client:
+        # 플랫폼 API: 토큰이 맞으면 들어간다(없는 실행 = 404), 틀리거나 없으면 401
+        assert client.get(f"/api/platform/runs/{run}", headers=good).status_code == 404
+        assert client.get(f"/api/platform/runs/{run}", headers={"Authorization": "Bearer wrong"}).status_code == 401
+        assert client.get(f"/api/platform/runs/{run}").status_code == 401
+        # 같은 토큰으로 일반 점검 시작·관리 경로는 열리지 않는다(화면용 제어 토큰 필요)
         assert client.post("/api/runs", json={}, headers=good).status_code == 403
+        assert client.post("/api/projects", json={}, headers=good).status_code == 403
+    with TestClient(app, base_url="http://evil.example") as client:
+        assert client.get(f"/api/platform/runs/{run}", headers=good).status_code == 403

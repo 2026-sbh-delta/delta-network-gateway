@@ -1,0 +1,68 @@
+name: delta-migration-demo
+services:
+  source:
+    image: postgres:17-alpine
+    command: [postgres, -c, wal_level=logical, -c, max_replication_slots=10, -c, max_wal_senders=10, -c, max_slot_wal_keep_size=256MB]
+    environment: &database
+      POSTGRES_DB: app
+      POSTGRES_USER: delta_admin
+      POSTGRES_PASSWORD: ${DB_ADMIN_PASSWORD:?}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?}
+    tmpfs: [/var/lib/postgresql/data]
+    volumes: ["../examples/session-app/init-db.sh:/docker-entrypoint-initdb.d/10-app-role.sh:ro"]
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U delta_admin -d app]
+      interval: 1s
+      timeout: 2s
+      retries: 30
+  target:
+    image: postgres:17-alpine
+    environment: *database
+    tmpfs: [/var/lib/postgresql/data]
+    volumes: ["../examples/session-app/init-db.sh:/docker-entrypoint-initdb.d/10-app-role.sh:ro"]
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U delta_admin -d app]
+      interval: 1s
+      timeout: 2s
+      retries: 30
+  source-app:
+    build: ../examples/session-app
+    image: delta-migration-session-demo:local
+    environment: &app
+      DATABASE_URL: postgresql://app:${APP_DB_PASSWORD}@source:5432/app
+      APP_SECRET_KEY: ${APP_SECRET_KEY:?}
+      APP_ENVIRONMENT: local-source
+      APP_VERSION: continuity-demo-v1
+      APP_ALLOWED_HOSTS: localhost,127.0.0.1
+      APP_SECURE_COOKIES: "false"
+      OTEL_ENABLED: "false"
+    depends_on:
+      source: {condition: service_healthy}
+    mem_limit: 256m
+  target-app:
+    image: delta-migration-session-demo:local
+    profiles: [target-app]
+    environment:
+      <<: *app
+      DATABASE_URL: postgresql://app:${APP_DB_PASSWORD}@target:5432/app
+      APP_ENVIRONMENT: local-target
+    depends_on:
+      target: {condition: service_healthy}
+    mem_limit: 256m
+  ingress:
+    image: nginx:stable-alpine
+    ports: ["127.0.0.1:18096:80"]
+    volumes: ["../.runtime/migration-demo/nginx:/etc/nginx/conf.d:ro"]
+    depends_on: [source-app]
+    mem_limit: 64m
+  runner:
+    build:
+      context: ../..
+      dockerfile: platform/migration/Dockerfile.test
+    profiles: [runner]
+    user: "${DEMO_RUNNER_UID:-0}:${DEMO_RUNNER_GID:-0}"
+    volumes: ["../.runtime/migration-demo/work:/work"]
+    environment:
+      DELTA_MIGRATION_SOURCE_DSN: postgresql://delta_admin:${DB_ADMIN_PASSWORD}@source:5432/app
+      DELTA_MIGRATION_TARGET_DSN: postgresql://delta_admin:${DB_ADMIN_PASSWORD}@target:5432/app
+      DELTA_MIGRATION_REPLICATION_DSN: postgresql://replicator:${REPLICATION_PASSWORD}@source:5432/app

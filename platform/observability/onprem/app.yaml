@@ -1,0 +1,48 @@
+# Bind only the local loopback or the dedicated app network, never 0.0.0.0 on the VM.
+# This process and its certificate have no access to the host-metrics receiver.
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: ${env:DELTA_APP_LISTEN}
+        max_request_body_size: 1048576
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 64
+    spike_limit_mib: 16
+  batch:
+    timeout: 5s
+    send_batch_size: 100
+    send_batch_max_size: 200
+exporters:
+  otlp_http/app:
+    endpoint: ${env:DELTA_APP_GATEWAY}
+    tls:
+      ca_file: /etc/delta-otel/server-ca.pem
+      cert_file: /etc/delta-otel/app-client.pem
+      key_file: /etc/delta-otel/app-client-key.pem
+      min_version: "1.2"
+    timeout: 10s
+    retry_on_failure:
+      max_elapsed_time: 30s
+    sending_queue:
+      queue_size: 32
+      num_consumers: 1
+service:
+  telemetry:
+    logs:
+      level: warn
+  pipelines:
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlp_http/app]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlp_http/app]
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlp_http/app]

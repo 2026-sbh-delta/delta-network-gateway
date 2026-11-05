@@ -8,7 +8,9 @@ ANF 비용 중단과 원복은 [전환 Runbook](RUNBOOK.md#anf-비용-중단과-
 | `bypass` | TGW에서 목적지 VPC로 직접 전달 | 유지, 시간 요금 발생 | 제거 전 통신 확인 또는 원복 준비 |
 | `disabled` | TGW에서 목적지 VPC로 직접 전달 | 제거, 해당 엔드포인트 과금 중단 | 비용 절감 상태 |
 
-모드는 `enabled -> bypass -> disabled`, 원복은 `disabled -> bypass -> enabled` 순서로 바꾼다. bypass는 삭제 보호를 해제한다. enabled는 `firewall_protection` 입력을 다시 적용한다. disabled에서도 정책, 규칙 집합, 기존 로그 그룹, VPC/서브넷, TGW/Attachment와 RAM Share/Principal은 보존한다. 기존 로그는 설정한 보존 기간을 따른다. 우회 중에는 ANF 검사와 신규 검사 로그가 없고, 기존 8081 차단 시험도 통과할 수 있다. VPN이 등록돼 있으면 우회 모드를 거부한다.
+모드는 `enabled -> bypass -> disabled`, 원복은 `disabled -> bypass -> enabled` 순서로 바꾼다. bypass는 삭제 보호를 해제한다. enabled는 `firewall_protection` 입력을 다시 적용한다. disabled에서도 정책, 규칙 집합, 기존 로그 그룹, VPC/서브넷, TGW/Attachment와 RAM Share/Principal은 보존한다. 기존 로그는 설정한 보존 기간을 따른다. 우회 중에는 ANF 검사와 신규 검사 로그가 없고, 기존 8081 차단 시험도 통과할 수 있다.
+
+2026-11-04 사용자 지시로 GCP 연결에서는 ANF disabled를 유지한다. bypass/disabled의 VPC 목적지는 소유 attachment로 직접 전달하고, VPN은 두 연결 모두 Spoke RT에 BGP를 전파한다. VPN 목적지의 정적 검사 경로를 제거해 ECMP/경로 철회를 보존한다. enabled에서는 기존 검사 경로와 Inspected RT 전파만 사용한다. 이번 추가는 로컬 mock 검증이며 실제 VPN 배포/통신은 아직 확인하지 않았다. [승인/현재 상태](../../docs/ai-dlc/gcp-central-network.md)
 
 하나의 중앙 AWS 계정에 TGW 1개, Inspection VPC 1개, VPC 기반 Network Firewall 1개를 만든다. 기본 2 AZ에서는 TGW 전용 Subnet 2개와 Firewall 전용 Subnet 2개를 사용한다. 소비자 연결과 VPN 입력이 비어 있어도 중앙 기반을 생성할 수 있다.
 
@@ -57,7 +59,7 @@ RAM 조직 공유 활성화는 조직 관리 계정에서 수행하며 `AWSServi
 | `allowed_flows` | `map(object)` | `{}` | 명시적 TCP/UDP/ICMP 허용 목록 |
 | `suricata_rules` | `map(object)` | `{}` | 허용 추적보다 먼저 평가할 선택적 추가 규칙 |
 | `stateful_rule_capacity` | `number` | `1000` | Rule Group capacity, 변경 시 교체에 주의 |
-| `inspection_mode` | `string` | `enabled` | `enabled`: 검사, `bypass`: ANF를 유지한 직접 경로, `disabled`: 직접 경로와 엔드포인트 제거. VPC Spoke만 우회 지원 |
+| `inspection_mode` | `string` | `enabled` | `enabled`: 검사, `bypass`: ANF를 유지한 직접 경로, `disabled`: 직접 경로와 엔드포인트 제거. 직접 모드의 VPN은 Spoke RT에 BGP 전파 |
 | `firewall_protection` | `object` | 내부 속성 모두 `true` | 삭제/Subnet/정책 연결 변경 보호 |
 | `log_retention_days` | `number` | `30` | 지원되는 유한 CloudWatch Logs 보존 일수 |
 | `retain_logs_on_destroy` | `bool` | `true` | 해체 시 로그 그룹 보존, 재관리 시 import 필요 |
@@ -148,7 +150,7 @@ GCP 네트워크는 interface 0/1의 서로 다른 공인 IP와 동일 Cloud Rou
 | `inspection_attachment_id` | appliance mode Inspection Attachment ID |
 | `firewall_arn` | 공유할 Firewall 자체 ARN, disabled에서는 null |
 | `inspection_mode` | 적용할 검사/우회/비용 중단 모드 |
-| `inspection_route_targets` | 등록 CIDR별 Spoke RT의 기대 다음 홉 Attachment ID, 전환 시 경로 교체에 사용 |
+| `inspection_route_targets` | 정적 Spoke Route의 기대 다음 홉. 직접 모드의 VPN 목적지는 BGP 경로이므로 맵에서 제외 |
 | `primary_endpoint_ids_by_az_id` | Inspection VPC의 AZ ID별 Primary Endpoint IDs, disabled에서는 빈 맵 |
 | `tgw_ram_share_arn` | TGW RAM Share ARN |
 | `firewall_ram_share_arn` | Firewall RAM Share ARN |

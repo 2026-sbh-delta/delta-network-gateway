@@ -36,9 +36,22 @@ class Settings(BaseSettings):
     jenkins_token: SecretStr = SecretStr("")
     jenkins_ca_base64: str = ""
     sandbox_target: str = ""
+    gcp_sandbox_target: str = ""
+    gcp_credentials_json: str = ""
+    onprem_sandbox_target: str = ""
+    onprem_sandbox_token: SecretStr = SecretStr("")
+    onprem_runtime_target: str = ""
+    onprem_runtime_token: SecretStr = SecretStr("")
     sast_url: str = ""
     sast_token: SecretStr = SecretStr("")
     sast_ca_base64: str = ""
+    dast_url: str = ""
+    dast_token: SecretStr = SecretStr("")
+    dast_ca_base64: str = ""
+    observability_region: str = "ap-northeast-2"
+    ai_url: str = ""
+    ai_token: SecretStr = SecretStr("")
+    ai_ca_base64: str = ""
 
     @model_validator(mode="after")
     def validate_settings(self):

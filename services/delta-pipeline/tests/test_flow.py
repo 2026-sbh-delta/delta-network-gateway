@@ -4,7 +4,7 @@ import threading
 import time
 
 import pytest
-from fakes import COMMIT, DIGEST, IMAGE_REPO, REPO, FakeDast, FakeSast, build_jenkins, deploy_jenkins
+from fakes import COMMIT, DIGEST, IMAGE_REPO, REPO, FakeDast, FakeSast, FakeStaging, build_jenkins, deploy_jenkins
 
 from delta_pipeline.clients import ServiceUnavailable
 from delta_pipeline.model import Options
@@ -12,10 +12,10 @@ from delta_pipeline.run import Run
 from delta_pipeline.steps import READ_ATTEMPTS, Stopped, _rows_remaining, assert_gates_passed
 
 
-def _run(tmp_path, *, sast=None, dast=None, build=None, deploy=None, repo=REPO, commit=COMMIT):
+def _run(tmp_path, *, sast=None, dast=None, build=None, deploy=None, staging=None, repo=REPO, commit=COMMIT):
     return Run(Options(repo, commit), sast=sast or FakeSast(), dast=dast or FakeDast(), build_jenkins=build or build_jenkins(),
-               deploy_jenkins=deploy or deploy_jenkins(), image_repo=IMAGE_REPO, store_dir=tmp_path / "store",
-               sleep=lambda _: None)
+               deploy_jenkins=deploy or deploy_jenkins(), staging=staging or FakeStaging(), image_repo=IMAGE_REPO,
+               store_dir=tmp_path / "store", sleep=lambda _: None)
 
 
 def _execute(run, answers=()):
@@ -93,6 +93,7 @@ def test_secret_needs_a_person_before_staging(tmp_path):
     ({"deploy": deploy_jenkins(rows="3")}, "stage"),
     ({"deploy": deploy_jenkins(rows=None)}, "stage"),
     ({"dast": FakeDast(status="error")}, "dast"),
+    ({"dast": FakeDast(status="interrupted")}, "dast"),
 ])
 def test_any_failed_or_unproven_step_stops_the_run(tmp_path, kwargs, node):
     snapshot = _execute(_run(tmp_path, **kwargs))
@@ -147,3 +148,38 @@ def test_reads_are_retried_before_giving_up(tmp_path):
             return super().scan(run_id)
 
     assert _execute(_run(tmp_path, sast=Flaky()))["outcome"] == "verified"
+
+
+def test_stage_holds_the_lease_and_releases_it_when_done_or_stopped(tmp_path):
+    deploy, staging = deploy_jenkins(), FakeStaging()
+    snapshot = _execute(_run(tmp_path / "ok", deploy=deploy, staging=staging))
+    assert deploy.params[0]["HOLDER"] == snapshot["run_id"]
+    assert staging.released == [("gcp", snapshot["run_id"])]
+
+    staging = FakeStaging()
+    stopped = _execute(_run(tmp_path / "stop", dast=FakeDast(["REPRODUCED"]), staging=staging), answers=["stop"])
+    assert stopped["outcome"] == "stopped" and staging.released == [("gcp", stopped["run_id"])]
+
+    # 빌드에서 멈추면 스테이징을 잡지 않았으니 풀 것도 없다
+    staging = FakeStaging()
+    _execute(_run(tmp_path / "build", build=build_jenkins(final="FAILURE"), staging=staging))
+    assert staging.released == []
+
+
+def test_release_failure_does_not_change_a_verified_result(tmp_path):
+    assert _execute(_run(tmp_path, staging=FakeStaging(fail=True)))["outcome"] == "verified"
+
+
+def test_missing_dast_result_is_not_a_pass(tmp_path):
+    snapshot = _execute(_run(tmp_path, dast=FakeDast(["NOT_REPRODUCED"], expected=2)), answers=["stop"])
+    assert snapshot["outcome"] == "stopped"
+    assert "누락 1" in next(n for n in snapshot["nodes"] if n["id"] == "dast")["summary"]
+
+
+def test_dast_binds_the_build_digest_staging_url_and_sarif_hash(tmp_path):
+    dast = FakeDast()
+    snapshot = _execute(_run(tmp_path, dast=dast))
+    (binding,) = dast.bindings.values()
+    assert binding["image_digest"] == DIGEST and binding["commit_sha"] == COMMIT
+    assert binding["target_url"] == "http://136.82.112.37" and binding["runtime_revision"] == "r1"
+    assert binding["build_id"] == f"{snapshot['run_id']}-build"

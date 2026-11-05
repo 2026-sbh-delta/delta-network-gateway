@@ -225,3 +225,72 @@ async def test_applying_returned_ops_closes_the_waf_gap(parity_waf_missing, tmp_
     after = await assess(AssessmentRequest.model_validate(raw), llm=None, store=RuleStore(tmp_path / "rules2.json"))
 
     assert after.verdict == "pass"
+
+
+def _gcp_to_aws(raw: dict[str, Any]) -> dict[str, Any]:
+    """같은 서비스를 GCP 에서 AWS 로 옮기는 요청으로 뒤집는다. 출발 Cloud Armor, 대상은 WAF 없음."""
+    flipped = copy.deepcopy(raw)
+    flipped["source_env"], flipped["target_env"] = flipped["target_env"], flipped["source_env"]
+    flipped["source_env"]["waf"] = {"enabled": True, "product": "cloud_armor", "mode": "block",
+                                    "rule_groups": ["sqli-v422-stable", "xss-v422-stable", "lfi-v422-stable"]}
+    flipped["target_env"]["waf"] = {"enabled": False}
+    flipped["target_env"]["identity"]["mechanism"] = "instance_profile"
+    flipped["evidence"]["attack_results"][0]["environment"] = "aws"
+    return flipped
+
+
+async def test_gcp_to_aws_missing_waf_returns_aws_managed_groups(parity_waf_missing, tmp_path):
+    raw = _gcp_to_aws(parity_waf_missing)
+
+    result = await assess(AssessmentRequest.model_validate(raw), llm=None, store=RuleStore(tmp_path / "rules.json"))
+
+    assert result.verdict == "fix"
+    ops = {op.path: op.value for op in result.remediation.spec_ops}
+    assert ops["/waf/product"] == "aws_waf"
+    assert ops["/waf/rule_groups"] == ["AWSManagedRulesCommonRuleSet", "AWSManagedRulesSQLiRuleSet"]
+    rules = {rule.capability: rule for rule in result.remediation.waf_rules}
+    assert set(rules) == {"sqli", "xss", "lfi"}  # 범주마다 한 줄이라 파이프라인이 범주별로 확인한다
+    assert rules["sqli"].expression == "AWS/AWSManagedRulesSQLiRuleSet"
+    assert all(rule.action == "managed_group" for rule in rules.values())
+
+
+async def test_gcp_to_aws_applying_ops_closes_the_waf_gap(parity_waf_missing, tmp_path):
+    raw = _gcp_to_aws(parity_waf_missing)
+    result = await assess(AssessmentRequest.model_validate(raw), llm=None, store=RuleStore(tmp_path / "rules.json"))
+    for op in result.remediation.spec_ops:
+        section, field = op.path.strip("/").split("/")
+        raw["target_env"][section][field] = op.value
+    raw["evidence"]["attack_results"][0].update(observed="blocked", http_status=403)
+
+    after = await assess(AssessmentRequest.model_validate(raw), llm=None, store=RuleStore(tmp_path / "rules2.json"))
+
+    assert after.verdict == "pass"
+
+
+def test_gcp_to_aws_target_missing_one_category_gets_only_that_group(parity_waf_missing):
+    raw = _gcp_to_aws(parity_waf_missing)
+    raw["target_env"]["waf"] = {"enabled": True, "product": "aws_waf", "mode": "block",
+                                "rule_groups": ["AWSManagedRulesCommonRuleSet"]}
+
+    outcome = _run_checks(raw)
+
+    finding = next(f for f in outcome.findings if f.rule_id == "PAR-WAF-001" and f.status == "fail")
+    assert "sqli" in finding.evidence and "xss" not in finding.evidence
+    assert {r.capability for r in finding.waf_rules} == {"sqli"}
+
+
+def test_cloud_armor_rule_without_an_aws_group_is_reported(parity_waf_missing):
+    raw = _gcp_to_aws(parity_waf_missing)
+    raw["source_env"]["waf"]["rule_groups"].append("methodenforcement-v33-stable")
+
+    outcome = _run_checks(raw)
+
+    assert any(f.location.get("rule_group") == "methodenforcement-v33-stable" for f in outcome.findings)
+
+
+def test_vm_identity_is_native_on_each_cloud(parity_waf_missing):
+    raw = _gcp_to_aws(parity_waf_missing)
+
+    outcome = _run_checks(raw)
+
+    assert "PAR-IAM-001" not in _rule_ids(outcome.findings)

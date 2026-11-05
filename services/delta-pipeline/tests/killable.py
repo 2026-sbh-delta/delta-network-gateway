@@ -9,7 +9,7 @@ import threading
 import time
 from pathlib import Path
 
-from fakes import COMMIT, IMAGE_REPO, REPO, FakeDast, FakeJenkins, FakeSast, build_jenkins, deploy_jenkins
+from fakes import COMMIT, IMAGE_REPO, REPO, FakeDast, FakeJenkins, FakeSast, FakeStaging, build_jenkins, deploy_jenkins
 
 from delta_pipeline.model import Options
 from delta_pipeline.run import Run, latest_unfinished
@@ -58,9 +58,12 @@ def durable(job, fake: FakeJenkins):
 
 
 class RecordingDast(FakeDast):
-    def start(self, report, **kw):
-        record("dast", kw["sast_run_id"])
-        return super().start(report, **kw)
+    def submit(self, run_id, binding, report):
+        # 재개 때 같은 ID·같은 입력으로 다시 부르면 DAST 는 같은 점검을 돌려준다(새로 돌지 않음)
+        if run_id not in recorded("dast"):
+            record("dast", run_id)
+        self.bindings.pop(run_id, None)
+        return super().submit(run_id, binding, report)
 
 
 def main():
@@ -68,7 +71,7 @@ def main():
     saved = latest_unfinished(store) if store.exists() else None
     run_id, options = saved or (None, Options(REPO, COMMIT))
     run = Run(options, sast=FakeSast(), dast=RecordingDast([DAST_STATUS]), build_jenkins=durable("build", build_jenkins()),
-              deploy_jenkins=durable("deploy", deploy_jenkins()), image_repo=IMAGE_REPO, store_dir=store,
+              deploy_jenkins=durable("deploy", deploy_jenkins()), staging=FakeStaging(), image_repo=IMAGE_REPO, store_dir=store,
               sleep=lambda _: None, run_id=run_id)
     thread = threading.Thread(target=run.execute)
     thread.start()

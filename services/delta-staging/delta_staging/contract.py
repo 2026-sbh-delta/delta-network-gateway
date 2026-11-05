@@ -33,6 +33,11 @@ class DeployRequest(_Model):
     commit: str | None = Field(default=None, pattern=r"^[0-9a-f]{7,40}$", description="이미지를 만든 커밋 SHA")
     env: dict[str, str] = Field(default_factory=dict, description="비밀이 아닌 앱 환경 변수")
     replace: bool = Field(default=False, description="다른 실행이 스테이징을 쓰고 있으면 교체한다")
+    lease_holder: str | None = Field(
+        default=None, pattern=r"^[A-Za-z0-9._-]{1,64}$",
+        description="스테이징(과 그 DB)을 점유할 실행 ID. 비우면 run_id. 점유 중에는 다른 실행이 배포·초기화하지 못한다")
+    lease_seconds: int = Field(default=3600, ge=60, le=14400,
+                               description="점유 유지 시간. 점검이 끝나면 점유한 실행이 풀고, 못 풀면 이 시간 뒤 풀린다")
     scanner_ip: str | None = Field(
         default=None,
         description="공개 스테이징에 접근할 DAST 실행기의 공인 IPv4. auto 면 도구를 실행하는 곳의 현재 공인 IP 를 확인해 쓴다")
@@ -64,6 +69,20 @@ class DeployRequest(_Model):
     @property
     def pinned(self) -> bool:
         return "@sha256:" in self.image
+
+
+class Lease(_Model):
+    """클라우드별 스테이징 점유. 진행 중인 DAST 가 쓰는 DB 를 다른 실행이 초기화하지 못하게 한다."""
+
+    cloud: Cloud
+    holder: str
+    deployment: str = Field(description="점유를 잡은 배포 run_id")
+    acquired_at: datetime
+    expires_at: datetime
+
+
+class LeaseRelease(_Model):
+    holder: str = Field(pattern=r"^[A-Za-z0-9._-]{1,64}$")
 
 
 class Step(_Model):

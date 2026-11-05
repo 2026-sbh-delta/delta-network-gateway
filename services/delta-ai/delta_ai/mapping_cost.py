@@ -2,21 +2,13 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 
 from delta_ai.contract import CostEstimate, CostLine, SourceServer
-from delta_ai.mapping_catalog import (
-    AWS_HOURLY_USD,
-    AWS_INSTANCES,
-    COST_EXCLUDES,
-    GCP_HOURLY_USD,
-    GCP_INSTANCES,
-    HOURS_PER_MONTH,
-    PRICED_ON,
-)
+from delta_ai.mapping_catalog import COST_EXCLUDES, HOURS_PER_MONTH, PRICED_ON, Route
 
 
-def _monthly(prices: dict[str, dict[str, float]], region: str, instance_type: str | None) -> float | None:
+def _monthly(prices: Mapping[str, Mapping[str, float]], region: str, instance_type: str | None) -> float | None:
     hourly = prices.get(region, {}).get(instance_type or "")
     return None if hourly is None else round(hourly * HOURS_PER_MONTH, 2)
 
@@ -25,10 +17,11 @@ def _gap(source: float | None, target: float | None) -> float | None:
     return None if source is None or target is None else round(target - source, 2)
 
 
-def _notes(source_type: str | None, target_type: str | None, source: float | None, target: float | None) -> tuple[str, ...]:
+def _notes(route: Route, source_type: str | None, target_type: str | None, source: float | None,
+           target: float | None) -> tuple[str, ...]:
     notes = []
     if target_type is not None:
-        spec, chosen = AWS_INSTANCES[source_type], GCP_INSTANCES[target_type]
+        spec, chosen = route.source_instances[source_type], route.target_instances[target_type]
         if chosen.memory_gib > spec.memory_gib:
             notes.append(f"대상 메모리가 더 크다({spec.memory_gib} → {chosen.memory_gib} GiB). 차액에 사양 차이가 포함된다")
         if source is None or target is None:
@@ -36,24 +29,25 @@ def _notes(source_type: str | None, target_type: str | None, source: float | Non
     return tuple(notes)
 
 
-def _line(server: SourceServer, target_type: str | None, source_region: str, target_region: str) -> CostLine:
-    source = _monthly(AWS_HOURLY_USD, source_region, server.instance_type)
-    target = _monthly(GCP_HOURLY_USD, target_region, target_type)
+def _line(route: Route, server: SourceServer, target_type: str | None, source_region: str,
+          target_region: str) -> CostLine:
+    source = _monthly(route.source_prices, source_region, server.instance_type)
+    target = _monthly(route.target_prices, target_region, target_type)
     return CostLine(server=server.name, source_type=server.instance_type, target_type=target_type,
                     source_monthly=source, target_monthly=target, difference=_gap(source, target),
-                    notes=_notes(server.instance_type, target_type, source, target))
+                    notes=_notes(route, server.instance_type, target_type, source, target))
 
 
 def _total(values: Sequence[float | None]) -> float | None:
     return None if any(value is None for value in values) else round(sum(values), 2)
 
 
-def estimate_cost(servers: Sequence[tuple[SourceServer, str | None]], source_region: str,
+def estimate_cost(route: Route, servers: Sequence[tuple[SourceServer, str | None]], source_region: str,
                   target_region: str) -> CostEstimate | None:
     """(서버, 매핑된 대상 타입) 목록을 받는다. 대상 타입은 매핑 표와 같은 값을 쓴다."""
     if not servers:
         return None
-    lines = tuple(_line(server, target_type, source_region, target_region) for server, target_type in servers)
+    lines = tuple(_line(route, server, target_type, source_region, target_region) for server, target_type in servers)
     source_total = _total([line.source_monthly for line in lines])
     target_total = _total([line.target_monthly for line in lines])
     return CostEstimate(hours_per_month=HOURS_PER_MONTH, priced_on=PRICED_ON, source_region=source_region,

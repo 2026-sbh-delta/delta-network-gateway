@@ -9,10 +9,11 @@ import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import insert
 
 from .errors import LeaseLost, Problem
-from .schema import events, runs, services
+from .schema import environments, events, runs, services, workflows
 
 SERVICE_FIELDS = (
     "id",
+    "project_id",
     "name",
     "repository_url",
     "source_ref",
@@ -174,9 +175,57 @@ class Store:
                 "latest_sandbox": self._latest(conn, service_id, "sandbox_check"),
             }
 
+    def delete_service(self, service_id, confirmation_name):
+        # Serialize with all run/workflow admission; never remove a live task's owner.
+        with self.engine.begin() as conn:
+            service = (
+                conn.execute(
+                    sa.select(services).where(services.c.id == service_id).with_for_update()
+                )
+                .mappings()
+                .first()
+            )
+            if service is None:
+                return  # Retrying a completed deletion is safe, even after a lost response.
+            if confirmation_name != service["name"]:
+                raise Problem("delete_name_mismatch", "프로젝트 이름이 일치하지 않습니다.", 409)
+            active = conn.scalar(
+                sa.select(runs.c.id)
+                .where(runs.c.service_id == service_id, runs.c.status.in_(["queued", "running"]))
+                .limit(1)
+            )
+            if active:
+                raise Problem(
+                    "service_busy",
+                    "실행 중이거나 대기 중인 작업이 있습니다. 작업 종료와 정리를 확인한 뒤 삭제하세요.",
+                    409,
+                )
+            linked_environment = conn.scalar(
+                sa.select(environments.c.id).where(environments.c.service_id == service_id).limit(1)
+            )
+            linked_workflow = conn.scalar(
+                sa.select(workflows.c.id).where(workflows.c.service_id == service_id).limit(1)
+            )
+            if linked_environment or linked_workflow:
+                raise Problem(
+                    "service_has_dependencies",
+                    "연결된 환경 또는 이전·배포 계획이 있어 삭제할 수 없습니다. 운영자가 연결 상태를 먼저 정리해야 합니다.",
+                    409,
+                )
+            owned_runs = sa.select(runs.c.id).where(runs.c.service_id == service_id)
+            conn.execute(events.delete().where(events.c.run_id.in_(owned_runs)))
+            conn.execute(runs.delete().where(runs.c.service_id == service_id))
+            conn.execute(services.delete().where(services.c.id == service_id))
+
     def list_services(self, limit, cursor):
         with self.engine.connect() as conn:
             return page_query(conn, services, SERVICE_FIELDS, [], limit, cursor)
+
+    @staticmethod
+    def _assert_no_removal(conn, service_id):
+        from .removals import assert_no_removal
+
+        assert_no_removal(conn, service_id)
 
     def enqueue(self, service_id, key):
         with self.engine.begin() as conn:
@@ -189,7 +238,10 @@ class Store:
             )
             if not service:
                 raise Problem("service_not_found", "서비스를 찾을 수 없습니다.", 404)
-            snapshot = {k: service[k] for k in SERVICE_FIELDS if k not in ("id", "created_at")}
+            self._assert_no_removal(conn, service_id)
+            snapshot = {
+                k: service[k] for k in SERVICE_FIELDS if k not in ("id", "project_id", "created_at")
+            }
             snapshot.update(
                 repo_owner=service["repo_owner"], repo_name=service["repo_name"], version=1
             )
@@ -250,6 +302,7 @@ class Store:
             )
             if not service:
                 raise Problem("service_not_found", "서비스를 찾을 수 없습니다.", 404)
+            self._assert_no_removal(conn, service_id)
             existing = (
                 conn.execute(
                     sa.select(runs).where(
@@ -426,7 +479,7 @@ class Store:
             )
             if not row:
                 return None
-            if row["attempt"] >= 3 and row["kind"] != "sandbox_check":
+            if row["attempt"] >= 3 and row["kind"] not in ("sandbox_check", "dast_check"):
                 conn.execute(
                     runs.update()
                     .where(runs.c.id == row["id"])
@@ -457,11 +510,15 @@ class Store:
                         if row["kind"] == "image_build"
                         else (
                             "sandbox_queued"
-                            if row["kind"] == "sandbox_check"
+                            if row["kind"] in ("sandbox_check", "dast_check")
                             else (
                                 "security_queued"
                                 if row["kind"] == "security_check"
-                                else "repository"
+                                else (
+                                    "runtime_remove_check"
+                                    if row["kind"] == "runtime_remove"
+                                    else "repository"
+                                )
                             )
                         ),
                     )
@@ -481,8 +538,12 @@ class Store:
                     if row["kind"] == "image_build"
                     else (
                         "샌드박스 실행 확인을 시작했습니다."
-                        if row["kind"] == "sandbox_check"
-                        else "소스 확인을 시작했습니다."
+                        if row["kind"] in ("sandbox_check", "dast_check")
+                        else (
+                            "온프레미스 앱 삭제를 시작했습니다."
+                            if row["kind"] == "runtime_remove"
+                            else "소스 확인을 시작했습니다."
+                        )
                     )
                 ),
             )
@@ -501,7 +562,11 @@ class Store:
             or row["lease_token"] != token
             or row["lease_expires_at"] <= instant
             or row["started_at"]
-            + timedelta(seconds=1800 if row["kind"] in ("image_build", "sandbox_check") else 120)
+            + timedelta(
+                seconds=1800
+                if row["kind"] in ("image_build", "sandbox_check", "dast_check", "runtime_remove")
+                else 120
+            )
             <= instant
         ):
             raise LeaseLost()
@@ -514,7 +579,10 @@ class Store:
                 instant + timedelta(seconds=60),
                 row["started_at"]
                 + timedelta(
-                    seconds=1800 if row["kind"] in ("image_build", "sandbox_check") else 120
+                    seconds=1800
+                    if row["kind"]
+                    in ("image_build", "sandbox_check", "dast_check", "runtime_remove")
+                    else 120
                 ),
             )
             if expiry <= instant:
@@ -537,11 +605,19 @@ class Store:
     def finish(self, run_id, token, *, result=None, error=None, retry=False):
         with self.engine.begin() as conn:
             row, instant = self._owned(conn, run_id, token)
-            if row["kind"] == "sandbox_check" and row["cancel_requested"] and not error:
+            if (
+                row["kind"] in ("sandbox_check", "dast_check")
+                and row["cancel_requested"]
+                and not error
+            ):
                 result, error = (
                     None,
                     {"code": "sandbox_cancelled", "message": "샌드박스를 중단하고 정리했습니다."},
                 )
+            if row["kind"] == "runtime_remove" and not error:
+                from .removals import RemovalStore
+
+                RemovalStore(self.engine).complete(conn, row)
             retry = bool(error and retry and row["attempt"] < 3)
             state = "queued" if retry else ("failed" if error else "succeeded")
             values = dict(
@@ -571,9 +647,17 @@ class Store:
                             "샌드박스 실행 확인과 정리를 완료했습니다. 보안 검사는 아직 하지 않았습니다."
                             if row["kind"] == "sandbox_check"
                             else (
-                                "SAST 결과를 확인했습니다. 운영 배포 승인은 별도입니다."
-                                if row["kind"] == "security_check"
-                                else "소스 확인을 완료했습니다."
+                                "DAST 결과를 확인하고 검사 앱을 정리했습니다. 운영 배포 승인은 별도입니다."
+                                if row["kind"] == "dast_check"
+                                else (
+                                    "SAST 결과를 확인했습니다. 운영 배포 승인은 별도입니다."
+                                    if row["kind"] == "security_check"
+                                    else (
+                                        "온프레미스 앱 삭제를 완료했습니다. DB·볼륨·서버는 보존했습니다."
+                                        if row["kind"] == "runtime_remove"
+                                        else "소스 확인을 완료했습니다."
+                                    )
+                                )
                             )
                         )
                     )
@@ -590,6 +674,7 @@ class Store:
             )
             if not service:
                 raise Problem("service_not_found", "서비스를 찾을 수 없습니다.", 404)
+            self._assert_no_removal(conn, service_id)
             existing = (
                 conn.execute(
                     sa.select(runs).where(
@@ -672,8 +757,35 @@ class Store:
             append_event(conn, row["id"], "queued", "빌드한 커밋의 SAST 검사를 접수했습니다.")
             return select_fields(row, RUN_FIELDS), True
 
-    def enqueue_sandbox(self, service_id, build_id, key, target):
-        request_hash = digest({"build_id": str(build_id)})
+    def enqueue_sandbox(
+        self,
+        service_id,
+        build_id,
+        key,
+        target,
+        *,
+        security_check_id=None,
+        dast_target=None,
+        backend_build_id=None,
+    ):
+        if backend_build_id and (target.get("cloud") != "onprem" or backend_build_id == build_id):
+            raise Problem(
+                "bundle_target_invalid", "온프레미스의 서로 다른 FE·BE 빌드가 필요합니다.", 409
+            )
+        kind = "dast_check" if security_check_id else "sandbox_check"
+        request_hash = digest(
+            {
+                "build_id": str(build_id),
+                **(
+                    {"execution_cloud": target["cloud"]}
+                    if target.get("cloud", "aws") != "aws"
+                    else {}
+                ),
+                **({"security_check_id": str(security_check_id)} if security_check_id else {}),
+                **({"backend_build_id": str(backend_build_id)} if backend_build_id else {}),
+            }
+        )
+        extra = {}
         with self.engine.begin() as conn:
             # Serialize admission to the one configured sandbox across all services.
             conn.execute(sa.text("SELECT pg_advisory_xact_lock(72401031)"))
@@ -682,11 +794,12 @@ class Store:
             )
             if not service:
                 raise Problem("service_not_found", "서비스를 찾을 수 없습니다.", 404)
+            self._assert_no_removal(conn, service_id)
             existing = (
                 conn.execute(
                     sa.select(runs).where(
                         runs.c.service_id == service_id,
-                        runs.c.kind == "sandbox_check",
+                        runs.c.kind == kind,
                         runs.c.request_key == key,
                     )
                 )
@@ -716,7 +829,10 @@ class Store:
             active = conn.scalar(
                 sa.select(runs.c.id).where(
                     runs.c.status.in_(["queued", "running"]),
-                    sa.or_(runs.c.service_id == service_id, runs.c.kind == "sandbox_check"),
+                    sa.or_(
+                        runs.c.service_id == service_id,
+                        runs.c.kind.in_(("sandbox_check", "dast_check")),
+                    ),
                 )
             )
             if active:
@@ -737,13 +853,93 @@ class Store:
                     "샌드박스에 전달할 빌드 정보를 확인할 수 없습니다.",
                     409,
                 )
+            if backend_build_id:
+                backend = (
+                    conn.execute(
+                        sa.select(runs).where(
+                            runs.c.id == backend_build_id,
+                            runs.c.kind == "image_build",
+                            runs.c.status == "succeeded",
+                        )
+                    )
+                    .mappings()
+                    .first()
+                )
+                project = conn.scalar(
+                    sa.select(services.c.project_id).where(services.c.id == service_id)
+                )
+                backend_project = (
+                    conn.scalar(
+                        sa.select(services.c.project_id).where(
+                            services.c.id == backend["service_id"]
+                        )
+                    )
+                    if backend
+                    else None
+                )
+                if (
+                    not backend
+                    or project != backend_project
+                    or backend["resolved_commit_sha"] != build["resolved_commit_sha"]
+                    or backend["input_snapshot"].get("repository_url")
+                    != build["input_snapshot"].get("repository_url")
+                    or backend["result"].get("platform") != "linux/amd64"
+                    or backend["result"].get("commit_sha") != build["resolved_commit_sha"]
+                    or backend["input_snapshot"]["container_port"] != 8080
+                ):
+                    raise Problem(
+                        "bundle_build_mismatch",
+                        "같은 프로젝트·저장소·커밋의 amd64 BE 빌드(8080)가 필요합니다.",
+                        409,
+                    )
+                extra["project_id"] = str(project)
+                extra["backend"] = {
+                    "build_id": str(backend_build_id),
+                    "service_id": str(backend["service_id"]),
+                    "image": backend["result"]["image"],
+                    "image_digest": backend["result"]["image_digest"],
+                    "container_port": 8080,
+                    "healthcheck_path": backend["input_snapshot"]["healthcheck_path"],
+                }
+            if security_check_id:
+                security = (
+                    conn.execute(
+                        sa.select(runs).where(
+                            runs.c.id == security_check_id,
+                            runs.c.service_id == service_id,
+                            runs.c.kind == "security_check",
+                            runs.c.status == "succeeded",
+                        )
+                    )
+                    .mappings()
+                    .first()
+                )
+                if (
+                    not security
+                    or not dast_target
+                    or security["result"].get("build_id") != str(build_id)
+                    or security["resolved_commit_sha"] != build["resolved_commit_sha"]
+                    or security["result"].get("image_digest") != result["image_digest"]
+                    or not security["result"].get("evidence_sha256")
+                ):
+                    raise Problem(
+                        "dast_source_mismatch", "같은 빌드의 완료된 SAST 검사가 필요합니다.", 409
+                    )
+                extra = {
+                    **extra,
+                    "security_check_id": str(security_check_id),
+                    "sast_evidence_sha256": security["result"]["evidence_sha256"],
+                    "security_target": security["input_snapshot"]["security_target"],
+                    "repository_url": security["input_snapshot"]["repository_url"],
+                    "dast_target": dast_target,
+                }
             row = (
                 conn.execute(
                     runs.insert()
                     .values(
                         id=uuid4(),
                         service_id=service_id,
-                        kind="sandbox_check",
+                        kind=kind,
                         status="queued",
                         input_snapshot={
                             "build_id": str(build_id),
@@ -752,6 +948,8 @@ class Store:
                             "container_port": build["input_snapshot"]["container_port"],
                             "healthcheck_path": build["input_snapshot"]["healthcheck_path"],
                             "sandbox_target": target,
+                            "execution_cloud": target.get("cloud", "aws"),
+                            **extra,
                         },
                         resolved_commit_sha=build["resolved_commit_sha"],
                         request_key=key,
@@ -763,7 +961,12 @@ class Store:
                 .one()
             )
             append_event(
-                conn, row["id"], "queued", "빌드한 이미지의 샌드박스 실행 확인을 접수했습니다."
+                conn,
+                row["id"],
+                "queued",
+                "앱 실행 및 DAST 검사를 접수했습니다."
+                if security_check_id
+                else "빌드한 이미지의 샌드박스 실행 확인을 접수했습니다.",
             )
             return select_fields(row, RUN_FIELDS), True
 
@@ -777,7 +980,7 @@ class Store:
                 conn,
                 run_id,
                 "sandbox_prepared",
-                "실행할 ECS 개정판을 저장했습니다.",
+                "실행할 샌드박스 자원 식별자를 저장했습니다.",
                 "sandbox_prepared",
             )
 
@@ -805,12 +1008,12 @@ class Store:
                 if acquired:
                     conn.execute(sa.text("SELECT pg_advisory_unlock(72401032)"))
 
-    def cancel_sandbox(self, run_id):
+    def cancel_sandbox(self, run_id, kind="sandbox_check"):
         with self.engine.begin() as conn:
             row = (
                 conn.execute(
                     sa.select(runs)
-                    .where(runs.c.id == run_id, runs.c.kind == "sandbox_check")
+                    .where(runs.c.id == run_id, runs.c.kind == kind)
                     .with_for_update()
                 )
                 .mappings()

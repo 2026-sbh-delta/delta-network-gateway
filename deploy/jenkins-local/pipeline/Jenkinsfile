@@ -179,7 +179,7 @@ pipeline {
                     env.STABLE_SLOT = running ? active : ''
                     env.CANARY_SLOT = running ? (active == 'blue' ? 'green' : 'blue') : active
                     env.ROLLOUT_ACTIVE = 'true'
-                    logged('deploy', """bash -c 'docker rm -f demo-${env.CANARY_SLOT} >/dev/null 2>&1; docker run -d --name demo-${env.CANARY_SLOT} --network delta-local --label delta.build=${BUILD_NUMBER} -e APP_VERSION=${BUILD_NUMBER} -e FAIL_RATE=${env.CANARY_FAIL_RATE} delta-demo:${BUILD_NUMBER}'""")
+                    logged('deploy', """bash -c 'docker rm -f demo-${env.CANARY_SLOT} >/dev/null 2>&1; docker run -d --name demo-${env.CANARY_SLOT} --network ${env.DELTA_NETWORK} --label delta.build=${BUILD_NUMBER} -e APP_VERSION=${BUILD_NUMBER} -e FAIL_RATE=${env.CANARY_FAIL_RATE} delta-demo:${BUILD_NUMBER}'""")
                     logged('smoke', "python3 ${scripts()}/haproxy_ctl.py wait-up --slot ${env.CANARY_SLOT}")
                 }
             }
