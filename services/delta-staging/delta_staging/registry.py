@@ -7,13 +7,14 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Protocol
 
-from delta_staging.aws_ecs import Outcome, Report, StagingError
+from delta_staging.aws_ecs import Outcome, Report, S06_HANDOFF, StagingError
 from delta_staging.contract import Deployment, DeployRequest, Lease, Step
 
 logger = logging.getLogger(__name__)
@@ -49,6 +50,40 @@ class NotFound(Exception):
 
 def _now() -> datetime:
     return datetime.now(UTC)
+
+
+def _fingerprint(value: object) -> str:
+    return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":"),
+                                     ensure_ascii=False).encode("utf-8")).hexdigest()
+
+
+def _identity(req: DeployRequest, provider: Provider) -> tuple[str, str]:
+    # 공개 실행 설정 전체를 비교하되 원문 env는 상태 파일·조회 API에 저장하지 않는다.
+    content = req.model_dump(mode="json")
+    content["lease_holder"] = req.lease_holder or req.run_id
+    target = getattr(provider, "target", None)
+    return _fingerprint(content), _fingerprint(target.model_dump(mode="json") if target is not None else None)
+
+
+def _bundle_evidence(req: DeployRequest, outcome: Outcome) -> int | None:
+    version = outcome.databaseVersionNum if outcome.databaseVersionNum is not None else outcome.database_version_num
+    if not req.images:
+        return version
+    if (outcome.images != req.images or outcome.image_digests != req.image_digests
+            or outcome.bundle_sha256 != req.bundle_sha256
+            or outcome.image_digest != req.image_digests["frontend"]):
+        raise StagingError("관측한 두 이미지·digest·묶음이 요청과 일치하지 않는다")
+    if type(outcome.data_reset_remaining) is not int or outcome.data_reset_remaining != 0:
+        raise StagingError("구조화된 초기화 잔존 행 0 증거가 없다")
+    if (type(version) is not int or version // 10000 != 18
+            or (outcome.database_version_num is not None
+                and (type(outcome.database_version_num) is not int or outcome.database_version_num != version))):
+        raise StagingError("실제 연결한 PostgreSQL18 버전 증거가 없다")
+    if (outcome.s06_verified is not False
+            and (outcome.s06_verified is not True or type(outcome.pre_dast_remaining) is not int
+                 or outcome.pre_dast_remaining != 0)):
+        raise StagingError("S06 완료 표시에 검사 직전 정수형 행0 증거가 없다")
+    return version
 
 
 class StagingRegistry:
@@ -89,12 +124,12 @@ class StagingRegistry:
     def release(self, cloud: str, holder: str) -> bool:
         """점유를 푼다. 이미 없거나 만료됐으면 False(다시 불러도 안전하다). 다른 실행의 점유는 풀지 못한다."""
         lease = self._leases.get(cloud)
+        if lease is not None and lease.holder != holder:
+            raise Conflict(f"{lease.holder} 의 점유는 그 실행만 풀 수 있다")
         if lease is None or lease.expires_at <= _now():
             self._leases.pop(cloud, None)
             self._save_leases()
             return False
-        if lease.holder != holder:
-            raise Conflict(f"{lease.holder} 의 점유는 그 실행만 풀 수 있다")
         del self._leases[cloud]
         self._save_leases()
         return True
@@ -131,14 +166,22 @@ class StagingRegistry:
         return tuple(sorted(self._deployments.values(), key=lambda d: d.started_at, reverse=True))
 
     async def start(self, req: DeployRequest) -> Deployment:
-        provider = self.providers.get(req.cloud)
-        if provider is None:
-            raise Unsupported(f"{req.cloud} 스테이징은 설정되지 않았다")
         async with self._lock:
             existing = self._deployments.get(req.run_id)
+            if existing is not None and existing.cloud != req.cloud:
+                raise Conflict("같은 run_id의 클라우드가 다르다")
+            provider = self.providers.get(req.cloud)
+            if provider is None:
+                if existing is not None:
+                    raise Conflict("기존 run_id의 서버 대상이 더 이상 설정돼 있지 않다")
+                raise Unsupported(f"{req.cloud} 스테이징은 설정되지 않았다")
+            request_fp, target_fp = _identity(req, provider)
             if existing is not None:
-                if existing.image != req.image or existing.cloud != req.cloud:
-                    raise Conflict("같은 run_id 로 다른 이미지나 클라우드를 요청했다")
+                if existing.request_fingerprint != request_fp or existing.target_fingerprint != target_fp:
+                    raise Conflict("같은 run_id의 요청 또는 서버 대상이 다르거나 이전 입력 증거가 없다")
+                lease = self._leases.get(req.cloud)
+                if lease and (lease.expires_at > _now() or req.images) and lease.holder != (req.lease_holder or req.run_id):
+                    raise Busy("다른 실행이 스테이징을 점유하고 있다")
                 return existing
             try:
                 provider.check_request(req)
@@ -146,9 +189,9 @@ class StagingRegistry:
                 raise RequestRejected(str(exc)) from exc
             holder, now = req.lease_holder or req.run_id, _now()
             lease = self._leases.get(req.cloud)
-            if lease is not None and lease.expires_at > now and lease.holder != holder:
+            if lease is not None and (lease.expires_at > now or req.images) and lease.holder != holder:
                 # 배포는 DB 초기화를 포함한다. 다른 실행의 점검이 쓰는 데이터를 지우지 않게 막는다.
-                raise Busy(f"{lease.holder} 가 스테이징을 점유하고 있다(점검 중, {lease.expires_at:%H:%M}Z 까지)")
+                raise Busy(f"{lease.holder} 가 스테이징을 점유하고 있다. v2는 만료만으로 이전 점검 종료를 추정하지 않는다")
             active = [d for d in self._deployments.values() if d.cloud == req.cloud and d.state in ACTIVE]
             for current in active:
                 if not req.replace or current.state == "deploying":
@@ -159,7 +202,7 @@ class StagingRegistry:
             self._save_leases()
             deployment = self._put(Deployment(
                 run_id=req.run_id, cloud=req.cloud, state="deploying", image=req.image, pinned=req.pinned,
-                commit=req.commit, started_at=_now(),
+                commit=req.commit, started_at=_now(), request_fingerprint=request_fp, target_fingerprint=target_fp,
                 steps=(Step(name="accepted", at=_now(), detail="" if req.pinned else "digest 가 아닌 태그로 지정했다"),)))
             self._tasks[req.run_id] = asyncio.create_task(self._run(req, provider))
             return deployment
@@ -173,18 +216,26 @@ class StagingRegistry:
     async def _run(self, req: DeployRequest, provider: Provider) -> None:
         try:
             outcome = await provider.deploy(req, lambda name, detail: self._step(req.run_id, name, detail))
+            version = _bundle_evidence(req, outcome)
         except asyncio.CancelledError:
             raise
         except StagingError as exc:
             await self._fail(req.run_id, str(exc), provider)
             return
         except Exception as exc:  # boto 오류 등. 원문에 계정 정보가 섞일 수 있어 형식만 남긴다
-            logger.exception("스테이징 배포 중 예상하지 못한 오류")
+            logger.error("스테이징 배포 오류 종류: %s", type(exc).__name__)
             await self._fail(req.run_id, f"예상하지 못한 오류: {type(exc).__name__}", provider)
             return
         current = self._deployments[req.run_id]
         self._put(current.model_copy(update={"state": "ready", "url": outcome.url, "revision": outcome.revision,
                                              "image_digest": outcome.image_digest, "task_arn": outcome.task_arn,
+                                             "images": dict(outcome.images), "image_digests": dict(outcome.image_digests),
+                                             "bundle_sha256": outcome.bundle_sha256,
+                                             "data_reset_remaining": outcome.data_reset_remaining,
+                                             "databaseVersionNum": version, "database_version_num": version,
+                                             "handoff_required": S06_HANDOFF if req.images and outcome.s06_verified is not True else (),
+                                             "s06_verified": outcome.s06_verified,
+                                             "pre_dast_remaining": outcome.pre_dast_remaining,
                                              "scanner_ip": outcome.scanner_ip, "ready_at": _now()}))
 
     async def _fail(self, run_id: str, error: str, provider: Provider) -> None:
@@ -193,7 +244,7 @@ class StagingRegistry:
         try:
             await provider.stop()  # 실패한 배포가 태스크를 계속 다시 띄우지 않게 내린다
         except Exception:
-            logger.exception("실패한 배포를 내리지 못했다")
+            logger.error("실패한 배포를 내리지 못했다")
 
     async def wait(self, run_id: str) -> Deployment:
         task = self._tasks.get(run_id)
@@ -218,6 +269,6 @@ async def endpoints(providers: dict[str, Provider]) -> list[dict[str, str]]:
         try:
             return {"cloud": cloud, "url": await provider.endpoint()}
         except Exception as exc:  # 한 클라우드 조회 실패가 다른 클라우드 주소를 가리지 않게 한다
-            logger.warning("스테이징 주소 조회 실패: %s", cloud, exc_info=not isinstance(exc, StagingError))
+            logger.warning("스테이징 주소 조회 실패: %s (%s)", cloud, type(exc).__name__)
             return {"cloud": cloud, "error": str(exc) if isinstance(exc, StagingError) else type(exc).__name__}
     return list(await asyncio.gather(*(one(cloud, p) for cloud, p in sorted(providers.items()))))

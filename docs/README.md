@@ -1,5 +1,7 @@
 # Delta network gateway
 
+2026-11-06: 사용자 승인 명세에 따라 [FE·BE 이미지 묶음·운영 Compose 배포](ai-dlc/compose-delivery.md)를 구현 중이다. 스테이징은 ECS·Cloud Run을 유지하고, AWS 원본을 보존한 GCP 운영 이관으로 연결한다. 실제 운영 변경·Terraform Apply·Git 게시는 미실행이다.
+
 2026-11-05: 온프레미스 환경 카드의 ‘실행 앱 삭제’를 구현했다. 이름·자원 소유권 확인, Worker의 실제 종료 확인, 실패 재시도와 이력 보존을 지원한다. 별도 임시 앱의 실제 삭제와 기존 앱/PVC 보존을 검증했으며 운영 플랫폼 릴리스·활성화는 아직이다. 플랫폼 VPC의 TGW 연결과 AWS→온프레미스 왕복 경로가 필요하다. 사용자에게 변경 내용을 보고했고 커밋·PR·병합 승인을 받았다. [설계·검증](ai-dlc/platform-onprem-removal.md) · [연결 안내](../platform/deploy/onprem/REMOVAL.md)
 
 게시 상태: 사용자 승인으로 [#28](https://github.com/2026-sbh-delta/delta-network-gateway/pull/28) → [#47](https://github.com/2026-sbh-delta/delta-network-gateway/pull/47) → [#49](https://github.com/2026-sbh-delta/delta-network-gateway/pull/49)를 순서대로 main에 병합했다. #49는 #47 병합 후 main 대상으로 변경했다. 각 PR의 CI 통과를 확인했고 초안 #39는 유지한다. 앱 삭제 브랜치도 재시도에서 업로드됐으며 새 main과 통합한다. 운영 릴리스는 별도다.

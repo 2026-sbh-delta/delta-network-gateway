@@ -13,10 +13,11 @@ cleanup() {
 }
 trap cleanup EXIT
 
-"$terraform_bin" -chdir="$module_dir" fmt -check -recursive
 cp "$module_dir/"*.tf "$validation_dir/"
 cp "$module_dir/.terraform.lock.hcl" "$validation_dir/"
 cp -R "$module_dir/tests" "$validation_dir/"
+
+"$terraform_bin" -chdir="$validation_dir" fmt -check -recursive
 
 init_args=(-backend=false -input=false -lockfile=readonly -no-color)
 if [[ -d "$module_dir/.terraform/providers" ]]; then

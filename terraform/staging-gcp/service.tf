@@ -30,10 +30,10 @@ resource "google_artifact_registry_repository" "app" {
   depends_on = [google_project_service.enabled]
 }
 
-# The app calls no Google API. An account without roles keeps runtime credentials empty.
+# Runtime identity has only its app secret access and Cloud SQL Client permissions.
 resource "google_service_account" "app" {
   account_id   = "${var.name}-${var.environment}-stg-run"
-  display_name = "Delta staging runtime (no roles)"
+  display_name = "Delta staging runtime"
   depends_on   = [google_project_service.enabled]
 }
 
@@ -55,7 +55,7 @@ resource "google_cloud_run_v2_service" "app" {
       max_instance_count = 1
     }
     dynamic "volumes" {
-      for_each = var.database_enabled ? [1] : []
+      for_each = var.database_enabled && !var.dual_container ? [1] : []
       content {
         name = "cloudsql"
         cloud_sql_instance {
@@ -64,22 +64,23 @@ resource "google_cloud_run_v2_service" "app" {
       }
     }
     containers {
-      name  = var.container_name
-      image = var.bootstrap_image
+      name       = local.ingress_container_name
+      image      = var.bootstrap_image
+      depends_on = var.dual_container ? ["backend"] : []
       ports {
-        container_port = var.container_port
-      }
-      # 환경 식별값. 클라우드마다 다른 것은 이 값과 DB 주소·접속 설정뿐이다(앱 이미지·스키마는 같다).
-      env {
-        name  = "SERVED_BY"
-        value = "gcp"
-      }
-      env {
-        name  = "APP_ENV"
-        value = "staging"
+        container_port = local.ingress_container_port
       }
       dynamic "env" {
-        for_each = var.database_enabled ? [1] : []
+        for_each = merge({ SERVED_BY = "gcp", CLOUD_PROVIDER = "gcp", APP_ENV = "staging" }, var.dual_container ? {
+          API_HOST = "127.0.0.1", API_PORT = "8080"
+        } : {})
+        content {
+          name  = env.key
+          value = env.value
+        }
+      }
+      dynamic "env" {
+        for_each = var.database_enabled && !var.dual_container ? [1] : []
         content {
           name = "DATABASE_URL"
           value_source {
@@ -91,17 +92,14 @@ resource "google_cloud_run_v2_service" "app" {
         }
       }
       dynamic "volume_mounts" {
-        for_each = var.database_enabled ? [1] : []
+        for_each = var.database_enabled && !var.dual_container ? [1] : []
         content {
           name       = "cloudsql"
           mount_path = "/cloudsql"
         }
       }
       resources {
-        limits = {
-          cpu    = var.cpu
-          memory = var.memory
-        }
+        limits   = { cpu = var.cpu, memory = var.memory }
         cpu_idle = true
       }
       startup_probe {
@@ -110,6 +108,74 @@ resource "google_cloud_run_v2_service" "app" {
         failure_threshold = 30
         http_get {
           path = var.health_check_path
+          port = local.ingress_container_port
+        }
+      }
+    }
+    dynamic "containers" {
+      for_each = var.dual_container ? [1] : []
+      content {
+        name       = "backend"
+        image      = var.bootstrap_backend_image
+        depends_on = var.database_enabled ? ["cloud-sql-proxy"] : []
+        # No ports block: only the FE is an ingress container.
+        dynamic "env" {
+          for_each = merge({ CLOUD_PROVIDER = "gcp", APP_ENV = "staging", PORT = "8080" },
+          var.database_enabled ? merge(local.node_database_environment, { PGUSER = "board_app" }) : {})
+          content {
+            name  = env.key
+            value = env.value
+          }
+        }
+        dynamic "env" {
+          for_each = var.database_enabled ? {
+            DATABASE_URL = google_secret_manager_secret.database_url[0].secret_id
+            PGPASSWORD   = google_secret_manager_secret.runtime_password[0].secret_id
+          } : {}
+          content {
+            name = env.key
+            value_source {
+              secret_key_ref {
+                secret  = env.value
+                version = "latest"
+              }
+            }
+          }
+        }
+        resources {
+          limits   = { cpu = var.cpu, memory = var.memory }
+          cpu_idle = true
+        }
+        startup_probe {
+          period_seconds    = 2
+          timeout_seconds   = 1
+          failure_threshold = 30
+          http_get {
+            path = "/healthz"
+            port = 8080
+          }
+        }
+      }
+    }
+    dynamic "containers" {
+      for_each = var.dual_container && var.database_enabled ? [1] : []
+      content {
+        name  = "cloud-sql-proxy"
+        image = var.cloud_sql_proxy_image
+        args = ["--address=127.0.0.1", "--port=5432", "--health-check", "--http-address=0.0.0.0", "--http-port=9090",
+        "--lazy-refresh", google_sql_database_instance.app[0].connection_name]
+        resources {
+          limits   = { cpu = "1", memory = "256Mi" }
+          cpu_idle = true
+        }
+        startup_probe {
+          period_seconds    = 2
+          timeout_seconds   = 1
+          failure_threshold = 30
+          http_get {
+            path = "/startup"
+            port = 9090
+          }
         }
       }
     }
@@ -119,10 +185,10 @@ resource "google_cloud_run_v2_service" "app" {
     percent = 100
   }
   lifecycle {
-    ignore_changes = [template[0].containers[0].image, template[0].labels, client, client_version]
+    ignore_changes = [template[0].containers[0].image, template[0].containers[1].image, template[0].labels, client, client_version]
   }
   # 런타임 계정의 DB·비밀값 권한이 먼저 있어야 새 개정판이 뜬다.
-  # 비밀값 버전(DATABASE_URL)까지 있어야 새 개정판이 뜬다(없으면 "secret ... not found"로 실패, 11/5 apply).
+  # Provision owner must publish the separate runtime secret versions before service rollout.
   depends_on = [google_project_service.enabled, google_project_iam_member.app_sql_client,
-  google_secret_manager_secret_iam_member.app_database_url, google_secret_manager_secret_version.database_url]
+  google_secret_manager_secret_iam_member.app_database_url, google_secret_manager_secret_iam_member.app_password]
 }

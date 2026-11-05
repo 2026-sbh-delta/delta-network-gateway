@@ -43,7 +43,9 @@ class Run:
                  sleep: Callable[[float], None] = time.sleep, run_id: str | None = None,
                  cloudflare: CloudflareClient | None = None, cutover: CutoverConfig | None = None,
                  probe: Callable[..., tuple[int, str]] | None = None,
-                 resolve: Callable[[str], str | None] | None = None, now: Callable[[], float] | None = None) -> None:
+                 resolve: Callable[[str], str | None] | None = None, now: Callable[[], float] | None = None,
+                 release_jenkins: JenkinsClient | None = None, release_signing_key: bytes | None = None,
+                 release_config: dict[str, Any] | None = None) -> None:
         self.run_id = run_id or uuid.uuid4().hex
         self.options = options
         (store_dir / BOARD_DIR).mkdir(parents=True, exist_ok=True)
@@ -52,6 +54,7 @@ class Run:
         self._deps = Deps(run_id=self.run_id, options=options, board=self._board, sast=sast, dast=dast,
                           build_jenkins=build_jenkins, deploy_jenkins=deploy_jenkins, staging=staging,
                           image_repo=image_repo, sleep=sleep, cloudflare=cloudflare, cutover=cutover,
+                          release_jenkins=release_jenkins, release_signing_key=release_signing_key, release_config=release_config,
                           **{k: v for k, v in (("probe", probe), ("resolve", resolve), ("now", now)) if v})
         self._answer: str | None = None
         self._answered = threading.Event()

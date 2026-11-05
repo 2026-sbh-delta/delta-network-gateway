@@ -10,6 +10,7 @@ Cloud Run v2 개정판에는 실제로 받은 digest 필드가 없다. 그래서
 from __future__ import annotations
 
 import asyncio
+import json
 import re
 import time
 import urllib.error
@@ -18,13 +19,15 @@ from collections.abc import Callable
 from typing import Any, Protocol
 from urllib.parse import quote
 
-from delta_staging.aws_ecs import Outcome, Report, StagingError, current_public_ip
+from delta_staging.aws_ecs import (Outcome, Report, StagingError, check_health, current_public_ip,
+                                   cloud_failure, health_json, reset_result, SafetyCheck, verify_scan_safety)
 from delta_staging.config import GcpTarget
-from delta_staging.contract import DeployRequest
+from delta_staging.contract import DeployRequest, bundle_hash
 
 RUN = "https://run.googleapis.com/v2"
 COMPUTE = "https://compute.googleapis.com/compute/v1"
 REGISTRY = "https://artifactregistry.googleapis.com/v1"
+LOGGING = "https://logging.googleapis.com/v2"
 SCOPES = ("https://www.googleapis.com/auth/cloud-platform",)
 AR_IMAGE = re.compile(r"^(?P<host>(?P<location>[a-z0-9-]+)-docker\.pkg\.dev)/(?P<project>[a-z0-9-]+)/(?P<repo>[a-z0-9._-]+)"
                       r"/(?P<package>[a-z0-9._/-]+?)(:(?P<tag>[A-Za-z0-9_.-]{1,128}))?$")
@@ -51,11 +54,7 @@ class GoogleHttp:
                 body: dict[str, Any] | None = None) -> dict[str, Any]:
         response = self.session.request(method, url, params=params, json=body, timeout=30)
         if response.status_code >= 400:
-            try:
-                message = response.json().get("error", {}).get("message", "")
-            except ValueError:
-                message = ""
-            raise StagingError(f"Google API {response.status_code}: {message or response.reason}")
+            raise StagingError(f"Google API HTTP {response.status_code}. 응답 원문은 비밀 보호를 위해 생략했다")
         return response.json() if response.content else {}
 
 
@@ -80,7 +79,8 @@ class GcpCloudRunStaging:
     def __init__(self, target: GcpTarget, *, http: Http | None = None, poll_seconds: float = 1,
                  rollout_timeout: float = 600, health_timeout: float = 180, reset_timeout: float = 240,
                  public_ip: Callable[[], str] = current_public_ip, probe: Callable[[str], bool] = _probe,
-                 stable_probes: int = 3) -> None:
+                 stable_probes: int = 3, health_probe: Callable[[str], dict[str, Any]] = health_json,
+                 safety_check: SafetyCheck | None = None) -> None:
         self.target = target
         self._http = http
         self.poll_seconds = poll_seconds
@@ -90,6 +90,9 @@ class GcpCloudRunStaging:
         self.public_ip = public_ip
         self.probe = probe
         self.stable_probes = stable_probes  # 준비로 보려면 연속으로 성공해야 하는 응답 수
+        self.health_probe = health_probe
+        self.safety_check = safety_check
+        self._schema_prepared = target.schema_prepared
 
     @property
     def service_name(self) -> str:
@@ -110,6 +113,13 @@ class GcpCloudRunStaging:
 
     def check_request(self, req: DeployRequest) -> None:
         self.check_image(req.image)
+        for image in (req.images or {}).values():
+            self.check_image(image)
+        if req.images and (self.target.environment != "staging" or not self.target.backend_container_name
+                           or not self.target.reset_job or not self.target.database_name):
+            raise StagingError("v2에는 staging의 BE·reset Job·database_name 설정이 필요하다")
+        if req.images and self.safety_check is None:
+            raise StagingError("v2에는 S06 관측 훅 연결이 필요하다. 라이브러리 호출자가 제공해야 한다")
         if req.scanner_ip and not self.target.dynamic_scanner_access:
             raise StagingError("이 스테이징은 고정 스캐너 대역만 받아서 scanner_ip 를 받지 않는다")
 
@@ -127,13 +137,18 @@ class GcpCloudRunStaging:
         return f"http://{found['address']}"
 
     async def deploy(self, req: DeployRequest, report: Report) -> Outcome:
-        self.check_image(req.image)
+        self.check_request(req)
+        if req.images:
+            await verify_scan_safety(self.safety_check, req, self.target.database_name)
+            report("scan_safety", "이전 DAST 종료·교체 전 쓰기 drain 확인")
         url = await self.endpoint()
         scanner_ip, rule_changed = None, False
         if req.scanner_ip:
             scanner_ip = await asyncio.to_thread(self.public_ip) if req.scanner_ip == "auto" else req.scanner_ip
             rule_changed = await self._allow_scanner(scanner_ip, req.run_id)
             report("scanner_allowed", f"{scanner_ip}/32")
+        if req.images:
+            return await self._deploy_bundle(req, report, url, scanner_ip, rule_changed)
         image = await self._pinned(req.image)
         digest = image.rsplit("@", 1)[1]
         report("image_digest", digest)
@@ -164,6 +179,80 @@ class GcpCloudRunStaging:
         return Outcome(url=url, revision=revision, image_digest=digest, task_arn=revision,
                        scanner_ip=scanner_ip)
 
+    async def _deploy_bundle(self, req: DeployRequest, report: Report, url: str,
+                             scanner_ip: str | None, rule_changed: bool) -> Outcome:
+        # 둘 다 실제로 존재하는지 먼저 읽는다. 구성 누락이면 DB를 변경하지 않는다.
+        service = await self._call("GET", f"{RUN}/{self.service_name}")
+        names = [c.get("name") for c in service.get("template", {}).get("containers", [])]
+        if names.count(self.target.container_name) != 1 or names.count(self.target.backend_container_name) != 1:
+            raise StagingError("Cloud Run의 FE·BE 두 컨테이너 구성이 필요하다")
+        backend = next(c for c in service["template"]["containers"] if c.get("name") == self.target.backend_container_name)
+        backend_env = {item["name"]: item.get("value") for item in backend.get("env", [])}
+        if backend_env.get("PGDATABASE") != self.target.database_name:
+            raise StagingError("BE 서비스 정의의 DB 이름이 staging target과 다르다")
+        reset = None
+        if not self._schema_prepared:
+            result = await self._reset_bundle(req)
+            self._schema_prepared = True
+            report("schema_prepared", "최초 스키마 준비와 초기화 관측 완료")
+        else:
+            reset = asyncio.create_task(self._reset_bundle(req))
+        try:
+            operation = await self._update_service(req, req.image)
+            report("service_updated", self.target.service)
+            await self._wait_run_operation(operation)
+            revision = await self._serving_revision(req.run_id, strict=True)
+            report("traffic_switched", _short(revision))
+            images = await self._check_bundle_revision(revision, req)
+            observed = {role: image.rsplit("@", 1)[1] for role, image in images.items()}
+            report("image_digest", json.dumps(observed, sort_keys=True))
+            if reset is not None:
+                result = await reset
+            report("data_reset", f"{self.target.reset_job}: 남은 행 0")
+            if req.scanner_ip == "auto":
+                await self._wait_reachable(url, self.stable_probes if rule_changed else 1)
+            deadline = time.monotonic() + self.health_timeout
+            while True:
+                try:
+                    version = check_health(await asyncio.to_thread(self.health_probe, url), req)
+                    break
+                except StagingError:
+                    if time.monotonic() >= deadline:
+                        raise
+                await asyncio.sleep(self.poll_seconds)
+            # 헬스 대기 중 다른 배포가 끼어들거나 traffic이 바뀐 경우도 차단한다.
+            if await self._serving_revision(req.run_id, strict=True) != revision:
+                raise StagingError("헬스 확인 중 serving revision이 바뀌었다")
+            safety = await verify_scan_safety(self.safety_check, req, self.target.database_name, revision)
+            report("healthy", "FE→BE→PostgreSQL18 확인")
+            report("pre_dast_zero", "새 revision 전환 후 DAST 직전 행0 관측 확인")
+            return Outcome(url, revision, observed["frontend"], revision, scanner_ip,
+                           images=images, image_digests=observed, bundle_sha256=bundle_hash(req.commit, observed),
+                           data_reset_remaining=result["remaining_rows"], databaseVersionNum=version,
+                           database_version_num=version, s06_verified=True, pre_dast_remaining=safety.remaining_rows)
+        finally:
+            if reset is not None:
+                if not reset.done():
+                    reset.cancel()
+                await asyncio.gather(reset, return_exceptions=True)
+
+    async def _check_bundle_revision(self, revision: str, req: DeployRequest) -> dict[str, str]:
+        current = await self._call("GET", f"{RUN}/{self.service_name}/revisions/{_short(revision)}")
+        if current.get("name") != revision:
+            raise StagingError("관측한 개정판의 식별자가 다르다")
+        images = {}
+        for role, name in {"frontend": self.target.container_name, "backend": self.target.backend_container_name}.items():
+            containers = [c for c in current.get("containers", []) if c.get("name") == name]
+            if len(containers) != 1 or containers[0].get("image") != req.images[role]:
+                raise StagingError("serving revision의 두 고정 이미지가 요청과 다르다")
+            env = {item["name"]: item.get("value") for item in containers[0].get("env", [])}
+            if env.get("DELTA_RUN_ID") != req.run_id:
+                raise StagingError("serving revision의 정확한 실행 ID가 다르다")
+            if role == "backend" and env.get("PGDATABASE") != self.target.database_name:
+                raise StagingError("serving revision의 DB 이름이 staging target과 다르다")
+            images[role] = containers[0]["image"]
+        return images
+
     async def _pinned(self, image: str) -> str:
         """digest 로 고정한 이미지. 태그면 Artifact Registry 에서 지금 가리키는 digest 를 찾는다."""
         if "@sha256:" in image:
@@ -184,20 +273,44 @@ class GcpCloudRunStaging:
         template = dict(service["template"])
         containers = []
         found = False
+        found_backend = False
         for container in template.get("containers", []):
-            if container.get("name") == self.target.container_name:
-                found = True
+            frontend = container.get("name") == self.target.container_name
+            backend = bool(req.images and container.get("name") == self.target.backend_container_name)
+            if frontend or backend:
+                found = found or frontend
+                found_backend = found_backend or backend
+                current_env = {item["name"]: item.get("value") for item in container.get("env", [])}
+                if backend and current_env.get("PGDATABASE") != self.target.database_name:
+                    raise StagingError("BE 서비스 정의의 DB 이름이 staging target과 다르다")
                 env = {**req.env, "DELTA_RUN_ID": req.run_id, **({"DELTA_COMMIT": req.commit} if req.commit else {})}
+                if req.images:
+                    env.update({"APP_ENV": "staging", "APP_VERSION": req.commit, "CLOUD_PROVIDER": "gcp",
+                                "IMAGE_DIGEST": req.image_digests["frontend" if frontend else "backend"]})
+                    env.update({"API_HOST": "127.0.0.1", "API_PORT": "8080"} if frontend else {"STORAGE_BACKEND": "postgres"})
                 kept = [item for item in container.get("env", []) if item["name"] not in env]
-                container = {**container, "image": image,
+                container = {**container, "image": req.images["frontend" if frontend else "backend"] if req.images else image,
                              "env": kept + [{"name": k, "value": v} for k, v in sorted(env.items())]}
+                if req.images:
+                    container = {**container, "startupProbe": {"httpGet": {"path": "/healthz", "port": 3000 if frontend else 8080},
+                                                              "periodSeconds": 2, "timeoutSeconds": 1, "failureThreshold": 60}}
+                    if frontend:
+                        container["ports"] = [{"containerPort": 3000}]
+                        container["dependsOn"] = list(dict.fromkeys([*container.get("dependsOn", []), self.target.backend_container_name]))
+                    else:
+                        container.pop("ports", None)  # ingress는 FE에만 있다. Proxy 등 나머지 컨테이너는 유지한다.
             containers.append(container)
         if not found:
             raise StagingError(f"Cloud Run 서비스에 컨테이너 {self.target.container_name} 이 없다")
+        if req.images and not found_backend:
+            raise StagingError("Cloud Run 서비스에 BE 컨테이너가 없다")
         template.pop("revision", None)  # 개정판 이름은 Cloud Run 이 새로 짓는다
         template["labels"] = {**template.get("labels", {}), RUN_LABEL: _label(req.run_id)}
         template["containers"] = containers
-        return await self._call("PATCH", f"{RUN}/{self.service_name}", body={**service, "template": template})
+        body = {**service, "template": template}
+        if req.images:
+            body["traffic"] = [{"type": "TRAFFIC_TARGET_ALLOCATION_TYPE_LATEST", "percent": 100}]
+        return await self._call("PATCH", f"{RUN}/{self.service_name}", body=body)
 
     async def _reset_data(self, image: str) -> None:
         """스테이징 DB를 비운다. 초기화 Job의 이미지를 배포할 이미지로 맞추고(같은 스키마로 마이그레이션) 실행한다.
@@ -215,6 +328,76 @@ class GcpCloudRunStaging:
         if execution.get("failedCount", 0) or not execution.get("succeededCount"):
             raise StagingError("스테이징 데이터 초기화가 실패했다(남은 데이터가 있거나 오류). 배포하지 않는다")
 
+    async def _reset_bundle(self, req: DeployRequest) -> dict[str, int]:
+        if self.target.environment != "staging" or not self.target.reset_job:
+            raise StagingError("staging 전용 reset Job이 필요하다")
+        job = await self._call("GET", f"{RUN}/{self.job_name}")
+        outer = dict(job["template"])
+        inner = dict(outer["template"])
+        containers = []
+        found = False
+        for container in inner.get("containers", []):
+            if container.get("name") == self.target.reset_container_name:
+                if found:
+                    raise StagingError("reset 컨테이너 이름이 중복됐다")
+                found = True
+                env = {item["name"]: item.get("value") for item in container.get("env", [])}
+                if (env.get("APP_ENV") != "staging" or env.get("STORAGE_BACKEND") != "postgres"
+                        or env.get("APP_RESET_DATABASE") != self.target.database_name
+                        or env.get("PGDATABASE") != self.target.database_name):
+                    raise StagingError("reset Job의 staging DB 식별·허용 설정이 필요하다")
+                container = {**container, "image": req.images["backend"],
+                             "command": ["node", "scripts/reset-db.mjs"], "args": []}
+            containers.append(container)
+        if not found:
+            raise StagingError("Job에 전용 reset 컨테이너가 없다")
+        inner.update({"containers": containers, "maxRetries": 0})
+        outer.update({"template": inner, "taskCount": 1, "parallelism": 1})
+        update = await self._call("PATCH", f"{RUN}/{self.job_name}", body={**job, "template": outer})
+        await self._wait_operation(update, self.reset_timeout, "초기화 Job 갱신")
+        run = await self._call("POST", f"{RUN}/{self.job_name}:run", body={})
+        execution = await self._wait_operation(run, self.reset_timeout, "데이터 초기화")
+        name = execution.get("name", "")
+        if (not name.startswith(self.job_name + "/executions/")
+                or type(execution.get("succeededCount")) is not int or execution["succeededCount"] != 1
+                or execution.get("failedCount", 0) != 0 or execution.get("cancelledCount", 0) != 0
+                or execution.get("runningCount", 0) != 0):
+            raise StagingError("초기화 Job 실행의 성공·식별 증거가 없다")
+        executed = [c for c in execution.get("template", {}).get("containers", [])
+                    if c.get("name") == self.target.reset_container_name]
+        if len(executed) != 1 or executed[0].get("image") != req.images["backend"]:
+            raise StagingError("초기화 execution의 실제 BE 이미지가 요청과 다르다")
+        deadline = time.monotonic() + self.reset_timeout
+        log_filter = (f'resource.type="cloud_run_job" AND resource.labels.job_name={json.dumps(self.target.reset_job)} '
+                      f'AND resource.labels.location={json.dumps(self.target.region)} '
+                      f'AND labels."run.googleapis.com/execution_name"={json.dumps(_short(name))} '
+                      f'AND logName="projects/{self.target.project_id}/logs/run.googleapis.com%2Fstdout"')
+        while True:
+            messages = []
+            page_token = None
+            while True:
+                body = {"resourceNames": [f"projects/{self.target.project_id}"],
+                        "filter": log_filter, "pageSize": 1000, "orderBy": "timestamp asc"}
+                if page_token:
+                    body["pageToken"] = page_token
+                logs = await self._call("POST", f"{LOGGING}/entries:list", body=body)
+                for entry in logs.get("entries", []):
+                    if isinstance(entry.get("jsonPayload"), dict):
+                        messages.append(json.dumps(entry["jsonPayload"]))
+                    elif isinstance(entry.get("textPayload"), str):
+                        messages.append(entry["textPayload"])
+                page_token = logs.get("nextPageToken")
+                if not page_token:
+                    break
+                if time.monotonic() >= deadline:
+                    raise StagingError("초기화 Job 로그 페이지 조회 시간 초과")
+            result = reset_result(messages)
+            if result is not None:
+                return result
+            if time.monotonic() >= deadline:
+                raise StagingError("초기화 Job의 구조화된 잔존 행·DB18 출력이 없다")
+            await asyncio.sleep(self.poll_seconds)
+
     async def _wait_operation(self, operation: dict[str, Any], timeout: float, what: str) -> dict[str, Any]:
         deadline = time.monotonic() + timeout
         while not operation.get("done"):
@@ -223,7 +406,7 @@ class GcpCloudRunStaging:
             await asyncio.sleep(self.poll_seconds)
             operation = await self._call("GET", f"{RUN}/{operation['name']}")
         if operation.get("error"):
-            raise StagingError(f"{what} 실패: {operation['error'].get('message', '사유 없음')}")
+            raise StagingError(f"{what} 실패: {cloud_failure(operation['error'].get('message'))}")
         return operation.get("response", {})
 
     async def _wait_run_operation(self, operation: dict[str, Any]) -> None:
@@ -234,25 +417,27 @@ class GcpCloudRunStaging:
             await asyncio.sleep(self.poll_seconds)
             operation = await self._call("GET", f"{RUN}/{operation['name']}")
         if operation.get("error"):
-            raise StagingError(f"Cloud Run 배포 실패: {operation['error'].get('message', '사유 없음')}")
+            raise StagingError(f"Cloud Run 배포 실패: {cloud_failure(operation['error'].get('message'))}")
 
-    async def _serving_revision(self, run_id: str) -> str:
+    async def _serving_revision(self, run_id: str, *, strict: bool = False) -> str:
         """이번 실행이 만든 개정판이 준비됐고 트래픽 100% 를 받는지. DAST 가 이전 버전을 보지 않게 한다."""
         deadline = time.monotonic() + self.health_timeout
         while True:
             service = await self._call("GET", f"{RUN}/{self.service_name}")
             condition = service.get("terminalCondition", {})
             if condition.get("state") == "CONDITION_FAILED":
-                raise StagingError(f"Cloud Run 배포 실패: {condition.get('message', '사유 없음')}")
+                raise StagingError(f"Cloud Run 배포 실패: {cloud_failure(condition.get('message'))}")
             created = service.get("latestCreatedRevision", "")
-            if not service.get("reconciling") and created and _short(created) == _short(service.get("latestReadyRevision", "")):
+            ready = not strict or condition.get("state") == "CONDITION_SUCCEEDED"
+            if ready and not service.get("reconciling") and created and _short(created) == _short(service.get("latestReadyRevision", "")):
                 revision = await self._call("GET", f"{RUN}/{self.service_name}/revisions/{_short(created)}")
                 if revision.get("labels", {}).get(RUN_LABEL) != _label(run_id):
                     raise StagingError("최신 개정판이 이번 실행의 것이 아니다. 다른 배포가 끼어들었다")
                 percent = sum(t.get("percent", 0) for t in service.get("trafficStatuses", [])
                               if _short(t.get("revision", "")) == _short(created)
-                              or (t.get("type") == "TRAFFIC_TARGET_ALLOCATION_TYPE_LATEST" and not t.get("revision")))
-                if percent == 100:
+                              or (not strict and t.get("type") == "TRAFFIC_TARGET_ALLOCATION_TYPE_LATEST" and not t.get("revision")))
+                total = sum(t.get("percent", 0) for t in service.get("trafficStatuses", []))
+                if percent == 100 and (not strict or total == 100):
                     return revision.get("name") or created
             if time.monotonic() >= deadline:
                 raise StagingError(f"새 개정판이 {int(self.health_timeout)}초 안에 트래픽을 모두 받지 않았다")
@@ -307,8 +492,7 @@ class GcpCloudRunStaging:
             operation = await self._call(
                 "GET", f"{COMPUTE}/projects/{self.target.project_id}/global/operations/{operation['name']}")
         if operation.get("error"):
-            errors = operation["error"].get("errors", [])
-            raise StagingError(f"Cloud Armor 규칙 변경 실패: {errors[0].get('message', '') if errors else '사유 없음'}")
+            raise StagingError("Cloud Armor 규칙 변경 실패. 오류 상세 원문 생략")
 
     async def stop(self) -> None:
         """스캐너 접근을 닫는다. Cloud Run 은 요청이 없으면 최소 인스턴스만 남고, 닿을 수 있는 경로가 없다."""

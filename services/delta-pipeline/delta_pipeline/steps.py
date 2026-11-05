@@ -10,14 +10,16 @@ import logging
 import re
 import time
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import wraps
 from typing import Annotated, Any, Protocol, TypedDict, TypeVar
-from uuid import NAMESPACE_URL, uuid5
+from uuid import NAMESPACE_URL, uuid4, uuid5
 
 from langgraph.types import interrupt
 
 from delta_pipeline.clients import ServiceUnavailable, evidence_hash, probe, resolve_cname
+from delta_pipeline.delivery import (TARGET_RE, canonical_json, match_runtime, require_postgres18,
+                                     sign_approval, validate_bundle, validate_config)
 from delta_pipeline.model import REPO_PREFIX, Board, Options
 
 POLL_SECONDS = 1  # 내부 서비스 조회(SAST·DAST·도메인 확인). 끝난 뒤 최대 1초 안에 다음 단계로 간다
@@ -36,7 +38,6 @@ RUNNING_JENKINS_STATES = ("IN_PROGRESS", "NOT_EXECUTED", "PAUSED_PENDING_INPUT",
 PROCEED = ("approve", "확인, 계속 진행")
 PASSING_GATE_RECORDS = ("pass", "approved")
 DAST_PASS = ("NOT_REPRODUCED",)
-CLOUD = "gcp"  # GCP 스테이징을 먼저 완주한다. AWS 는 같은 계약을 적용한 뒤 붙인다
 READ_ATTEMPTS = 5  # Jenkins 는 빌드 중이나 재시작 직후 조회가 15초를 넘기기도 한다(빌드 #88)
 COMMIT_RE = re.compile(r"[0-9a-f]{40}")
 ROWS_RE = re.compile(r"남은 행 (\d+)")
@@ -62,6 +63,11 @@ class PipelineState(TypedDict, total=False):
     build: int
     image: str
     image_digest: str
+    bundle: dict[str, Any] | None
+    images: dict[str, str] | None
+    image_digests: dict[str, str] | None
+    bundle_sha256: str | None
+    stage_verified_bundle: str | None
     sast_run_id: str
     dast_targets: int
     deploy_build: int
@@ -78,6 +84,10 @@ class PipelineState(TypedDict, total=False):
     fix_target: dict[str, str] | None
     first_dast_run_id: str | None
     fix_pr: dict[str, Any] | None
+    release_approval: dict[str, Any] | None
+    release_config: dict[str, Any] | None
+    release_build: int
+    release_result: dict[str, Any] | None
 
 
 class Stopped(Exception):
@@ -169,6 +179,9 @@ class Deps:
     probe: Callable[..., tuple[int, str]] = probe
     resolve: Callable[[str], str | None] = resolve_cname
     now: Callable[[], float] = time.time
+    release_jenkins: JenkinsClient | None = None
+    release_signing_key: bytes | None = field(default=None, repr=False)
+    release_config: dict[str, Any] | None = None
 
 
 def guarded(step: Step) -> Step:
@@ -255,8 +268,25 @@ class Steps:
         if not REPO_RE.fullmatch(options.repo) or not COMMIT_RE.fullmatch(options.commit):
             self._board.update("prepare", state="fail", summary="허용된 저장소·40자리 커밋 SHA가 아니다")
             raise Stopped("허용되지 않은 저장소이거나 커밋 SHA가 아니다")
+        if options.staging_cloud not in ("aws", "gcp"):
+            self._board.update("prepare", state="fail", summary="스테이징 cloud는 aws 또는 gcp여야 한다")
+            raise Stopped("지원하지 않는 스테이징 cloud다")
+        if options.release_target is not None and (not isinstance(options.release_target, str)
+                                                   or not TARGET_RE.fullmatch(options.release_target)):
+            self._board.update("prepare", state="fail", summary="단일 release target_id가 아니다")
+            raise Stopped("운영 대상은 하나의 target_id여야 한다")
+        if options.cutover and options.release_target is None:
+            self._board.update("prepare", state="fail", summary="운영 release target 없이 도메인을 전환할 수 없다")
+            raise Stopped("운영 release target·배포 verify 없이 도메인 전환을 허용하지 않는다")
         self._board.update("prepare", state="pass", summary=f"{options.repo.removeprefix(REPO_PREFIX)} @ {options.commit[:7]}")
-        return {"halt": None}
+        config = None
+        if options.release_target is not None and self._deps.release_config is not None:
+            try:
+                config = validate_config(options.release_target, self._deps.release_config)
+            except (ValueError, TypeError) as exc:
+                self._board.update("prepare", state="fail", summary="운영 인벤토리를 확인할 수 없다")
+                raise Stopped("운영 인벤토리를 확인할 수 없다") from exc
+        return {"halt": None, "release_config": config}
 
     # ── Jenkins 공통 ────────────────────────────────────
     def _ensure_build(self, jenkins: JenkinsClient, params: Mapping[str, str], run_key: str) -> int:
@@ -291,13 +321,23 @@ class Steps:
             image = str(result.get("image_ref", ""))
             if result.get("commit") != self._commit(state) or "@sha256:" not in image:
                 raise Stopped("빌드 결과가 요청한 커밋·digest 와 맞지 않는다")
+            bundle = None
+            if any(key in result for key in ("schema", "images", "image_digests", "bundle_sha256", "platform")):
+                try:
+                    bundle = validate_bundle(result, self._commit(state))
+                except ValueError as exc:
+                    raise Stopped(str(exc)) from exc
         except Stopped as stop:
             self._board.update("build", state="fail", summary=str(stop))
             raise
         digest = image.split("@", 1)[1]
-        self._board.add_detail("build", image=image)
+        self._board.add_detail("build", image=image, **({"bundle": bundle} if bundle else {}))
         self._board.update("build", state="pass", summary=f"이미지 {digest[:19]}")
-        return {"image": image, "image_digest": digest}
+        return {"image": image, "image_digest": digest, "bundle": bundle,
+                "images": bundle["images"] if bundle else None,
+                "image_digests": bundle["image_digests"] if bundle else None,
+                "bundle_sha256": bundle["bundle_sha256"] if bundle else None,
+                "stage_verified_bundle": None}
 
     # ── SAST ────────────────────────────────────────────
     def sast_start(self, state: PipelineState) -> dict[str, Any]:
@@ -330,15 +370,22 @@ class Steps:
             self._board.update("sast", state="fail", summary="점검한 커밋이 요청과 다르다")
             raise Stopped("SAST 가 점검한 커밋이 요청과 다르다")
         summary = scan.get("summary")
-        scope = (summary or {}).get("scope") or {}
-        self._board.add_detail("sast", scope=scope, counts=(summary or {}).get("counts") or {})
+        summary = summary if isinstance(summary, Mapping) else {}
+        scope = summary.get("scope")
+        scope = scope if isinstance(scope, Mapping) else {}
+        counts = summary.get("counts")
+        counts = counts if isinstance(counts, Mapping) else {}
+        self._board.add_detail("sast", scope=scope, counts=counts)
         problem = ("결과 요약 없음" if not summary else "점검 범위 증거 없음" if not scope
                    else "실제 점검 커밋 다름" if scope.get("commit") != commit
-                   else "점검한 소스 파일 0개" if not scope.get("files") else None)
+                   else "점검한 소스 파일 0개" if not scope.get("files")
+                   else "점검한 소스 파일 수 불명" if type(scope.get("files")) is not int or scope["files"] < 0 else None)
         if problem:
             # 0건이 정상인지 확인할 수 없다. 자동 통과하지 않는다.
             return {"dast_targets": 0} | self._ask("sast", "sast", f"SAST 범위 확인({problem})", 1)
-        targets, secrets = int(summary.get("dast_targets") or 0), int((summary.get("counts") or {}).get("secrets") or 0)
+        targets, secrets = summary.get("dast_targets"), counts.get("secrets")
+        if type(targets) is not int or targets < 0 or type(secrets) is not int or secrets < 0:
+            return {"dast_targets": 0} | self._ask("sast", "sast", "SAST 결과 수 불명", 1)
         self._board.add_detail("sast", dast_targets=targets)
         update = {"dast_targets": targets}
         if secrets:
@@ -351,8 +398,11 @@ class Steps:
         jenkins = self._deps.deploy_jenkins
         self._board.update("stage", state="running", summary="스테이징 데이터 초기화 후 같은 digest 배포 중")
         # HOLDER: 스테이징(과 DB)을 이 실행이 점유한다. 점검이 끝나 풀기 전에는 다른 실행이 배포·초기화하지 못한다.
-        build = self._ensure_build(jenkins, {"IMAGE": state["image"], "COMMIT": self._commit(state), "CLOUD": CLOUD,
-                                             "HOLDER": self._deps.run_id}, self._key(state, "stage"))
+        params = {"IMAGE": state["image"], "COMMIT": self._commit(state), "CLOUD": self._deps.options.staging_cloud,
+                  "HOLDER": self._deps.run_id}
+        if state.get("bundle"):
+            params |= {"IMAGES_JSON": canonical_json(state["images"]), "BUNDLE_SHA256": state["bundle_sha256"]}
+        build = self._ensure_build(jenkins, params, self._key(state, "stage"))
         self._board.add_detail("stage", build=build, url=jenkins.console_url(build))
         return {"deploy_build": build}
 
@@ -363,6 +413,15 @@ class Steps:
                 raise Stopped(f"스테이징이 준비되지 않았다: {result.get('state')}")
             if result.get("image_digest") != state["image_digest"]:
                 raise Stopped("스테이징에 뜬 이미지 digest 가 빌드 결과와 다르다")
+            if state.get("bundle"):
+                try:
+                    match_runtime(result, state["bundle"])
+                    require_postgres18(result)
+                    remaining = result.get("data_reset_remaining")
+                    if type(remaining) is not int or remaining != 0:
+                        raise ValueError("스테이징 구조화 초기화 결과가 정수 0이 아니다")
+                except ValueError as exc:
+                    raise Stopped(str(exc)) from exc
             reset = next((s for s in result.get("steps") or () if s.get("name") == "data_reset"), None)
             remaining = _rows_remaining(reset)
             if remaining != 0:
@@ -373,7 +432,8 @@ class Steps:
         self._board.add_detail("stage", url=result.get("url"), revision=result.get("revision"),
                                scanner_ip=result.get("scanner_ip"), rows_remaining=0)
         self._board.update("stage", state="pass", summary=f"{result.get('url')} · 초기화 남은 행 0")
-        return {"staging_url": str(result.get("url")), "staging_revision": result.get("revision")}
+        return {"staging_url": str(result.get("url")), "staging_revision": result.get("revision"),
+                "stage_verified_bundle": state.get("bundle_sha256")}
 
     # ── DAST ────────────────────────────────────────────
     def dast_start(self, state: PipelineState) -> dict[str, Any]:
@@ -392,7 +452,9 @@ class Steps:
         binding = {"build_id": self._key(state, "build"), "sast_run_id": state["sast_run_id"],
                    "commit_sha": self._commit(state), "image": state["image"],
                    "image_digest": state["image_digest"], "sast_evidence_sha256": evidence_hash(report),
-                   "target_url": state["staging_url"], "execution_cloud": CLOUD}
+                   "target_url": state["staging_url"], "execution_cloud": self._deps.options.staging_cloud}
+        if state.get("bundle"):
+            binding["images"] = dict(state["images"])
         if state.get("staging_revision"):
             binding["runtime_revision"] = state["staging_revision"]
         self._deps.dast.submit(run_id, binding, report, previous)
@@ -415,6 +477,9 @@ class Steps:
         results = [{"finding_id": r.get("finding_id"), "status": r.get("status")} for r in view.get("results", ())]
         self._board.add_detail("dast", results=results, evidence_sha256=view.get("evidence_sha256"))
         if status == "skipped":
+            if (state.get("dast_targets") or state.get("first_dast_run_id") or results
+                    or view.get("finding_ids") or view.get("eligible_count")):
+                return self._ask("dast", "dast", "DAST 후보가 있지만 실행 근거 없음", 1)
             return self._pass("dast", "dast", "점검할 후보가 없다(DAST 가 확인)")
         if status != "done":
             # interrupted(점검 서버 재시작)·cancelled·error 는 통과가 아니다
@@ -472,7 +537,9 @@ class Steps:
         self._board.new_round(ROUND_NODES, 2)
         # 2차: 새 커밋으로 빌드부터 다시. 게이트 기록을 비워 2차 판정 없이 넘어가지 못하게 한다
         return {"round": 2, "commit": sha, "fix_target": None, "fix_pr": pr_brief,
-                "first_dast_run_id": run_id, "gates": {"sast": "", "dast": ""}, "dast_targets": 0}
+                "first_dast_run_id": run_id, "gates": {"sast": "", "dast": "", "release": "", "release_approval": ""},
+                "dast_targets": 0, "bundle": None, "images": None, "image_digests": None, "bundle_sha256": None,
+                "stage_verified_bundle": None, "release_approval": None, "release_result": None}
 
     def _await_fix(self, run_id: str, finding_id: str) -> dict[str, Any]:
         deadline = time.time() + FIX_DEADLINE_SECONDS
@@ -488,11 +555,138 @@ class Steps:
     def _release(self) -> None:
         """스테이징 점유를 푼다. 실패해도 만료(기본 1시간)로 풀리므로 실행 결과를 바꾸지 않는다."""
         try:
-            released = self._deps.staging.release(CLOUD, self._deps.run_id)
+            released = self._deps.staging.release(self._deps.options.staging_cloud, self._deps.run_id)
             self._board.add_detail("stage", lease="released" if released else "none")
         except ServiceUnavailable as exc:
             LOG.warning("스테이징 점유를 풀지 못했다(만료로 풀린다): %s", exc)
             self._board.add_detail("stage", lease="release_failed")
+
+    # ── 운영 배포: 승인 → 서명 → Jenkins → 실행 근거 검증 ──
+    def _production_bundle(self, state: PipelineState) -> dict[str, Any]:
+        if self._deps.options.release_target is None:
+            raise Stopped("운영 release target 설정이 없다")
+        if any((state.get("gates") or {}).get(gate) != "pass" for gate in ("sast", "dast")):
+            raise Stopped("SAST·DAST 미해결/알 수 없는 판정은 운영을 승인할 수 없다")
+        try:
+            bundle = validate_bundle(state.get("bundle") or {}, self._commit(state))
+        except ValueError as exc:
+            raise Stopped(str(exc)) from exc
+        if (state.get("stage_verified_bundle") != bundle["bundle_sha256"]
+                or state.get("images") != bundle["images"] or state.get("image_digests") != bundle["image_digests"]
+                or state.get("bundle_sha256") != bundle["bundle_sha256"]
+                or state.get("image") != bundle["image_ref"] or state.get("image_digest") != bundle["image_digest"]):
+            raise Stopped("현재 묶음의 스테이징 검증 기록이 없다")
+        return bundle
+
+    def _release_config(self, state: PipelineState) -> dict[str, Any]:
+        try:
+            target = self._deps.options.release_target
+            config = validate_config(target, state.get("release_config"))
+            current = validate_config(target, self._deps.release_config)
+            if canonical_json(config) != canonical_json(current):
+                raise ValueError("운영 설정이 승인 대상과 다르다")
+        except (TypeError, ValueError) as exc:
+            raise Stopped("운영 인벤토리 누락·변경으로 진행할 수 없다") from exc
+        return config
+
+    def ask_release(self, state: PipelineState) -> dict[str, Any]:
+        bundle = self._production_bundle(state)
+        config = self._release_config(state)
+        if self._deps.release_jenkins is None or self._deps.release_signing_key is None:
+            raise Stopped("운영 Jenkins 또는 Ed25519 서명 키가 없다")
+        target = self._deps.options.release_target
+        config_hash = evidence_hash(config)
+        answer = interrupt({"node_id": "release", "prompt": f"운영 배포 승인: {target} · {bundle['commit']} · "
+                            f"bundle {bundle['bundle_sha256']} · config {config_hash}",
+                            "options": [("approve", "운영 배포 승인"), ("stop", "중단")]})
+        if answer != "approve":
+            self._board.update("release", state="fail", summary="운영 배포를 사람이 중단")
+            raise Stopped("운영 배포를 사람이 중단했다")
+        claims = {"deployment_id": self._key(state, "release"), "commit_sha": bundle["commit"],
+                  "bundle_sha256": bundle["bundle_sha256"], "target_id": target, "environment": "production",
+                  "config_sha256": config_hash, "exp": int(self._deps.now()) + 600, "nonce": uuid4().hex}
+        try:
+            approval = sign_approval(claims, self._deps.release_signing_key)
+        except ValueError as exc:
+            self._board.update("release", state="fail", summary="운영 승인 서명 실패")
+            raise Stopped("운영 승인 서명 실패") from exc
+        self._board.update("release", state="running", summary="사람 승인 완료 · 운영 Jenkins 접수 준비")
+        # 원문 토큰과 키는 Board·이벤트 로그에 넣지 않는다. 토큰만 체크포인트에 보존한다.
+        return {"release_approval": approval, "gates": {"release_approval": "approved"}}
+
+    def release_start(self, state: PipelineState) -> dict[str, Any]:
+        bundle = self._production_bundle(state)
+        config = self._release_config(state)
+        approval = state.get("release_approval") or {}
+        claims = approval.get("claims") or {}
+        expected = {"deployment_id": self._key(state, "release"), "commit_sha": bundle["commit"],
+                    "bundle_sha256": bundle["bundle_sha256"], "target_id": config["target_id"],
+                    "environment": "production", "config_sha256": evidence_hash(config)}
+        if ((state.get("gates") or {}).get("release_approval") != "approved"
+                or any(claims.get(k) != v for k, v in expected.items())
+                or not approval.get("signature") or not claims.get("nonce")):
+            raise Stopped("현재 묶음·대상·설정에 대한 사람 승인 토큰이 없다")
+        jenkins = self._deps.release_jenkins
+        if jenkins is None:
+            raise Stopped("운영 Jenkins가 없다")
+        # 응답 유실·재시작 때 기존 작업을 먼저 찾는다. 새 토큰이나 deployment_id를 만들지 않는다.
+        build = self._read(lambda: jenkins.find_build(expected["deployment_id"]))
+        if build is None:
+            expiry = claims.get("exp")
+            if type(expiry) is not int or not self._deps.now() < expiry <= self._deps.now() + 600:
+                raise Stopped("운영 승인 토큰이 만료됐거나 유효 기간이 잘못됐다")
+            params = {"TARGET_ID": config["target_id"], "COMMIT": bundle["commit"],
+                      "BUNDLE_SHA256": bundle["bundle_sha256"], "IMAGES_JSON": canonical_json(bundle["images"]),
+                      "APPROVAL": canonical_json(approval)}
+            build = jenkins.trigger(params, expected["deployment_id"])
+        self._board.add_detail("release", build=build, url=jenkins.console_url(build),
+                               deployment_id=expected["deployment_id"], target_id=config["target_id"],
+                               bundle_sha256=bundle["bundle_sha256"], config_sha256=expected["config_sha256"])
+        return {"release_build": build}
+
+    def release_wait(self, state: PipelineState) -> dict[str, Any]:
+        self._production_bundle(state)
+        if self._deps.release_jenkins is None:
+            raise Stopped("운영 Jenkins가 없다")
+        try:
+            result = self._finish_job(self._deps.release_jenkins, state["release_build"], STAGE_DEADLINE_SECONDS, "운영 배포")
+        except Stopped as exc:
+            self._board.update("release", state="fail", summary=str(exc))
+            raise
+        # 토큰·비밀 등 제어기 응답의 예상 밖 필드는 체크포인트·화면에 복사하지 않는다.
+        keys = ("state", "target_id", "environment", "commit", "images", "image_digests", "bundle_sha256",
+                "image_digest", "schema", "platform", "image_ref", "database_version_num", "deployment_id", "config_sha256")
+        return {"release_result": {key: result[key] for key in keys if key in result}}
+
+    def _verified_release(self, state: PipelineState) -> None:
+        bundle = self._production_bundle(state)
+        result = state.get("release_result") or {}
+        if (result.get("state") != "verified" or result.get("target_id") != self._deps.options.release_target
+                or result.get("environment") != "production"):
+            raise Stopped("운영 배포의 대상·verified 실행 기록이 없다")
+        try:
+            match_runtime(result, bundle)
+            require_postgres18(result)
+        except ValueError as exc:
+            raise Stopped(str(exc)) from exc
+        config = self._release_config(state)
+        if ("deployment_id" in result and result["deployment_id"] != self._key(state, "release")
+                or "config_sha256" in result and result["config_sha256"] != evidence_hash(config)):
+            raise Stopped("운영 결과의 배포 ID·설정 해시가 승인과 다르다")
+
+    def release_verify(self, state: PipelineState) -> dict[str, Any]:
+        try:
+            self._verified_release(state)
+        except Stopped as exc:
+            self._board.update("release", state="fail", summary=str(exc))
+            raise
+        self._board.update("release", state="pass", summary=f"운영 검증 완료 · {self._deps.options.release_target}")
+        return {"gates": {"release": "pass"}}
+
+    def _require_release(self, state: PipelineState) -> None:
+        if (state.get("gates") or {}).get("release") != "pass":
+            raise Stopped("운영 배포 verify 통과 기록이 없어 도메인 전환·운영 완료를 허용하지 않는다")
+        self._verified_release(state)
 
     # ── 서비스 도메인 전환(명세 v1.1 6-3) ─────────────────
     def _cutover(self) -> tuple[CutoverConfig, CloudflareClient]:
@@ -501,6 +695,7 @@ class Steps:
         return self._deps.cutover, self._deps.cloudflare
 
     def ask_cutover(self, state: PipelineState) -> dict[str, Any]:
+        self._require_release(state)
         cfg = self._deps.cutover
         target = f"{cfg.record}: {cfg.green} → {cfg.blue}" if cfg else "설정 없음"
         answer = interrupt({"node_id": "cutover", "prompt": f"서비스 도메인을 옮깁니다({target}). 기존 대상은 내리지 않습니다.",
@@ -514,6 +709,7 @@ class Steps:
     def cutover_check(self, state: PipelineState) -> dict[str, Any]:
         """DNS 를 바꾸기 전에 blue 원본이 서비스 도메인 요청에 정상 응답하는지 본다. 실패하면 DNS 를 건드리지 않는다."""
         assert_gates_passed(state.get("gates") or {}, ("sast", "dast", "cutover_approval"))
+        self._require_release(state)
         cfg, _ = self._cutover()
         status, served = self._deps.probe(cfg.blue_origin + cfg.verify_path, host=cfg.record)
         self._board.add_detail("cutover", precheck={"status": status, "served_by": served})
@@ -528,6 +724,7 @@ class Steps:
         레코드는 미리 만든 DNS 전용 CNAME 이어야 한다. 현재 값이 green 일 때만 바꾸고, 바꾼 뒤 다시 읽어 확인한다.
         green 은 기존 TTL(자동이면 300초)과 최소 유지 시간 중 긴 쪽만큼 그대로 둔다.
         """
+        self._require_release(state)
         cfg, cf = self._cutover()
         record = self._read(lambda: cf.find_record(cfg.zone_id, cfg.record))
         if record.get("type") != "CNAME" or record.get("proxied") is not False:
@@ -560,6 +757,7 @@ class Steps:
         """설정 반영만으로 끝내지 않는다. 공개 리졸버가 blue 를 돌려주고, 서비스 도메인 응답이 blue 에서 오는지
         연속으로 확인한다. 그 뒤 green 을 TTL 만큼 유지하고, 그동안 레코드가 바뀌지 않았는지 다시 본다.
         확인하지 못하면 green 으로 되돌린다."""
+        self._require_release(state)
         cfg, cf = self._cutover()
         url = f"{cfg.scheme}://{cfg.record}{cfg.verify_path}"
         keep_until = state["cutover_switched_at"] + state["cutover_wait_seconds"]
@@ -601,6 +799,8 @@ class Steps:
 
     # ── 끝 ──────────────────────────────────────────────
     def done(self, state: PipelineState) -> dict[str, Any]:
+        if self._deps.options.release_target is not None or self._deps.options.cutover:
+            self._require_release(state)
         required = ("sast", "dast", "cutover") if self._deps.options.cutover else ("sast", "dast")
         gates = state.get("gates") or {}
         assert_gates_passed(gates, required)
@@ -614,7 +814,8 @@ class Steps:
             self._board.finish("unresolved", f"{fixed}연결 확인 완료 · 보안 미해결({'·'.join(approved)} 사람 승인으로 진행) · {digest}",
                                result="warn")
         else:
-            self._board.finish("verified", f"{fixed}스테이징 검증 완료 · {digest}", passed=True)
+            phase = "운영 배포 검증 완료" if self._deps.options.release_target is not None else "스테이징 검증 완료"
+            self._board.finish("verified", f"{fixed}{phase} · {digest}", passed=True)
         return {"halt": None}
 
     def halted(self, state: PipelineState) -> dict[str, Any]:

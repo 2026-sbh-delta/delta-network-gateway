@@ -62,7 +62,7 @@ variable "route_table_ids" {
 }
 
 variable "create_vpc_endpoints" {
-  description = "Create ECR API/DKR, CloudWatch Logs interface endpoints and the S3 gateway endpoint for subnets without internet egress."
+  description = "Create ECR API/DKR, Logs, S3 endpoints and, in dual DB mode, Secrets Manager for private task egress."
   type        = bool
   default     = true
 }
@@ -215,4 +215,28 @@ variable "tags" {
   description = "Extra or overriding common tags."
   type        = map(string)
   default     = {}
+}
+
+variable "dual_container" {
+  description = "frontend:3000과 backend:8080을 한 task/revision에 둔다(Node 게시판, 11/6 기본). false는 예전 단일 컨테이너 앱."
+  type        = bool
+  default     = true
+}
+
+variable "bootstrap_backend_image" {
+  description = "Backend image including /app/scripts and migrations; replace the placeholder before deployment."
+  type        = string
+  default     = "public.ecr.aws/docker/library/busybox:stable"
+}
+
+variable "schema_prepared" {
+  description = "Operator attestation after separate schema/roles/secret provisioning; Terraform never performs SQL."
+  type        = bool
+  default     = false
+}
+
+variable "existing_nat_egress" {
+  description = "Explicit operator attestation that existing private-subnet NAT routes allow HTTPS when endpoints are disabled. Creates no NAT."
+  type        = bool
+  default     = false
 }

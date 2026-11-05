@@ -2,7 +2,8 @@
 
 locals {
   project_roles = {
-    "staging-deploy" = ["roles/run.developer", "custom/scanner_access"]
+    # 읽기 2개: 초기화 Job 결과(남은 행 0) 로그 확인, 실행 이미지 digest 확인.
+    "staging-deploy" = ["roles/run.developer", "custom/scanner_access", "roles/logging.viewer", "roles/artifactregistry.reader"]
     "prod-deploy"    = ["roles/run.developer"]
     "infra" = [
       "roles/compute.loadBalancerAdmin",

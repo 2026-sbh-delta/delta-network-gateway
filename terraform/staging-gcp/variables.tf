@@ -34,7 +34,7 @@ variable "region" {
 }
 
 variable "enable_services" {
-  description = "Enable the Cloud Run, Artifact Registry, Compute and IAM APIs. Destroy leaves them enabled."
+  description = "Enable Cloud Run, Artifact Registry, Compute, IAM, SQL Admin, Secret Manager and Logging APIs. Destroy leaves them enabled."
   type        = bool
   default     = true
 }
@@ -147,4 +147,28 @@ variable "database_enabled" {
   description = "게시판용 스테이징 PostgreSQL(Cloud SQL 최소 구성)과 배포 전 초기화 Job을 만든다. 시연 뒤 false로 지운다."
   type        = bool
   default     = true
+}
+
+variable "dual_container" {
+  description = "frontend:3000과 backend:8080을 한 task/revision에 둔다(Node 게시판, 11/6 기본). false는 예전 단일 컨테이너 앱."
+  type        = bool
+  default     = true
+}
+
+variable "bootstrap_backend_image" {
+  description = "Backend image including /app/scripts and migrations; replace the placeholder before deployment."
+  type        = string
+  default     = "us-docker.pkg.dev/cloudrun/container/hello"
+}
+
+variable "schema_prepared" {
+  description = "true면 초기화와 앱 배포를 병렬로 돌린다. false여도 스테이징 도구가 첫 초기화 성공 뒤 스스로 true로 바꾼다."
+  type        = bool
+  default     = false
+}
+
+variable "cloud_sql_proxy_image" {
+  description = "Official Cloud SQL Auth Proxy v2 image; pin an approved digest before deployment."
+  type        = string
+  default     = "gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.26.2"
 }

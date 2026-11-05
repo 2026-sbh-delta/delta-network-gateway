@@ -20,6 +20,12 @@ override_data {
   values = { id = "subnet-00000000000000002", vpc_id = "vpc-00000000000000001", availability_zone_id = "apne2-az2", map_public_ip_on_launch = true }
 }
 
+# 접속 비밀값 ARN이 plan에서 정해져야 컨테이너 정의(비밀값 참조)를 검사할 수 있다.
+override_resource {
+  override_during = plan
+  target          = aws_secretsmanager_secret.runtime[0]
+  values          = { arn = "arn:aws:secretsmanager:ap-northeast-2:444455556666:secret:delta-lab-staging/runtime-abc123" }
+}
 override_resource {
   override_during = plan
   target          = aws_security_group.alb
@@ -37,6 +43,8 @@ variables {
   subnet_ids      = ["subnet-00000000000000001", "subnet-00000000000000002"]
   route_table_ids = ["rtb-00000000000000001", "rtb-00000000000000002"]
   scanner_cidrs   = ["10.10.1.0/24"]
+  # 기존 단일 컨테이너 검사는 이 값으로 유지한다. FE+BE 검사는 각 run에서 true로 바꾼다.
+  dual_container = false
 }
 
 run "private_staging_foundation" {
@@ -187,4 +195,151 @@ run "public_cidrs_need_internet_facing" {
     scanner_public_cidrs = ["203.0.113.10/32"]
   }
   expect_failures = [terraform_data.contract]
+}
+
+# tracecompose-delivery-20261106 / IMPLEMENTATION_ONLY / pre_gateREVISED.
+# Only mock-provider plans. Fixtures contain immutable image refs, never credentials.
+run "single_container_default_remains_compatible" {
+  command = plan
+  assert {
+    condition = (
+      length(jsondecode(aws_ecs_task_definition.app.container_definitions)) == 1 &&
+      jsondecode(aws_ecs_task_definition.app.container_definitions)[0].name == "app" &&
+      jsondecode(aws_ecs_task_definition.app.container_definitions)[0].image == var.bootstrap_image &&
+      one(jsondecode(aws_ecs_task_definition.app.container_definitions)[0].portMappings).containerPort == 8080 &&
+      one(aws_ecs_service.app.load_balancer).container_name == "app"
+    )
+    error_message = "Omitting dual_container must preserve the existing app/8080 bootstrap and service binding."
+  }
+}
+
+# Proposed inputs: dual_container=false, bootstrap_backend_image; backend name defaults to backend.
+# Before those inputs exist Terraform warns, but failures below inspect real existing planned resources.
+run "dual_bootstrap_is_one_task_with_loopback_backend" {
+  command = plan
+  variables {
+    dual_container          = true
+    container_name          = "frontend"
+    container_port          = 3000
+    bootstrap_image         = "444455556666.dkr.ecr.ap-northeast-2.amazonaws.com/frontend@sha256:1111111111111111111111111111111111111111111111111111111111111111"
+    bootstrap_backend_image = "444455556666.dkr.ecr.ap-northeast-2.amazonaws.com/backend@sha256:2222222222222222222222222222222222222222222222222222222222222222"
+    alb_internet_facing     = true
+    scanner_cidrs           = []
+    scanner_public_cidrs    = ["54.116.158.85/32"]
+  }
+  assert {
+    condition = (
+      aws_ecs_task_definition.app.network_mode == "awsvpc" &&
+      length(jsondecode(aws_ecs_task_definition.app.container_definitions)) == 2 &&
+      toset([for c in jsondecode(aws_ecs_task_definition.app.container_definitions) : c.name]) == toset(["frontend", "backend"]) &&
+      alltrue([for c in jsondecode(aws_ecs_task_definition.app.container_definitions) : c.essential])
+    )
+    error_message = "Dual bootstrap needs two essential FE/BE containers together in the existing awsvpc task, not a second service."
+  }
+  assert {
+    condition = try(
+      one([for c in jsondecode(aws_ecs_task_definition.app.container_definitions) : c.image if c.name == "frontend"]) == var.bootstrap_image &&
+      one([for c in jsondecode(aws_ecs_task_definition.app.container_definitions) : c.image if c.name == "backend"]) == "444455556666.dkr.ecr.ap-northeast-2.amazonaws.com/backend@sha256:2222222222222222222222222222222222222222222222222222222222222222",
+      false
+    )
+    error_message = "The task must retain both independent immutable bootstrap image references."
+  }
+  assert {
+    condition = try(
+      one([for c in jsondecode(aws_ecs_task_definition.app.container_definitions) : { for e in c.environment : e.name => e.value } if c.name == "frontend"])["API_HOST"] == "127.0.0.1" &&
+      one([for c in jsondecode(aws_ecs_task_definition.app.container_definitions) : { for e in c.environment : e.name => e.value } if c.name == "frontend"])["API_PORT"] == "8080" &&
+      alltrue([for c in jsondecode(aws_ecs_task_definition.app.container_definitions) :
+        { for e in c.environment : e.name => e.value }["CLOUD_PROVIDER"] == "aws" &&
+        { for e in c.environment : e.name => e.value }["APP_ENV"] == "staging"
+      ]) &&
+      one([for c in jsondecode(aws_ecs_task_definition.app.container_definitions) : one(c.portMappings).containerPort if c.name == "backend"]) == 8080,
+      false
+    )
+    error_message = "Node FE must call the same-task BE at 127.0.0.1:8080 and the bundle must identify aws/staging."
+  }
+  assert {
+    condition = try(
+      contains(one([for c in jsondecode(aws_ecs_task_definition.app.container_definitions) : c.dependsOn if c.name == "frontend"]), { containerName = "backend", condition = "HEALTHY" }) &&
+      length(one([for c in jsondecode(aws_ecs_task_definition.app.container_definitions) : c.healthCheck.command if c.name == "backend"])) > 0,
+      false
+    )
+    error_message = "FE startup must wait for a BE readiness health check, not merely for the process to start."
+  }
+  assert {
+    condition = (
+      one(aws_ecs_service.app.load_balancer).container_name == "frontend" &&
+      one(aws_ecs_service.app.load_balancer).container_port == 3000 &&
+      aws_lb_target_group.app.port == 3000 &&
+      aws_vpc_security_group_ingress_rule.service_from_alb.from_port == 3000 &&
+      aws_vpc_security_group_ingress_rule.service_from_alb.to_port == 3000 &&
+      aws_vpc_security_group_ingress_rule.service_from_alb.referenced_security_group_id == aws_security_group.alb.id &&
+      aws_vpc_security_group_egress_rule.alb_to_service.from_port == 3000 &&
+      aws_vpc_security_group_egress_rule.alb_to_service.to_port == 3000 &&
+      !one(aws_ecs_service.app.network_configuration).assign_public_ip
+    )
+    error_message = "ALB and its task security-group path must expose FE3000 only; BE8080 stays inside the private task."
+  }
+  assert {
+    condition = (
+      length(aws_vpc_security_group_ingress_rule.alb_from_scanner_public) == 1 &&
+      aws_vpc_security_group_ingress_rule.alb_from_scanner_public["54.116.158.85/32"].cidr_ipv4 == "54.116.158.85/32" &&
+      length(aws_vpc_security_group_ingress_rule.alb_from_scanner_cidr) == 0 &&
+      length(aws_vpc_security_group_ingress_rule.alb_from_scanner_sg) == 0 &&
+      output.tool_config.dynamic_scanner_access
+    )
+    error_message = "Dual mode must keep scanner NAT /32 access and dynamic scanner management."
+  }
+  assert {
+    condition = try(
+      output.tool_config.container_name == "frontend" &&
+      output.tool_config.backend_container_name == "backend",
+      false
+    )
+    error_message = "tool_config must tell the provider which FE and BE containers to replace together."
+  }
+  assert {
+    condition = alltrue([for c in jsondecode(aws_ecs_task_definition.app.container_definitions) :
+      alltrue([for e in c.environment : !contains(["DATABASE_URL", "DB_PASSWORD", "RESET_DATABASE_URL"], e.name)]) &&
+      (c.name != "frontend" || length(try(c.secrets, [])) == 0)
+    ])
+    error_message = "Never embed DB credentials in Terraform environment values or inject DB secrets into FE."
+  }
+  assert {
+    condition = try(
+      can(regex("^arn:aws:secretsmanager:ap-northeast-2:444455556666:secret:",
+        one([for c in jsondecode(aws_ecs_task_definition.app.container_definitions) :
+          one([for secret in c.secrets : secret.valueFrom if secret.name == "DATABASE_URL"])
+        if c.name == "backend"])
+      )) &&
+      alltrue([for c in jsondecode(aws_ecs_task_definition.app.container_definitions) :
+        alltrue([for secret in try(c.secrets, []) : !startswith(secret.name, "RESET_")])
+      ]),
+      false
+    )
+    error_message = "BE needs a same-account Secrets Manager DATABASE_URL reference, and app tasks must not receive reset credentials."
+  }
+}
+
+# AWS has no DB/reset resources yet. Check the existing exported target contract
+# without referencing nonexistent resources (which would be a configuration error).
+# This does NOT prove RDS engine/network/IAM or reset SQL execution: those need follow-up checks.
+# Runtime evidence must separately establish server major 18, schema readiness,
+# zero remaining app rows and a nonzero reset exit on failure; plan is not that proof.
+run "dual_staging_exports_separate_database_reset_contract" {
+  command = plan
+  variables {
+    dual_container = true
+  }
+  assert {
+    condition = try(
+      output.tool_config.environment == "staging" &&
+      output.tool_config.expected_database_major == 18 &&
+      output.tool_config.database_name == "board_staging" &&
+      output.tool_config.reset_task_family != output.tool_config.task_family &&
+      startswith(output.tool_config.reset_task_family, "delta-lab-staging-") &&
+      output.tool_config.backend_container_name == "backend",
+      false
+    )
+    error_message = "AWS needs a staging-only DB18 target and a distinct one-off reset_task_family; absent RDS/reset support must not look ready."
+  }
 }

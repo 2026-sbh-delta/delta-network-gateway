@@ -10,6 +10,17 @@ data "aws_iam_policy_document" "staging" {
     actions   = ["ecs:UpdateService", "ecs:DescribeServices"]
     resources = ["arn:aws:ecs:${local.r}:${local.a}:service/${var.staging_prefix}/*"]
   }
+  # 배포 전 스테이징 DB 초기화: 초기화 전용 task family만 실행하고, 그 출력(남은 행 0)만 읽는다.
+  statement {
+    sid       = "RunStagingDbReset"
+    actions   = ["ecs:RunTask"]
+    resources = ["arn:aws:ecs:${local.r}:${local.a}:task-definition/${var.staging_prefix}-db-reset:*"]
+  }
+  statement {
+    sid       = "ReadStagingDbResetOutput"
+    actions   = ["logs:GetLogEvents"]
+    resources = ["arn:aws:logs:${local.r}:${local.a}:log-group:/delta/${var.staging_prefix}:log-stream:reset/*"]
+  }
   statement {
     sid       = "ElbRead"
     actions   = ["elasticloadbalancing:DescribeTargetHealth", "elasticloadbalancing:DescribeTargetGroups", "elasticloadbalancing:DescribeLoadBalancers"]

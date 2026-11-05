@@ -36,8 +36,9 @@ def route_prepare(state: PipelineState) -> Any:
     return HALTED if state.get("halt") else list(BRANCHES)
 
 
-def step_routes(cutover: bool) -> dict[str, tuple[Any, tuple[str, ...]]]:
-    after_dast = "ask_cutover" if cutover else "done"
+def step_routes(cutover: bool, release: bool = False) -> dict[str, tuple[Any, tuple[str, ...]]]:
+    after_release = "ask_cutover" if cutover else "done"
+    after_dast = "ask_release" if release else "done"
 
     def route_dast_start(state: PipelineState) -> str:
         if state.get("halt"):
@@ -62,6 +63,13 @@ def step_routes(cutover: bool) -> dict[str, tuple[Any, tuple[str, ...]]]:
         "ask_dast": (route_ask_dast, ("fix_apply", after_dast, HALTED)),
         "done": (after_step(END), (END, HALTED)),
     }
+    if release:
+        routes |= {
+            "ask_release": (after_step("release_start"), ("release_start", HALTED)),
+            "release_start": (after_step("release_wait"), ("release_wait", HALTED)),
+            "release_wait": (after_step("release_verify"), ("release_verify", HALTED)),
+            "release_verify": (after_step(after_release), (after_release, HALTED)),
+        }
     if cutover:
         routes |= {
             "ask_cutover": (after_step("cutover_check"), ("cutover_check", HALTED)),
@@ -78,10 +86,14 @@ def build_graph(deps: Deps, checkpointer: Any) -> Any:
               "stage_start": steps.stage_start, "stage_wait": steps.stage_wait, "dast_start": steps.dast_start,
               "dast_wait": steps.dast_wait, "ask_dast": steps.ask_gate, "fix_apply": steps.fix_apply,
               "done": steps.done}
+    release = deps.options.release_target is not None
+    if release:
+        bodies |= {"ask_release": steps.ask_release, "release_start": steps.release_start,
+                   "release_wait": steps.release_wait, "release_verify": steps.release_verify}
     if deps.options.cutover:
         bodies |= {"ask_cutover": steps.ask_cutover, "cutover_check": steps.cutover_check,
                    "cutover_switch": steps.cutover_switch, "cutover_verify": steps.cutover_verify}
-    routes = step_routes(deps.options.cutover)
+    routes = step_routes(deps.options.cutover, release)
     graph = StateGraph(PipelineState)
     for name, body in bodies.items():
         graph.add_node(name, guarded(body))

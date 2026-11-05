@@ -41,6 +41,9 @@ jobs:
           stringParam('REPO', '', '허용된 GitHub https 저장소')
           stringParam('COMMIT', '', '40자리 커밋 SHA')
           stringParam('IMAGE_REPO', '', '푸시할 이미지 저장소(스테이징 AR)')
+          stringParam('FRONTEND_IMAGE_REPO', '', '선택: FE AR 이미지 경로. 기본 IMAGE_REPO/frontend')
+          stringParam('BACKEND_IMAGE_REPO', '', '선택: BE AR 이미지 경로. 기본 IMAGE_REPO/backend')
+          stringParam('ECR_IMAGE_REPO', '', '선택: 동일 manifest를 복사할 기존 ECR 저장소')
         }
         definition {
           cps {
@@ -55,6 +58,8 @@ jobs:
         parameters {
           stringParam('RUN_ID', '', '배포 ID(멱등 키, 재개 때 같은 빌드를 찾는다)')
           stringParam('IMAGE', '', 'digest로 고정한 이미지')
+          textParam('IMAGES_JSON', '', 'frontend/backend digest 고정 이미지 JSON')
+          stringParam('BUNDLE_SHA256', '', 'schema2 canonical 묶음 해시')
           stringParam('COMMIT', '', '커밋 SHA')
           stringParam('CLOUD', 'gcp', '대상 클라우드')
           stringParam('HOLDER', '', '스테이징 점유 실행 ID(오케스트레이터 실행). 비우면 RUN_ID')
@@ -62,6 +67,26 @@ jobs:
         definition {
           cps {
             script(new File('/opt/delta/Jenkinsfile.deploy').text)
+            sandbox(true)
+          }
+        }
+      }
+  - script: >
+      pipelineJob('delta-release') {
+        description('사람 서명 승인·서버 인벤토리를 검증하고 운영 대상 하나만 배포한다. AWS/GCP 동시 갱신 없음')
+        parameters {
+          stringParam('RUN_ID', '', '기존 JenkinsClient 작업 키; DEPLOYMENT_ID 별칭')
+          stringParam('DEPLOYMENT_ID', '', '선택: 명시적 운영 배포 멱등 키')
+          stringParam('COMMIT', '', 'full40 commit SHA')
+          stringParam('TARGET_ID', '', '서버 인벤토리에 등록된 단일 production 대상')
+          textParam('IMAGES_JSON', '', 'frontend/backend digest 고정 이미지 JSON')
+          stringParam('BUNDLE_SHA256', '', 'schema2 canonical 묶음 해시')
+          textParam('BUNDLE_JSON', '', '선택: registry_images를 포함한 schema2 빌드 결과. AWS는 필수')
+          stringParam('APPROVAL', '', 'pipeline 발급 Ed25519 claims/signature envelope')
+        }
+        definition {
+          cps {
+            script(new File('/opt/delta/Jenkinsfile.release').text)
             sandbox(true)
           }
         }

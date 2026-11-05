@@ -1,0 +1,15 @@
+// 앱 저장소를 실행하지 않는 배포 전용 경로. 서명과 서버 인벤토리는 신뢰된 Python에서 확인한다.
+pipeline {
+  agent { label 'delta-deploy' }
+  options { timestamps(); timeout(time: 20, unit: 'MINUTES') }
+  stages {
+    stage('운영 승인·배포·실행 조회') {
+      steps {
+        sh 'rm -f result.json && python3 /opt/delta/release_deploy.py'
+      }
+    }
+  }
+  post {
+    always { archiveArtifacts artifacts: 'result.json', allowEmptyArchive: true, fingerprint: false }
+  }
+}

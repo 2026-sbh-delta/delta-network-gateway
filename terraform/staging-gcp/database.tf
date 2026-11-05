@@ -1,11 +1,8 @@
-# A 기업 스테이징 DB: 게시판(PostgreSQL)용. 일반적인 상시 스테이징 DB 방식의 가장 작은 구성이다(시연 뒤 삭제).
-# 허용 네트워크를 두지 않는다. Cloud Run 내장 Cloud SQL 연결(IAM 확인, unix 소켓)로만 접속한다.
-# 점검 회차마다 배포 직전에 초기화 Job이 같은 이미지로 마이그레이션하고 데이터를 비운다(남은 행이 0이 아니면 실패).
-
+# 스테이징 전용. 기존 Cloud SQL 16 인스턴스는 새 18 인스턴스로 교체된다(시험 데이터만 있어 보존하지 않는다).
 resource "google_sql_database_instance" "app" {
   count               = var.database_enabled ? 1 : 0
-  name                = "${local.prefix}-db"
-  database_version    = "POSTGRES_16"
+  name                = "${local.prefix}-db-pg18"
+  database_version    = "POSTGRES_18"
   region              = var.region
   deletion_protection = false
   settings {
@@ -21,32 +18,35 @@ resource "google_sql_database_instance" "app" {
     ip_configuration {
       ipv4_enabled = true
       ssl_mode     = "ENCRYPTED_ONLY"
+      # No authorized networks. Auth Proxy uses IAM and TLS on the external leg.
     }
     user_labels = local.common_labels
   }
+  lifecycle {
+    create_before_destroy = true
+  }
   depends_on = [google_project_service.enabled]
 }
-
 resource "google_sql_database" "app" {
   count    = var.database_enabled ? 1 : 0
-  name     = "board"
+  name     = local.database_name
   instance = google_sql_database_instance.app[0].name
 }
 
-# 비밀번호는 A 기업 Terraform state(GCS, 접근 제한)에 남는다. 일반적인 관리형 DB 구성과 같다.
+# 스테이징 DB 사용자 하나를 앱과 초기화 작업이 함께 쓴다. 배포마다 비우는 시험 데이터만 담는다.
+# Terraform이 비밀번호를 만들고 비밀값까지 채운다(사람이 SQL·비밀값을 넣는 단계 없음).
+# Cloud SQL API로 만든 사용자는 cloudsqlsuperuser라 초기화 작업이 스키마를 만들 수 있다.
 resource "random_password" "db" {
   count   = var.database_enabled ? 1 : 0
   length  = 32
   special = false
 }
-
 resource "google_sql_user" "app" {
   count    = var.database_enabled ? 1 : 0
-  name     = "board"
+  name     = local.database_user
   instance = google_sql_database_instance.app[0].name
   password = random_password.db[0].result
 }
-
 resource "google_secret_manager_secret" "database_url" {
   count     = var.database_enabled ? 1 : 0
   secret_id = "${local.prefix}-database-url"
@@ -55,55 +55,103 @@ resource "google_secret_manager_secret" "database_url" {
   }
   depends_on = [google_project_service.enabled]
 }
-
 resource "google_secret_manager_secret_version" "database_url" {
-  count       = var.database_enabled ? 1 : 0
-  secret      = google_secret_manager_secret.database_url[0].id
-  secret_data = "postgresql://board:${random_password.db[0].result}@/board?host=/cloudsql/${google_sql_database_instance.app[0].connection_name}"
+  count  = var.database_enabled ? 1 : 0
+  secret = google_secret_manager_secret.database_url[0].id
+  # Node는 PG* 환경을 쓰고(Proxy loopback), 예전 Flask 단일 컨테이너는 Unix socket URL을 쓴다.
+  secret_data = (var.dual_container
+    ? "postgresql://${local.database_user}:${random_password.db[0].result}@127.0.0.1:5432/${local.database_name}"
+  : "postgresql://${local.database_user}:${random_password.db[0].result}@/${local.database_name}?host=/cloudsql/${google_sql_database_instance.app[0].connection_name}")
 }
-
-# 런타임 계정: DB 연결과 이 비밀값 읽기만.
+resource "google_secret_manager_secret" "runtime_password" {
+  count     = var.database_enabled ? 1 : 0
+  secret_id = "${local.prefix}-runtime-password"
+  replication {
+    auto {}
+  }
+  depends_on = [google_project_service.enabled]
+}
+resource "google_secret_manager_secret_version" "runtime_password" {
+  count       = var.database_enabled ? 1 : 0
+  secret      = google_secret_manager_secret.runtime_password[0].id
+  secret_data = random_password.db[0].result
+}
 resource "google_project_iam_member" "app_sql_client" {
   count   = var.database_enabled ? 1 : 0
   project = var.project_id
   role    = "roles/cloudsql.client"
   member  = "serviceAccount:${google_service_account.app.email}"
 }
-
 resource "google_secret_manager_secret_iam_member" "app_database_url" {
   count     = var.database_enabled ? 1 : 0
   secret_id = google_secret_manager_secret.database_url[0].id
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${google_service_account.app.email}"
 }
-
-# 배포 직전 초기화: 같은 이미지로 스키마를 적용하고 게시글·댓글(DAST 페이로드 포함)을 비운다. 남은 행이 0이어야 성공.
+resource "google_secret_manager_secret_iam_member" "app_password" {
+  count     = var.database_enabled ? 1 : 0
+  secret_id = google_secret_manager_secret.runtime_password[0].id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.app.email}"
+}
+locals {
+  node_database_environment = {
+    STORAGE_BACKEND = "postgres"
+    PGHOST          = "127.0.0.1"
+    PGPORT          = "5432"
+    PGDATABASE      = local.database_name
+    # Only loopback is plaintext. Proxy -> Cloud SQL remains IAM-authenticated TLS.
+    PGSSLMODE = "disable"
+  }
+  # Cloud Run jobs wait for every container. Explicitly stop the proxy after the
+  # Node script drains its DB client, preserving failure status if shutdown fails.
+  reset_proxy_shutdown_hook = <<-JS
+    process.once('beforeExit', async () => {
+      try {
+        const response = await fetch('http://127.0.0.1:9091/quitquitquit', {
+          method: 'POST', signal: AbortSignal.timeout(5000)
+        });
+        if (!response.ok) process.exitCode = 1;
+      } catch { process.exitCode = 1; }
+    });
+  JS
+}
 resource "google_cloud_run_v2_job" "db_reset" {
   count               = var.database_enabled ? 1 : 0
   name                = "${local.prefix}-db-reset"
   location            = var.region
   deletion_protection = false
   template {
-    task_count = 1
+    task_count  = 1
+    parallelism = 1
     template {
       service_account = google_service_account.app.email
       max_retries     = 0
       timeout         = "120s"
-      volumes {
-        name = "cloudsql"
-        cloud_sql_instance {
-          instances = [google_sql_database_instance.app[0].connection_name]
+      dynamic "volumes" {
+        for_each = var.dual_container ? [] : [1]
+        content {
+          name = "cloudsql"
+          cloud_sql_instance {
+            instances = [google_sql_database_instance.app[0].connection_name]
+          }
         }
       }
       containers {
-        name = "reset"
-        # 앱 저장소의 초기화 코드(app.reset: 스키마 적용 → 비우기 → 남은 행 0 확인)를 배포 이미지 그대로 쓴다.
-        # APP_ENV=staging 이 아니면 app.reset 이 거부한다. 운영에는 이 Job 을 만들지 않는다.
-        image   = var.bootstrap_image
-        command = ["python", "-m", "app.reset"]
-        env {
-          name  = "APP_ENV"
-          value = "staging"
+        name       = "reset"
+        image      = var.dual_container ? var.bootstrap_backend_image : var.bootstrap_image
+        command    = var.dual_container ? ["node", "scripts/reset-db.mjs"] : ["python", "-m", "app.reset"]
+        depends_on = var.dual_container ? ["cloud-sql-proxy"] : []
+        dynamic "env" {
+          for_each = merge({ APP_ENV = "staging" }, var.dual_container ? merge(local.node_database_environment, {
+            PGUSER             = local.database_user
+            APP_RESET_DATABASE = local.database_name
+            NODE_OPTIONS       = "--import=data:text/javascript;base64,${base64encode(local.reset_proxy_shutdown_hook)}"
+          }) : {})
+          content {
+            name  = env.key
+            value = env.value
+          }
         }
         env {
           name = "DATABASE_URL"
@@ -114,18 +162,53 @@ resource "google_cloud_run_v2_job" "db_reset" {
             }
           }
         }
-        volume_mounts {
-          name       = "cloudsql"
-          mount_path = "/cloudsql"
+        dynamic "env" {
+          for_each = var.dual_container ? [1] : []
+          content {
+            name = "PGPASSWORD"
+            value_source {
+              secret_key_ref {
+                secret  = google_secret_manager_secret.runtime_password[0].secret_id
+                version = "latest"
+              }
+            }
+          }
+        }
+        dynamic "volume_mounts" {
+          for_each = var.dual_container ? [] : [1]
+          content {
+            name       = "cloudsql"
+            mount_path = "/cloudsql"
+          }
+        }
+      }
+      dynamic "containers" {
+        for_each = var.dual_container ? [1] : []
+        content {
+          name  = "cloud-sql-proxy"
+          image = var.cloud_sql_proxy_image
+          args = ["--address=127.0.0.1", "--port=5432", "--health-check", "--http-address=0.0.0.0", "--http-port=9090",
+            "--quitquitquit", "--admin-port=9091", "--exit-zero-on-sigterm", "--lazy-refresh",
+          google_sql_database_instance.app[0].connection_name]
+          startup_probe {
+            period_seconds    = 2
+            timeout_seconds   = 1
+            failure_threshold = 30
+            http_get {
+              path = "/startup"
+              port = 9090
+            }
+          }
+          resources {
+            limits = { cpu = "1", memory = "256Mi" }
+          }
         }
       }
     }
   }
   lifecycle {
-    # 배포할 때마다 스테이징 도구가 이미지를 배포 이미지로 바꾼다.
     ignore_changes = [template[0].template[0].containers[0].image, client, client_version]
   }
-  # 비밀값 버전(DATABASE_URL)이 먼저 있어야 Job 을 만들 수 있다(없으면 "secret ... not found"로 실패, 11/5 apply).
-  depends_on = [google_secret_manager_secret_version.database_url, google_secret_manager_secret_iam_member.app_database_url,
+  depends_on = [google_secret_manager_secret_iam_member.app_database_url, google_secret_manager_secret_iam_member.app_password,
   google_project_iam_member.app_sql_client]
 }

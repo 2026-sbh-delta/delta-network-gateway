@@ -35,6 +35,8 @@ locals {
     { from = "dast", to = "sast", port = 8790 },
     { from = "dast", to = "jenkins", port = 8091 },         # 스테이징 도구(주소 조회)
     { from = "orchestrator", to = "jenkins", port = 8091 }, # 스테이징 도구(배포 상태)
+    { from = "diff", to = "sast", port = 8790 },            # 통합 시험(연재님 실패 진단 연결). 시연 전 제거
+    { from = "diff", to = "dast", port = 8765 },            # 같은 시험. 토큰 없이 결과 조회(GET)만 된다. 시연 전 제거
   ]
   link_map = { for l in local.links : "${l.from}>${l.to}:${l.port}" => l }
 

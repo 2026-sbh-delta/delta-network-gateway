@@ -1,10 +1,16 @@
 """서비스 도메인 전환(명세 v1.1 6-3, 11/5 정정): DNS 전용 CNAME(TTL 60)을 green 일 때만 blue 로 바꾸고,
-공개 DNS·실제 응답으로 확인한 뒤 green 을 TTL 만큼 유지한다. 확인하지 못하면 green 으로 되돌린다."""
+공개 DNS·실제 응답으로 확인한 뒤 green 을 TTL 만큼 유지한다. 확인하지 못하면 green 으로 되돌린다.
+운영 묶음 verify를 먼저 완료하고, 운영 승인과 도메인 전환 승인을 따로 받는다."""
 
 from __future__ import annotations
 
+from copy import deepcopy
+
 import pytest
-from fakes import COMMIT, IMAGE_REPO, REPO, FakeDast, FakeSast, FakeStaging, build_jenkins, deploy_jenkins
+
+from delivery_fakes import (TARGET, TEST_RELEASE_CONFIG, TEST_RELEASE_SIGNING_KEY,
+                            RoundJenkins, bundle, release_result, stage_result)
+from fakes import COMMIT, IMAGE_REPO, REPO, FakeDast, FakeSast, FakeStaging
 from test_flow import _execute, _states
 
 from delta_pipeline.clients import ServiceUnavailable
@@ -66,17 +72,30 @@ class FakeInternet:
         return (200, "gcp/abc")
 
 
-def _run(tmp_path, cloudflare, net, clock, cutover=CFG):
-    return Run(Options(REPO, COMMIT, cutover=True), sast=FakeSast(), dast=FakeDast(), build_jenkins=build_jenkins(),
-               deploy_jenkins=deploy_jenkins(), staging=FakeStaging(), image_repo=IMAGE_REPO,
+def _run(tmp_path, cloudflare, net, clock, cutover=CFG, *, release_target=TARGET, release=None):
+    return Run(Options(REPO, COMMIT, cutover=True, release_target=release_target),
+               sast=FakeSast(), dast=FakeDast(), build_jenkins=RoundJenkins(bundle),
+               deploy_jenkins=RoundJenkins(lambda commit: stage_result(bundle(commit))),
+               staging=FakeStaging(), image_repo=IMAGE_REPO,
                store_dir=tmp_path / "store", sleep=clock.sleep, cloudflare=cloudflare, cutover=cutover,
-               probe=net.probe, resolve=net.resolve, now=clock.now)
+               probe=net.probe, resolve=net.resolve, now=clock.now,
+               release_jenkins=release or RoundJenkins(lambda commit: release_result(bundle(commit))),
+               release_signing_key=TEST_RELEASE_SIGNING_KEY if release_target else None,
+               release_config=deepcopy(TEST_RELEASE_CONFIG) if release_target else None)
+
+
+def _execute_cutover(run, *, approve_cutover=True):
+    # 운영 승인과 DNS 승인은 서로 다른 interrupt다. DNS 반례가 운영 이전에
+    # 멈춰서 우연히 통과하지 않도록 운영 verify 통과도 반드시 확인한다.
+    snapshot = _execute(run, answers=["approve", "approve" if approve_cutover else "stop"])
+    assert _states(snapshot)["release"] == "pass"
+    return snapshot
 
 
 def test_switch_waits_for_public_dns_and_blue_responses_then_keeps_green_for_ttl(tmp_path):
     cf, clock = FakeCloudflare(), Clock()
     net = FakeInternet(cf, lag=2)
-    snapshot = _execute(_run(tmp_path, cf, net, clock), answers=["approve"])
+    snapshot = _execute_cutover(_run(tmp_path, cf, net, clock))
     assert snapshot["outcome"] == "verified" and _states(snapshot)["cutover"] == "pass"
     assert cf.writes == ["gcp.adajosou.site"]
     # 전환 전에 blue 원본을 서비스 도메인 Host 로 먼저 확인했다
@@ -88,20 +107,20 @@ def test_switch_waits_for_public_dns_and_blue_responses_then_keeps_green_for_ttl
 
 def test_auto_ttl_keeps_green_for_300_seconds(tmp_path):
     cf, clock = FakeCloudflare(ttl=1), Clock()
-    snapshot = _execute(_run(tmp_path, cf, FakeInternet(cf), clock), answers=["approve"])
+    snapshot = _execute_cutover(_run(tmp_path, cf, FakeInternet(cf), clock))
     assert snapshot["outcome"] == "verified" and clock.slept >= 300
 
 
 def test_failed_precheck_never_touches_dns(tmp_path):
     cf = FakeCloudflare()
-    snapshot = _execute(_run(tmp_path, cf, FakeInternet(cf, origin=(403, "")), Clock()), answers=["approve"])
+    snapshot = _execute_cutover(_run(tmp_path, cf, FakeInternet(cf, origin=(403, "")), Clock()))
     assert snapshot["outcome"] == "stopped" and cf.writes == []
     assert "전환 전 검증 실패" in next(n for n in snapshot["nodes"] if n["id"] == "cutover")["summary"]
 
 
 def test_blue_unreachable_after_switch_rolls_back_to_green(tmp_path):
     cf = FakeCloudflare()
-    snapshot = _execute(_run(tmp_path, cf, FakeInternet(cf, blue_ok=False), Clock()), answers=["approve"])
+    snapshot = _execute_cutover(_run(tmp_path, cf, FakeInternet(cf, blue_ok=False), Clock()))
     assert snapshot["outcome"] == "stopped"
     assert cf.writes == ["gcp.adajosou.site", "aws.adajosou.site"] and cf.record["content"] == "aws.adajosou.site"
     assert "되돌렸다" in next(n for n in snapshot["nodes"] if n["id"] == "cutover")["summary"]
@@ -110,13 +129,13 @@ def test_blue_unreachable_after_switch_rolls_back_to_green(tmp_path):
 @pytest.mark.parametrize("cf", [FakeCloudflare(content="other.example.net"), FakeCloudflare(proxied=True),
                                 FakeCloudflare(kind="A"), FakeCloudflare(ttl=10)])
 def test_unexpected_record_state_stops_without_change(tmp_path, cf):
-    snapshot = _execute(_run(tmp_path, cf, FakeInternet(cf), Clock()), answers=["approve"])
+    snapshot = _execute_cutover(_run(tmp_path, cf, FakeInternet(cf), Clock()))
     assert snapshot["outcome"] == "stopped" and cf.writes == []
 
 
 def test_already_blue_on_resume_does_not_write_again(tmp_path):
     cf = FakeCloudflare(content="gcp.adajosou.site")
-    snapshot = _execute(_run(tmp_path, cf, FakeInternet(cf, lag=0), Clock()), answers=["approve"])
+    snapshot = _execute_cutover(_run(tmp_path, cf, FakeInternet(cf, lag=0), Clock()))
     assert snapshot["outcome"] == "verified" and cf.writes == []
 
 
@@ -132,16 +151,25 @@ def test_record_changed_during_green_hold_stops(tmp_path):
 
     net = Meddler(cf, lag=0)
     net.resolve = lambda name: "gcp.adajosou.site"
-    snapshot = _execute(_run(tmp_path, cf, net, clock), answers=["approve"])
+    snapshot = _execute_cutover(_run(tmp_path, cf, net, clock))
     assert snapshot["outcome"] == "stopped"
 
 
 def test_refused_approval_or_missing_config_never_switches(tmp_path):
     cf = FakeCloudflare()
-    assert _execute(_run(tmp_path / "no", cf, FakeInternet(cf), Clock()), answers=["stop"])["outcome"] == "stopped"
-    assert _execute(_run(tmp_path / "cfg", cf, FakeInternet(cf), Clock(), cutover=None),
-                    answers=["approve"])["outcome"] == "stopped"
+    assert _execute_cutover(_run(tmp_path / "no", cf, FakeInternet(cf), Clock()),
+                            approve_cutover=False)["outcome"] == "stopped"
+    assert _execute_cutover(_run(tmp_path / "cfg", cf, FakeInternet(cf), Clock(), cutover=None))["outcome"] == "stopped"
     assert cf.writes == []
+
+
+def test_cutover_without_release_target_stops_without_touching_dns(tmp_path):
+    cf, clock = FakeCloudflare(), Clock()
+    net = FakeInternet(cf)
+    release = RoundJenkins(lambda commit: release_result(bundle(commit)))
+    snapshot = _execute(_run(tmp_path, cf, net, clock, release_target=None, release=release))
+    assert snapshot["outcome"] == "stopped"
+    assert cf.writes == [] and net.calls == [] and release.params == []
 
 
 def test_cutover_config_validation():
