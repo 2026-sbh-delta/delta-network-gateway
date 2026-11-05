@@ -221,6 +221,12 @@ class Store:
         with self.engine.connect() as conn:
             return page_query(conn, services, SERVICE_FIELDS, [], limit, cursor)
 
+    @staticmethod
+    def _assert_no_removal(conn, service_id):
+        from .removals import assert_no_removal
+
+        assert_no_removal(conn, service_id)
+
     def enqueue(self, service_id, key):
         with self.engine.begin() as conn:
             service = (
@@ -232,6 +238,7 @@ class Store:
             )
             if not service:
                 raise Problem("service_not_found", "서비스를 찾을 수 없습니다.", 404)
+            self._assert_no_removal(conn, service_id)
             snapshot = {
                 k: service[k] for k in SERVICE_FIELDS if k not in ("id", "project_id", "created_at")
             }
@@ -295,6 +302,7 @@ class Store:
             )
             if not service:
                 raise Problem("service_not_found", "서비스를 찾을 수 없습니다.", 404)
+            self._assert_no_removal(conn, service_id)
             existing = (
                 conn.execute(
                     sa.select(runs).where(
@@ -506,7 +514,11 @@ class Store:
                             else (
                                 "security_queued"
                                 if row["kind"] == "security_check"
-                                else "repository"
+                                else (
+                                    "runtime_remove_check"
+                                    if row["kind"] == "runtime_remove"
+                                    else "repository"
+                                )
                             )
                         ),
                     )
@@ -527,7 +539,11 @@ class Store:
                     else (
                         "샌드박스 실행 확인을 시작했습니다."
                         if row["kind"] in ("sandbox_check", "dast_check")
-                        else "소스 확인을 시작했습니다."
+                        else (
+                            "온프레미스 앱 삭제를 시작했습니다."
+                            if row["kind"] == "runtime_remove"
+                            else "소스 확인을 시작했습니다."
+                        )
                     )
                 ),
             )
@@ -548,7 +564,7 @@ class Store:
             or row["started_at"]
             + timedelta(
                 seconds=1800
-                if row["kind"] in ("image_build", "sandbox_check", "dast_check")
+                if row["kind"] in ("image_build", "sandbox_check", "dast_check", "runtime_remove")
                 else 120
             )
             <= instant
@@ -564,7 +580,8 @@ class Store:
                 row["started_at"]
                 + timedelta(
                     seconds=1800
-                    if row["kind"] in ("image_build", "sandbox_check", "dast_check")
+                    if row["kind"]
+                    in ("image_build", "sandbox_check", "dast_check", "runtime_remove")
                     else 120
                 ),
             )
@@ -597,6 +614,10 @@ class Store:
                     None,
                     {"code": "sandbox_cancelled", "message": "샌드박스를 중단하고 정리했습니다."},
                 )
+            if row["kind"] == "runtime_remove" and not error:
+                from .removals import RemovalStore
+
+                RemovalStore(self.engine).complete(conn, row)
             retry = bool(error and retry and row["attempt"] < 3)
             state = "queued" if retry else ("failed" if error else "succeeded")
             values = dict(
@@ -631,7 +652,11 @@ class Store:
                                 else (
                                     "SAST 결과를 확인했습니다. 운영 배포 승인은 별도입니다."
                                     if row["kind"] == "security_check"
-                                    else "소스 확인을 완료했습니다."
+                                    else (
+                                        "온프레미스 앱 삭제를 완료했습니다. DB·볼륨·서버는 보존했습니다."
+                                        if row["kind"] == "runtime_remove"
+                                        else "소스 확인을 완료했습니다."
+                                    )
                                 )
                             )
                         )
@@ -649,6 +674,7 @@ class Store:
             )
             if not service:
                 raise Problem("service_not_found", "서비스를 찾을 수 없습니다.", 404)
+            self._assert_no_removal(conn, service_id)
             existing = (
                 conn.execute(
                     sa.select(runs).where(
@@ -755,6 +781,7 @@ class Store:
             )
             if not service:
                 raise Problem("service_not_found", "서비스를 찾을 수 없습니다.", 404)
+            self._assert_no_removal(conn, service_id)
             existing = (
                 conn.execute(
                     sa.select(runs).where(

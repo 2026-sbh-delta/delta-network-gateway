@@ -77,6 +77,10 @@ export function DeleteProjectDialog({
           GitHub 저장소와 실제 클라우드 자원은 삭제하지 않습니다. 실행 중인
           작업이나 연결된 환경·계획이 있으면 삭제할 수 없습니다.
         </p>
+        <p className="muted">
+          온프레미스 앱을 종료·제거하려면 개요의 환경 카드에서 ‘실행 앱 삭제’를
+          사용하세요. DB 데이터와 플랫폼 이력은 보존합니다.
+        </p>
         <label htmlFor="delete-project-confirmation">
           확인을 위해 프로젝트 이름을 입력하세요
         </label>

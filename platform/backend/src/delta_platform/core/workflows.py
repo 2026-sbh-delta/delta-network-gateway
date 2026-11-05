@@ -101,6 +101,8 @@ class WorkflowStore:
         )
         if not row:
             raise Problem("environment_not_owned", "서비스·프로젝트에 속한 환경이 아닙니다.", 409)
+        if row["binding"].get("runtime_status") in ("removing", "removed"):
+            raise Problem("environment_unavailable", "앱 삭제 중이거나 삭제된 환경입니다.", 409)
         return row
 
     def create(self, service_id, body, key):

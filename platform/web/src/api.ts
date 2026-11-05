@@ -12,6 +12,7 @@ export type Run = {
     | "image_build"
     | "sandbox_check"
     | "security_check"
+    | "runtime_remove"
     | "dast_check";
   cancel_requested?: boolean;
   external_id: string | null;
