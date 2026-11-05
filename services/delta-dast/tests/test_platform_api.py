@@ -197,3 +197,78 @@ def test_platform_limit_checks_top_candidates_and_reports_the_rest_as_truncated(
     # 저장형·확정 후보 1건만 점검하고, 나머지는 점검하지 않았다고 남긴다(통과가 아니다)
     assert len(calls[0][0].report["findings"]) == 1 and len(view["finding_ids"]) == 1
     assert view["eligible_count"] == 3 and view["findings_truncated"] is True
+
+
+def test_platform_run_replies_to_the_sast_scan_that_produced_it(tmp_path, monkeypatch):
+    """플랫폼 경로도 점검이 끝나면 binding 의 SAST 점검 ID 로 재현 결과를 회신한다(통합하며 빠졌던 연결)."""
+    import time
+    from fastapi.testclient import TestClient
+    import dast_agent.server as server
+    from dast_agent import sast_link
+
+    async def inspector(finding, *args, **kwargs):
+        return {"finding_id": finding.id, "title": finding.title, "status": "REPRODUCED",
+                "message": "실행 관측", "evidence": {}, "duration_ms": 1}
+
+    async def ready(*args, **kwargs):
+        return True
+
+    replies = []
+
+    def feedback(sast_run_id, results):
+        replies.append((sast_run_id, [r["finding_id"] for r in results]))
+        return [{"fingerprint": "2d3b1d57b297b50cf62704e6cb34a5be", "outcome": "ineffective", "detail": ""}]
+
+    monkeypatch.setattr(server, "orchestrate", inspector)
+    monkeypatch.setattr(server, "_claude_auth", lambda: {"logged_in": True, "method": "test"})
+    monkeypatch.setattr(server, "browser_available", ready)
+    monkeypatch.setattr(server, "check_target", ready)
+    monkeypatch.setattr(sast_link, "feedback", feedback)
+    monkeypatch.setenv("DAST_PLATFORM_TOKEN", "test-only-platform-token")
+    monkeypatch.setenv("DAST_PLATFORM_TARGET_ID", "local-fixture")
+    monkeypatch.setenv("DAST_PLATFORM_MAX_FINDINGS", "1")
+    run_id, body = str(uuid4()), payload()
+    with TestClient(server.create_app(runs_dir=tmp_path), base_url="http://127.0.0.1:8765",
+                    headers={"Authorization": "Bearer test-only-platform-token"}) as client:
+        assert client.put(f"/api/platform/runs/{run_id}", json=body).status_code == 200
+        for _ in range(100):
+            if client.get(f"/api/platform/runs/{run_id}").json()["status"] == "done":
+                break
+            time.sleep(0.05)
+        view = client.get(f"/api/runs/{run_id}/view").json()
+    assert replies == [(body["binding"]["sast_run_id"], ["sast-2d3b1d57b297b50cf62704e6cb34a5be"])]
+    assert view["sast_feedback"][0]["outcome"] == "ineffective"
+
+
+def test_demo_prefers_the_pinned_path_within_the_same_grade(tmp_path, monkeypatch):
+    """시연 대상은 SARIF 순서가 아니라 지문으로 고정한다. 같은 등급(저장형·확정) 안에서만 앞당기고, 등급은 넘지 않는다."""
+    registry, live, calls = fixture(tmp_path, monkeypatch)
+    monkeypatch.setenv("DAST_PLATFORM_MAX_FINDINGS", "1")
+    body = payload()
+    results = body["report"]["runs"][0]["results"]
+    from dast_agent.adapters import sarif_targets
+    stored = [r for r in sarif_targets(body["report"]) if r["ruleId"] == "delta.xss.stored"]
+    results.reverse()  # SARIF 순서가 바뀌어도
+    body["binding"]["sast_evidence_sha256"] = fingerprint(body["report"])
+    for wanted in (stored[0], stored[1]):
+        fp = wanted["partialFingerprints"]["deltaFlow/v1"]
+        monkeypatch.setenv("DAST_PLATFORM_PREFER", fp)
+        calls.clear()
+        asyncio.run(registry.submit(str(uuid4()), body))
+        assert [f["id"] for f in calls[0][0].report["findings"]] == ["sast-" + fp]
+    # 반사형(낮은 등급)을 지정해도 저장형보다 앞서지 않는다
+    reflected = next(r for r in sarif_targets(body["report"]) if r["ruleId"] == "delta.xss.reflected")
+    monkeypatch.setenv("DAST_PLATFORM_PREFER", reflected["partialFingerprints"]["deltaFlow/v1"])
+    calls.clear()
+    asyncio.run(registry.submit(str(uuid4()), body))
+    assert calls[0][0].report["findings"][0]["id"] != "sast-" + reflected["partialFingerprints"]["deltaFlow/v1"]
+
+
+def test_platform_runs_use_direct_check_unless_turned_off(tmp_path, monkeypatch):
+    """파이프라인 경로는 기본으로 바로 검사(반사 확인·새 세션 재방문 생략)를 쓴다. 0 이면 기존 절차."""
+    registry, live, calls = fixture(tmp_path, monkeypatch)
+    asyncio.run(registry.submit(str(uuid4()), payload()))
+    assert calls[0][1]["direct"] is True
+    monkeypatch.setenv("DAST_PLATFORM_DIRECT", "0")
+    asyncio.run(registry.submit(str(uuid4()), payload()))
+    assert calls[1][1]["direct"] is False

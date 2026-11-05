@@ -470,7 +470,11 @@
               `<button type="button" class="shot" data-src="${esc(s)}"><img src="${esc(s)}" alt="${esc(s.split("/").pop())}" loading="lazy"><span>${esc(s.split("/").pop().replace(/\.png$/, "").replace(r.finding_id + "-", ""))}</span></button>`).join("");
             return `<div class="verdict">${badge(r.status)}<b>${esc(r.title || short(r.finding_id))}</b><p>${esc(r.message || "")}</p>${shots ? `<div class="shots">${shots}</div>` : ""}</div>`;
           }).join("");
-          $("#lv-results").innerHTML = rows || '<span class="hint">아직 판정이 없습니다.</span>';
+          // DAST 가 SAST 에 돌려준 결과(필터 판정 보정): ineffective=필터가 못 막음, effective=막음
+          const OUT = { ineffective: "필터 효과 없음(재현됨)", effective: "필터 효과 있음(재현 안 됨)", conflict: "판정 충돌", skipped: "건너뜀", unknown: "판정 불가" };
+          const reply = (j.sast_feedback || []).map((o) => `<li><span class="mono">${esc(String(o.fingerprint).slice(0, 10))}</span> ${esc(OUT[o.outcome] || o.outcome)}</li>`).join("");
+          $("#lv-results").innerHTML = (rows || '<span class="hint">아직 판정이 없습니다.</span>')
+            + (reply ? `<div class="reply"><b>SAST 회신</b><ul>${reply}</ul></div>` : j.status === "done" ? '<div class="reply hint">SAST 회신 없음</div>' : "");
           $("#lv-results").classList.remove("hint");
           if (!hasFrame) {
             const last = (j.results || []).flatMap((r) => (r.evidence || {}).screenshots || []).pop();

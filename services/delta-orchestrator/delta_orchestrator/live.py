@@ -161,7 +161,8 @@ async def dast_view(client: httpx.AsyncClient, board: dict[str, Any], prefix: st
     if r.status_code != 200:
         raise LiveError(502, f"DAST 응답 {r.status_code}")
     data = r.json()
-    keep = {k: data.get(k) for k in ("run_id", "status", "live", "started_at", "duration_ms", "counts", "error", "plan")}
+    keep = {k: data.get(k) for k in ("run_id", "status", "live", "started_at", "duration_ms", "counts", "error", "plan",
+                                      "sast_feedback")}
     keep["results"] = data.get("results") or []
     keep["findings"] = [{"id": f.get("id"), "title": f.get("title")} for f in ((data.get("report") or {}).get("findings") or [])]
     # 증거 스크린샷 주소를 이 화면의 중계 주소로 바꾼다(DAST 는 공개 로그인 없이 내부에서만 읽는다)

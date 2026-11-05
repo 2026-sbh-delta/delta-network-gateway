@@ -282,6 +282,8 @@ def create_app(port: int = 8765, target_port: int = 8766,
             result["plan"] = run["plan"]
         if run.get("priority"):
             result["priority"] = run["priority"]
+        if run.get("sast_feedback"):
+            result["sast_feedback"] = run["sast_feedback"]
         if run.get("error"):
             result["error"] = run["error"]
             result["error_kind"] = run.get("error_kind", "failed")
@@ -389,7 +391,8 @@ def create_app(port: int = 8765, target_port: int = 8766,
                     result = await orchestrate(finding, target, payload_id, template,
                                                run["run_id"], output, tagged, run["planner"],
                                                run.get("impact", True),
-                                               resume=run.get("resume", {}).get(finding.id))
+                                               resume=run.get("resume", {}).get(finding.id),
+                                               direct=run.get("direct", False))
             result["mapping"] = mapping
             run["results"].append(result)
             await tagged({"type": "finding", "status": result["status"],

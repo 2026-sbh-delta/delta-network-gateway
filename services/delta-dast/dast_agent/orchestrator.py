@@ -71,7 +71,7 @@ async def analyze(finding: Finding, target: ResolvedTarget) -> dict:
 
 async def orchestrate(finding: Finding, target: ResolvedTarget, payload_id: str,
                       payload_template: str, run_id: str, output, emit, planner: str,
-                      impact: bool, resume: dict | None = None) -> dict:
+                      impact: bool, resume: dict | None = None, direct: bool = False) -> dict:
     async def stage(name, status, detail=""):
         await emit({"type": "stage", "stage": name, "status": status, "detail": detail[:160]})
 
@@ -96,7 +96,7 @@ async def orchestrate(finding: Finding, target: ResolvedTarget, payload_id: str,
                                                 output, emit, hypothesis=hypothesis, impact=impact)
     else:
         result = await investigate_sdk(finding, target, payload_id, payload_template, run_id, output,
-                                       emit, hypothesis=hypothesis, impact=impact, resume=resume)
+                                       emit, hypothesis=hypothesis, impact=impact, resume=resume, direct=direct)
     result["evidence"]["hypothesis"] = hypothesis
     await stage("judge", "done", result["status"])
     if result["evidence"].get("impact") is None:

@@ -8,6 +8,7 @@ import asyncio
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 from uuid import UUID
 from typing import Literal
@@ -131,7 +132,7 @@ class PlatformRuns:
         if args.report.get("version") != "2.1.0" or len(args.report.get("runs", [])) != 1:
             raise ValueError("Single SARIF run required")
         targets = sarif_targets(args.report)
-        report = Report.model_validate(from_sarif(args.report, platform_limit())) if targets else None
+        report = Report.model_validate(from_sarif(args.report, platform_limit(), platform_prefer())) if targets else None
         request_hash = fingerprint(submission)
         async with self.lock:
             record = self.read(run_id)
@@ -173,8 +174,10 @@ class PlatformRuns:
                     self.launch(RunRequest(scenario="vulnerable", planner="agent",
                                            report=report.model_dump(), target_id=target_id,
                                            concurrency=1, impact=True, auto_fix=False,
+                                           # 점검이 끝나면 이 SAST 점검에 재현 결과를 회신한다(server.py 의 피드백 단계)
+                                           sast_run_id=args.binding.sast_run_id,
                                            payload_id=impact_payload if impact_payload in self.catalog.payloads else None),
-                                {"platform_binding": binding}, run_id=run_id)
+                                {"platform_binding": binding, "direct": platform_direct()}, run_id=run_id)
                 except Exception:
                     # The persisted request remains interrupted; a new run ID is required.
                     raise
@@ -207,6 +210,17 @@ def platform_limit() -> int:
         return max(1, min(int(os.environ.get("DAST_PLATFORM_MAX_FINDINGS", MAX_FINDINGS)), MAX_FINDINGS))
     except ValueError:
         return MAX_FINDINGS
+
+
+def platform_prefer() -> list[str]:
+    """먼저 점검할 SAST 경로 지문(DAST_PLATFORM_PREFER, 쉼표 구분). 같은 등급 안에서 SARIF 순서보다 앞선다.
+    지문(deltaFlow/v1)은 줄 번호와 무관해 코드가 조금 바뀌어도 같은 경로를 가리킨다."""
+    return [f for f in os.environ.get("DAST_PLATFORM_PREFER", "").split(",") if re.fullmatch(r"[0-9a-f]{32}", f.strip())]
+
+
+def platform_direct() -> bool:
+    """바로 검사(DAST_PLATFORM_DIRECT, 기본 켬): 반사 확인·새 세션 재방문 없이 페이로드를 바로 넣고 같은 세션에서 판정한다."""
+    return os.environ.get("DAST_PLATFORM_DIRECT", "1") != "0"
 
 
 def install(app, registry):

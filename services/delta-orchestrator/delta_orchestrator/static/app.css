@@ -279,3 +279,5 @@ dialog.viewer { width: min(1280px, calc(100vw - 32px)); }
 .tv.big { border-radius: 0; border: 0; }
 @media (max-width: 900px) { .pip { width: calc(100% - 24px); } }
 @media (prefers-reduced-motion: reduce) { .tv-cursor { transition: none; } .tv-ripple, .tv-alert, .tv.flash-bad { animation: none; } }
+.reply { margin-top: 10px; font-size: 12px; border-top: 1px solid var(--line); padding-top: 8px; }
+.reply ul { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 3px; color: var(--muted); }

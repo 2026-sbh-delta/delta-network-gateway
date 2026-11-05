@@ -77,12 +77,14 @@ def test_dast_view_relinks_screenshots_through_this_page():
     def handler(request):
         assert request.url.path == f"/api/runs/{DAST_ID}/view"
         return httpx.Response(200, json={"run_id": DAST_ID, "status": "done", "live": False, "secret": "x",
+                                         "sast_feedback": [{"fingerprint": "abc", "outcome": "ineffective", "detail": ""}],
                                          "results": [{"finding_id": "sast-abc", "status": "REPRODUCED",
                                                       "evidence": {"screenshots": [f"/api/artifacts/{DAST_ID}/sast-abc-after.png"]}}],
                                          "report": {"findings": [{"id": "sast-abc", "title": "저장형 XSS", "description": "긴 설명"}]}})
 
     out = run(live.dast_view(client(handler), BOARD, "/api/pipeline/runs/r1/live/dast"))
     assert "secret" not in out and out["findings"] == [{"id": "sast-abc", "title": "저장형 XSS"}]
+    assert out["sast_feedback"][0]["outcome"] == "ineffective"  # SAST 회신 결과도 화면으로 넘긴다
     assert out["results"][0]["evidence"]["screenshots"] == ["/api/pipeline/runs/r1/live/dast/artifacts/sast-abc-after.png"]
 
 

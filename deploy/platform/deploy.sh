@@ -125,7 +125,11 @@ for svc in "$@"; do
   case "$svc" in
     dast)
       env_args="$env_args PUBLIC_ORIGIN=$(app_url dast) SAST_URL=http://$(name_of sast):8790"
-      env_args="$env_args STAGING_URL=http://$(name_of jenkins):8091" ;;
+      env_args="$env_args STAGING_URL=http://$(name_of jenkins):8091"
+      # 시연 점검 범위(remote-dast.sh 기본값: 1건, 게시글 본문 경로). 바꾸려면 배포할 때 값을 준다.
+      env_args="$env_args DAST_PLATFORM_MAX_FINDINGS=${DAST_PLATFORM_MAX_FINDINGS:-1}"
+      env_args="$env_args DAST_PLATFORM_PREFER=${DAST_PLATFORM_PREFER:-2d3b1d57b297b50cf62704e6cb34a5be}"
+      env_args="$env_args DAST_PLATFORM_DIRECT=${DAST_PLATFORM_DIRECT:-1}" ;;
     jenkins)
       # 스테이징 도구도 Jenkins 컨트롤러에서 돈다(배포 권한을 가진 곳). 이미지는 같은 저장소에 staging- 태그로 둔다.
       # 롤백(TAG=…) 때 처음 배포한 스테이징 도구 태그가 달랐으면 STAGING_TAG 로 그 태그를 준다

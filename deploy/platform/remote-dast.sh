@@ -16,12 +16,15 @@ model=$(param dast/llm_model)
 install -d -o 10001 -g 10001 -m 0750 "$base/state/runs" "$base/state/data"
 
 # 파이프라인 점검 상한: 시연은 우선순위 1건(블루스크린 항목)만 본다(11/5 결정). 나머지 후보는 '미점검'으로 남아 사람이 확인한다.
+# DAST_PLATFORM_PREFER: 같은 등급에서 먼저 볼 경로 지문(시연 앱 게시글 본문 저장형 XSS). deploy.sh 가 넘긴다.
+# DAST_PLATFORM_DIRECT: 바로 검사(반사 확인·새 세션 재방문 생략, 페이로드 바로 입력). 0 이면 기존 절차.
 docker rm -f delta-dast >/dev/null 2>&1 || true
 docker run -d --name delta-dast --restart unless-stopped --network host --shm-size=1g \
   --env-file "$base/secrets.env" --env-file "$base/llm.env" \
   -e DELTA_RUNTIME=server -e DELTA_SAST_URL="$SAST_URL" -e DELTA_STAGING_URL="$STAGING_URL" \
   -e DAST_BIND_HOST=0.0.0.0 -e DAST_PUBLIC_ORIGIN="$PUBLIC_ORIGIN" -e DAST_INTERNAL_HOSTS=dast.cp.internal:8765 \
-  -e DAST_PLATFORM_MAX_FINDINGS="${DAST_PLATFORM_MAX_FINDINGS:-1}" \
+  -e DAST_PLATFORM_MAX_FINDINGS="${DAST_PLATFORM_MAX_FINDINGS:-1}" -e DAST_PLATFORM_PREFER="${DAST_PLATFORM_PREFER:-}" \
+  -e DAST_PLATFORM_DIRECT="${DAST_PLATFORM_DIRECT:-1}" \
   -v "$base/state/runs:/app/runs" -v "$base/state/data:/app/data" "${llm_mounts[@]}" \
   "$IMAGE" >/dev/null
 wait_healthy http://127.0.0.1:8765/healthz delta-dast
