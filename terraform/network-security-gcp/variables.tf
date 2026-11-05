@@ -67,14 +67,6 @@ variable "server_image" {
     error_message = "Supply a pinned Ubuntu 24.04 image path."
   }
 }
-variable "aws_collector_role_arn" {
-  type        = string
-  description = "Exact central AWS collector role trusted by Google WIF."
-  validation {
-    condition     = can(regex("^arn:aws:iam::[0-9]{12}:role/[A-Za-z0-9+=,.@_/-]+$", var.aws_collector_role_arn))
-    error_message = "Supply an exact IAM role ARN, not a wildcard principal."
-  }
-}
 variable "aws_vpn_tunnels" {
   type = map(object({
     gcp_interface  = number

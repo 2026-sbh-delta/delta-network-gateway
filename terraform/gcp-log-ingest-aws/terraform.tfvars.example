@@ -1,4 +1,0 @@
-central_account_id = "111122223333"
-subscription = "projects/term2-delta/subscriptions/delta-lab-aws-collector"
-wif_audience = "//iam.googleapis.com/projects/123456789012/locations/global/workloadIdentityPools/delta-lab-aws/providers/aws-collector"
-collector_zip = "../../services/gcp-log-collector/.build/collector.zip"

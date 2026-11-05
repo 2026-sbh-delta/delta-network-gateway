@@ -60,3 +60,12 @@ resource "google_project_service" "required" {
   disable_on_destroy = false
   depends_on         = [terraform_data.contract]
 }
+
+# Shared project service agent is also used by the platform log pipeline.
+# Keep its Terraform address while retiring the network-only exporter.
+resource "google_project_service_identity" "pubsub" {
+  provider   = google-beta
+  project    = var.project_id
+  service    = "pubsub.googleapis.com"
+  depends_on = [google_project_service.required]
+}

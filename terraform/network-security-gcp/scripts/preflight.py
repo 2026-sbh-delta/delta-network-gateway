@@ -18,9 +18,7 @@ PERMISSIONS = (
     "compute.instances.create", "networksecurity.firewallEndpoints.create",
     "networksecurity.firewallEndpointAssociations.create", "networksecurity.securityProfiles.create",
     "networksecurity.securityProfileGroups.create", "networkconnectivity.hubs.create",
-    "networkconnectivity.spokes.create", "logging.sinks.create", "pubsub.topics.create",
-    "pubsub.subscriptions.create", "iam.workloadIdentityPools.create",
-    "iam.workloadIdentityPoolProviders.create",
+    "networkconnectivity.spokes.create",
 )
 
 

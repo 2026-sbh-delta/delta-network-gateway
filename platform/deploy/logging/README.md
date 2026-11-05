@@ -1,6 +1,6 @@
 # AWS·GCP 중앙 로그 수신
 
-AWS와 GCP에 이미 모이는 로그를 **플랫폼 계정의 CloudWatch Logs에 복사**한다. 별도 로그 서버 IP는 없다. 원본 저장소와 기존 네트워크 계정의 수집기는 유지한다.
+AWS와 GCP에 이미 모이는 로그를 **플랫폼 계정의 CloudWatch Logs에 복사**한다. 별도 로그 서버 IP는 없다. AWS 원본 로그와 GCP Cloud Logging 저장은 유지한다.
 
 ```text
 AWS CloudWatch Logs → 구독 필터 → Destination → Kinesis → Lambda ─┐
@@ -57,7 +57,7 @@ aws logs put-subscription-filter \
 
 VM의 앱 파일/stdout 로그가 Cloud Logging에 없다면 Ops Agent 등 원본 수집 설정이 먼저 필요하다. 이 Sink는 이미 있는 로그만 전달한다. 추가 로그 종류는 `gcp_log_filter`를 검토해 확장한다. 다른 프로젝트는 별도 Sink·권한·수집기 계약이 필요하다.
 
-기존 `delta-lab-network-security` Sink/Topic/Subscription은 이번 root에서 소유하거나 변경하지 않는다. 네트워크 로그가 두 중앙 계정에 복사되는 동안 저장·전송 비용도 각각 발생한다. 정리할 때는 팀과 소비자를 확인한 뒤 결정한다.
+이 root는 플랫폼 전용 Sink와 Topic 및 Subscription만 소유한다. 기존 네트워크 계정 전용 `delta-lab-network-security` 전달 경로의 정리와 보존 로그는 [네트워크 정리 기록](../../../docs/ai-dlc/gcp-central-network.md#2026-11-05-gcp-로그-전달-경로-정리-검토)을 따른다. 공통 `services/gcp-log-collector`는 이 플랫폼 수집에서도 계속 사용한다.
 
 ## 배포
 
@@ -129,7 +129,7 @@ CloudWatch에서 수집기 `Errors`, AWS `IteratorAge`, `FailedEnvelopes`, 실�
 
 - AWS: 쓰기 실패는 체크포인트를 넘기지 않고 재시도한다. 3회 재시도 또는 최대 1시간 처리 지연 후 원본 이벤트 묶음을 S3에 보관한다. 장애 복구 후 원본의 시각과 ID를 보존해 재처리한다.
 - GCP: 중앙 저장에 성공한 메시지만 ack한다. 반복 실패는 Pub/Sub DLQ에 보관한다. DLQ를 먼저 확인한 후 원본 형식으로 재게시한다. 수동 pull로 정상 Subscription의 ack를 소모하지 않는다.
-- 일시 중지: AWS는 송신 구독 제거, GCP는 **새 플랫폼 Sink만** 비활성화한다. 큐가 비었는지 확인한 후 해당 수집기를 중지한다. 기존 네트워크 수집기를 끄지 않는다.
+- 일시 중지: AWS는 송신 구독 제거, GCP는 **플랫폼 Sink만** 비활성화한다. 변경 전파와 대기 메시지를 확인한 후 해당 수집기를 중지한다. Cloud Logging 원본 저장은 유지한다.
 - 롤백: 새 root의 Plan을 검토해 제거한다. S3 실패 원본이 남아 있으면 `force_destroy=false`로 삭제를 막는다. 먼저 필요한 로그를 보관한다.
 
 1 shard Kinesis에는 유휴 시간에도 비용이 있다. Lambda/PubSub/중앙 로그에도 사용량 비용이 생긴다. 해커톤 후 유지 여부와 원본·중앙 중복 보관 기간을 확인한다.

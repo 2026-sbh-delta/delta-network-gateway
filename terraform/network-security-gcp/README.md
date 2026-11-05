@@ -12,6 +12,12 @@ AWS 연결 대상은 공통 `10.10.0.0/16` VPC 하나다. `aws_cidrs`는 NCC exp
 
 2026-11-04 실제 배포를 완료했다. 프로젝트 `366844544284`, Billing 활성과 필요한 권한/API를 확인했고 기존 업무 `10.30.1.0/24`를 보존했다. 새 중앙 `10.31.0.0/24`, 업무 `10.32.1.0/24`와 공유 endpoint를 생성했다. 인터넷 허용/거부 및 ALERT 위협 로그, AWS 양방향 사설 HTTP와 중앙 원본 로그 일치를 확인했다. 네 단일 BGP 경로 철회/복구와 저장 실패 ack0/재수집도 검증했고 총5개 root의 최종 Plan은 No changes다. [승인/실제 결과](../../docs/ai-dlc/gcp-central-network.md), [실행 Runbook](RUNBOOK.md)을 따른다.
 
+## 로그 수집 소유권
+
+방화벽과 VPN 등의 네트워크 로그는 GCP Cloud Logging에 저장한다. AWS 전달은 별도 [플랫폼 중앙 로그 root](../../platform/deploy/logging/README.md)가 관리하며 플랫폼 계정 `616723161368`의 `/delta-platform/central/gcp`에서 확인한다. 이 네트워크 root는 전용 Sink, Pub/Sub 구독이나 AWS 수집 역할 계약을 정의하지 않는다. 공통 Pub/Sub 서비스 에이전트와 프로젝트 API는 기존 Terraform 주소로 보존한다.
+
+이전 네트워크 계정 `482840608926`의 전용 수집 경로 정리와 보존 로그, 실제 적용 상태는 [정리 기록](../../docs/ai-dlc/gcp-central-network.md#2026-11-05-gcp-로그-전달-경로-정리-검토)을 따른다. 2026-11-04의 수집 및 장애 검증은 당시 별도 수집기의 과거 기록이다.
+
 ## 상태 파일 관리
 
 2026-11-05 GCS에서 중앙 S3로 state 이전을 완료했다. 이 root의 backend는 AWS 중앙 네트워크와 같은 S3 버킷을 사용하고 GCP 전용 key로 state를 분리한다. 리소스 관리는 기존 Google Provider가 담당한다. 이전 후 실제 Plan은 No changes/종료0이다.
@@ -41,7 +47,6 @@ AWS 연결 대상은 공통 `10.10.0.0/16` VPC 하나다. `aws_cidrs`는 NCC exp
 | `internet_source_cidrs` | `set(string)` | 필수 | 인터넷 시험을 허용할 출발지. 무제한 기본 경로 금지 |
 | `router_asn` | `number` | `65001` | Cloud Router의 private ASN |
 | `server_image` | `string` | 필수 | 조회해 고정한 Ubuntu 24.04 이미지 경로 |
-| `aws_collector_role_arn` | `string` | 필수 | GCP WIF가 신뢰하는 정확한 중앙 AWS 역할 ARN |
 | `aws_vpn_tunnels` | `map(object)` | `{}` | Gateway 생성 후 전달받을 전체 4터널 계약 |
 | `vpn_shared_secrets` | `map(string)` | `{}` | sensitive/ephemeral PSK. write-only 필드에만 사용 |
 | `deletion_protection` | `bool` | `true` | 시험 VM의 의도하지 않은 삭제 방지 |
@@ -84,7 +89,6 @@ GCP VPC 자체에는 AWS의 VPC CIDR과 같은 단일 범위를 설정하지 않
 | `gateway_handoff` | AWS에 전달할 Gateway 주소, ASN, 양쪽 Prefix와 프로젝트 식별자. 비밀값 없음 |
 | `server_ip` | 시험 서버의 내부 주소 |
 | `demo_address` | 외부 패스스루 NLB의 공개 주소 |
-| `log_handoff` | AWS 수집기의 subscription/DLQ 경로와 WIF audience. 비밀값 없음 |
 
 ## 로컬 검증
 
@@ -103,7 +107,7 @@ bash terraform/network-security-gcp/scripts/validate.sh
 
 Jumbo frame은 기본 비활성 상태와 VPC MTU1460을 사용한다. API가 기본 false를 빈 블록으로 반환하므로 endpoint_settings에 false를 명시하지 않는다. 보안 프로필 URL도 API가 반환하는 canonical 형태로 지정해 반복 갱신을 방지한다.
 
-API를 활성화하는 리소스는 Terraform에서 제거해도 API를 비활성화하지 않는다. IAM은 필요한 topic/subscription의 개별 멤버만 관리하며 기존 IAM 정책을 덮어쓰지 않는다. S3 backend의 소유 계정, 암호화, 공개 접근 차단과 잠금을 확인한다. 2026-11-05 조회에서 기존 중앙 버킷의 버전 관리는 미설정이었으며 이 작업에서는 버킷 설정을 유지한다. 이전 전 state 백업과 GCS 원본은 복구용으로 보존한다. backend 이전과 유료 리소스 배포는 별도 작업이며 실제 배포는 저장 Plan을 검토한 뒤 수행한다.
+API를 활성화하는 리소스는 Terraform에서 제거해도 API를 비활성화하지 않는다. 플랫폼이 사용하는 공유 API와 Pub/Sub 서비스 에이전트를 이 root에서 계속 보존한다. 플랫폼 전용 Topic과 구독의 IAM은 플랫폼 root가 관리한다. S3 backend의 소유 계정, 암호화, 공개 접근 차단과 잠금을 확인한다. 2026-11-05 조회에서 기존 중앙 버킷의 버전 관리는 미설정이었으며 이 작업에서는 버킷 설정을 유지한다. 이전 전 state 백업과 GCS 원본은 복구용으로 보존한다. backend 이전과 유료 리소스 배포는 별도 작업이며 실제 배포는 저장 Plan을 검토한 뒤 수행한다.
 
 ## 검사 중단과 재개
 
@@ -113,7 +117,7 @@ API를 활성화하는 리소스는 Terraform에서 제거해도 API를 비활�
 | `bypass` | 유지, 시간 요금 발생 | 일반 allow | 유지 |
 | `disabled` | 없음 | 일반 allow | 유지 |
 
-중단은 enabled -> bypass에서 통신을 확인한 뒤 disabled로 전환한다. 재개는 disabled -> bypass에서 endpoint/association 준비를 기다린 뒤 enabled로 전환한다. 기존 singleton endpoint 주소는 moved 블록으로 [0]에 옮겨 bypass 전환 시 교체를 방지한다. 실제 `inspection-mode.auto.tfvars`는 ignored 파일이며 각 단계의 저장 Plan과 실제 통신을 검토한다. 프로필/기본 규칙, NCC/VPN/VM/NLB와 중앙 수집기는 보존한다. 검사 중단 중에는 새 Threat 로그가 생성되지 않는다.
+중단은 enabled -> bypass에서 통신을 확인한 뒤 disabled로 전환한다. 재개는 disabled -> bypass에서 endpoint/association 준비를 기다린 뒤 enabled로 전환한다. 기존 singleton endpoint 주소는 moved 블록으로 [0]에 옮겨 bypass 전환 시 교체를 방지한다. 실제 `inspection-mode.auto.tfvars`는 ignored 파일이며 각 단계의 저장 Plan과 실제 통신을 검토한다. 프로필/기본 규칙, NCC/VPN/VM/NLB와 별도 플랫폼 로그 수집 경로는 보존한다. 검사 중단 중에는 새 Threat 로그가 생성되지 않는다.
 
 이번 실행은 GCP 중단만 승인받았다. AWS ANF와 함께 켜는 공통 자동화, AWS GCP 허용 규칙/경로 전환 보완은 후속 범위다. [실행 순서](RUNBOOK.md#검사-비용-중단과-재개)를 따른다.
 
