@@ -14,6 +14,19 @@ def check_prepared_database(data, config):
     profile = config["databases"][data["database"]["profile_id"]]
     if profile.get("server_mode", "prepared") != "prepared":
         return
+    if (
+        data.get("target", {}).get("cloud") == "gcp"
+        and config.get("connections", {}).get("gcp", {}).get("management_transport")
+        == "iap"
+    ):
+        # The destination VM supplies DB network access. Validate the explicit
+        # operator endpoint now; SQL/TLS checks run through IAP after VM creation.
+        endpoint = profile.get("iap_endpoint")
+        if not endpoint or endpoint.get("port") != 5432:
+            raise DeploymentPreflightError(
+                "GCP IAP database endpoint is not configured"
+            )
+        return
     # Operator supplied, never a destination supplied by an application user.
     endpoint = profile.get("preflight_endpoint")
     if not endpoint:

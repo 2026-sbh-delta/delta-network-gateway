@@ -10,6 +10,7 @@ import subprocess
 import sys
 import time
 import urllib.request
+from contextlib import ExitStack
 from pathlib import Path
 from types import SimpleNamespace
 from uuid import UUID
@@ -126,6 +127,11 @@ def provision(data, selected, state_root):
 
 
 def vm(data, selected, config):
+    with ExitStack() as stack:
+        return deploy_vm(data, selected, config, stack)
+
+
+def deploy_vm(data, selected, config, stack):
     from preflight import check_prepared_database
 
     check_prepared_database(data, config)
@@ -159,6 +165,7 @@ def vm(data, selected, config):
             for c in data["components"]
         },
     }
+    database_profile = None
     if data.get("database"):
         from database import deliver, prepare, profile_for
 
@@ -167,7 +174,30 @@ def vm(data, selected, config):
             from database_server import provision as provision_database
 
             database_profile = provision_database(data, database_profile, config, run)
-        secret_id, value = prepare(data, database_profile)
+
+    ports = None
+    if cloud == "gcp" and selected.get("management_transport") == "iap":
+        from gcp_vm import forward
+
+        endpoint = database_profile.get("iap_endpoint") if database_profile else None
+        if database_profile and not endpoint:
+            raise ValueError("GCP IAP database endpoint is not configured")
+        ports = stack.enter_context(forward(output, selected, endpoint))
+
+    if database_profile:
+        connector = None
+        if ports:
+            from database import connect
+
+            def connector(value, **kwargs):
+                # Only this connection uses loopback. Stored app credentials retain
+                # their original DB hostname/port, including TLS hostname verification.
+                return connect(
+                    {**value, "hostaddr": "127.0.0.1", "port": ports["database"]},
+                    **kwargs,
+                )
+
+        secret_id, value = prepare(data, database_profile, connector=connector)
         payload["database_secret"] = deliver(data, selected, secret_id, value)
     # Only secret references enter SSM command text. The VM resolves them with its identity.
     runtime = base64.b64encode((ROOT / "vm_runtime.py").read_bytes()).decode()
@@ -233,11 +263,13 @@ def vm(data, selected, config):
             selected["ssh_service_account"],
             run,
         )
-    # Verify the private path independently from the deployment agent, not only localhost.
+    # IAP verifies the application on the destination VM, not public LB ingress.
+    # Keep the real private endpoint in the environment record, never the local tunnel.
     url = f"http://{address}:8088"
-    health(url + data["components"][0]["healthcheck_path"])
+    check_url = f"http://127.0.0.1:{ports['health']}" if ports else url
+    health(check_url + data["components"][0]["healthcheck_path"])
     if len(data["components"]) == 2:
-        health(url + "/api/health")
+        health(check_url + "/api/health")
     environment = {
         "name": "deploy-" + data["environment_id"][:12],
         "cloud": cloud,
@@ -259,7 +291,7 @@ def vm(data, selected, config):
         }
     )
     if data.get("database"):
-        database_health(url)
+        database_health(check_url)
     return environment, url
 
 

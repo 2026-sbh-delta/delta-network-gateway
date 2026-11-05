@@ -57,6 +57,7 @@ class DatabaseServerTest(unittest.TestCase):
                 return json.dumps(
                     {
                         "host": {"value": "db.sql.goog"},
+                        "private_ip": {"value": "10.32.3.2"},
                         "admin_secret_id": {
                             "value": "projects/test-project/secrets/admin"
                         },
@@ -85,6 +86,9 @@ class DatabaseServerTest(unittest.TestCase):
             )
             self.assertNotIn(passwords[0], json.dumps(result))
             self.assertEqual(result["secret_provider"], "gcp")
+            self.assertEqual(
+                result["iap_endpoint"], {"address": "10.32.3.2", "port": 5432}
+            )
 
     def test_wrong_account_and_existing_database_cannot_provision(self):
         data = self.data()

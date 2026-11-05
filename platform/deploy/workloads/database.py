@@ -98,8 +98,9 @@ def read_source(profile, key, client):
     return {**value, **profile.get("connection", {})}
 
 
-def prepare(data, profile, *, client=None):
+def prepare(data, profile, *, client=None, connector=None):
     """Prepare an app DB after server provisioning, or on an approved prepared server."""
+    connector = connector or connect
     client = client or boto3.client("secretsmanager", region_name="ap-northeast-2")
     secret_key = (
         "admin_secret_id" if data["database"]["mode"] == "new" else "app_secret_id"
@@ -136,7 +137,7 @@ def prepare(data, profile, *, client=None):
             Tags=[{"Key": k, "Value": v} for k, v in tags.items()],
         )
     if data["database"]["mode"] == "new":
-        conn, ca = connect(source, autocommit=True)
+        conn, ca = connector(source, autocommit=True)
         try:
             conn.execute(
                 "SELECT pg_advisory_lock(hashtextextended(%s, 11))", (environment,)
@@ -174,7 +175,7 @@ def prepare(data, profile, *, client=None):
             conn.close()
             ca.cleanup()
         admin = {**source, "dbname": value["dbname"]}
-        conn, ca = connect(admin)
+        conn, ca = connector(admin)
         try:
             with conn:
                 conn.execute(SCHEMA)
@@ -196,7 +197,7 @@ def prepare(data, profile, *, client=None):
         finally:
             conn.close()
             ca.cleanup()
-    conn, ca = connect(value)
+    conn, ca = connector(value)
     try:
         with conn:
             privileges = conn.execute(
