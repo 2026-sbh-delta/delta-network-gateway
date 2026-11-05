@@ -139,7 +139,7 @@ def configuration(cfg,images):
         s['environment']={'HOST':'0.0.0.0','PORT':str(port),'APP_ENV':'gcp','NODE_ENV':'production','API_ENDPOINT':'/api'}
         s['healthcheck']={'test':['CMD','/usr/local/bin/node','-e',"fetch('http://127.0.0.1:"+str(port)+"/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"],
                           'interval':'10s','timeout':'4s','start_period':'20s','retries':12}
-    fe['environment'].update(API_HOST='172.28.91.3',API_PORT='8080',API_PROTOCOL='http',APP_VERSION=images['frontend']['version'])
+    fe['environment'].update(API_HOST='172.28.91.3',API_PORT='8080',API_PROTOCOL='http',APP_VERSION=images['frontend']['version'],APP_NAME='Delta Board',CLOUD_PROVIDER='auto')
     fe['ports']=['10.32.1.20:3000:3000'];fe['depends_on']={'backend':{'condition':'service_healthy'}}
     be['environment'].update(STORAGE_BACKEND='postgres',PGHOST='127.0.0.1',PGPORT='5432',PGDATABASE=db['database'],PGUSER=db['user'],PGSSLMODE='disable',APP_VERSION=images['backend']['version'])
     be['secrets']=['db_password']

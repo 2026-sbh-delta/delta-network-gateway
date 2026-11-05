@@ -4,7 +4,7 @@
 
 ## 승인과 현재 상태
 
-현재 운영 상태: 사용자 후속 요청으로 Compose를 내리고 자동 시작을 해제했다. VM은 RUNNING이며 Cloud SQL/ALB/이미지와 설정을 보존한다. 아래 구축/통신 검증은 중지 전 이력이며 최신 상태는 마지막 Operation 절을 따른다.
+현재 운영 상태: 앱 컨테이너3개를 내리고 프로젝트 컨테이너/네트워크 잔여0개, delta-compose inactive/disabled를 확인했다. VM RUNNING, DB RUNNABLE, 디스크/DB 식별자 동일과 호스트 이미지9개/설정 해시 보존을 확인했다. 공개 API는 HTTP503다. 최신 결과는 마지막 Compose 중지 기록을 따른다.
 
 - 사용자 변경 요청: `상황이 바뀜.. VM 한대에 FE/BE docker-compose로 그냥 말아서 올려줘.`
 - 변경 방향: 사용자가 직접 지정한 VM 1대와 FE/BE Docker Compose를 기준으로 한다. 이전 FE/BE 별도 VM 조건은 이번 변경 방향으로 대체한다.
@@ -198,3 +198,47 @@ Internet -> 기존 ALB :80
 - Terraform 코드/Plan/Apply는 이번 중지 작업에서 실행하지 않았다. Git 게시 상태는 Git 이력을 따른다. 이전 No changes와 앱 정상 통신 기록은 당시 검증 이력이다.
 - 재개는 VM에서 `sudo systemctl enable --now delta-compose`로 수행한다. 이 unit은 secret/방화벽을 확인하고 보존한 이미지로 FE/BE/Proxy를 의존성 순서에 따라 재생성한다. 재개 지시 전에는 실행하지 않는다.
 - 증거: ignored `.validation/gcp-compose-20261105/compose-stop/before.json`, `host.json`, `after.json`, `result.json`.
+
+
+## 후속 Operation: 새 게시판 Compose 배포와 재개 (2026-11-05 KST)
+
+- 사용자 요청: `aws, gcp에 compose 올려서 보여줘`. 이 절은 기존 GCP VM의 재배포/재개 결과다.
+- 대상: term2-delta/asia-northeast3-a의 기존 delta-board-gcp-frontend, ID5224499913819284415/10.32.1.20을 유지했다. 기존 Cloud SQL/PSC/ALB를 사용하며 DB 초기화/신규 인프라 생성은 실행하지 않았다.
+- 소스: 원본 앱의 HEAD fd9a661과 미커밋 작업은 보존했다. 별도 로컬 clean 배포 스냅샷 547265cbb0ce5cfdb0816716cb3334adfbfbdef5를 사용하며 원격 Git 게시 완료를 뜻하지 않는다. AWS와 같은 서비스 파일27개를 대조했다.
+- 설정: FE에 APP_NAME=Delta Board/CLOUD_PROVIDER=auto를 추가했다. 기존 offline rootfs 이미지 import, 비루트/읽기 전용 파일시스템/secret/Proxy 구성을 유지했다. AWS의 일반 Dockerfile 빌드와 같은 이미지라고 표현하지 않는다.
+- bundle SHA-256: 80b9db817755a94ca63f2675a655c5ef3c4a2a9b9595810ab3519ba7aea52561.
+- FE image: sha256:7601c3d42258012fa4249fc0ada362cd6c45c833c44c543223ca3aa1761c1861.
+- BE image: sha256:f8dadb16710f6cfbad1f7d09ac444f446abd78a60e79e31fd0b7a3f1861c9e84.
+- Proxy image: sha256:01f1b0baf0a0d66e52f4040f4602204352e305defa8fbf5648b8f1068568e76e.
+- 이전 host/config/images/compose/unit 파일8개는 /opt/delta-compose/backups/board-547265cbb0ce에 백업했다. 이전 이미지와 DB는 보존하며 실제 rollback은 실행하지 않았다.
+- 접속: [Delta Board GCP](http://34.64.134.28/#/posts). 실제 OS 감지 gcp와 파랑 UI를 확인했다.
+
+| 날짜 | 명령 또는 검증 | 실제 결과 |
+| --- | --- | --- |
+| 2026-11-05 KST | `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s deploy/workload-gcp -p 'test_*.py' -v` | 5개 통과 |
+| 2026-11-05 KST | 앱 저장소 `artifacts/cloud-deploy/gcp-deploy.py` | 이전 설정 백업, 새 FE/BE 산출물/bundle 준비 성공. 최초 publish는 gcloud ADC 토큰 조회45초 timeout으로 업로드 전 중단 |
+| 2026-11-05 KST | 앱 저장소 `artifacts/cloud-deploy/gcp-resume.py` | 토큰 재조회 후 같은 bundle의 GCS 게시/prepare/activate 완료. 토큰을 출력하지 않고 프로세스 메모리에서 재사용했으며 새 IAM 권한은 부여하지 않음 |
+| 2026-11-05 KST | `python3 deploy/workload-gcp/compose.py status` | FE/BE running/healthy, Proxy running과 새 버전 일치 |
+| 2026-11-05 KST | 앱 저장소 `artifacts/cloud-deploy/verify-http.py gcp` | 공개 config/health200, cloudProvider=gcp, storage=postgres, FE/BE 버전 일치. 생성201/목록/단건200/없는 글404/자체 글 삭제204/삭제 후404와 정적 파일4개 해시 일치 |
+| 2026-11-05 KST | 앱 저장소 `artifacts/cloud-deploy/preflight.py gcp --stage after` | 같은 VM ID와 주소, Cloud SQL RUNNABLE, delta-compose active/enabled |
+| 2026-11-05 KST | Chrome 새 탭과 화면 캡처 | 실제 공개 게시판의 파랑 배경/배지/정상 연결 확인 |
+
+검증 전 게시글0개, 자체 글 정리 후0개다. DB 스키마와 데이터를 초기화하지 않았다. Terraform Plan/Apply/원본 작업 폴더 커밋/원격 푸시는 이번 배포에서 실행하지 않았다. 실제 실행 자료는 앱 저장소의 ignored artifacts/cloud-deploy와 기존 GCP .validation에 보관한다. 이 절의 배포 검증 당시에는 실행 중이었다. 최신 상태는 후속 중지 기록을 따른다.
+
+
+## 후속 Operation: 게시판 Compose만 중지 (2026-11-05 KST)
+
+- 승인: 사용자 `이제 compose만 내려도 돼`. 기존 VM과 DB를 유지하고 앱 Compose만 내렸다.
+- 실제 확인 시각: 2026-11-05T23:14:38.311275+09:00 (Asia/Seoul).
+- 결과: 앱 컨테이너3개를 내리고 프로젝트 컨테이너/네트워크 잔여0개, delta-compose inactive/disabled를 확인했다. VM RUNNING, DB RUNNABLE, 디스크/DB 식별자 동일과 호스트 이미지9개/설정 해시 보존을 확인했다. 공개 API는 HTTP503다.
+- Docker daemon은 active이고 기존 native 서비스 상태는 유지했다. 비밀번호를 조회/출력하거나 앱 데이터를 변경하지 않았다. `--volumes`/`--rmi`/prune, VM/DB 중지 또는 삭제, Terraform Plan/Apply, 커밋/푸시는 이번 중지에서 실행하지 않았다.
+
+| 날짜 | 실행한 명령 또는 검증 | 결과 |
+| --- | --- | --- |
+| 2026-11-05 KST | `python3 artifacts/cloud-stop/stop-compose.py gcp` (앱 저장소) | 종료0. 중지 전후 클라우드/호스트 상태와 보존 여부 확인 |
+| 2026-11-05 KST | 호스트 `systemctl disable --now delta-compose` | inactive/disabled |
+| 2026-11-05 KST | 호스트 `docker compose -p delta-sample -f /etc/delta-compose/compose.json down` | 프로젝트 컨테이너와 전용 네트워크 잔여0개 |
+| 2026-11-05 KST | Docker 이미지 ID 집합/설정 파일 SHA-256/다른 컨테이너 비교, VM/디스크/DB API 재조회 | 기존 이미지와 설정 및 다른 컨테이너 보존, 같은 VM/디스크/DB 식별자 |
+| 2026-11-05 KST | 공개 `/api/health` | HTTP503, 앱 중지 반영 |
+
+재개 요청 시 호스트에서 `sudo systemctl enable --now delta-compose`로 보존한 이미지와 설정을 사용한다. 이번 중지 작업에서는 재개하지 않았다. 증거는 앱 저장소의 ignored artifacts/cloud-stop/gcp-before.json, gcp-host.json, gcp-after.json, gcp-result.json에 보관했다. 앞선 게시판 배포/정상 동작 기록은 중지 전 이력이다.

@@ -53,7 +53,7 @@ rollback은 해당 VM의 previous 산출물을 사용하며 DB를 삭제하거�
 
 ## 단일 VM Compose
 
-2026-11-05 현재 사용자 요청으로 Compose를 내렸고 VM은 유지한다. 아래 배포/검증 내용은 구성과 이전 실행 이력이다. 중지 및 재개는 아래 절차를 따른다.
+2026-11-05 게시판 배포와 검증 후 사용자 후속 요청으로 Compose를 다시 내리고 자동 시작을 해제했다. 현재 FE/BE/Proxy와 프로젝트 네트워크 잔여0개, delta-compose inactive/disabled다. VM/Cloud SQL/이미지/설정은 보존하며 최신 상태는 [Compose 기록](../../docs/ai-dlc/gcp-compose-consolidation.md)의 마지막 중지 절을 따른다.
 
 현재 전환 도구는 `compose.py`, 호스트 도구는 `compose-host.py`다. 기존 FE VM/ALB/SQL/PSC를 보존하고 FE/BE 이미지를 개별 생성한다. 로컬 Docker나 VM의 외부 registry/npm/apt 접근은 필요 없다. 검증된 기존 Node x64 산출물과 VM의 Ubuntu 런타임 라이브러리를 rootfs로 구성해 `docker image import --platform linux/amd64`로 만든다. 각 산출물 hash/source snapshot 및 실제 Docker image ID는 `/etc/delta-compose/images.json`과 보호된 배포 결과에 기록한다. 일반 앱 Dockerfile 빌드와 동일한 이미지라고 표현하지 않는다.
 
