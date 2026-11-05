@@ -64,7 +64,7 @@ def provision(data, profile, config, execute):
     run(["apply", "-input=false", "server.tfplan"], timeout=3000)
     outputs = {k: v["value"] for k, v in json.loads(run(["output", "-json"])).items()}
     # Only references and public connection metadata leave the provisioning boundary.
-    return {
+    result = {
         **profile,
         "admin_secret_id": outputs["admin_secret_id"],
         "secret_provider": cloud,
@@ -75,3 +75,6 @@ def provision(data, profile, config, execute):
             "ca_pem": profile["ca_pem"],
         },
     }
+    if cloud == "gcp":
+        result["iap_endpoint"] = {"address": outputs["private_ip"], "port": 5432}
+    return result

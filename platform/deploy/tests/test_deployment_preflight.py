@@ -55,3 +55,17 @@ class DeploymentPreflightTests(unittest.TestCase):
             self.config["databases"]["gcp-prepared"]["server_mode"] = "create"
             module.check_prepared_database(self.data, self.config)
             connect.assert_not_called()
+
+    def test_iap_mode_does_not_require_private_route_from_aws(self):
+        self.data["target"] = {"cloud": "gcp"}
+        self.config["connections"] = {"gcp": {"management_transport": "iap"}}
+        self.config["databases"]["gcp-prepared"]["iap_endpoint"] = {
+            "address": "10.32.3.2",
+            "port": 5432,
+        }
+        with patch.object(module.socket, "create_connection") as connect:
+            module.check_prepared_database(self.data, self.config)
+            connect.assert_not_called()
+        del self.config["databases"]["gcp-prepared"]["iap_endpoint"]
+        with self.assertRaisesRegex(module.DeploymentPreflightError, "not configured"):
+            module.check_prepared_database(self.data, self.config)
