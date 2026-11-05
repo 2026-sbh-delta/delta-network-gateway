@@ -525,7 +525,19 @@ def main():
             os.environ.get("DELTA_DEPLOY_CONFIG", "/etc/delta/deployment.json")
         ).read_text()
     )
-    data, selected = request(os.environ["DELTA_DEPLOYMENT"], config)
+    encoded = os.environ["DELTA_DEPLOYMENT"]
+    if len(encoded) > 1_000_000:
+        raise ValueError("Oversized request")
+    payload = json.loads(base64.b64decode(encoded, validate=True))
+    if payload.get("operation") == "remove":
+        from remove import execute
+
+        if payload["run_id"] != os.environ["DELTA_RUN_ID"]:
+            raise ValueError("Cleanup request identity mismatch")
+        UUID(payload["run_id"])
+        Path("result.json").write_text(json.dumps(execute(payload, config)))
+        return
+    data, selected = request(encoded, config)
     if data["target"]["cloud"] == "onprem":
         environment, url = onprem(data, selected)
     else:

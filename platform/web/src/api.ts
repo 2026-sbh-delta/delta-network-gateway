@@ -13,6 +13,7 @@ export type Run = {
     | "sandbox_check"
     | "security_check"
     | "runtime_remove"
+    | "service_remove"
     | "dast_check";
   cancel_requested?: boolean;
   external_id: string | null;
@@ -132,6 +133,7 @@ export type DeploymentPlan = {
   targets: DeploymentTargetResult[];
 };
 export type Service = {
+  deletion_requested?: boolean;
   project_id?: string;
   application_bundle?: ApplicationBundle;
   id: string;

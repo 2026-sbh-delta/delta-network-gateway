@@ -56,6 +56,7 @@ services = sa.Table(
     col("container_port", sa.Integer, nullable=False),
     col("healthcheck_path", sa.String(256), nullable=False),
     col("deployment_target", JSONB(none_as_null=True)),
+    col("deletion_requested", sa.Boolean, nullable=False, server_default=sa.false()),
     col("request_key", sa.String(128), nullable=False, unique=True),
     col("request_hash", sa.String(64), nullable=False),
     timestamp("created_at", nullable=False, server_default=sa.func.now()),
@@ -154,7 +155,7 @@ runs = sa.Table(
     timestamp("finished_at"),
     sa.UniqueConstraint("service_id", "kind", "request_key", name="run_request_unique"),
     sa.CheckConstraint(
-        "kind IN ('source_preflight', 'image_build', 'sandbox_check', 'security_check', 'dast_check', 'runtime_remove', 'service_deploy')",
+        "kind IN ('source_preflight', 'image_build', 'sandbox_check', 'security_check', 'dast_check', 'runtime_remove', 'service_deploy', 'service_remove')",
         name="run_kind",
     ),
     sa.CheckConstraint("attempt >= 0", name="run_attempt"),

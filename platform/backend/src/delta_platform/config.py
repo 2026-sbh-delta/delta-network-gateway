@@ -44,6 +44,7 @@ class Settings(BaseSettings):
     gcp_credentials_json: str = ""
     onprem_sandbox_target: str = ""
     onprem_sandbox_token: SecretStr = SecretStr("")
+    onprem_runtime_config_parameter: str = ""
     onprem_runtime_target: str = ""
     onprem_runtime_token: SecretStr = SecretStr("")
     sast_url: str = ""

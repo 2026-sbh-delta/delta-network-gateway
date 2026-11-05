@@ -8,8 +8,11 @@ import time
 from urllib.parse import urlsplit
 from uuid import UUID
 
+import boto3
 import httpx
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from botocore.config import Config
+from botocore.exceptions import BotoCoreError, ClientError
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
 
 from delta_platform.adapters.sandbox import SandboxError
 from delta_platform.core.errors import Problem
@@ -47,7 +50,41 @@ class RemovalTarget(BaseModel):
         return self
 
 
+def runtime_settings(settings):
+    # Keep the main runtime parameter below SSM's 8 KiB limit. Resolve only from IAM-scoped SSM.
+    if not settings.onprem_runtime_config_parameter:
+        return settings
+    try:
+        client = boto3.client(
+            "ssm",
+            region_name=settings.build_region,
+            config=Config(connect_timeout=5, read_timeout=10, retries={"max_attempts": 2}),
+        )
+        parameter = client.get_parameter(
+            Name=settings.onprem_runtime_config_parameter, WithDecryption=True
+        )["Parameter"]
+        if parameter["Type"] != "SecureString":
+            raise ValueError("Encrypted configuration required")
+        data = json.loads(parameter["Value"])
+        if not isinstance(data["token"], str) or not data["token"]:
+            raise ValueError("Missing credential")
+        return settings.model_copy(
+            update={
+                "onprem_runtime_target": json.dumps(data["target"]),
+                "onprem_runtime_token": SecretStr(data["token"]),
+                "onprem_runtime_config_parameter": "",
+            }
+        )
+    except (BotoCoreError, ClientError, ValueError, KeyError, TypeError):
+        raise Problem(
+            "runtime_config_unavailable",
+            "온프레미스 삭제 설정을 불러올 수 없습니다. SSM 연결·권한을 확인하세요.",
+            503,
+        ) from None
+
+
 def configured_target(settings):
+    settings = runtime_settings(settings)
     if not settings.onprem_runtime_target or not settings.onprem_runtime_token.get_secret_value():
         raise Problem(
             "runtime_not_configured", "온프레미스 앱 삭제 실행기가 연결되지 않았습니다.", 503
@@ -64,6 +101,7 @@ def configured_target(settings):
 
 class OnpremRemover:
     def __init__(self, settings, *, transport=None, timeout=60, poll_seconds=2):
+        settings = runtime_settings(settings)
         self.target = configured_target(settings)
         self.token = settings.onprem_runtime_token.get_secret_value()
         self.tls = ssl.create_default_context(

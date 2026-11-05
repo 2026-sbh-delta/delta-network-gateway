@@ -196,8 +196,16 @@ def create_app(settings=None, engine=None, *, dashboard=None):
 
     @protected.post("/services/{service_id}/delete", status_code=204)
     def delete_service(service_id: UUID, body: DeleteServiceInput):
-        store.delete_service(service_id, body.confirmation_name)
-        return Response(status_code=204)
+        result = store.delete_service(service_id, body.confirmation_name, settings)
+        if result is None:
+            return Response(status_code=204)
+        return JSONResponse(jsonable_encoder(result), status_code=202)
+
+    @protected.get("/services/{service_id}/deletion")
+    def project_deletion(service_id: UUID):
+        from delta_platform.core.project_removal import ProjectRemovalStore
+
+        return ProjectRemovalStore(engine).status(service_id)
 
     @protected.get("/services/{service_id}/environments")
     def service_environments(service_id: UUID):
