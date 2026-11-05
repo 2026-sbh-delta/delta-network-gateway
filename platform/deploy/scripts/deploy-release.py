@@ -93,6 +93,7 @@ with tarfile.open(fileobj=archive, mode="w:gz") as tar:
         "compose.yaml",
         "scripts/install-release.sh",
         "scripts/write-runtime.py",
+        "scripts/read-runtime.py",
         "scripts/backup.sh",
     ):
         tar.add(root / rel, arcname=rel)

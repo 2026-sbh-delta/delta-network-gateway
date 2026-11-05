@@ -18,12 +18,12 @@ def resources(sources, node_port=32080):
         ip = ipaddress.ip_address(source)
         if (
             ip.version != 4
-            or not ip.is_private
+            or not (ip.is_private or ip in ipaddress.ip_network("100.64.0.0/10"))
             or ip.is_loopback
             or ip.is_link_local
             or ip.is_unspecified
         ):
-            raise ValueError("Only registered private IPv4 sources")
+            raise ValueError("Only registered private or Tailscale IPv4 sources")
     items = []
     for file in (ROOT / "base/sandbox.yaml", ROOT / "sandbox/network.yaml"):
         items.extend(yaml.safe_load_all(file.read_text()))
