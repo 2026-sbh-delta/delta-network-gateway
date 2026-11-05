@@ -35,6 +35,10 @@ class Settings(BaseSettings):
     jenkins_user: str = ""
     jenkins_token: SecretStr = SecretStr("")
     jenkins_ca_base64: str = ""
+    deployment_connections: str = ""
+    deployment_jenkins_job: str = "delta-platform-deploy"
+    deployment_jenkins_user: str = ""
+    deployment_jenkins_token: SecretStr = SecretStr("")
     sandbox_target: str = ""
     gcp_sandbox_target: str = ""
     gcp_credentials_json: str = ""

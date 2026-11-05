@@ -104,7 +104,7 @@ test("단계별 화면은 서비스를 보존하고 새로고침·뒤로가기�
     page.getByRole("button", { name: "이 커밋 빌드" }),
   ).toBeDisabled();
   await expect(
-    page.getByRole("region", { name: "배포·이전 계획" }),
+    page.getByRole("region", { name: "최초 배포 및 이전" }),
   ).toHaveCount(0);
   await page
     .getByRole("navigation", { name: "빌드와 검사 단계" })
@@ -115,12 +115,12 @@ test("단계별 화면은 서비스를 보존하고 새로고침·뒤로가기�
   await page.getByRole("button", { name: "메뉴 열기" }).click();
   await page.getByRole("button", { name: "이전 계획", exact: true }).click();
   await expect(
-    page.getByRole("region", { name: "배포·이전 계획" }),
+    page.getByRole("region", { name: "최초 배포 및 이전" }),
   ).toBeVisible();
   await expect(page.locator(".build-panel")).toHaveCount(0);
   await page.reload();
   await expect(
-    page.getByRole("region", { name: "배포·이전 계획" }),
+    page.getByRole("region", { name: "최초 배포 및 이전" }),
   ).toBeVisible();
   await page.getByRole("button", { name: "메뉴 열기" }).click();
   await expect(
@@ -217,7 +217,7 @@ for (const viewport of [
       .click();
     await expect(drawer).not.toBeVisible();
     await expect(
-      page.getByRole("region", { name: "배포·이전 계획" }),
+      page.getByRole("region", { name: "최초 배포 및 이전" }),
     ).toBeVisible();
     await expect(page.locator("#workspace-content")).toBeFocused();
     expect(

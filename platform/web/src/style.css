@@ -671,6 +671,143 @@ footer {
 .workflow-panel h2 {
   margin: 2px 0 0;
 }
+.deployment-panel {
+  margin-top: 24px;
+}
+.deployment-panel h2 {
+  margin: 2px 0 0;
+}
+.deployment-form {
+  display: grid;
+  gap: 16px;
+  max-width: 960px;
+}
+.deployment-form > label {
+  max-width: 680px;
+  margin: 0;
+}
+.deployment-form select,
+.deployment-history select {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #ccd9da;
+  border-radius: 7px;
+  background: #fff;
+  color: #243f3e;
+  font: inherit;
+}
+.deployment-form fieldset {
+  margin: 0;
+  padding: 12px;
+  border: 1px solid #dfe7e6;
+  border-radius: 9px;
+}
+.deployment-form legend {
+  padding: 0 6px;
+  font-weight: 650;
+}
+.choice-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+}
+.choice-row label,
+.target-select {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0;
+}
+.choice-row input,
+.target-select input {
+  width: auto;
+  margin: 0;
+  accent-color: #176b60;
+}
+.deployment-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.deployment-option,
+.deployment-review,
+.target-progress article {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid #dfe7e6;
+  border-radius: 9px;
+  background: #fff;
+}
+.deployment-option.selected {
+  border-color: #438b7d;
+  box-shadow: 0 0 0 1px #438b7d;
+}
+.target-select span,
+.target-select small {
+  display: block;
+}
+.target-select small {
+  margin-top: 3px;
+  color: #718380;
+}
+.target-reason,
+.blocked-reason {
+  display: block;
+  color: #8b5e21;
+  font-size: 0.84rem;
+}
+.target-config {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid #edf1f0;
+}
+.target-config label {
+  margin: 0;
+}
+.target-config small {
+  display: block;
+  margin-top: 5px;
+  color: #718380;
+}
+.deployment-history {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid #e9efed;
+}
+.deployment-history > label {
+  display: block;
+  max-width: 680px;
+}
+.deployment-review {
+  margin-top: 14px;
+}
+.deployment-review h4 {
+  margin: 0;
+}
+.deployment-review code {
+  overflow-wrap: anywhere;
+}
+.target-progress {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 14px 0;
+}
+.target-progress article p {
+  overflow-wrap: anywhere;
+}
+@media (max-width: 760px) {
+  .deployment-options,
+  .target-progress {
+    grid-template-columns: 1fr;
+  }
+  .choice-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
 .workflow-boundary {
   padding: 12px 14px;
   border-left: 3px solid #b78a3c;

@@ -236,6 +236,7 @@ test("이전 계획은 고정 빌드·서로 다른 환경으로 만들고 승�
   await page.getByRole("button", { name: /이전 계획 대상 example/ }).click();
   await page.getByRole("button", { name: "메뉴 열기" }).click();
   await page.getByRole("button", { name: "이전 계획", exact: true }).click();
+  await page.getByText("기존 분석·검토 계획 보기").click();
   const panel = page.getByRole("region", { name: "배포·이전 계획" });
   await expect(
     panel.getByText("실제 배포·DB 전환 실행기는 아직 연결되지 않았으며", {

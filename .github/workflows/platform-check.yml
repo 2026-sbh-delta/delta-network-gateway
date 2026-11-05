@@ -118,8 +118,8 @@ jobs:
       - name: Deployment boundaries
         run: |
           uv run --project platform/deploy --frozen python -m unittest discover -s platform/deploy/tests -v
-          uv run --project platform/backend ruff check platform/deploy/scripts platform/deploy/tests platform/deploy/builds platform/deploy/sandbox platform/deploy/sandbox-gcp platform/deploy/jenkins platform/deploy/sast/aws platform/deploy/dast platform/deploy/onprem platform/deploy/instrumentation
-          uv run --project platform/backend ruff format --check platform/deploy/scripts platform/deploy/tests platform/deploy/builds platform/deploy/sandbox platform/deploy/sandbox-gcp platform/deploy/jenkins platform/deploy/sast/aws platform/deploy/dast platform/deploy/onprem platform/deploy/instrumentation
+          uv run --project platform/backend ruff check platform/deploy/scripts platform/deploy/tests platform/deploy/builds platform/deploy/sandbox platform/deploy/sandbox-gcp platform/deploy/jenkins platform/deploy/sast/aws platform/deploy/dast platform/deploy/onprem platform/deploy/instrumentation platform/deploy/workloads
+          uv run --project platform/backend ruff format --check platform/deploy/scripts platform/deploy/tests platform/deploy/builds platform/deploy/sandbox platform/deploy/sandbox-gcp platform/deploy/jenkins platform/deploy/sast/aws platform/deploy/dast platform/deploy/onprem platform/deploy/instrumentation platform/deploy/workloads
       - name: Browser
         working-directory: platform/web
         run: |
@@ -143,7 +143,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        root: [platform/deploy/terraform, platform/deploy/identity, platform/deploy/builds, platform/deploy/sandbox, platform/deploy/jenkins/identity, platform/deploy/sast/network, platform/deploy/observability/identity, platform/deploy/sandbox-gcp, platform/deploy/logging, platform/deploy/ai]
+        root: [platform/deploy/terraform, platform/deploy/identity, platform/deploy/builds, platform/deploy/sandbox, platform/deploy/jenkins/identity, platform/deploy/sast/network, platform/deploy/observability/identity, platform/deploy/sandbox-gcp, platform/deploy/logging, platform/deploy/ai, platform/deploy/workloads/terraform/aws, platform/deploy/workloads/terraform/gcp]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:

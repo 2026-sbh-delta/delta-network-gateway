@@ -68,6 +68,69 @@ export type SandboxTarget = {
   runtime: string;
   configured: boolean;
 };
+export type DeploymentCloud = "aws" | "gcp" | "onprem";
+export type DeploymentProfile = {
+  id: string;
+  label: string;
+  cpu: string;
+  memory_mb: number;
+  description: string;
+};
+export type DeploymentOption = {
+  cloud: DeploymentCloud;
+  label: string;
+  runtime: string;
+  region: string;
+  configured: boolean;
+  reason: string | null;
+  profiles: DeploymentProfile[];
+  hosts: { id: string; label: string }[];
+};
+export type DeploymentTargetInput = {
+  cloud: DeploymentCloud;
+  region: string;
+  profile_id: string;
+  host_id?: string;
+};
+export type DeploymentTargetResult = {
+  target: DeploymentTargetInput;
+  environment_id: string;
+  run: Run | null;
+  status: string;
+  reason: string | null;
+  service_url: string | null;
+};
+export type DeploymentComponentSnapshot = {
+  name: string;
+  image: string;
+  build_id: string;
+  service_id: string;
+  container_port: number;
+};
+export type DeploymentPlan = {
+  id: string;
+  service_id: string;
+  kind: "deployment" | "migration";
+  status: "planned" | "queued" | "running" | "succeeded" | "partial" | "failed";
+  input_hash: string;
+  created_at: string;
+  approved_at: string | null;
+  executable: boolean;
+  reason?: string | null;
+  input_snapshot: {
+    image: string;
+    commit_sha: string;
+    source: {
+      id: string;
+      cloud: DeploymentCloud;
+      region: string;
+      version: string | null;
+    } | null;
+    targets: DeploymentTargetInput[];
+    components: DeploymentComponentSnapshot[];
+  };
+  targets: DeploymentTargetResult[];
+};
 export type Service = {
   project_id?: string;
   application_bundle?: ApplicationBundle;
@@ -79,6 +142,7 @@ export type Service = {
   dockerfile_path: string;
   container_port: number;
   healthcheck_path: string;
+  deployment_target?: DeploymentTargetInput;
   created_at: string;
   latest_source_check?: Run | null;
 };
@@ -90,6 +154,9 @@ export type ServiceInput = Omit<
   | "application_bundle"
   | "project_id"
 >;
+export type ServiceRegistrationInput = ServiceInput & {
+  deployment_target: DeploymentTargetInput;
+};
 export type RunEvent = {
   sequence: number;
   event_type: string;
