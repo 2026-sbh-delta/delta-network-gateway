@@ -3,16 +3,6 @@ mock_provider "aws" {
   mock_data "aws_caller_identity" {
     defaults = { account_id = "444455556666" }
   }
-  mock_data "aws_ami" {
-    defaults = {
-      id                  = "ami-00000000000000001"
-      architecture        = "arm64"
-      name                = "al2023-ami-standard-arm64"
-      root_device_type    = "ebs"
-      virtualization_type = "hvm"
-      state               = "available"
-    }
-  }
   mock_data "aws_ec2_transit_gateway" {
     defaults = {
       id                              = "tgw-00000000000000001"
@@ -91,15 +81,11 @@ run "private_foundation" {
     error_message = "The private foundation needs four dedicated subnets and explicit route-table associations."
   }
   assert {
-    condition     = !aws_instance.client.associate_public_ip_address && aws_instance.client.ipv6_address_count == 0 && !aws_vpc.client.assign_generated_ipv6_cidr_block && alltrue([for subnet in aws_subnet.private : !subnet.map_public_ip_on_launch && !subnet.assign_ipv6_address_on_creation])
-    error_message = "The client and all subnets must have neither public IPv4 nor IPv6 allocation."
+    condition     = !aws_vpc.client.assign_generated_ipv6_cidr_block && alltrue([for subnet in aws_subnet.private : !subnet.map_public_ip_on_launch && !subnet.assign_ipv6_address_on_creation])
+    error_message = "The common workload subnets must have neither public IPv4 nor IPv6 allocation."
   }
   assert {
-    condition     = one(aws_instance.client.metadata_options).http_tokens == "required" && one(aws_instance.client.root_block_device).encrypted && one(aws_instance.client.root_block_device).volume_size == 8 && one(aws_instance.client.credit_specification).cpu_credits == "standard"
-    error_message = "IMDSv2, encrypted 8GiB EBS and Standard credits are required."
-  }
-  assert {
-    condition     = aws_ec2_instance_connect_endpoint.management.ip_address_type == "ipv4" && !aws_ec2_instance_connect_endpoint.management.preserve_client_ip && aws_ec2_instance_connect_endpoint.management.subnet_id == aws_instance.client.subnet_id
+    condition     = aws_ec2_instance_connect_endpoint.management.ip_address_type == "ipv4" && !aws_ec2_instance_connect_endpoint.management.preserve_client_ip && aws_ec2_instance_connect_endpoint.management.subnet_id == aws_subnet.private["${var.client_az_id}/client"].id
     error_message = "Management must use the private endpoint in the client AZ."
   }
   assert {
@@ -152,15 +138,6 @@ run "wrong_region_az" {
     values = { zone_id = "apne2-az1", region = "us-east-1", zone_type = "availability-zone" }
   }
   expect_failures = [terraform_data.contract]
-}
-
-run "reject_wrong_ami" {
-  command = plan
-  override_data {
-    target = data.aws_ami.client
-    values = { id = "ami-00000000000000001", name = "al2023-ami-minimal-arm64", architecture = "arm64", root_device_type = "ebs", virtualization_type = "hvm", state = "available" }
-  }
-  expect_failures = [data.aws_ami.client]
 }
 
 run "reject_wrong_tgw_owner" {
@@ -273,14 +250,6 @@ run "reject_bad_port" {
     test_tcp_ports = [0, 65536]
   }
   expect_failures = [var.test_tcp_ports]
-}
-
-run "reject_bad_ami_id" {
-  command = plan
-  variables {
-    ami_id = "unknown"
-  }
-  expect_failures = [var.ami_id]
 }
 
 run "reject_bad_tgw_id" {

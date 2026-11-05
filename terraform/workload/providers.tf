@@ -14,23 +14,6 @@ data "aws_availability_zone" "selected" {
   state    = "available"
 }
 
-data "aws_ami" "client" {
-  owners = ["amazon"]
-  filter {
-    name   = "image-id"
-    values = [var.ami_id]
-  }
-  lifecycle {
-    postcondition {
-      condition = (
-        self.architecture == "arm64" && self.root_device_type == "ebs" && self.virtualization_type == "hvm" && self.state == "available" &&
-        startswith(self.name, "al2023-ami-") && !strcontains(self.name, "minimal")
-      )
-      error_message = "The pinned AMI must be an available Amazon AL2023 standard ARM64 HVM EBS image with EC2 Instance Connect installed."
-    }
-  }
-}
-
 data "aws_ec2_transit_gateway" "central" {
   count = var.transit_gateway_id == null ? 0 : 1
   id    = var.transit_gateway_id

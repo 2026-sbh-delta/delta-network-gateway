@@ -26,7 +26,7 @@ allowed_flows    = {}
 #   b_backend = {
 #     account_id      = "444455556666"
 #     role            = "Backend"
-#     vpc_cidrs       = ["10.20.0.0/16"]
+#     vpc_cidrs       = ["10.70.0.0/16"]
 #     attachment_id   = "tgw-attach-0123456789abcdef0"
 #     acceptance_mode = "accept" # Keep this mode after acceptance.
 #     reported_state  = "pendingAcceptance"
@@ -50,15 +50,15 @@ allowed_flows    = {}
 # Replace with actual HA VPN gateway public IPs before creating VPN resources.
 # allowed_flows = {
 #   gcp_to_backend = {
-#     source_cidrs = ["10.30.0.0/16"], destination_cidrs = ["10.20.0.0/16"]
+#     source_cidrs = ["10.30.0.0/16"], destination_cidrs = ["10.70.0.0/16"]
 #     protocol = "tcp", destination_ports = [443], sid = 1000001
 #   }
 #   alb_health = {
-#     source_cidrs = ["10.10.0.0/16"], destination_cidrs = ["10.20.0.0/16"]
+#     source_cidrs = ["10.10.0.0/16"], destination_cidrs = ["10.70.0.0/16"]
 #     protocol = "tcp", destination_ports = [8080], sid = 1000002
 #   }
 #   ping = {
-#     source_cidrs = ["10.30.0.0/16"], destination_cidrs = ["10.20.0.0/16"]
+#     source_cidrs = ["10.30.0.0/16"], destination_cidrs = ["10.70.0.0/16"]
 #     protocol = "icmp", icmp_type = 8, sid = 1000003
 #   }
 # }
@@ -69,5 +69,5 @@ allowed_flows    = {}
 #   }
 # }
 # cidr_service_map = {
-#   backend = { cidr = "10.20.0.0/16", csp = "aws", service_id = "b-backend" }
+#   backend = { cidr = "10.70.0.0/16", csp = "aws", service_id = "b-backend" }
 # }

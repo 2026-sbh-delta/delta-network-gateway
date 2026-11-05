@@ -26,14 +26,6 @@ output "route_table_ids_by_az_id" {
   description = "TGW/client route-table IDs indexed by physical AZ ID."
   value       = { for id in keys(var.azs) : id => { tgw = aws_route_table.private["${id}/tgw"].id, client = aws_route_table.private["${id}/client"].id } }
 }
-output "client_instance_id" {
-  description = "Single private EC2 client ID."
-  value       = aws_instance.client.id
-}
-output "client_private_ip" {
-  description = "Client private IPv4 for traffic/log correlation."
-  value       = aws_instance.client.private_ip
-}
 output "management_endpoint_id" {
   description = "EC2 Instance Connect Endpoint ID, distinct from ANF endpoints."
   value       = aws_ec2_instance_connect_endpoint.management.id

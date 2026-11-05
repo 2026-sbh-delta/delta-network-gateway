@@ -90,20 +90,11 @@ variable "inspection_cidrs" {
 }
 
 variable "client_az_id" {
-  description = "Selected AZ for the single EC2 client and management endpoint."
+  description = "AZ for the retained management endpoint; legacy name preserves the existing input contract."
   type        = string
   validation {
     condition     = contains(keys(var.azs), var.client_az_id)
     error_message = "client_az_id must be a key in azs."
-  }
-}
-
-variable "ami_id" {
-  description = "Pinned Amazon AL2023 standard ARM64 AMI ID, verified by an AWS data source."
-  type        = string
-  validation {
-    condition     = can(regex("^ami-[0-9a-f]{17}$", var.ami_id))
-    error_message = "ami_id must be a full AMI ID."
   }
 }
 
@@ -134,7 +125,7 @@ variable "remote_cidrs" {
 }
 
 variable "test_tcp_ports" {
-  description = "TCP egress ports to remote_cidrs, including both allowed/blocked ANF test controls."
+  description = "TCP egress ports for the retained workload security group to registered remote networks."
   type        = set(number)
   default     = [8080, 8081]
   validation {

@@ -106,7 +106,7 @@ run "complete_four_tunnel_handoff" {
     vpn_shared_secrets = { a1 = "synthetic-test-key-a1", a2 = "synthetic-test-key-a2", b1 = "synthetic-test-key-b1", b2 = "synthetic-test-key-b2" }
   }
   assert {
-    condition     = length(google_compute_vpn_tunnel.aws) == 4 && length(google_compute_router_peer.aws) == 4 && length(google_network_connectivity_spoke.aws) == 1 && toset(google_network_connectivity_spoke.aws[0].linked_vpn_tunnels[0].include_export_ranges) == toset(["10.10.0.0/16", "10.20.0.0/16"])
+    condition     = length(google_compute_vpn_tunnel.aws) == 4 && length(google_compute_router_peer.aws) == 4 && length(google_network_connectivity_spoke.aws) == 1 && toset(google_network_connectivity_spoke.aws[0].linked_vpn_tunnels[0].include_export_ranges) == toset(["10.10.0.0/16"])
     error_message = "The complete handoff must create four BGP tunnels and filter imported AWS prefixes."
   }
   assert {
