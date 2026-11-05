@@ -1,4 +1,5 @@
 FROM hashicorp/terraform:1.16.4 AS terraform
+FROM gcr.io/google.com/cloudsdktool/google-cloud-cli:546.0.0-stable AS gcloud
 
 FROM python:3.12-slim AS dependencies
 WORKDIR /app/backend
@@ -10,9 +11,11 @@ COPY services/delta-staging/delta_staging /services/delta-staging/delta_staging
 RUN uv sync --frozen --no-dev --no-editable
 
 FROM python:3.12-slim
-RUN apt-get update && apt-get install -y --no-install-recommends openjdk-21-jre-headless curl ca-certificates && rm -rf /var/lib/apt/lists/* \
+RUN apt-get update && apt-get install -y --no-install-recommends openjdk-21-jre-headless openssh-client curl ca-certificates && rm -rf /var/lib/apt/lists/* \
     && groupadd -g 10001 deployer && useradd -u 10001 -g deployer -m deployer
 COPY --from=terraform /bin/terraform /usr/local/bin/terraform
+COPY --from=gcloud /usr/lib/google-cloud-sdk /usr/lib/google-cloud-sdk
+ENV PATH="/usr/lib/google-cloud-sdk/bin:${PATH}"
 COPY --from=dependencies /app/backend/.venv /app/backend/.venv
 RUN mkdir -p /opt/delta && ln -s /app/backend/.venv /opt/delta/venv
 COPY platform/deploy/workloads/*.py /opt/delta/workloads/

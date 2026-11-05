@@ -46,6 +46,11 @@ def main():
         "agent-secret": config["agent_secret"].encode(),
     }
     deployment = config["deployment"]
+    if config.get("gcp_credentials"):
+        credentials = config["gcp_credentials"]
+        if credentials.get("type") != "external_account":
+            raise ValueError("The deployment worker requires keyless GCP credentials")
+        files["gcp-credentials.json"] = json.dumps(credentials).encode()
     for profile in deployment["databases"].values():
         if profile.get("server_mode") == "create" and profile["clouds"] == ["aws"]:
             profile["ca_pem"] = (
@@ -137,6 +142,16 @@ def main():
             "/etc/delta:/etc/delta:ro",
             "--env",
             "JENKINS_URL=" + config["url"],
+            *(
+                [
+                    "--env",
+                    "GOOGLE_APPLICATION_CREDENTIALS=/etc/delta/gcp-credentials.json",
+                    "--env",
+                    "CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE=/etc/delta/gcp-credentials.json",
+                ]
+                if config.get("gcp_credentials")
+                else []
+            ),
             args.image,
         ],
         check=True,

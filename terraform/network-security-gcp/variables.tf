@@ -56,6 +56,20 @@ variable "aws_cidrs" {
   type        = set(string)
   description = "Approved AWS workload prefixes; NCC imports only these prefixes."
 }
+variable "platform_aws_cidrs" {
+  type        = set(string)
+  default     = ["10.80.0.0/16"]
+  description = "Platform prefixes eligible for NCC import; this does not grant firewall access."
+  validation {
+    condition     = alltrue([for cidr in var.platform_aws_cidrs : can(cidrhost(cidr, 0))])
+    error_message = "Platform prefixes must be valid CIDRs."
+  }
+}
+variable "platform_database_endpoint_cidrs" {
+  type        = set(string)
+  default     = ["10.31.0.2/32"]
+  description = "Platform-owned database PSC endpoints in the VPN VPC, advertised to AWS."
+}
 variable "router_asn" {
   type        = number
   default     = 65001

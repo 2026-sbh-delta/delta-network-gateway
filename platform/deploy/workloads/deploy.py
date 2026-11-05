@@ -126,6 +126,9 @@ def provision(data, selected, state_root):
 
 
 def vm(data, selected, config):
+    from preflight import check_prepared_database
+
+    check_prepared_database(data, config)
     cloud = data["target"]["cloud"]
     images = [c["image"] for c in data["components"]]
     if cloud == "gcp":
@@ -213,11 +216,10 @@ def vm(data, selected, config):
         else:
             raise RuntimeError("VM deployment timeout")
     else:
-        run(
+        from gcp_vm import ssh
+
+        ssh(
             [
-                "gcloud",
-                "compute",
-                "ssh",
                 output["instance_name"],
                 "--project",
                 data["connection"]["gcp_project"],
@@ -228,7 +230,8 @@ def vm(data, selected, config):
                 "--command",
                 command,
             ],
-            timeout=1000,
+            selected["ssh_service_account"],
+            run,
         )
     # Verify the private path independently from the deployment agent, not only localhost.
     url = f"http://{address}:8088"
@@ -642,8 +645,13 @@ def main():
 
 
 if __name__ == "__main__":
+    from preflight import DeploymentPreflightError
+
     try:
         main()
+    except DeploymentPreflightError as error:
+        print(str(error), file=sys.stderr)
+        sys.exit(1)
     except Exception:  # noqa: BLE001 - redact provider/command bodies at the process boundary.
         print(
             "Deployment failed. Retain the environment-specific state and inspect the allocated resources; no source resources were deleted.",

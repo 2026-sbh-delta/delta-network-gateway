@@ -9,7 +9,7 @@ provider "google" {
   region  = "asia-northeast3"
 }
 resource "google_compute_instance" "app" {
-  name         = "delta-${var.environment_id}"
+  name         = "delta-app-${var.environment_id}"
   zone         = var.zone
   machine_type = var.profile_id
   boot_disk {
@@ -36,8 +36,14 @@ resource "google_compute_instance" "app" {
   metadata_startup_script = <<-SCRIPT
     #!/bin/bash
     set -eu
-    apt-get update -qq
-    DEBIAN_FRONTEND=noninteractive apt-get install -y docker.io python3
+    if ${var.preinstalled_runtime}; then
+      test -f /etc/delta-runtime-image
+      docker compose version
+      python3 --version
+    else
+      apt-get update -qq
+      DEBIAN_FRONTEND=noninteractive apt-get install -y docker.io python3
+    fi
     systemctl enable --now docker
     iptables -I DOCKER-USER -d 169.254.169.254/32 -j REJECT
     cat > /etc/systemd/system/delta-container-isolation.service <<'UNIT'

@@ -56,7 +56,7 @@ resource "google_compute_router" "aws" {
     asn            = var.router_asn
     advertise_mode = "CUSTOM"
     dynamic "advertised_ip_ranges" {
-      for_each = toset(local.advertised_workload_cidrs)
+      for_each = toset(local.advertised_vpn_cidrs)
       content { range = advertised_ip_ranges.value }
     }
   }
@@ -111,7 +111,7 @@ resource "google_compute_router_peer" "aws" {
   peer_asn        = each.value.aws_asn
   advertise_mode  = "CUSTOM"
   dynamic "advertised_ip_ranges" {
-    for_each = toset(local.advertised_workload_cidrs)
+    for_each = toset(local.advertised_vpn_cidrs)
     content { range = advertised_ip_ranges.value }
   }
 }
@@ -123,7 +123,7 @@ resource "google_network_connectivity_spoke" "aws" {
   linked_vpn_tunnels {
     uris                       = [for tunnel in google_compute_vpn_tunnel.aws : tunnel.self_link]
     site_to_site_data_transfer = false
-    include_export_ranges      = sort(tolist(var.aws_cidrs))
+    include_export_ranges      = local.imported_aws_cidrs
     include_import_ranges      = local.advertised_workload_cidrs
   }
   depends_on = [google_compute_router_peer.aws]

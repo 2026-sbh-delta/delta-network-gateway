@@ -88,12 +88,12 @@ run "complete_four_tunnel_handoff" {
     vpn_shared_secrets = { a1 = "synthetic-test-key-a1", a2 = "synthetic-test-key-a2", b1 = "synthetic-test-key-b1", b2 = "synthetic-test-key-b2" }
   }
   assert {
-    condition     = length(google_compute_vpn_tunnel.aws) == 4 && length(google_compute_router_peer.aws) == 4 && length(google_network_connectivity_spoke.aws) == 1 && toset(google_network_connectivity_spoke.aws[0].linked_vpn_tunnels[0].include_export_ranges) == toset(["10.10.0.0/16"])
+    condition     = length(google_compute_vpn_tunnel.aws) == 4 && length(google_compute_router_peer.aws) == 4 && length(google_network_connectivity_spoke.aws) == 1 && toset(google_network_connectivity_spoke.aws[0].linked_vpn_tunnels[0].include_export_ranges) == toset(["10.10.0.0/16", "10.80.0.0/16"])
     error_message = "The complete handoff must create four BGP tunnels and filter imported AWS prefixes."
   }
   assert {
-    condition     = alltrue([for peer in google_compute_router_peer.aws : one(peer.advertised_ip_ranges).range == "10.30.1.0/24"])
-    error_message = "Only the workload prefix may be advertised to AWS."
+    condition     = alltrue([for peer in google_compute_router_peer.aws : toset([for r in peer.advertised_ip_ranges : r.range]) == toset(["10.30.1.0/24", "10.31.0.2/32"])])
+    error_message = "Only workload and platform database endpoint prefixes may be advertised to AWS."
   }
 }
 run "reject_partial_handoff" {
@@ -150,15 +150,15 @@ run "reject_unknown_inspection_mode" {
   expect_failures = [var.inspection_mode]
 }
 
-run "application_subnets_advertise_only_compute" {
+run "application_subnets_advertise_compute_and_database" {
   command = plan
   variables {
     application_subnets          = { backend = "10.32.2.0/24", database = "10.32.3.0/24", proxy = "10.32.4.0/23" }
     application_service_accounts = { frontend = "fe@term2-delta.iam.gserviceaccount.com", backend = "be@term2-delta.iam.gserviceaccount.com" }
   }
   assert {
-    condition     = toset(output.gateway_handoff.remote_cidrs) == toset(["10.30.1.0/24", "10.32.2.0/24"]) && google_compute_subnetwork.application["proxy"].purpose == "REGIONAL_MANAGED_PROXY"
-    error_message = "Advertise only FE/BE prefixes and reserve the proxy-only subnet."
+    condition     = toset(output.gateway_handoff.remote_cidrs) == toset(["10.30.1.0/24", "10.32.2.0/24", "10.32.3.0/24", "10.31.0.2/32"]) && google_compute_subnetwork.application["proxy"].purpose == "REGIONAL_MANAGED_PROXY"
+    error_message = "Advertise FE/BE and database prefixes, but exclude the proxy-only subnet."
   }
   assert {
     condition     = google_compute_network_firewall_policy_rule.database_allow[0].priority < google_compute_network_firewall_policy_rule.database_deny[0].priority && toset(google_compute_network_firewall_policy_rule.database_allow[0].target_service_accounts) == toset(["be@term2-delta.iam.gserviceaccount.com"])
