@@ -1,6 +1,6 @@
 # Illustrative values ONLY. Copy to ignored terraform.tfvars and replace them.
 # Use AWS_PROFILE=sbh-delta-security in the shell, not a hardcoded provider profile.
-inspection_mode = "enabled" # enabled -> bypass -> disabled; restore via bypass first.
+inspection_mode     = "enabled" # enabled -> bypass -> disabled; restore via bypass first.
 central_account_id  = "111122223333"
 inspection_vpc_cidr = "10.250.0.0/24"
 inspection_azs = {
@@ -15,10 +15,16 @@ inspection_azs = {
 }
 
 shared_account_ids = []
-spoke_attachments = {}
-vpn_networks      = {}
-vpn_peers         = {}
-allowed_flows    = {}
+spoke_attachments  = {}
+vpn_networks       = {}
+vpn_peers          = {}
+allowed_flows      = {}
+
+# A NEW detector must first be prepared suspended with all optional features disabled.
+# Review its API state, then use the default true for the separate activation plan.
+# See RUNBOOK.md. Do not suspend an already active detector for routine updates.
+guardduty_enabled                      = true
+guardduty_finding_publishing_frequency = "SIX_HOURS"
 
 # Optional onboarding examples. Do NOT uncomment unverified attachment IDs/IPs.
 # shared_account_ids = ["444455556666"]

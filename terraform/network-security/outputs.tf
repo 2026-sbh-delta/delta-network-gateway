@@ -3,6 +3,22 @@ output "central_account_id" {
   value       = data.aws_caller_identity.current.account_id
 }
 
+output "guardduty" {
+  description = "Account/Region detector identity and managed protection states; no finding contents or credentials."
+  value = {
+    account_id                   = data.aws_caller_identity.current.account_id
+    region                       = var.region
+    detector_id                  = aws_guardduty_detector.account.id
+    arn                          = aws_guardduty_detector.account.arn
+    enabled                      = aws_guardduty_detector.account.enable
+    finding_publishing_frequency = aws_guardduty_detector.account.finding_publishing_frequency
+    features = { for name, feature in aws_guardduty_detector_feature.protection : name => {
+      status                   = feature.status
+      additional_configuration = { for config in feature.additional_configuration : config.name => config.status }
+    } }
+  }
+}
+
 output "region" {
   description = "Region of the central deployment."
   value       = var.region

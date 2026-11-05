@@ -1,5 +1,79 @@
 # 검증, 장애 대응과 해체
 
+## GuardDuty 등록과 운영
+
+계정 482840608926, 서울 리전에서 [승인된 GuardDuty 구성](../../docs/ai-dlc/aws-guardduty.md)을 독립적으로 관리한다. ANF inspection_mode와 무관하며 기본 탐지만 활성화한다. 관리자 위임이나 다른 계정의 findings 통합은 추가하지 않는다.
+
+```bash
+aws sts get-caller-identity --profile sbh-delta-security
+aws guardduty list-detectors --profile sbh-delta-security --region ap-northeast-2
+AWS_PROFILE=sbh-delta-security terraform -chdir=terraform/network-security state list
+```
+
+신규 계정에서 detector가 0개일 때는 반드시 중지 상태로 먼저 생성한다. 아래 준비 단계는 이미 활성화한 detector의 일반 갱신에는 반복하지 않는다. 기존 detector가 있는데 state에 없으면 소유권과 현재 설정을 확인하고 Import한다. Workload 계정에는 이 신규 준비 절차를 사용하지 않는다.
+
+```bash
+umask 077
+mkdir -p terraform/network-security/.validation/guardduty
+AWS_PROFILE=sbh-delta-security terraform -chdir=terraform/network-security plan \
+  -input=false -parallelism=1 -lock-timeout=2m -var=guardduty_enabled=false \
+  -out=.validation/guardduty/prepare.tfplan
+AWS_PROFILE=sbh-delta-security terraform -chdir=terraform/network-security show .validation/guardduty/prepare.tfplan
+```
+
+GuardDuty 자원 추가만 있고 기존 네트워크/ANF/VPN/로그 변경이 없는지 확인한 뒤 저장 Plan을 적용한다. detector 생성 시 기본 활성화될 수 있는 선택 기능을 끄는 동안 기본 탐지는 중지한다.
+
+```bash
+AWS_PROFILE=sbh-delta-security terraform -chdir=terraform/network-security apply \
+  -input=false -parallelism=1 .validation/guardduty/prepare.tfplan
+AWS_PROFILE=sbh-delta-security terraform -chdir=terraform/network-security output -json guardduty
+```
+
+최초 준비 Apply가 S3_DATA_EVENTS/EKS_AUDIT_LOGS의 `cannot enable a data source while the detector is disabled` 400으로 일부 실패하면 아래 복구 절차를 먼저 수행한다. 다른 feature의 정상 반영과 detector 중지 상태를 보존한다. 성공으로 표시하거나 기본 탐지를 먼저 켜지 않는다.
+
+출력의 detector_id로 `aws guardduty get-detector --profile sbh-delta-security --region ap-northeast-2 --detector-id <ID>`를 조회한다. Status DISABLED와 모든 선택 기능/추가 설정 DISABLED를 확인한다. 목록 밖에 지원되는 선택 기능이 나타나면 입력 맵에 DISABLED로 추가해 중지 상태에서 먼저 적용한다. RUNTIME_MONITORING을 관리하며 과거 EKS_RUNTIME_MONITORING은 중복 구성하지 않는다. AI_ANALYST처럼 해당 리전에 응답이 없는 기능을 다른 리전의 목록만 보고 전달하지 않는다.
+
+중지 상태의 전체 API 확인을 마친 뒤 기본 true로 별도 Plan을 만든다. 실제 입력에 false를 따로 저장했다면 먼저 true로 갱신한다.
+
+```bash
+AWS_PROFILE=sbh-delta-security terraform -chdir=terraform/network-security plan \
+  -input=false -parallelism=1 -lock-timeout=2m -out=.validation/guardduty/enable.tfplan
+AWS_PROFILE=sbh-delta-security terraform -chdir=terraform/network-security show .validation/guardduty/enable.tfplan
+AWS_PROFILE=sbh-delta-security terraform -chdir=terraform/network-security apply \
+  -input=false -parallelism=1 .validation/guardduty/enable.tfplan
+AWS_PROFILE=sbh-delta-security terraform -chdir=terraform/network-security output -json guardduty
+AWS_PROFILE=sbh-delta-security terraform -chdir=terraform/network-security plan -input=false -detailed-exitcode
+```
+
+활성화 Plan은 detector enable의 false→true 변경만 있어야 한다. 적용 후 기본 CloudTrail/DNS/Flow와 detector Status ENABLED, 모든 선택 기능/자동 에이전트 관리 DISABLED, 최종 No changes/종료0을 확인한다. 기존 VPC Endpoint를 GuardDuty 목적으로 새로 만들지 않는다.
+
+준비 중 실패하면 중지 상태를 유지하며 원인을 해결한다. 활성화 후 원복이 필요하면 실제 tfvars에 `guardduty_enabled=false`를 저장하고 새 Plan/Apply로 일시 중지한다. detector와 findings를 보존하며 단순 삭제는 사용하지 않는다. true로 갱신하면 재개한다. 기본값은 true이므로 일회성 CLI false만으로 지속 중지를 보장하지 않는다.
+
+Detector는 `prevent_destroy`로 보호한다. Feature 리소스를 맵에서 빼거나 state에서 지워도 AWS 보호 기능은 꺼지지 않는다. 필수 전체 맵을 유지하며 status와 추가 설정을 DISABLED로 적용한다. 삭제로 findings를 잃는 전체 비활성화와 일시 중지를 구분한다.
+
+### 중앙 준비 중 S3/EKS 400을 복구하기
+
+2026-11-05에는 두 기능을 각각 DISABLED로 보내도 위 400이 발생했다. detector가 DISABLED이고 나머지 선택 기능/추가 설정이 모두 DISABLED인 것을 전체 get-detector 응답으로 먼저 확인한다. 부분 Apply에서 출력이 아직 없으면 list-detectors에서 정확히 1개인 ID를 확인한다. 아래 ID를 그 중앙 계정의 실제 ID로 바꾼다.
+
+```bash
+aws guardduty update-detector --profile sbh-delta-security --region ap-northeast-2 \
+  --detector-id REPLACE_WITH_VERIFIED_CENTRAL_DETECTOR_ID --no-enable \
+  --features Name=S3_DATA_EVENTS,Status=DISABLED Name=EKS_AUDIT_LOGS,Status=DISABLED
+```
+
+`Enable=false`와 두 기능의 DISABLED를 한 요청에 전달하는 방식으로 성공을 확인했다. 서버 내부의 정확한 검증 조건은 확인하지 않았다. 응답 후 다시 get-detector로 detector DISABLED와 모든 선택 기능/추가 설정 DISABLED를 확인하고, 새 중지 상태 Plan으로 아직 등록되지 않은 feature만 마무리한다.
+
+```bash
+AWS_PROFILE=sbh-delta-security terraform -chdir=terraform/network-security plan \
+  -input=false -parallelism=1 -lock-timeout=2m -var=guardduty_enabled=false \
+  -out=.validation/guardduty/prepare-recovery.tfplan
+AWS_PROFILE=sbh-delta-security terraform -chdir=terraform/network-security show .validation/guardduty/prepare-recovery.tfplan
+AWS_PROFILE=sbh-delta-security terraform -chdir=terraform/network-security apply \
+  -input=false -parallelism=1 .validation/guardduty/prepare-recovery.tfplan
+```
+
+기존 자원의 변경/삭제나 detector 활성화가 없는 Plan만 적용한다. 이 준비가 끝나고 API/state가 일치할 때 위 별도 활성화 Plan으로 진행한다. 이미 활성화해 정상 관리 중인 detector에 이 준비용 중지 절차를 다시 실행하지 않는다.
+
 ## ANF 비용 중단과 원복
 
 승인 범위와 실제 결과는 [ANF 비용 절감 AI-DLC](../../docs/ai-dlc/anf-cost-mode.md)를 따른다. 나머지 검사/관제 절차는 `inspection_mode=enabled` 기준이다. 아래 명령을 실행했다는 사실만으로 통신이나 원복을 성공으로 기록하지 않는다.

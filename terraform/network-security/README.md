@@ -1,5 +1,7 @@
 # 중앙 Network / Security 기반
 
+GuardDuty는 이 계정/리전의 기본 탐지를 관리하며 기본 활성 상태는 true다. ANF의 inspection_mode와 독립적으로 동작한다. 신규 detector는 먼저 guardduty_enabled=false로 생성하고 선택 기능 OFF를 확인한 뒤 true로 활성화한다. [GuardDuty 설계와 실제 검증 상태](../../docs/ai-dlc/aws-guardduty.md), [등록과 운영 절차](RUNBOOK.md#guardduty-등록과-운영)를 따른다.
+
 ANF 비용 중단과 원복은 [전환 Runbook](RUNBOOK.md#anf-비용-중단과-원복)과 [AI-DLC](../../docs/ai-dlc/anf-cost-mode.md)를 따른다. 아래의 검사 경로 설명은 기본 `inspection_mode=enabled` 기준이다.
 
 | `inspection_mode` | 트래픽 경로 | ANF 엔드포인트 | 용도 |
@@ -51,6 +53,9 @@ RAM 조직 공유 활성화는 조직 관리 계정에서 수행하며 `AWSServi
 | `inspection_azs` | `map(object)` | 필수 | AZ ID별 전용 Subnet CIDR, 최소 2 AZ |
 | `tgw_asn` | `number` | `64512` | TGW의 private BGP ASN |
 | `tags` | `map(string)` | `{}` | Team/Project/Environment/ManagedBy 기본 태그 재정의 |
+| guardduty_enabled | bool | `true` | 계정/리전 기본 탐지. false는 detector와 findings를 보존한 일시 중지 |
+| guardduty_finding_publishing_frequency | string | `SIX_HOURS` | 후속 finding 알림 주기. FIFTEEN_MINUTES/ONE_HOUR/SIX_HOURS |
+| guardduty_features | map(object) | 기능별 기본값 표 참고 | 필수 7개 선택 기능과 추가 설정의 명시적 상태 |
 | `shared_account_ids` | `set(string)` | `[]` | TGW와 Firewall을 공유할 소비자 계정 |
 | `allow_external_principals` | `bool` | `false` | Organization 밖 RAM 공유 허용 |
 | `spoke_attachments` | `map(object)` | `{}` | 소비자 VPC 연결 및 수락 관리 계약 |
@@ -136,11 +141,48 @@ GCP 네트워크는 interface 0/1의 서로 다른 공인 IP와 동일 Cloud Rou
 | `cidr_service_map` | `csp` | `string` | 필수 | 운영자가 정의한 CSP 메타데이터 |
 | `cidr_service_map` | `service_id` | `string` | 필수 | 운영자가 정의한 서비스 식별자 |
 
+### GuardDuty 기능별 기본값
+
+| 기능명 | 기본 상태 | 추가 설정 |
+| --- | --- | --- |
+| S3_DATA_EVENTS | DISABLED | 없음 |
+| EKS_AUDIT_LOGS | DISABLED | 없음 |
+| EBS_MALWARE_PROTECTION | DISABLED | 없음 |
+| RDS_LOGIN_EVENTS | DISABLED | RDS_DATA_RISK=DISABLED |
+| LAMBDA_NETWORK_LOGS | DISABLED | 없음 |
+| RUNTIME_MONITORING | DISABLED | EKS/ECS Fargate/EC2 에이전트 자동 관리 모두 DISABLED |
+| AI_PROTECTION | DISABLED | 없음 |
+
+### guardduty_features 내부 속성
+
+| 속성명 | 타입 | 기본값 | 역할 |
+| --- | --- | --- | --- |
+| map key | string | 위 기능별 기본값 | 필수 7개 키를 유지한다. 해당 리전에서 지원을 확인한 AI_ANALYST만 선택적으로 추가할 수 있다 |
+| status | string | 필수 | ENABLED 또는 DISABLED |
+| additional_configuration | map(string) | `{}` | 기능별 추가 설정. 값은 ENABLED 또는 DISABLED. 아래 RDS/Runtime 키는 모두 명시해야 한다 |
+| RDS_LOGIN_EVENTS.RDS_DATA_RISK | string | 위 기능별 기본값 | RDS 로그인 탐지의 추가 데이터 위험 탐지 설정 |
+| RUNTIME_MONITORING.EKS_ADDON_MANAGEMENT | string | DISABLED | EKS 보안 에이전트 자동 관리 |
+| RUNTIME_MONITORING.ECS_FARGATE_AGENT_MANAGEMENT | string | DISABLED | ECS Fargate 보안 에이전트 자동 관리 |
+| RUNTIME_MONITORING.EC2_AGENT_MANAGEMENT | string | DISABLED | EC2 보안 에이전트 자동 관리 |
+
+`guardduty_features` 입력은 전체 맵을 교체한다. 기능 하나만 바꾸더라도 필수 7개 키와 RDS/Runtime 추가 설정을 모두 유지한다. 꺼진 기능의 추가 설정도 DISABLED여야 하며 다른 기능에는 추가 설정을 넣지 않는다. 과거 EKS_RUNTIME_MONITORING은 RUNTIME_MONITORING과 함께 구성하지 않는다.
+
+### guardduty 출력 내부 속성
+
+| 속성명 | 역할 |
+| --- | --- |
+| account_id / region | 관리하는 실제 계정과 리전 |
+| detector_id / arn | detector 식별자 |
+| enabled | 기본 탐지 활성 상태. false는 detector 보존과 일시 중지를 뜻한다 |
+| finding_publishing_frequency | 기존 finding의 후속 발생 알림 주기 |
+| features | 기능명별 실제 Provider 상태와 additional_configuration의 이름/상태 맵. Findings 본문은 포함하지 않는다 |
+
 ## 출력 속성
 
 | 속성명 | 역할 |
 | --- | --- |
 | `central_account_id` | 인증된 중앙 계정 ID |
+| guardduty | 계정/리전 detector ID/ARN, 활성 상태, 게시 주기와 관리하는 기능/추가 설정 |
 | `region` | 중앙 Region |
 | `az_ids` | 지원하는 물리적 AZ IDs |
 | `tgw_id` | 공유 TGW ID |

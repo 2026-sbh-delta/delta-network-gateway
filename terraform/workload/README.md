@@ -1,6 +1,8 @@
 # 공통 AWS 워크로드 네트워크
 
-기본값은 기존 `10.10.0.0/16` 공통 네트워크만 관리하는 root다. `application_enabled=true`를 명시하면 공개 ALB와 NAT, 사설 x86 앱 EC2와 RDS PostgreSQL을 추가한다. native는 FE/BE 각 1대, compose는 기존 frontend EC2 한 대에 두 컨테이너를 배치한다. 기존 VPC/네 서브넷/TGW/EIC의 ID와 backend key는 유지한다. [앱 설계와 실제 검증 상태](../../docs/ai-dlc/aws-sample-app.md)를 확인한다.
+GuardDuty는 이 계정/리전의 기본 탐지를 관리하며 기본 활성 상태는 true다. 기존 detector의 ID와 선택 보호 설정을 보존한다. 최초 적용 전 기존 detector를 Import하고, 이미 state에 등록돼 있다면 Import를 반복하지 않는다. [GuardDuty 설계와 실제 검증 상태](../../docs/ai-dlc/aws-guardduty.md), [등록과 운영 절차](RUNBOOK.md#guardduty-등록과-운영)를 따른다.
+
+기본 구성은 기존 `10.10.0.0/16` 공통 네트워크와 계정/리전 GuardDuty를 관리한다. `application_enabled=true`를 명시하면 공개 ALB와 NAT, 사설 x86 앱 EC2와 RDS PostgreSQL을 추가한다. native는 FE/BE 각 1대, compose는 기존 frontend EC2 한 대에 두 컨테이너를 배치한다. 기존 VPC/네 서브넷/TGW/EIC의 ID와 backend key는 유지한다. [앱 설계와 실제 검증 상태](../../docs/ai-dlc/aws-sample-app.md)를 확인한다.
 
 승인과 실행 결과는 [통합 AI-DLC](../../docs/ai-dlc/aws-workload-consolidation.md)를 따른다. 코드 변경과 실제 Apply 상태는 구분한다.
 
@@ -33,6 +35,9 @@ VPC의 Name 태그는 `vpc_name`으로 지정하며 기본값은 `delta-board-vp
 | remote_cidrs | set(string) | `[]` | 반환 경로가 준비된 원격 사설망의 TGW 목적지 |
 | test_tcp_ports | set(number) | `[8080, 8081]` | 유지하는 워크로드 SG의 원격망 송신 포트 |
 | tags | map(string) | `{}` | 추가 공통 태그 |
+| guardduty_enabled | bool | `true` | 계정/리전 기본 탐지. false는 detector와 findings를 보존한 일시 중지 |
+| guardduty_finding_publishing_frequency | string | `SIX_HOURS` | 후속 finding 알림 주기. FIFTEEN_MINUTES/ONE_HOUR/SIX_HOURS |
+| guardduty_features | map(object) | 기능별 기본값 표 참고 | 필수 7개 선택 기능과 추가 설정의 명시적 상태 |
 | application_enabled | bool | `false` | 샘플 앱 기반을 명시적으로 생성하는 선택 모드 |
 | application | object | `{}` 내부 기본값 사용 | 앱 세부 설정, 아래 내부 속성 표 참고 |
 
@@ -62,11 +67,48 @@ VPC의 Name 태그는 `vpc_name`으로 지정하며 기본값은 `delta-board-vp
 | node_version | string | `24.19.0` | 공통 bootstrap의 Linux x64 Node.js 고정 버전. Compose 이미지 버전은 배포 도구에서 별도 고정 |
 | node_sha256 | string | `14b342e71204f811bde6153be8e04b62aef63c236fef92b55f9c83154b409647` | 해당 Node.js Linux x64 tar.xz의 공식 SHA-256 |
 
+### GuardDuty 기능별 기본값
+
+| 기능명 | 기본 상태 | 추가 설정 |
+| --- | --- | --- |
+| S3_DATA_EVENTS | ENABLED | 없음 |
+| EKS_AUDIT_LOGS | ENABLED | 없음 |
+| EBS_MALWARE_PROTECTION | ENABLED | 없음 |
+| RDS_LOGIN_EVENTS | ENABLED | RDS_DATA_RISK=ENABLED |
+| LAMBDA_NETWORK_LOGS | ENABLED | 없음 |
+| RUNTIME_MONITORING | DISABLED | EKS/ECS Fargate/EC2 에이전트 자동 관리 모두 DISABLED |
+| AI_PROTECTION | DISABLED | 없음 |
+
+### guardduty_features 내부 속성
+
+| 속성명 | 타입 | 기본값 | 역할 |
+| --- | --- | --- | --- |
+| map key | string | 위 기능별 기본값 | 필수 7개 키를 유지한다. 해당 리전에서 지원을 확인한 AI_ANALYST만 선택적으로 추가할 수 있다 |
+| status | string | 필수 | ENABLED 또는 DISABLED |
+| additional_configuration | map(string) | `{}` | 기능별 추가 설정. 값은 ENABLED 또는 DISABLED. 아래 RDS/Runtime 키는 모두 명시해야 한다 |
+| RDS_LOGIN_EVENTS.RDS_DATA_RISK | string | 위 기능별 기본값 | RDS 로그인 탐지의 추가 데이터 위험 탐지 설정 |
+| RUNTIME_MONITORING.EKS_ADDON_MANAGEMENT | string | DISABLED | EKS 보안 에이전트 자동 관리 |
+| RUNTIME_MONITORING.ECS_FARGATE_AGENT_MANAGEMENT | string | DISABLED | ECS Fargate 보안 에이전트 자동 관리 |
+| RUNTIME_MONITORING.EC2_AGENT_MANAGEMENT | string | DISABLED | EC2 보안 에이전트 자동 관리 |
+
+`guardduty_features` 입력은 전체 맵을 교체한다. 기능 하나만 바꾸더라도 필수 7개 키와 RDS/Runtime 추가 설정을 모두 유지한다. 꺼진 기능의 추가 설정도 DISABLED여야 하며 다른 기능에는 추가 설정을 넣지 않는다. 과거 EKS_RUNTIME_MONITORING은 RUNTIME_MONITORING과 함께 구성하지 않는다.
+
+### guardduty 출력 내부 속성
+
+| 속성명 | 역할 |
+| --- | --- |
+| account_id / region | 관리하는 실제 계정과 리전 |
+| detector_id / arn | detector 식별자 |
+| enabled | 기본 탐지 활성 상태. false는 detector 보존과 일시 중지를 뜻한다 |
+| finding_publishing_frequency | 기존 finding의 후속 발생 알림 주기 |
+| features | 기능명별 실제 Provider 상태와 additional_configuration의 이름/상태 맵. Findings 본문은 포함하지 않는다 |
+
 ## 출력 속성
 
 | 속성명 | 역할 |
 | --- | --- |
 | workload_account_id | 실제 확인한 업무 계정 |
+| guardduty | 계정/리전 detector ID/ARN, 활성 상태, 게시 주기와 관리하는 기능/추가 설정 |
 | region | 네트워크 리전 |
 | az_ids | 물리 AZ ID 목록 |
 | vpc_id | 공통 VPC ID |

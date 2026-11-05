@@ -146,6 +146,87 @@ variable "tags" {
   default     = {}
 }
 
+variable "guardduty_enabled" {
+  description = "Enable account/Region threat detection; false suspends the retained detector without deleting findings."
+  type        = bool
+  default     = true
+  nullable    = false
+}
+
+variable "guardduty_finding_publishing_frequency" {
+  description = "Notification frequency for subsequent occurrences of existing GuardDuty findings."
+  type        = string
+  default     = "SIX_HOURS"
+  nullable    = false
+  validation {
+    condition     = contains(["FIFTEEN_MINUTES", "ONE_HOUR", "SIX_HOURS"], var.guardduty_finding_publishing_frequency)
+    error_message = "GuardDuty finding frequency must be FIFTEEN_MINUTES, ONE_HOUR or SIX_HOURS."
+  }
+}
+
+variable "guardduty_features" {
+  description = "Explicit optional protection states. Keep all required keys; removing a feature resource does not disable it in AWS."
+  type = map(object({
+    status                   = string
+    additional_configuration = optional(map(string), {})
+  }))
+  nullable = false
+  default = {
+    S3_DATA_EVENTS         = { status = "ENABLED" }
+    EKS_AUDIT_LOGS         = { status = "ENABLED" }
+    EBS_MALWARE_PROTECTION = { status = "ENABLED" }
+    RDS_LOGIN_EVENTS = {
+      status                   = "ENABLED"
+      additional_configuration = { RDS_DATA_RISK = "ENABLED" }
+    }
+    LAMBDA_NETWORK_LOGS = { status = "ENABLED" }
+    RUNTIME_MONITORING = {
+      status = "DISABLED"
+      additional_configuration = {
+        EKS_ADDON_MANAGEMENT         = "DISABLED"
+        ECS_FARGATE_AGENT_MANAGEMENT = "DISABLED"
+        EC2_AGENT_MANAGEMENT         = "DISABLED"
+      }
+    }
+    AI_PROTECTION = { status = "DISABLED" }
+  }
+  validation {
+    condition = alltrue([for name in [
+      "S3_DATA_EVENTS", "EKS_AUDIT_LOGS", "EBS_MALWARE_PROTECTION",
+      "RDS_LOGIN_EVENTS", "LAMBDA_NETWORK_LOGS", "RUNTIME_MONITORING", "AI_PROTECTION"
+      ] : contains(keys(var.guardduty_features), name)]) && alltrue([
+      for name in keys(var.guardduty_features) : contains([
+        "S3_DATA_EVENTS", "EKS_AUDIT_LOGS", "EBS_MALWARE_PROTECTION", "RDS_LOGIN_EVENTS",
+        "LAMBDA_NETWORK_LOGS", "RUNTIME_MONITORING", "AI_PROTECTION", "AI_ANALYST"
+      ], name)
+    ])
+    error_message = "Keep all seven required feature keys; only supported AI_ANALYST may be added. Do not combine the legacy EKS runtime feature with RUNTIME_MONITORING."
+  }
+  validation {
+    condition = try(alltrue([for feature in values(var.guardduty_features) :
+      contains(["ENABLED", "DISABLED"], feature.status) &&
+      alltrue([for status in values(feature.additional_configuration) : contains(["ENABLED", "DISABLED"], status)])
+    ]), false)
+    error_message = "Every GuardDuty feature and additional configuration must explicitly be ENABLED or DISABLED."
+  }
+  validation {
+    condition = try(alltrue([for name, feature in var.guardduty_features :
+      name == "RUNTIME_MONITORING" ? toset(keys(feature.additional_configuration)) == toset([
+        "EKS_ADDON_MANAGEMENT", "ECS_FARGATE_AGENT_MANAGEMENT", "EC2_AGENT_MANAGEMENT"
+        ]) : name == "RDS_LOGIN_EVENTS" ? toset(keys(feature.additional_configuration)) == toset([
+        "RDS_DATA_RISK"
+      ]) : length(feature.additional_configuration) == 0
+    ]), false)
+    error_message = "Runtime requires all three explicit agent-management settings; RDS requires RDS_DATA_RISK; other features cannot have additional configuration."
+  }
+  validation {
+    condition = try(alltrue([for feature in values(var.guardduty_features) :
+      feature.status == "ENABLED" || alltrue([for status in values(feature.additional_configuration) : status == "DISABLED"])
+    ]), false)
+    error_message = "A disabled protection cannot enable any of its additional configurations."
+  }
+}
+
 variable "application_enabled" {
   description = "Explicit opt-in for the public ALB, private x86 EC2 hosts and RDS application resources."
   type        = bool

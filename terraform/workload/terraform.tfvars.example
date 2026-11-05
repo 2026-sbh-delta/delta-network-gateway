@@ -15,3 +15,7 @@ client_az_id       = "apne2-az1"
 transit_gateway_id = null
 remote_cidrs       = []
 test_tcp_ports     = [8080, 8081]
+
+# Existing account detector: import before the first apply. Defaults retain its protections.
+guardduty_enabled                      = true
+guardduty_finding_publishing_frequency = "SIX_HOURS"
