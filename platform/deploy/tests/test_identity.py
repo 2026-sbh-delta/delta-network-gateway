@@ -44,7 +44,7 @@ class IdentityPreparationTests(unittest.TestCase):
         ):
             spec.loader.exec_module(self.module)
 
-    def prepare(self, owns_provider=False, subject_default=True):
+    def prepare(self, owns_provider=False, subject_default=True, extra_resources=()):
         platform = {
             "outputs": {
                 "account_id": {"value": "123456789012"},
@@ -52,6 +52,9 @@ class IdentityPreparationTests(unittest.TestCase):
             },
             "resources": [
                 {
+                    "mode": "data"
+                    if resource_type == "aws_ec2_managed_prefix_list"
+                    else "managed",
                     "type": resource_type,
                     "name": name,
                     "instances": [{"attributes": {"id": resource_id}}],
@@ -65,6 +68,7 @@ class IdentityPreparationTests(unittest.TestCase):
                 ]
             ],
         }
+        platform["resources"].extend(extra_resources)
         identity = {
             "resources": [
                 {
@@ -112,7 +116,50 @@ class IdentityPreparationTests(unittest.TestCase):
         values = self.prepare()
         self.assertFalse(values["create_oidc_provider"])
         self.assertEqual(
-            values["platform_subnet_ids"], ["subnet-public", "subnet-private"]
+            values["platform_subnet_ids"], ["subnet-private", "subnet-public"]
+        )
+
+    def test_all_owned_service_instances_are_included_and_other_subnets_excluded(self):
+        values = self.prepare(
+            extra_resources=[
+                {
+                    "mode": "managed",
+                    "type": "aws_subnet",
+                    "name": "service",
+                    "instances": [
+                        {"index_key": "ai", "attributes": {"id": "subnet-ai"}},
+                        {
+                            "index_key": "jenkins_controller",
+                            "attributes": {"id": "subnet-controller"},
+                        },
+                    ],
+                },
+                {
+                    "mode": "data",
+                    "type": "aws_subnet",
+                    "name": "service",
+                    "instances": [
+                        {"attributes": {"id": "subnet-external"}},
+                    ],
+                },
+                {
+                    "mode": "managed",
+                    "type": "aws_subnet",
+                    "name": "unrelated",
+                    "instances": [
+                        {"attributes": {"id": "subnet-unrelated"}},
+                    ],
+                },
+            ]
+        )
+        self.assertEqual(
+            set(values["platform_subnet_ids"]),
+            {
+                "subnet-private",
+                "subnet-public",
+                "subnet-ai",
+                "subnet-controller",
+            },
         )
 
     def test_owned_provider_remains_managed_on_rerun(self):

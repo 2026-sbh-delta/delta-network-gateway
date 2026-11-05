@@ -1,5 +1,7 @@
 # 플랫폼 전용 AI 실행 기반
 
+> 2026-11-05: 사용자 범위 정정으로 별도 AI 서버 추가를 중단했다. EC2는 생성되지 않았으며 준비 자원 일부만 있다. 이 모듈을 자동 적용하지 않는다. 현재 플랫폼은 팀원 AI 서비스와의 연결을 기준으로 정리한다. [최신 범위](../../../docs/ai-dlc/platform-subnets.md)
+
 `플랫폼 API/Worker → 사설 HTTPS → delta-ai` 구성이다. AI는 판단 결과를 반환하고 승인·배포 실행 권한은 플랫폼이 갖는다. 서비스 구현은 `services/delta-ai/`를 사용하며 실행 기반만 이 폴더에서 관리한다.
 
 팀원의 `delta-lab-ai-host`, `delta-ai/api` ECR, `/delta/ai/*`, `sbh-delta-workload-tf-616723161368` 버킷/state를 가져오거나 수정하지 않는다. 우리 자원은 **`delta-platform-ai`**, 런타임은 **`/delta-platform/ai/runtime`**, state는 **플랫폼 전용 버킷의 `platform/ai.tfstate`**로 분리한다. Terraform state에 토큰·모델 API 키·인증서 개인키를 넣지 않는다.

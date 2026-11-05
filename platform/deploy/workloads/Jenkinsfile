@@ -1,0 +1,22 @@
+pipeline {
+    agent { label 'delta-deployer' }
+    options {
+        skipDefaultCheckout(true)
+        disableConcurrentBuilds()
+        timeout(time: 25, unit: 'MINUTES')
+        buildDiscarder(logRotator(numToKeepStr: '200', artifactNumToKeepStr: '200'))
+        timestamps()
+    }
+    stages {
+        stage('Deploy approved images') {
+            steps {
+                deleteDir()
+                withEnv(["DELTA_RUN_ID=${params.DELTA_RUN_ID}", "DELTA_DEPLOYMENT=${params.DELTA_DEPLOYMENT}"]) {
+                    sh '/opt/delta/venv/bin/python /opt/delta/workloads/deploy.py'
+                }
+                archiveArtifacts artifacts: 'result.json', allowEmptyArchive: false
+            }
+            post { always { deleteDir() } }
+        }
+    }
+}

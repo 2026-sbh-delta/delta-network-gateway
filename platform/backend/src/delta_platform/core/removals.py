@@ -77,6 +77,10 @@ class RemovalStore:
             )
             if not service:
                 raise Problem("service_not_found", "서비스를 찾을 수 없습니다.", 404)
+            if service["deletion_requested"]:
+                raise Problem(
+                    "project_cleanup_pending", "프로젝트 자원 삭제를 먼저 완료하세요.", 409
+                )
             if service["name"] != name:
                 raise Problem("delete_name_mismatch", "서비스 이름이 일치하지 않습니다.", 409)
             plans = list(
@@ -213,6 +217,8 @@ class RemovalStore:
 
 
 def assert_no_removal(conn, service_id):
+    if conn.scalar(sa.select(services.c.deletion_requested).where(services.c.id == service_id)):
+        raise Problem("project_cleanup_pending", "프로젝트 자원 삭제를 먼저 완료하세요.", 409)
     if conn.scalar(
         sa.select(environments.c.id)
         .where(

@@ -96,9 +96,16 @@ def main():
             "aws_cloudfront_origin_request_policy.platform"
         ]["id"],
         "platform_vpc_id": resources["aws_vpc.platform"]["id"],
-        "platform_subnet_ids": [
-            resources[f"aws_subnet.{name}"]["id"] for name in ["public", "private"]
-        ],
+        "platform_subnet_ids": sorted(
+            {
+                instance["attributes"]["id"]
+                for resource in platform["resources"]
+                if resource.get("mode") == "managed"
+                and resource["type"] == "aws_subnet"
+                and resource["name"] in {"public", "private", "service"}
+                for instance in resource.get("instances", [])
+            }
+        ),
     }
     root = Path(__file__).resolve().parents[1] / "identity"
     write_private(root / "terraform.tfvars.json", json.dumps(inputs, indent=2) + "\n")

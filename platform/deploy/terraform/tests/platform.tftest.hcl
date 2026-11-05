@@ -93,3 +93,11 @@ run "role_subnets_reuse_private_nat" {
     error_message = "공유 NAT에는 배정한 서브넷의 HTTPS 송신만 추가해야 합니다."
   }
 }
+
+run "jenkins_addresses_are_separate" {
+  command = plan
+  assert {
+    condition     = aws_instance.jenkins["controller"].private_ip == "10.80.10.20" && aws_instance.jenkins["agent"].private_ip == "10.80.11.21"
+    error_message = "Jenkins 제어부와 빌드 실행기는 각각의 전용 subnet 주소를 사용해야 합니다."
+  }
+}

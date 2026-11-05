@@ -366,6 +366,7 @@ test("대상·계획에 맞는 차이와 diff만 표시하고 승인 후에도 �
 }, info) => {
   await boundary(page);
   await page.goto("/#/migration/notes-fe");
+  await page.getByText("기존 분석·검토 계획 보기").click();
   const comparison = page.getByRole("region", { name: "환경 차이와 AI 제안" });
   await expect(
     comparison.getByText("위협 탐지", { exact: true }),
@@ -399,6 +400,7 @@ test("변경된 계획의 AI 결과를 숨기고 기존 API의 단일 서비스�
 }) => {
   await boundary(page, { wrongAssessment: true, unlinked: true });
   await page.goto("/#/migration/notes-fe");
+  await page.getByText("기존 분석·검토 계획 보기").click();
   const comparison = page.getByRole("region", { name: "환경 차이와 AI 제안" });
   await expect(comparison.getByText("상세 결과 미연결")).toBeVisible();
   await expect(comparison.getByText("위협 탐지", { exact: true })).toHaveCount(
@@ -520,6 +522,7 @@ test("출발 환경이 없는 배포 계획에 작성 폼의 AWS 선택을 섞�
     route.fulfill({ json: deployment }),
   );
   await page.goto("/#/migration/notes-fe");
+  await page.getByText("기존 분석·검토 계획 보기").click();
   const comparison = page.getByRole("region", { name: "환경 차이와 AI 제안" });
   await expect(
     comparison

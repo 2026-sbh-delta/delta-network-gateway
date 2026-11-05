@@ -23,6 +23,8 @@ from delta_platform.adapters.security import security_target
 from delta_platform.config import Settings
 from delta_platform.core.auth import COOKIE, Auth
 from delta_platform.core.database import engine_for, ready
+from delta_platform.core.deployment_targets import catalog
+from delta_platform.core.deployments import DeploymentInput, DeploymentStore
 from delta_platform.core.environments import EnvironmentStore
 from delta_platform.core.errors import Problem
 from delta_platform.core.inputs import (
@@ -52,6 +54,7 @@ def create_app(settings=None, engine=None, *, dashboard=None):
     auth, store = Auth(engine, settings), Store(engine)
     environments = EnvironmentStore(engine)
     workflows = WorkflowStore(engine)
+    deployments = DeploymentStore(engine, settings)
     migrations = MigrationTrackingStore(engine)
     dashboard = dashboard or DashboardReader(settings.observability_region)
 
@@ -193,8 +196,16 @@ def create_app(settings=None, engine=None, *, dashboard=None):
 
     @protected.post("/services/{service_id}/delete", status_code=204)
     def delete_service(service_id: UUID, body: DeleteServiceInput):
-        store.delete_service(service_id, body.confirmation_name)
-        return Response(status_code=204)
+        result = store.delete_service(service_id, body.confirmation_name, settings)
+        if result is None:
+            return Response(status_code=204)
+        return JSONResponse(jsonable_encoder(result), status_code=202)
+
+    @protected.get("/services/{service_id}/deletion")
+    def project_deletion(service_id: UUID):
+        from delta_platform.core.project_removal import ProjectRemovalStore
+
+        return ProjectRemovalStore(engine).status(service_id)
 
     @protected.get("/services/{service_id}/environments")
     def service_environments(service_id: UUID):
@@ -238,6 +249,34 @@ def create_app(settings=None, engine=None, *, dashboard=None):
         result = dashboard.read(environments.get(service_id, environment_id), minutes)
         result["migration"] = migrations.latest(service_id, environment_id)
         return result
+
+    @protected.get("/deployment-options")
+    def deployment_options():
+        return catalog(settings)
+
+    @protected.post("/services/{service_id}/deployment-plans")
+    def deployment_create(service_id: UUID, body: DeploymentInput, request: Request):
+        result, created = deployments.create(
+            service_id, body, request_key(request.headers.get("idempotency-key"))
+        )
+        return JSONResponse(jsonable_encoder(result), status_code=201 if created else 200)
+
+    @protected.get("/services/{service_id}/deployment-plans")
+    def deployment_list(service_id: UUID):
+        return deployments.list(service_id)
+
+    @protected.get("/deployment-plans/{plan_id}")
+    def deployment_detail(plan_id: UUID):
+        return deployments.get(plan_id)
+
+    @protected.post("/deployment-plans/{plan_id}/execute")
+    def deployment_execute(plan_id: UUID, body: ApprovalInput, summary=Depends(authenticated)):
+        return deployments.execute(plan_id, body.input_hash, summary["login_id"])
+
+    @protected.get("/deployment-runs/{run_id}/events")
+    def deployment_events(run_id: UUID, after: Annotated[int, Query(ge=0)] = 0, limit: Limit = 50):
+        store.run(run_id, "service_deploy")
+        return store.run_events(run_id, after, limit)
 
     @protected.post("/services/{service_id}/workflows")
     def workflow_create(service_id: UUID, body: WorkflowInput, request: Request):

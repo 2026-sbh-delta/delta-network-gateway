@@ -140,8 +140,11 @@ def test_delete_refuses_environment_or_plan_and_preserves_records(
                 )
             )
     response = remove(signed, service)
+    if dependency == "workflow":
+        assert response.status_code == 204
+        return
     assert response.status_code == 409
-    assert response.json()["error"]["code"] == "service_has_dependencies"
+    assert response.json()["error"]["code"] == "resource_ownership_missing"
     with engine.connect() as conn:
         table = environments if dependency == "environment" else workflows
         assert conn.scalar(sa.select(sa.func.count()).select_from(table)) == 1

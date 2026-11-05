@@ -31,7 +31,7 @@ Release는 SSM Parameter의 비밀값을 직접 조회하지 않는다. 다만 �
 | `origin_request_policy_id` | string | 필수 | 변경을 허용할 기존 CloudFront 정책 |
 | `cloudfront_prefix_list_id` | string | 필수 | 기존 플랫폼의 AWS 관리 CloudFront prefix list. 해당 목록의 항목 조회만 허용 |
 | `platform_vpc_id` | string | 필수 | VM 실행·연결을 허용할 기존 VPC |
-| `platform_subnet_ids` | set(string) | 필수 | 기존 public/private subnet ID |
+| `platform_subnet_ids` | set(string) | 필수 | 플랫폼 root 소유 public/private/service subnet ID |
 
 ## 출력 속성
 

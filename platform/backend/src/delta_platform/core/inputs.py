@@ -5,6 +5,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from .deployment_targets import DeploymentTarget
+
 
 def clean_path(value, allow_root=False):
     if (
@@ -89,6 +91,7 @@ class DastCheckInput(SandboxCheckInput):
 
 
 class ServiceInput(StrictInput):
+    deployment_target: DeploymentTarget | None = None
     name: str = Field(min_length=1, max_length=80)
     repository_url: str = Field(max_length=512)
     source_ref: str = Field(min_length=1, max_length=255)
