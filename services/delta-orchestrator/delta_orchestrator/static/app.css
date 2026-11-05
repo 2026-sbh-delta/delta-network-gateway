@@ -243,3 +243,39 @@ dialog.viewer { width: min(1280px, calc(100vw - 32px)); }
 /* 결과: 끝까지 연결은 됐지만 사람이 넘긴 보안 항목이 남음 */
 .node.s-warn .body { stroke: var(--warn); stroke-width: 1.6; stroke-dasharray: 6 4; } .node.s-warn .sdot { fill: var(--warn); }
 .state.s-warn { color: var(--warn); border-color: var(--warn); }
+
+/* DAST 화면 연출: 프레임 위에 커서·클릭 파동·자막·탐지 알림. 모든 화면은 DAST viewport 와 같은 3:2 */
+.tv { position: relative; aspect-ratio: 3 / 2; background: #020203; border: 1px solid var(--line); border-radius: 10px; overflow: hidden;
+  display: grid; place-items: center; container-type: inline-size; }
+.tv .tv-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: fill; display: none; }
+.tv.has .tv-img { display: block; } .tv.has .screen-empty { display: none; }
+.tv.on { border-color: color-mix(in srgb, var(--violet) 70%, var(--line)); box-shadow: 0 0 0 1px color-mix(in srgb, var(--violet) 40%, transparent); }
+.tv.on .badge-live { display: block; animation: blink 1.2s steps(2) infinite; }
+.tv-cursor { position: absolute; width: 22px; height: 22px; margin: -3px 0 0 -3px; z-index: 3; pointer-events: none;
+  transition: left .6s cubic-bezier(.3, .7, .3, 1), top .6s cubic-bezier(.3, .7, .3, 1);
+  background: no-repeat center/contain url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M3 2l7 19 2.6-7.6L20 11z' fill='%23ff2e6e' stroke='white' stroke-width='1.6' stroke-linejoin='round'/%3E%3C/svg%3E");
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, .6)); }
+.tv-ripple { position: absolute; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%; border: 2px solid var(--pink); z-index: 2;
+  pointer-events: none; animation: ripple .7s ease-out forwards; }
+@keyframes ripple { from { transform: scale(.4); opacity: 1; } to { transform: scale(3.2); opacity: 0; } }
+.tv-sub { position: absolute; left: 4%; right: 4%; bottom: 4%; z-index: 4; background: rgba(5, 5, 6, .82); color: #f4f4f5;
+  border: 1px solid rgba(255, 255, 255, .12); border-radius: 8px; padding: 6px 10px; font-size: clamp(11px, 2.4cqw, 16px); line-height: 1.45;
+  backdrop-filter: blur(4px); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.tv-sub.warn { border-color: var(--warn); color: #ffd58a; } .tv-sub.bad { border-color: var(--bad); color: #ffb4c0; }
+.tv-alert { position: absolute; left: 50%; top: 14%; transform: translateX(-50%); z-index: 5; white-space: nowrap; font-weight: 800;
+  font-size: clamp(13px, 3.6cqw, 26px); letter-spacing: .02em; padding: .45em 1.1em; border-radius: 10px; color: #fff;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, .5); animation: pop .35s cubic-bezier(.2, 1.4, .4, 1); }
+.tv-alert.bad { background: var(--bad); } .tv-alert.ok { background: #059669; } .tv-alert.warn { background: #b45309; }
+@keyframes pop { from { transform: translateX(-50%) scale(.6); opacity: 0; } to { transform: translateX(-50%) scale(1); opacity: 1; } }
+.tv.flash-bad { animation: flash-bad .5s ease-in-out 3; }
+@keyframes flash-bad { 50% { box-shadow: 0 0 0 3px var(--bad), 0 0 40px color-mix(in srgb, var(--bad) 60%, transparent); } }
+/* 캔버스 위 떠 있는 실시간 화면(점검이 시작되면 자동으로 나타남) */
+.pip { position: absolute; top: 12px; right: 12px; width: min(560px, 48%); z-index: 6; background: var(--card); border: 1px solid var(--line);
+  border-radius: 14px; padding: 8px; box-shadow: 0 12px 40px rgba(0, 0, 0, .55); display: flex; flex-direction: column; gap: 6px; }
+.pip-head { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); padding: 0 4px; }
+.pip-head span { flex: 1; font-weight: 600; color: var(--fg); }
+.pip-head button { background: transparent; border: 1px solid var(--line); border-radius: 7px; padding: 1px 8px; cursor: pointer; color: var(--muted); font-size: 11.5px; }
+#viewer-live { padding: 0; }
+.tv.big { border-radius: 0; border: 0; }
+@media (max-width: 900px) { .pip { width: calc(100% - 24px); } }
+@media (prefers-reduced-motion: reduce) { .tv-cursor { transition: none; } .tv-ripple, .tv-alert, .tv.flash-bad { animation: none; } }

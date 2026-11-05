@@ -168,9 +168,12 @@ class PlatformRuns:
             self.write(run_id, record)
             if report:
                 try:
+                    # 재현이 확인된 뒤에만 영향 시연(기본: 4초짜리 블루스크린 화면 효과)을 한다. 스테이징 DB 는 배포마다 초기화된다.
+                    impact_payload = os.environ.get("DAST_PLATFORM_IMPACT_PAYLOAD", "bsod_v1")
                     self.launch(RunRequest(scenario="vulnerable", planner="agent",
                                            report=report.model_dump(), target_id=target_id,
-                                           concurrency=1, impact=False, auto_fix=False),
+                                           concurrency=1, impact=True, auto_fix=False,
+                                           payload_id=impact_payload if impact_payload in self.catalog.payloads else None),
                                 {"platform_binding": binding}, run_id=run_id)
                 except Exception:
                     # The persisted request remains interrupted; a new run ID is required.

@@ -44,7 +44,7 @@ def test_idempotent_requests_are_pinned_and_never_auto_fix(tmp_path, monkeypatch
         results = await asyncio.gather(*(registry.submit(run_id, body) for _ in range(4)))
         assert all(r["binding"] == body["binding"] for r in results)
         assert len(calls) == 1
-        assert calls[0][0].auto_fix is False and calls[0][0].impact is False
+        assert calls[0][0].auto_fix is False and calls[0][0].impact is True
         assert calls[0][0].target_id == "local-fixture"
         assert calls[0][0].planner == "agent"
         other = copy.deepcopy(body)

@@ -43,6 +43,11 @@
           <g id="groups"></g><g id="edges"></g><g id="nodes"></g>
         </g>
       </svg>
+      <div class="pip" id="pip" hidden>
+        <div class="pip-head"><span>DAST 실시간 화면</span><button type="button" id="pip-big">크게</button><button type="button" id="pip-close" aria-label="닫기">×</button></div>
+        <div class="tv"><img class="tv-img" alt="DAST 가 조작 중인 스테이징 화면"><div class="tv-cursor" hidden></div><div class="tv-sub" hidden></div>
+          <div class="tv-alert" hidden></div><span class="badge-live">● LIVE</span><span class="screen-empty">화면 기록을 기다리는 중…</span></div>
+      </div>
       <div class="overlay ov-bl legend" aria-label="범례">
         <span><i></i>대기</span><span><i class="l-run"></i>실행 중</span><span><i class="l-ok"></i>완료</span>
         <span><i class="l-wait"></i>승인 대기</span><span><i class="l-bad"></i>실패</span><span><i class="l-mock"></i>추후(아직 없음)</span>
@@ -58,8 +63,10 @@
   </main>
 
   <dialog id="viewer" class="viewer">
-    <div class="dlg-head"><h2>DAST 브라우저 화면</h2><button class="btn" type="button" id="close-viewer">닫기</button></div>
-    <img id="viewer-img" alt="DAST 화면 크게 보기">
+    <div class="dlg-head"><h2>DAST 화면</h2><button class="btn" type="button" id="close-viewer">닫기</button></div>
+    <div id="viewer-live" hidden><div class="tv big"><img class="tv-img" alt="DAST 가 조작 중인 스테이징 화면"><div class="tv-cursor" hidden></div><div class="tv-sub" hidden></div>
+      <div class="tv-alert" hidden></div><span class="badge-live">● LIVE</span><span class="screen-empty">화면 기록을 기다리는 중…</span></div></div>
+    <img id="viewer-img" alt="DAST 증거 스크린샷 크게 보기">
   </dialog>
 
   <dialog id="health">

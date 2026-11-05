@@ -287,6 +287,55 @@
       tagText.textContent = on ? "● LIVE" : "마지막 화면"; tagBox.setAttribute("width", on ? 44 : 62); tagText.setAttribute("x", on ? 22 : 31);
     } };
   })();
+  // DAST 화면 연출. 패널·캔버스 위 떠 있는 화면(PiP)·크게 보기에 같은 프레임과 커서·클릭·자막·탐지 알림을 그린다.
+  // 화면 좌표는 DAST 브라우저 viewport(기본 960x640) 기준이고, 모든 화면을 같은 3:2 비율로 두어 % 로 옮긴다.
+  const Theater = (() => {
+    const screens = new Set();
+    let size = { w: 960, h: 640 }, last = "", on = false, subTimer = null, alertTimer = null, run = "", pipClosed = "";
+    const tv = (cls = "") => `<div class="tv ${cls}"><img class="tv-img" alt="DAST 가 조작 중인 스테이징 화면"><div class="tv-cursor" hidden></div>
+      <div class="tv-sub" hidden></div><div class="tv-alert" hidden></div><span class="badge-live">● LIVE</span><span class="screen-empty">화면 기록을 기다리는 중…</span></div>`;
+    const all = (fn) => screens.forEach((el) => { if (el.isConnected) fn(el); else screens.delete(el); });
+    function add(el) { screens.add(el); if (last) paintFrame(el); }
+    function paintFrame(el) { el.querySelector(".tv-img").src = last; el.classList.add("has"); el.classList.toggle("on", on); }
+    function frame(src, live, w, h) {
+      last = src; on = live; if (w && h) size = { w, h };
+      all(paintFrame); thumb.set(src, live);
+      if (live && run && pipClosed !== run) $("#pip").hidden = false;
+    }
+    function idle() { on = false; all((el) => el.classList.remove("on")); thumb.set(last, false); }
+    function cursor(x, y) {
+      all((el) => { const c = el.querySelector(".tv-cursor"); c.hidden = false;
+        c.style.left = (x / size.w * 100) + "%"; c.style.top = (y / size.h * 100) + "%"; });
+    }
+    function click() {
+      all((el) => { const c = el.querySelector(".tv-cursor"); if (c.hidden) return;
+        const r = document.createElement("span"); r.className = "tv-ripple"; r.style.left = c.style.left; r.style.top = c.style.top;
+        el.appendChild(r); setTimeout(() => r.remove(), 700); });
+    }
+    function sub(text, tone = "") {
+      clearTimeout(subTimer);
+      all((el) => { const s = el.querySelector(".tv-sub"); s.hidden = false; s.className = "tv-sub " + tone; s.textContent = text; });
+      subTimer = setTimeout(() => all((el) => { el.querySelector(".tv-sub").hidden = true; }), 6000);
+    }
+    function alert(text, tone = "bad", delay = 0) {
+      setTimeout(() => {
+        clearTimeout(alertTimer);
+        all((el) => { const a = el.querySelector(".tv-alert"); a.hidden = false; a.className = "tv-alert " + tone; a.textContent = text; el.classList.add("flash-" + tone); });
+        alertTimer = setTimeout(() => all((el) => { el.querySelector(".tv-alert").hidden = true; el.classList.remove("flash-bad", "flash-ok", "flash-warn"); }), 3500);
+      }, delay);
+    }
+    function reset(runId) {
+      if (runId === run) return;
+      run = runId; last = ""; on = false; $("#pip").hidden = true;
+      all((el) => { el.classList.remove("has", "on"); el.querySelector(".tv-img").removeAttribute("src"); el.querySelector(".tv-cursor").hidden = true; });
+    }
+    return { tv, add, frame, idle, cursor, click, sub, alert, reset, closePip() { pipClosed = run; $("#pip").hidden = true; } };
+  })();
+  Theater.add($("#pip .tv"));
+  Theater.add($("#viewer-live .tv"));
+  $("#pip-close").onclick = () => Theater.closePip();
+  const openLive = () => { $("#viewer-img").hidden = true; $("#viewer-live").hidden = false; $("#viewer").showModal(); };
+  $("#pip-big").onclick = openLive;
   const KIND = { fail: ["g-bad", "취약"], review: ["g-warn", "검토 필요"], open: ["g-warn", "열림"], pass: ["g-ok", "문제 없음"] };
   const STAGE = { analyze: "가설", explore: "탐색", load: "접속", detect: "탐지", judge: "판정", impact: "영향 확인", verify: "확인" };
   const ACT = { left_click: "클릭", double_click: "더블클릭", think: "생각", plan: "계획", click: "클릭", type: "입력", key: "키", navigate: "이동", scroll: "스크롤", screenshot: "화면 보기",
@@ -380,22 +429,19 @@
       box().innerHTML = `
         <div class="p-sec live">
           <div class="lv-head"><h3>DAST 브라우저 화면</h3><span class="lv-meta"></span><button type="button" class="mini" id="lv-big">크게 보기</button></div>
-          <div class="screen" id="lv-screen"><img id="lv-frame" alt="DAST 가 조작 중인 스테이징 화면"><span class="badge-live">● LIVE</span>
-            <span class="screen-empty">화면 기록을 기다리는 중…</span></div>
+          <div id="lv-screen">${Theater.tv()}</div>
           <div class="lv-now" id="lv-now"></div>
           <div class="stages" id="lv-stages"></div>
         </div>
         <div class="p-sec"><h3>에이전트 행동</h3><ol class="feed" id="lv-feed"><li class="hint">행동 기록을 기다리는 중…</li></ol></div>
         <div class="p-sec"><h3>판정 · 증거</h3><div id="lv-results" class="hint">불러오는 중…</div></div>`;
-      const screen = $("#lv-screen"), img = $("#lv-frame"), feed = $("#lv-feed"), stages = {}, meta = box().querySelector(".lv-meta");
-      let titles = {}, fed = 0, results = [];
-      $("#lv-big").onclick = () => { $("#viewer-img").src = img.src || ""; $("#viewer").showModal(); };
+      const feed = $("#lv-feed"), stages = {}, meta = box().querySelector(".lv-meta");
+      let titles = {}, fed = 0, results = [], hasFrame = false;
+      Theater.reset(c.run);
+      Theater.add($("#lv-screen .tv"));
+      $("#lv-big").onclick = openLive;
       const short = (id) => titles[id] ? titles[id].slice(0, 26) : String(id || "").replace("sast-", "").slice(0, 8);
-      function frame(src, on) {
-        img.src = src; screen.classList.add("has"); screen.classList.toggle("on", on);
-        thumb.set(src, on);
-        if ($("#viewer").open) $("#viewer-img").src = src;
-      }
+      function frame(src, on, w, h) { hasFrame = true; Theater.frame(src, on, w, h); }
       function add(text, tone, tag, fid, at) {
         if (!fed) feed.innerHTML = "";
         fed++;
@@ -426,7 +472,7 @@
           }).join("");
           $("#lv-results").innerHTML = rows || '<span class="hint">아직 판정이 없습니다.</span>';
           $("#lv-results").classList.remove("hint");
-          if (!img.src) {
+          if (!hasFrame) {
             const last = (j.results || []).flatMap((r) => (r.evidence || {}).screenshots || []).pop();
             if (last) frame(last, false);
           }
@@ -435,25 +481,39 @@
       }
       $("#lv-results").addEventListener("click", (e) => {
         const b = e.target.closest(".shot");
-        if (b) { $("#viewer-img").src = b.dataset.src; $("#viewer").showModal(); }
+        if (b) { $("#viewer-img").src = b.dataset.src; $("#viewer-img").hidden = false; $("#viewer-live").hidden = true; $("#viewer").showModal(); }
       });
       function onEvent(ev) {
         const fid = ev.finding_id;
-        if (ev.type === "frame") return frame(ev.image, true);
-        if (ev.type === "stage") { stages[ev.stage] = { status: ev.status, detail: ev.detail }; renderStages(); if (ev.status === "running") $("#lv-now").textContent = `${STAGE[ev.stage] || ev.stage} · ${ev.detail || ""}`; return; }
+        if (ev.type === "frame") return frame(ev.image, true, Number(ev.width) || 0, Number(ev.height) || 0);
+        if (ev.type === "cursor") return Theater.cursor(Number(ev.x) || 0, Number(ev.y) || 0);
+        if (ev.type === "click") return fx.click();
+        if (ev.type === "execution") { add(ev.message || "검사 문자열이 브라우저에서 실행됐습니다", "bad", "실행 탐지", fid);
+          fx.sub("검사 문자열이 브라우저에서 실행됐습니다", "bad");
+          return fx.alert("XSS 실행 탐지", "bad", 1500); }  // 실제 화면 효과(블루스크린)가 먼저 보이게 늦게 띄운다
+        if (ev.type === "stage") { stages[ev.stage] = { status: ev.status, detail: ev.detail }; renderStages();
+          if (ev.status === "running") { $("#lv-now").textContent = `${STAGE[ev.stage] || ev.stage} · ${ev.detail || ""}`;
+            if (ev.stage === "impact") fx.sub("영향 시연: 재현된 취약점으로 실제 화면이 어떻게 장악되는지 보여 줍니다", "bad"); }
+          return; }
         if (ev.type === "state") { $("#lv-now").textContent = ev.message || ev.phase || ""; return; }
-        if (ev.type === "agent") return add(ev.message + (ev.detail ? ` (${ev.detail})` : ""), ev.action === "plan" ? "run" : "", ACT[ev.action] || ev.action, fid);
-        if (ev.type === "probe") return add(ev.message + (ev.payload_id ? ` · ${ev.payload_id}` : ""), "warn", "검사 문자열", fid);
+        if (ev.type === "agent") { fx.sub(`AI · ${ACT[ev.action] || ev.action} — ${ev.message || ""}`);
+          return add(ev.message + (ev.detail ? ` (${ev.detail})` : ""), ev.action === "plan" ? "run" : "", ACT[ev.action] || ev.action, fid); }
+        if (ev.type === "probe") { fx.sub(`페이로드 입력 중 · ${ev.payload_id || ""}`, "warn");
+          return add(ev.message + (ev.payload_id ? ` · ${ev.payload_id}` : ""), "warn", "검사 문자열", fid); }
         if (ev.type === "log") return add(ev.message, "", "브라우저", fid);
         if (ev.type === "finding") return add(ev.message || ev.status, "", "항목", fid);
-        if (ev.type === "result") { const r = ev.result || {}; add(`${r.status}: ${r.message || ""}`, r.status === "REPRODUCED" ? "bad" : r.status === "NOT_REPRODUCED" ? "ok" : "warn", "판정", r.finding_id); return view(); }
+        if (ev.type === "result") { const r = ev.result || {};
+          fx.alert({ REPRODUCED: "재현됨 · 취약점 확인", BLOCKED: "차단됨 · CSP 가 실행을 막음", NOT_REPRODUCED: "재현 안 됨" }[r.status] || `판정 불가`,
+            r.status === "REPRODUCED" ? "bad" : r.status === "NOT_REPRODUCED" ? "ok" : "warn");
+          add(`${r.status}: ${r.message || ""}`, r.status === "REPRODUCED" ? "bad" : r.status === "NOT_REPRODUCED" ? "ok" : "warn", "판정", r.finding_id); return view(); }
         if (ev.type === "done" || ev.type === "error") { finished = true; add(ev.message || (ev.type === "done" ? "점검을 마쳤습니다" : "점검 오류"), ev.type === "done" ? "ok" : "bad", "끝"); idle(); if (es) { es.close(); es = null; } return view(); }
       }
       // 연결 관리. DAST 시작 전에 열어 둔 패널도 점검이 시작되면 스스로 붙고, 잠깐 끊기면(중계·배포 재시작) 다시 붙는다.
       // 끝(done) 을 받았거나 DAST 가 이 점검을 모르면(404: 재시작 등) 더 붙지 않고 증거로 채운다.
-      let finished = false, seen = 0, tries = 0;
+      let finished = false, seen = 0, tries = 0, warm = false;
       const ended = () => finished || ["pass", "fail", "skipped"].includes(c.state);
-      const idle = () => { screen.classList.remove("on"); thumb.set(img.src, false); };
+      const idle = () => Theater.idle();
+      const fx = { sub: (...a) => warm && Theater.sub(...a), alert: (...a) => warm && Theater.alert(...a), click: () => warm && Theater.click() };
       function retry() {
         if (key !== k || finished) return;
         clearTimeout(timer);
@@ -462,14 +522,19 @@
       function connect() {
         if (key !== k || es || finished) return;
         es = new EventSource(`/api/pipeline/runs/${enc(c.run)}/live/dast/events`);
-        es.onopen = () => { tries = 0; };
+        es.onopen = () => { tries = 0; warm = false; setTimeout(() => { warm = true; }, 1200); };
         es.onmessage = (m) => {
           if (key !== k) return;
-          // 다시 붙으면 처음부터 다시 오므로 이미 본 순번은 건너뛴다(화면 프레임은 순번이 없어 항상 받는다)
-          const n = Number(m.lastEventId || 0);
-          if (n && n <= seen) return;
-          if (n) seen = n;
-          try { onEvent(JSON.parse(m.data)); } catch (e) { /* 깨진 줄은 건너뛴다 */ }
+          let ev;
+          try { ev = JSON.parse(m.data); } catch (e) { return; /* 깨진 줄은 건너뛴다 */ }
+          // 다시 붙으면 처음부터 다시 오므로 이미 본 순번은 건너뛴다. 화면 프레임은 id 없이 오는데
+          // EventSource 는 그때도 직전 id 를 lastEventId 로 붙이므로, 프레임은 순번을 보지 않고 항상 받는다.
+          if (ev.type !== "frame") {
+            const n = Number(m.lastEventId || 0);
+            if (n && n <= seen) return;
+            if (n) seen = n;
+          }
+          onEvent(ev);
         };
         es.addEventListener("gone", (m) => {
           if (es) { es.close(); es = null; }
