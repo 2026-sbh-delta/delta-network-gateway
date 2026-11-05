@@ -38,17 +38,23 @@ variable "subnets" {
   type        = object({ central = string, workload = string })
   description = "Separate central detection/connectivity and workload subnet CIDRs."
 }
+variable "application_subnets" {
+  type        = map(string)
+  default     = {}
+  description = "Application backend, database PSC and ALB proxy-only subnet CIDRs in the existing workload VPC."
+  validation {
+    condition     = length(var.application_subnets) == 0 || toset(keys(var.application_subnets)) == toset(["backend", "database", "proxy"])
+    error_message = "Supply all three backend, database and proxy subnets, or an empty map."
+  }
+}
+variable "application_service_accounts" {
+  type        = object({ frontend = string, backend = string })
+  default     = null
+  description = "Application VM service-account emails used to target firewall policy rules."
+}
 variable "aws_cidrs" {
   type        = set(string)
   description = "Approved AWS workload prefixes; NCC imports only these prefixes."
-}
-variable "internet_source_cidrs" {
-  type        = set(string)
-  description = "Explicit IPv4 sources allowed to exercise the public demo."
-  validation {
-    condition     = length(var.internet_source_cidrs) > 0 && !contains(var.internet_source_cidrs, "0.0.0.0/0")
-    error_message = "Specify limited demo source CIDRs, not an unrestricted internet rule."
-  }
 }
 variable "router_asn" {
   type        = number
@@ -57,14 +63,6 @@ variable "router_asn" {
   validation {
     condition     = (var.router_asn >= 64512 && var.router_asn <= 65534) || (var.router_asn >= 4200000000 && var.router_asn <= 4294967294)
     error_message = "Use a private BGP ASN."
-  }
-}
-variable "server_image" {
-  type        = string
-  description = "Pinned Ubuntu 24.04 image self-link, never an image family."
-  validation {
-    condition     = can(regex("(^|/)projects/ubuntu-os-cloud/global/images/ubuntu-2404-", var.server_image)) && !strcontains(var.server_image, "/family/")
-    error_message = "Supply a pinned Ubuntu 24.04 image path."
   }
 }
 variable "aws_vpn_tunnels" {
@@ -88,12 +86,6 @@ variable "vpn_shared_secrets" {
   ephemeral   = true
   description = "Ephemeral tunnel keys used only by the provider write-only field."
 }
-variable "deletion_protection" {
-  type        = bool
-  default     = true
-  description = "Protect the demo VM from accidental deletion."
-}
-
 variable "inspection_mode" {
   description = "enabled inspects traffic; bypass keeps endpoints with ordinary allow rules; disabled removes endpoints while retaining routing and basic firewall rules."
   type        = string
@@ -102,4 +94,10 @@ variable "inspection_mode" {
     condition     = contains(["enabled", "bypass", "disabled"], var.inspection_mode)
     error_message = "inspection_mode must be enabled, bypass or disabled."
   }
+}
+
+variable "compose_service_account" {
+  type        = string
+  default     = null
+  description = "Optional consolidated Compose host service account allowed to reach the database proxy endpoint."
 }

@@ -50,11 +50,8 @@ resource "google_compute_network_firewall_policy_association" "vpc" {
 }
 locals {
   ingress_rules = {
-    health           = { priority = 100, action = "allow", sources = toset(["35.191.0.0/16", "209.85.204.0/22"]), ports = ["8080"] }
-    iap              = { priority = 110, action = "allow", sources = toset(["35.235.240.0/20"]), ports = ["22"] }
-    private_inspect  = { priority = 200, action = var.inspection_mode == "enabled" ? "apply_security_profile_group" : "allow", sources = var.aws_cidrs, ports = ["8080", "8081"] }
-    internet_inspect = { priority = 210, action = var.inspection_mode == "enabled" ? "apply_security_profile_group" : "allow", sources = var.internet_source_cidrs, ports = ["8080"] }
-    internet_deny    = { priority = 220, action = "deny", sources = var.internet_source_cidrs, ports = ["8081"] }
+    iap             = { priority = 110, action = "allow", sources = toset(["35.235.240.0/20"]), ports = ["22"] }
+    private_inspect = { priority = 200, action = var.inspection_mode == "enabled" ? "apply_security_profile_group" : "allow", sources = var.aws_cidrs, ports = ["3000", "8080"] }
   }
 }
 resource "google_compute_network_firewall_policy_rule" "ingress" {
@@ -86,10 +83,67 @@ resource "google_compute_network_firewall_policy_rule" "private_egress" {
     dest_ip_ranges = sort(tolist(var.aws_cidrs))
     layer4_configs {
       ip_protocol = "tcp"
-      ports       = ["8080", "8081"]
+      ports       = ["3000", "8080"]
     }
   }
   depends_on = [google_network_security_firewall_endpoint_association.vpc]
+}
+locals {
+  app_ingress = var.application_service_accounts == null ? {} : {
+    app_health           = { priority = 90, sources = ["35.191.0.0/16", "130.211.0.0/22"], ports = ["3000"], account = var.application_service_accounts.frontend }
+    app_proxy            = { priority = 91, sources = [var.application_subnets.proxy], ports = ["3000"], account = var.application_service_accounts.frontend }
+    app_frontend_backend = { priority = 92, sources = [var.subnets.workload], ports = ["8080"], account = var.application_service_accounts.backend }
+  }
+}
+resource "google_compute_network_firewall_policy_rule" "application_ingress" {
+  for_each                = local.app_ingress
+  firewall_policy         = google_compute_network_firewall_policy.central.name
+  priority                = each.value.priority
+  rule_name               = each.key
+  action                  = "allow"
+  direction               = "INGRESS"
+  enable_logging          = true
+  target_service_accounts = [each.value.account]
+  match {
+    src_ip_ranges = each.value.sources
+    layer4_configs {
+      ip_protocol = "tcp"
+      ports       = each.value.ports
+    }
+  }
+}
+resource "google_compute_network_firewall_policy_rule" "database_allow" {
+  count                   = var.application_service_accounts == null ? 0 : 1
+  firewall_policy         = google_compute_network_firewall_policy.central.name
+  priority                = 400
+  rule_name               = "app_database_proxy"
+  action                  = "allow"
+  direction               = "EGRESS"
+  enable_logging          = true
+  target_service_accounts = distinct(compact([var.application_service_accounts.backend, var.compose_service_account]))
+  match {
+    dest_ip_ranges = [var.application_subnets.database]
+    layer4_configs {
+      ip_protocol = "tcp"
+      ports       = ["3307"]
+    }
+  }
+}
+resource "google_compute_network_firewall_policy_rule" "database_deny" {
+  count           = var.application_service_accounts == null ? 0 : 1
+  firewall_policy = google_compute_network_firewall_policy.central.name
+  priority        = 410
+  rule_name       = "app_database_deny_other"
+  action          = "deny"
+  direction       = "EGRESS"
+  enable_logging  = true
+  match {
+    dest_ip_ranges = [var.application_subnets.database]
+    layer4_configs {
+      ip_protocol = "tcp"
+      ports       = ["3307", "5432"]
+    }
+  }
 }
 resource "google_compute_network_firewall_policy_rule" "deny_ingress" {
   firewall_policy = google_compute_network_firewall_policy.central.name

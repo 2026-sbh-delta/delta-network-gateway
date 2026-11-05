@@ -17,14 +17,15 @@ resource "google_compute_subnetwork" "subnet" {
   stack_type               = "IPV4_ONLY"
   private_ip_google_access = true
 }
-# Needed for direct replies from the passthrough LB backend; never exported to NCC.
-resource "google_compute_route" "lb_return" {
-  name             = "${var.name}-lb-return"
-  network          = google_compute_network.vpc["workload"].name
-  dest_range       = "0.0.0.0/0"
-  next_hop_gateway = "default-internet-gateway"
-  priority         = 1000
-  tags             = ["delta-lb-backend"]
+resource "google_compute_subnetwork" "application" {
+  for_each                 = var.application_subnets
+  name                     = "${var.name}-app-${each.key}"
+  region                   = var.region
+  network                  = google_compute_network.vpc["workload"].id
+  ip_cidr_range            = each.value
+  purpose                  = each.key == "proxy" ? "REGIONAL_MANAGED_PROXY" : "PRIVATE"
+  role                     = each.key == "proxy" ? "ACTIVE" : null
+  private_ip_google_access = each.key == "proxy" ? null : true
 }
 resource "google_network_connectivity_hub" "central" {
   name            = "${var.name}-hub"
@@ -38,7 +39,7 @@ resource "google_network_connectivity_spoke" "workload" {
   location = "global"
   linked_vpc_network {
     uri                   = google_compute_network.vpc["workload"].self_link
-    include_export_ranges = [var.subnets.workload]
+    include_export_ranges = local.advertised_workload_cidrs
   }
 }
 resource "google_compute_ha_vpn_gateway" "aws" {
@@ -54,7 +55,10 @@ resource "google_compute_router" "aws" {
   bgp {
     asn            = var.router_asn
     advertise_mode = "CUSTOM"
-    advertised_ip_ranges { range = var.subnets.workload }
+    dynamic "advertised_ip_ranges" {
+      for_each = toset(local.advertised_workload_cidrs)
+      content { range = advertised_ip_ranges.value }
+    }
   }
 }
 resource "google_compute_external_vpn_gateway" "aws" {
@@ -106,7 +110,10 @@ resource "google_compute_router_peer" "aws" {
   peer_ip_address = each.value.aws_inside_ip
   peer_asn        = each.value.aws_asn
   advertise_mode  = "CUSTOM"
-  advertised_ip_ranges { range = var.subnets.workload }
+  dynamic "advertised_ip_ranges" {
+    for_each = toset(local.advertised_workload_cidrs)
+    content { range = advertised_ip_ranges.value }
+  }
 }
 resource "google_network_connectivity_spoke" "aws" {
   count    = length(var.aws_vpn_tunnels) == 0 ? 0 : 1
@@ -117,7 +124,7 @@ resource "google_network_connectivity_spoke" "aws" {
     uris                       = [for tunnel in google_compute_vpn_tunnel.aws : tunnel.self_link]
     site_to_site_data_transfer = false
     include_export_ranges      = sort(tolist(var.aws_cidrs))
-    include_import_ranges      = [var.subnets.workload]
+    include_import_ranges      = local.advertised_workload_cidrs
   }
   depends_on = [google_compute_router_peer.aws]
 }
