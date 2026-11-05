@@ -2,11 +2,9 @@
   "id": "staging-aws",
   "label": "AWS 스테이징 게시판",
   "staging": "aws",
-  "entry_path": "/board",
+  "entry_path": "/",
   "allowed_path_prefixes": [
-    "/board",
-    "/new",
-    "/posts/"
+    "/"
   ],
   "routes": [
     {

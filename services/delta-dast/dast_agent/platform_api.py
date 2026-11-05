@@ -40,6 +40,8 @@ class Binding(BaseModel):
     execution_cloud: Literal["aws", "gcp", "onprem"] = "aws"
     runtime_resource: str | None = Field(default=None, max_length=300)
     runtime_revision: str | None = Field(default=None, max_length=128)
+    # FE·BE 이미지 묶음(서비스 이름 → 저장소@digest). 앱이 컨테이너 여러 개일 때 검증한 묶음 전체를 근거로 남긴다.
+    images: dict[str, str] | None = Field(default=None, max_length=8)
 
     @model_validator(mode="after")
     def pinned(self):
@@ -49,6 +51,9 @@ class Binding(BaseModel):
             raise ValueError("AWS checks use the registered staging target")
         if not self.image.endswith("@" + self.image_digest):
             raise ValueError("Pinned image required")
+        for name, ref in (self.images or {}).items():
+            if not re.fullmatch(r"[a-z][a-z0-9_-]{0,31}", name) or not re.fullmatch(r"[^@\s]{1,1000}@sha256:[a-f0-9]{64}", ref):
+                raise ValueError("Pinned image bundle required")
         return self
 
 

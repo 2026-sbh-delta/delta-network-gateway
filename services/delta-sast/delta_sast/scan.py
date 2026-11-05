@@ -11,6 +11,9 @@ from .graph import Project
 from .judge import LlmClient, judge_all
 from .locate import locate
 from .model import Flow, Judgment, Mark, Secret
+from .poly.engine import collect as collect_poly
+from .poly.index import Workspace
+from .poly.link import link as link_poly
 from .policy import Policy, load_policy
 from .sarif import build
 from .secret_judge import attach_actions, classify_all
@@ -20,7 +23,7 @@ from .secret_judge import judge_all as judge_secrets
 @dataclass
 class ScanResult:
     root: Path
-    project: Project
+    project: Project | Workspace
     marks: list[Mark]
     secrets: list[Secret]
     findings: list[tuple[Flow, Judgment]]
@@ -54,9 +57,16 @@ def analyze(root: Path, marks: list[Mark], secrets: list[Secret], policy: Policy
     project = Project(root, marks, policy)
     flows = project.flows()
     graph_s = time.perf_counter() - started
+    # 다언어 엔진(Python 밖 언어): Opengrep taint 조각을 저장소·경로·함수 요약으로 이은 흐름
+    started = time.perf_counter()
+    facts = collect_poly(root)
+    flows += link_poly(facts)
+    poly_s = time.perf_counter() - started
+    space = Workspace(project, facts)
     findings = [(flow, classify(flow, policy, cache)) for flow in flows]
-    classify_all(secrets, project)
-    return ScanResult(root, project, marks, secrets, findings, project.parse_errors, {"graph": round(graph_s, 3)})
+    classify_all(secrets, space)
+    return ScanResult(root, space, marks, secrets, findings, space.parse_errors,
+                      {"graph": round(graph_s, 3), "polyglot": round(poly_s, 3)})
 
 
 def scan(root: Path, policy: Policy | None = None, cache: RuleCache | None = None) -> ScanResult:

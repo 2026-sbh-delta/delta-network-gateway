@@ -2,12 +2,9 @@
   "id": "staging-gcp",
   "label": "GCP 스테이징 게시판",
   "staging": "gcp",
-  "entry_path": "/board",
+  "entry_path": "/",
   "allowed_path_prefixes": [
-    "/board",
-    "/new",
-    "/posts/",
-    "/static/"
+    "/"
   ],
   "routes": [
     {

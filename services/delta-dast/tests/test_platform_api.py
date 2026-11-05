@@ -312,3 +312,14 @@ def test_reverify_without_a_first_record_is_rejected(tmp_path, monkeypatch):
         assert calls == []
 
     asyncio.run(scenario())
+
+
+def test_binding_accepts_a_pinned_fe_be_image_bundle_and_rejects_tags():
+    from dast_agent.platform_api import Binding
+
+    base = payload()["binding"]
+    digest = "sha256:" + "c" * 64
+    ok = Binding.model_validate(base | {"images": {"frontend": "registry/fe@" + digest, "backend": base["image"]}})
+    assert ok.images["frontend"].endswith(digest)
+    with pytest.raises(ValueError):
+        Binding.model_validate(base | {"images": {"frontend": "registry/fe:latest"}})

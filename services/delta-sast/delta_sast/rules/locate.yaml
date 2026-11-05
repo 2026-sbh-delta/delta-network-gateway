@@ -95,7 +95,7 @@ rules:
 
   # ---------- 하드코딩 비밀값 ----------
   - id: delta-secret-assign
-    languages: [python]
+    languages: [python, javascript, typescript]
     severity: WARNING
     message: 비밀값으로 보이는 문자열을 코드에 둠
     patterns:
@@ -111,6 +111,55 @@ rules:
           regex: ^.+$
     metadata:
       delta: {role: secret, kind: assignment}
+
+  - id: delta-secret-assign-java
+    languages: [java]
+    severity: WARNING
+    message: 비밀값으로 보이는 문자열을 코드에 둠
+    patterns:
+      - pattern-either:
+          - pattern: $T $NAME = "$VAL";
+          - pattern: $OBJ.$NAME = "$VAL";
+      - metavariable-regex:
+          metavariable: $NAME
+          regex: (?i).*(password|passwd|pwd|secret|token|api_?key|access_?key|private_?key).*
+      - metavariable-regex:
+          metavariable: $VAL
+          regex: ^.+$
+    metadata:
+      delta: {role: secret, kind: assignment}
+
+  - id: delta-secret-assign-go
+    languages: [go]
+    severity: WARNING
+    message: 비밀값으로 보이는 문자열을 코드에 둠
+    patterns:
+      - pattern-either:
+          - pattern: $NAME := "$VAL"
+          - pattern: var $NAME = "$VAL"
+          - pattern: const $NAME = "$VAL"
+      - metavariable-regex:
+          metavariable: $NAME
+          regex: (?i).*(password|passwd|pwd|secret|token|api_?key|access_?key|private_?key).*
+      - metavariable-regex:
+          metavariable: $VAL
+          regex: ^.+$
+    metadata:
+      delta: {role: secret, kind: assignment}
+
+  - id: delta-secret-env-default-js
+    languages: [javascript, typescript]
+    severity: WARNING
+    message: 환경 변수가 없을 때 쓰는 비밀값 기본값을 코드에 둠
+    patterns:
+      - pattern-either:
+          - pattern: process.env.$NAME ?? "$VAL"
+          - pattern: process.env.$NAME || "$VAL"
+      - metavariable-regex:
+          metavariable: $NAME
+          regex: (?i).*(password|passwd|pwd|secret|token|api_?key|access_?key|private_?key).*
+    metadata:
+      delta: {role: secret, kind: env_default}
 
   - id: delta-secret-env-default
     languages: [python]
@@ -128,7 +177,7 @@ rules:
       delta: {role: secret, kind: env_default}
 
   - id: delta-secret-token
-    languages: [python]
+    languages: [python, javascript, typescript, java, go]
     severity: WARNING
     message: 알려진 형식의 키·토큰
     pattern-either:

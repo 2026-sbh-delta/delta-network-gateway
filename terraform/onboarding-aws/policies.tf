@@ -55,25 +55,52 @@ data "aws_iam_policy_document" "staging" {
 }
 
 # 운영 배포: 서비스 갱신만. 보안 그룹 변경·이미지 푸시는 없다(스테이징에서 검증한 digest만 참조).
+# 운영 = VM + Docker Compose(11/5 결정). 지정 VM의 SSH(22) 터널과 일회용 키 등록만. 이미지 pull은 VM 자신의 역할이 한다.
 data "aws_iam_policy_document" "prod" {
+  dynamic "statement" {
+    for_each = var.prod_hosts
+    content {
+      sid       = "SendKey${replace(title(replace(statement.key, "-", " ")), " ", "")}"
+      actions   = ["ec2-instance-connect:SendSSHPublicKey"]
+      resources = ["arn:aws:ec2:${local.r}:${local.a}:instance/${statement.value.instance_id}"]
+      condition {
+        test     = "StringEquals"
+        variable = "ec2:osuser"
+        values   = [statement.value.os_user]
+      }
+    }
+  }
+  dynamic "statement" {
+    for_each = var.prod_hosts
+    content {
+      sid       = "Tunnel${replace(title(replace(statement.key, "-", " ")), " ", "")}"
+      actions   = ["ec2-instance-connect:OpenTunnel"]
+      resources = ["arn:aws:ec2:${local.r}:${local.a}:instance-connect-endpoint/${statement.value.endpoint_id}"]
+      condition {
+        test     = "NumericEquals"
+        variable = "ec2-instance-connect:remotePort"
+        values   = ["22"]
+      }
+      condition {
+        test     = "IpAddress"
+        variable = "ec2-instance-connect:privateIpAddress"
+        values   = ["${statement.value.private_ip}/32"]
+      }
+      condition {
+        test     = "NumericLessThanEquals"
+        variable = "ec2-instance-connect:maxTunnelDuration"
+        values   = ["900"]
+      }
+    }
+  }
   statement {
-    sid       = "EcsRead"
-    actions   = ["ecs:DescribeTaskDefinition", "ecs:RegisterTaskDefinition", "ecs:ListTasks", "ecs:DescribeTasks", "ecs:TagResource"]
+    sid       = "Describe"
+    actions   = ["ec2:DescribeInstances", "ec2:DescribeInstanceConnectEndpoints"]
     resources = ["*"]
-  }
-  statement {
-    sid       = "EcsUpdateProdService"
-    actions   = ["ecs:UpdateService", "ecs:DescribeServices"]
-    resources = ["arn:aws:ecs:${local.r}:${local.a}:service/${var.prod_prefix}/*"]
-  }
-  statement {
-    sid       = "PassProdTaskRoles"
-    actions   = ["iam:PassRole"]
-    resources = ["arn:aws:iam::${local.a}:role/${var.prod_prefix}-*"]
     condition {
       test     = "StringEquals"
-      variable = "iam:PassedToService"
-      values   = ["ecs-tasks.amazonaws.com"]
+      variable = "aws:RequestedRegion"
+      values   = [local.r]
     }
   }
 }

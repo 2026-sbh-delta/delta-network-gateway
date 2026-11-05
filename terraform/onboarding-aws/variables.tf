@@ -30,10 +30,22 @@ variable "staging_prefix" {
   default     = "delta-lab-staging"
 }
 
-variable "prod_prefix" {
-  description = "운영 ECS 자원 이름 접두사."
-  type        = string
-  default     = "delta-lab-prod"
+variable "prod_hosts" {
+  description = "운영 VM(Docker Compose) 배포 대상. Jenkins가 EC2 Instance Connect Endpoint로 SSH 터널을 연다. 호원님 workload 인스턴스."
+  type = map(object({
+    instance_id = string
+    endpoint_id = string
+    private_ip  = string
+    os_user     = string
+  }))
+  default = {
+    a-corp-aws = {
+      instance_id = "i-0637ad326681c7480"
+      endpoint_id = "eice-03436798a3c0585a5"
+      private_ip  = "10.10.1.211"
+      os_user     = "ec2-user"
+    }
+  }
 }
 
 variable "tfstate_bucket" {
