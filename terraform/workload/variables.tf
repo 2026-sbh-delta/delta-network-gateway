@@ -8,6 +8,12 @@ variable "name" {
   }
 }
 
+variable "vpc_name" {
+  description = "VPC Name tag, independent of the shared resource name prefix."
+  type        = string
+  default     = "delta-board-vpc"
+}
+
 variable "environment" {
   description = "Environment name and tag."
   type        = string

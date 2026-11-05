@@ -4,11 +4,13 @@ Client와 Server의 기존 시험 환경을 `10.10.0.0/16` VPC 하나로 통합�
 
 승인과 실행 결과는 [통합 AI-DLC](../../docs/ai-dlc/aws-workload-consolidation.md)를 따른다. 코드 변경과 실제 Apply 상태는 구분한다.
 
+VPC의 Name 태그는 `vpc_name`으로 지정하며 기본값은 `delta-board-vpc`다. 다른 리소스의 이름은 기존 `name`/`environment` 접두사를 사용한다.
+
 ## 기존 state와의 연결
 
 - 이전 경로: `terraform/workload-client`.
 - 기존 S3 bucket과 key `delta/lab/workload-client/terraform.tfstate`를 그대로 사용한다. 디렉터리 이름을 바꿔도 원격 state를 새 key로 옮기지 않는다.
-- `aws_vpc.client`, `aws_subnet.private`, Attachment의 `client` 주소, `aws_client` handoff 키, 태그와 `client` 서브넷 역할은 기존 리소스 ID와 보호 계약을 유지하기 위한 이름이다.
+- `aws_vpc.client`, `aws_subnet.private`, Attachment의 `client` 주소, `aws_client` handoff 키와 `client` 서브넷 역할은 기존 리소스 ID와 보호 계약을 유지하기 위한 이름이다. VPC의 Name 태그는 이 주소와 별도로 지정한다.
 - `client_az_id`는 EIC Endpoint의 AZ를 지정한다. 현재 EC2 개수를 의미하지 않는다.
 - 기존 `ami_id` 입력과 `client_instance_id`/`client_private_ip` 출력은 제거했다.
 
@@ -17,6 +19,7 @@ Client와 Server의 기존 시험 환경을 `10.10.0.0/16` VPC 하나로 통합�
 | 속성명 | 타입 | 기본값 | 역할 |
 | --- | --- | --- | --- |
 | name | string | `delta` | 기존 리소스 이름 접두사 |
+| vpc_name | string | `delta-board-vpc` | 공통 접두사와 독립된 VPC Name 태그 |
 | environment | string | `lab` | 환경과 태그 |
 | region | string | `ap-northeast-2` | 중앙 TGW와 같은 리전 |
 | workload_account_id | string | 필수 | 실제 STS 및 Provider 허용 업무 계정 |

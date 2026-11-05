@@ -3,7 +3,7 @@ resource "aws_vpc" "client" {
   enable_dns_support               = true
   enable_dns_hostnames             = true
   assign_generated_ipv6_cidr_block = false
-  tags                             = { Name = local.prefix }
+  tags                             = { Name = var.vpc_name }
   depends_on                       = [terraform_data.contract]
 }
 

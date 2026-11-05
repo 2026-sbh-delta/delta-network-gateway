@@ -1,4 +1,5 @@
 name                = "delta"
+vpc_name            = "delta-board-vpc"
 environment         = "lab"
 region              = "ap-northeast-2"
 workload_account_id = "444455556666"
