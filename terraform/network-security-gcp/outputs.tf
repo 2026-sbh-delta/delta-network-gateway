@@ -21,7 +21,7 @@ output "firewall_endpoint" {
 }
 output "gateway_handoff" {
   description = "Nonsecret values for the AWS two-peer VPN input contract."
-  value       = { project_id = var.project_id, project_number = var.project_number, router_asn = var.router_asn, remote_cidrs = local.advertised_workload_cidrs, aws_cidrs = sort(tolist(var.aws_cidrs)), interfaces = google_compute_ha_vpn_gateway.aws.vpn_interfaces }
+  value       = { project_id = var.project_id, project_number = var.project_number, router_asn = var.router_asn, remote_cidrs = local.advertised_vpn_cidrs, aws_cidrs = sort(tolist(var.aws_cidrs)), interfaces = google_compute_ha_vpn_gateway.aws.vpn_interfaces }
 }
 output "application_network" {
   description = "Existing VPC and distinct application subnet IDs/CIDRs for the workload-gcp root."

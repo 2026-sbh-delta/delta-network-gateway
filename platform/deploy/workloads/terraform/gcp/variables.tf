@@ -10,6 +10,10 @@ variable "subnetwork" { type = string }
 variable "service_account" { type = string }
 variable "image" { type = string }
 variable "network_tag" { type = string }
+variable "preinstalled_runtime" {
+  type    = bool
+  default = false
+}
 variable "environment_id" { type = string }
 variable "service_id" { type = string }
 variable "profile_id" {

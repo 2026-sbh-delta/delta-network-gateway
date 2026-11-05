@@ -271,7 +271,15 @@ def deliver(data, selected, secret_id, value):
     response = session.post(
         f"https://secretmanager.googleapis.com/v1/{resource}:addVersion",
         json={
-            "payload": {"data": base64.b64encode(json.dumps(value).encode()).decode()}
+            # The worker may use a distinct PSC endpoint in the VPN VPC.
+            # Customer VMs resolve the same database hostname in their own VPC.
+            "payload": {
+                "data": base64.b64encode(
+                    json.dumps(
+                        {k: v for k, v in value.items() if k != "hostaddr"}
+                    ).encode()
+                ).decode()
+            }
         },
         timeout=20,
     )

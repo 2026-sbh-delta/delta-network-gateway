@@ -11,10 +11,12 @@ provider "google-beta" {
 data "google_project" "current" { project_id = var.project_id }
 
 locals {
+  advertised_vpn_cidrs      = concat(local.advertised_workload_cidrs, sort(tolist(var.platform_database_endpoint_cidrs)))
   project_parent            = "projects/${var.project_id}"
   subnet_map                = { central = var.subnets.central, workload = var.subnets.workload }
   all_private_cidrs         = concat(values(local.subnet_map), values(var.application_subnets), sort(tolist(var.aws_cidrs)))
-  advertised_workload_cidrs = concat([var.subnets.workload], contains(keys(var.application_subnets), "backend") ? [var.application_subnets.backend] : [])
+  advertised_workload_cidrs = concat([var.subnets.workload], [for key in ["backend", "database"] : var.application_subnets[key] if contains(keys(var.application_subnets), key)])
+  imported_aws_cidrs        = sort(tolist(setunion(var.aws_cidrs, var.platform_aws_cidrs)))
   cidr_ranges = [for cidr in local.all_private_cidrs : {
     start = try(sum([for i, octet in split(".", cidrhost(cidr, 0)) : tonumber(octet) * pow(256, 3 - i)]), -1)
     end   = try(sum([for i, octet in split(".", cidrhost(cidr, -1)) : tonumber(octet) * pow(256, 3 - i)]), -1)
