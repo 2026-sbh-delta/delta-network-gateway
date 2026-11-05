@@ -4,7 +4,7 @@ import threading
 import time
 
 import pytest
-from fakes import COMMIT, DIGEST, IMAGE_REPO, REPO, FakeDast, FakeSast, FakeStaging, build_jenkins, deploy_jenkins
+from fakes import COMMIT, DIGEST, FIX_COMMIT, IMAGE_REPO, REPO, FakeDast, FakeSast, FakeStaging, build_jenkins, deploy_jenkins
 
 from delta_pipeline.clients import ServiceUnavailable
 from delta_pipeline.model import Options
@@ -12,8 +12,8 @@ from delta_pipeline.run import Run
 from delta_pipeline.steps import READ_ATTEMPTS, Stopped, _rows_remaining, assert_gates_passed
 
 
-def _run(tmp_path, *, sast=None, dast=None, build=None, deploy=None, staging=None, repo=REPO, commit=COMMIT):
-    return Run(Options(repo, commit), sast=sast or FakeSast(), dast=dast or FakeDast(), build_jenkins=build or build_jenkins(),
+def _run(tmp_path, *, sast=None, dast=None, build=None, deploy=None, staging=None, repo=REPO, commit=COMMIT, branch=""):
+    return Run(Options(repo, commit, branch=branch), sast=sast or FakeSast(), dast=dast or FakeDast(), build_jenkins=build or build_jenkins(),
                deploy_jenkins=deploy or deploy_jenkins(), staging=staging or FakeStaging(), image_repo=IMAGE_REPO,
                store_dir=tmp_path / "store", sleep=lambda _: None)
 
@@ -44,7 +44,9 @@ def test_clean_commit_runs_build_sast_stage_dast_and_verifies(tmp_path):
     snapshot = _execute(_run(tmp_path, build=build, deploy=deploy, dast=dast))
 
     assert snapshot["outcome"] == "verified"
-    assert set(_states(snapshot).values()) == {"pass"}
+    states = _states(snapshot)
+    # 수정 단계는 재현이 있고 사람이 '수정 적용'을 고를 때만 돈다
+    assert states.pop("fix") == "skipped" and set(states.values()) == {"pass"}
     assert build.params == [{"REPO": REPO, "COMMIT": COMMIT, "IMAGE_REPO": IMAGE_REPO}]
     # 스테이징에는 빌드가 만든 digest 고정 이미지를 그대로 올린다
     assert deploy.params[0]["IMAGE"] == f"{IMAGE_REPO}@{DIGEST}"
@@ -75,6 +77,51 @@ def test_reproduced_finding_approved_by_a_person_is_unresolved_not_verified(tmp_
 
     assert snapshot["outcome"] == "unresolved"
     assert _states(snapshot)["result"] == "warn"
+
+
+def _node(snapshot, node_id):
+    return next(n for n in snapshot["nodes"] if n["id"] == node_id)
+
+
+def test_fix_loop_pushes_the_fix_and_reverifies_the_new_commit(tmp_path):
+    build, deploy, sast, dast = build_jenkins(), deploy_jenkins(), FakeSast(), FakeDast(["REPRODUCED"])
+
+    snapshot = _execute(_run(tmp_path, build=build, deploy=deploy, sast=sast, dast=dast, branch="feat/flask-board"),
+                        answers=["fix"])
+
+    assert snapshot["outcome"] == "verified"
+    assert "수정 후 재검증" in _node(snapshot, "result")["summary"] and "PR #7" in _node(snapshot, "result")["summary"]
+    # 2차는 수정 커밋으로 빌드·SAST·스테이징을 다시 돈다(1차와 다른 작업 키)
+    assert [p["COMMIT"] for p in build.params] == [COMMIT, FIX_COMMIT]
+    assert [p["COMMIT"] for p in deploy.params] == [COMMIT, FIX_COMMIT]
+    assert len(set(build.keys)) == 2 and sast.commits[sast.started[1]] == FIX_COMMIT
+    # 2차 DAST 는 1차 점검을 이어받아 재현 항목을 다시 본다
+    first, second = list(dast.bindings)
+    assert dast.reverify == {second: first} and dast.bindings[second]["commit_sha"] == FIX_COMMIT
+    # PR 은 커밋을 고른 브랜치로 연다(기본 브랜치가 다른 앱일 수 있다)
+    assert dast.prs == [(first, "F0")] and dast.pr_bases == ["feat/flask-board"]
+    fix, dast_node = _node(snapshot, "fix"), _node(snapshot, "dast")
+    assert fix["state"] == "pass" and fix["detail"]["pr"]["commit"] == FIX_COMMIT
+    assert dast_node["round"] == 2 and dast_node["state"] == "pass" and "수정 후 재검증" in dast_node["summary"]
+    assert [h["round"] for h in dast_node["history"]] == [1] and dast_node["history"][0]["state"] == "fail"
+
+
+def test_fix_loop_runs_once_and_a_second_reproduction_goes_to_a_person(tmp_path):
+    dast = FakeDast(["REPRODUCED"], after_fix=("REPRODUCED",))
+
+    snapshot = _execute(_run(tmp_path, dast=dast), answers=["fix", "stop"])
+
+    assert snapshot["outcome"] == "stopped" and len(dast.prs) == 1
+    assert _node(snapshot, "dast")["round"] == 2
+
+
+def test_fix_that_cannot_be_made_stops_without_a_second_round(tmp_path):
+    build, dast = build_jenkins(), FakeDast(["REPRODUCED"], fix_status="failed")
+
+    snapshot = _execute(_run(tmp_path, build=build, dast=dast), answers=["fix"])
+
+    assert snapshot["outcome"] == "stopped" and _states(snapshot)["fix"] == "fail"
+    assert len(build.params) == 1 and dast.prs == []
 
 
 def test_no_dast_targets_skips_dast_without_failing(tmp_path):

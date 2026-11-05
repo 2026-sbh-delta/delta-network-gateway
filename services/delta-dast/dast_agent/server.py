@@ -26,7 +26,7 @@ from .contracts import MAX_REPORT_BYTES, ROOT, SCENARIOS, Report, RunRequest, sa
 from .agent import investigate
 from .orchestrator import orchestrate
 from .chat import ChatStore, ask as ask_chat, chat_context
-from .fixer import create_pr, propose_fix, source_root
+from .fixer import REF_PATTERN, create_pr, propose_fix, source_root
 from . import projects
 from . import sast_link
 from . import staging_link
@@ -113,7 +113,8 @@ def create_app(port: int = 8765, target_port: int = 8766,
     internal_hosts = {h for h in os.environ.get("DAST_INTERNAL_HOSTS", "").split(",") if h}
     # 플랫폼(오케스트레이터) 토큰 하나로 /api/platform/* 와 내부 주소의 수정안 요청(POST)만 받는다.
     platform_token = os.environ.get("DAST_PLATFORM_TOKEN", "")
-    fix_path = re.compile(r"/api/runs/[A-Za-z0-9-]{1,64}/findings/[A-Za-z0-9._-]{1,128}/fix")
+    # 수정안 요청(fix)과 사람이 승인한 수정안의 PR 생성(pr)만. 승인은 오케스트레이터 화면에서 사람이 한다.
+    fix_path = re.compile(r"/api/runs/[A-Za-z0-9-]{1,64}/findings/[A-Za-z0-9._-]{1,128}/(fix|pr)")
 
     def loopback(request: Request) -> bool:
         """로컬 예외는 Host 헤더가 아니라 실제 접속 주소로 판단한다(Host 는 호출자가 바꿀 수 있다).
@@ -276,6 +277,9 @@ def create_app(port: int = 8765, target_port: int = 8766,
         result["project_id"] = run.get("project_id") or DEFAULT_PROJECT
         if run.get("reverify_of"):
             result["reverify_of"] = run["reverify_of"]
+        if run.get("commit"):
+            # 플랫폼 점검: 점검한 커밋. 수정안·PR 이 이 커밋에서 시작한다(재시작 뒤에도 report.json 으로 남는다).
+            result["commit"] = run["commit"]
         result.update(source=run.get("source", "unvalidated"),
                       source_label=run.get("source_label", "검증되지 않은 입력"))
         if run.get("plan"):
@@ -392,7 +396,8 @@ def create_app(port: int = 8765, target_port: int = 8766,
                                                run["run_id"], output, tagged, run["planner"],
                                                run.get("impact", True),
                                                resume=run.get("resume", {}).get(finding.id),
-                                               direct=run.get("direct", False))
+                                               direct=run.get("direct", False),
+                                               hint=(run.get("hypotheses") or {}).get(finding.id))
             result["mapping"] = mapping
             run["results"].append(result)
             await tagged({"type": "finding", "status": result["status"],
@@ -792,8 +797,14 @@ def create_app(port: int = 8765, target_port: int = 8766,
             except TimeoutError:
                 raise HTTPException(409, "브라우저 종료를 기다리고 있습니다.") from None
 
+    def platform_history(run_id):
+        try:
+            return record_of(run_id)
+        except HTTPException:
+            return None
+
     install_platform_api(app, PlatformRuns(output_root, catalog, launch,
-                                          observe_platform, cancel_platform, target_port))
+                                          observe_platform, cancel_platform, target_port, platform_history))
 
     fix_jobs: dict[tuple[str, str], dict] = {}
 
@@ -812,7 +823,7 @@ def create_app(port: int = 8765, target_port: int = 8766,
                 raise HTTPException(409, "점검이 끝난 뒤에 요청하세요.")
             return {"report": source["report"], "results": list(source["results"]),
                     "scenario": source["scenario"], "impact": source.get("impact", True),
-                    "project_id": source.get("project_id")}
+                    "project_id": source.get("project_id"), "commit": source.get("commit")}
         return disk_run(run_id)
 
     def repo_of(record: dict, finding_id: str):
@@ -979,9 +990,13 @@ def create_app(port: int = 8765, target_port: int = 8766,
         """사용자가 승인한 수정안으로 PR을 만든다. 원격이 비어 있으면 로컬 커밋까지만 한다."""
         valid_ids(run_id, finding_id)
         try:
-            approved = json.loads(await request.body() or b"{}").get("approve") is True
-        except ValueError:
-            approved = False
+            options = json.loads(await request.body() or b"{}")
+            approved = options.get("approve") is True
+            base = options.get("base")
+        except (ValueError, AttributeError):
+            approved, base = False, None
+        if base is not None and not (isinstance(base, str) and REF_PATTERN.fullmatch(base) and ".." not in base):
+            raise HTTPException(400, "PR 대상 브랜치 이름 형식이 아닙니다.")
         if not approved:
             raise HTTPException(400, "PR 생성에는 사용자 승인(approve: true)이 필요합니다.")
         directory = output_root / run_id / "fix" / finding_id
@@ -991,7 +1006,7 @@ def create_app(port: int = 8765, target_port: int = 8766,
         repo = fix_target(record, finding_id)
         fix = json.loads((directory / "fix.json").read_text())
         try:
-            result = await asyncio.to_thread(create_pr, fix, repo, directory, run_id)
+            result = await asyncio.to_thread(create_pr, fix, repo, directory, run_id, base)
         except RuntimeError as exc:
             raise HTTPException(502, str(exc)) from None
         (directory / "pr.json").write_text(json.dumps(result, ensure_ascii=False, indent=2))

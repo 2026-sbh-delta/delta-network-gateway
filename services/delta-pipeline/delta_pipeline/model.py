@@ -20,6 +20,7 @@ class Options:
     commit: str
     planner: str = "agent"
     cutover: bool = False  # 검증이 끝나면 서비스 도메인을 blue 로 옮긴다(사람 승인 후)
+    branch: str = ""  # 커밋을 고른 브랜치. 빌드는 커밋으로 고정하고, 이 값은 수정 PR 의 대상 브랜치로만 쓴다
 
 
 @dataclass
@@ -33,6 +34,8 @@ class Node:
     ended_at: float | None = None
     detail: dict[str, Any] = field(default_factory=dict)
     decision: dict[str, Any] | None = None
+    round: int = 1  # 조치 루프 회차(2차 = 수정 커밋으로 다시 돈 것)
+    history: list[dict[str, Any]] = field(default_factory=list)  # 이전 회차의 상태·요약·세부
 
 
 def initial_nodes(cutover: bool = False) -> list[Node]:
@@ -43,6 +46,7 @@ def initial_nodes(cutover: bool = False) -> list[Node]:
         Node("sast", "SAST", "delta-sast"),
         Node("stage", "스테이징 배포", "Jenkins · 스테이징 도구"),
         Node("dast", "DAST", "delta-dast · Chrome"),
+        Node("fix", "수정", "delta-dast · 수정 에이전트"),
         *([Node("cutover", "서비스 도메인 전환", "Cloudflare · 사람 승인")] if cutover else []),
         Node("result", "결과", "오케스트레이터"),
     ]
@@ -94,6 +98,19 @@ class Board:
     def add_detail(self, node_id: str, **values: Any) -> None:
         with self._lock:
             self._nodes[node_id].detail = {**self._nodes[node_id].detail, **values}
+            self._save()
+
+    def new_round(self, node_ids: tuple[str, ...], round_: int) -> None:
+        """수정 커밋으로 다시 도는 노드를 비운다. 이전 회차 기록은 history 에 남겨 화면이 1차 결과도 보여 준다."""
+        with self._lock:
+            for node_id in node_ids:
+                node = self._nodes[node_id]
+                node.history = [*node.history, {"round": node.round, "state": node.state, "summary": node.summary,
+                                                "started_at": node.started_at, "ended_at": node.ended_at,
+                                                "detail": node.detail}]
+                node.round, node.state, node.summary, node.detail = round_, "pending", "", {}
+                node.started_at = node.ended_at = None
+                node.decision = None
             self._save()
 
     def state_of(self, node_id: str) -> str:

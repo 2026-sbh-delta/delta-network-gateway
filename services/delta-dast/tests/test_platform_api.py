@@ -36,7 +36,7 @@ def fixture(tmp_path, monkeypatch):
     return registry, live, calls
 
 
-def test_idempotent_requests_are_pinned_and_never_auto_fix(tmp_path, monkeypatch):
+def test_idempotent_requests_are_pinned_and_prepare_a_fix_proposal(tmp_path, monkeypatch):
     registry, live, calls = fixture(tmp_path, monkeypatch)
     body, run_id = payload(), str(uuid4())
 
@@ -44,7 +44,9 @@ def test_idempotent_requests_are_pinned_and_never_auto_fix(tmp_path, monkeypatch
         results = await asyncio.gather(*(registry.submit(run_id, body) for _ in range(4)))
         assert all(r["binding"] == body["binding"] for r in results)
         assert len(calls) == 1
-        assert calls[0][0].auto_fix is False and calls[0][0].impact is True
+        # 재현되면 수정안만 미리 만든다. PR 은 사람이 '수정 적용'을 고른 뒤 오케스트레이터가 요청할 때만 올린다
+        assert calls[0][0].auto_fix is True and calls[0][0].impact is True
+        assert calls[0][1]["commit"] == "a" * 40
         assert calls[0][0].target_id == "local-fixture"
         assert calls[0][0].planner == "agent"
         other = copy.deepcopy(body)
@@ -181,7 +183,7 @@ def test_gcp_defaults_to_the_persistent_staging_target(tmp_path, monkeypatch):
     run_id = str(uuid4())
     result = asyncio.run(registry.submit(run_id, body))
     assert result["status"] == "running"
-    assert calls[0][0].target_id == "staging-gcp" and calls[0][0].auto_fix is False
+    assert calls[0][0].target_id == "staging-gcp" and calls[0][0].auto_fix is True
     # 스테이징 도구가 주는 주소와 다른 곳은 점검하지 않는다
     other = payload()
     other["binding"].update(execution_cloud="gcp", target_url="http://203.0.113.9")
@@ -272,3 +274,41 @@ def test_platform_runs_use_direct_check_unless_turned_off(tmp_path, monkeypatch)
     monkeypatch.setenv("DAST_PLATFORM_DIRECT", "0")
     asyncio.run(registry.submit(str(uuid4()), payload()))
     assert calls[1][1]["direct"] is False
+
+
+def test_reverify_carries_the_reproduced_finding_and_its_hypothesis(tmp_path, monkeypatch):
+    """수정 후 재검증: 1차에서 재현된 항목은 이번 SAST 가 더는 보고하지 않아도 다시 점검하고, 가설은 재사용한다."""
+    monkeypatch.setenv("DAST_PLATFORM_MAX_FINDINGS", "1")
+    registry, live, calls = fixture(tmp_path, monkeypatch)
+    first, second = str(uuid4()), str(uuid4())
+    body = payload()
+
+    async def scenario():
+        await registry.submit(first, body)
+        report = calls[0][0].report
+        hit = report["findings"][0]
+        history = {first: {"report": report, "results": [
+            {"finding_id": hit["id"], "status": "REPRODUCED", "evidence": {"hypothesis": {"page_hint": "글쓰기"}}}]}}
+        registry.history = history.get
+        fixed = payload()
+        fixed["report"]["runs"][0]["results"] = []  # 수정 뒤 SAST 가 이 경로를 더 보고하지 않는다
+        fixed["binding"]["sast_evidence_sha256"] = fingerprint(fixed["report"])
+        view = await registry.submit(second, fixed | {"reverify_of": first})
+        args, extra, _ = calls[1]
+        assert [f["id"] for f in args.report["findings"]] == [hit["id"]]
+        assert extra["hypotheses"] == {hit["id"]: {"page_hint": "글쓰기"}}
+        assert extra["reverify_of"] == {"run_id": first}
+        assert view["finding_ids"] == [hit["id"]] and view["eligible_count"] == 1
+
+    asyncio.run(scenario())
+
+
+def test_reverify_without_a_first_record_is_rejected(tmp_path, monkeypatch):
+    registry, _, calls = fixture(tmp_path, monkeypatch)
+
+    async def scenario():
+        with pytest.raises(ValueError):
+            await registry.submit(str(uuid4()), payload() | {"reverify_of": str(uuid4())})
+        assert calls == []
+
+    asyncio.run(scenario())

@@ -10,6 +10,10 @@ setup_llm dast
   printf 'DAST_PLATFORM_TOKEN=%s\n' "$(secret dast/platform_token)"
   # 스테이징 조회 토큰만 받는다(배포·중단 불가)
   printf 'DELTA_STAGING_TOKEN=%s\n' "$(secret jenkins/staging_read_token)"
+  # 조치 루프: 수정 브랜치 푸시·PR 생성(시연 앱 저장소 한 곳의 Contents·Pull requests 쓰기만). 없으면 수정 적용이 PR 단계에서 멈춘다.
+  gh_token=$(secret dast/github_token 2>/dev/null || true)
+  [ -n "$gh_token" ] && printf 'GITHUB_TOKEN=%s\n' "$gh_token"
+  unset gh_token
 } > "$base/secrets.env"
 model=$(param dast/llm_model)
 [ -n "$model" ] && printf 'DAST_CLAUDE_MODEL=%s\n' "$model" >> "$base/llm.env"

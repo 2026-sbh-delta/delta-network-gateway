@@ -16,16 +16,14 @@
   const T = (id, label, x, y, o = {}) => ({ id, label, x, y, w: 210, h: 98, kind: "task", ...o });
   const NODES = [
     { id: "start", label: "시작", x: 0, y: 140, w: 110, h: 50, kind: "pill", icon: "play" },
-    T("prepare", "입력 확인", 150, 116, { icon: "play", tool: "오케스트레이터", desc: "허용된 저장소인지, 커밋이 40자리 SHA 인지 확인합니다. 브랜치 이름은 받지 않습니다." }),
+    T("prepare", "입력 확인", 150, 116, { icon: "play", tool: "오케스트레이터", desc: "허용된 저장소인지, 커밋이 40자리 SHA 인지 확인합니다. 빌드는 커밋으로 고정하고, 고른 브랜치는 수정 PR 의 대상으로만 씁니다." }),
     T("build", "빌드", 420, 30, { icon: "box", tool: "Jenkins delta-build", desc: "빌드 에이전트(별도 인스턴스)에서 고정한 커밋을 빌드해 스테이징 이미지 저장소에 푸시합니다. 결과는 digest 로 고정합니다." }),
     T("sast", "SAST", 420, 210, { icon: "search", ai: true, tool: "delta-sast", desc: "소스→싱크 경로를 찾아 SARIF 를 만듭니다. 실제로 점검한 커밋·파일 수·언어를 함께 확인해, 정상적인 0건과 잘못된 범위를 구분합니다." }),
     T("stage", "스테이징 배포", 690, 116, { icon: "cloud", tool: "Jenkins delta-deploy → 스테이징 도구", desc: "같은 digest 를 GCP 스테이징에 올립니다. 배포 직전에 같은 이미지로 DB 를 초기화(남은 행 0)하고, 이 실행이 스테이징을 점유합니다." }),
     T("dast", "DAST 점검", 960, 116, { icon: "bot", ai: true, tool: "delta-dast /api/platform/runs", desc: "SAST 가 넘긴 후보를 실제 브라우저로 스테이징에 재현해 봅니다. 모두 재현되지 않을 때만 자동 통과, 나머지는 사람이 봅니다." }),
     T("result", "웹 검증 완료", 1230, 116, { icon: "check", tool: "오케스트레이터", desc: "검증한 digest 를 확정하고 스테이징 점유를 풉니다." }),
-    // 추후: 수정 루프
-    T("fix_propose", "AI 수정안", 960, -150, { icon: "spark", ai: true, mock: true, tool: "DAST /fix", desc: "재현 증거와 SAST 코드 경로로 수정안을 만듭니다. (1-B 에서 연결)" }),
-    T("web_approve", "수정안 승인", 690, -150, { icon: "pause", mock: true, tool: "interrupt()", desc: "수정 diff 를 보고 반영 여부를 정합니다. (1-B)" }),
-    T("patch", "패치 반영", 420, -150, { icon: "branch", mock: true, tool: "fix-bundles", desc: "승인한 패치를 한 커밋으로 묶어 푸시하고 빌드부터 다시 돕니다. (1-B)" }),
+    // 조치 루프(1-B): DAST 재현 → 사람이 '수정 적용' → 수정안 PR → 그 커밋으로 빌드부터 2차(재검증)
+    T("fix", "AI 수정 · PR", 690, -150, { icon: "spark", ai: true, tool: "delta-dast 수정 에이전트", desc: "DAST 가 재현하자마자 SAST 코드 경로와 재현 증거로 수정안을 만들어 둡니다. 사람이 DAST 승인 단계에서 '수정 적용'을 고르면 수정 브랜치·PR 을 올리고, 그 커밋으로 빌드부터 다시 돌아 같은 항목을 재검증합니다(1회)." }),
     // 운영 반영
     T("prod_deploy", "운영 배포", 1580, 116, { icon: "cloud", mock: true, tool: "운영 배포 도구 · 승인 토큰", desc: "검증한 같은 digest 를 GCP 운영에 배포합니다. 서명한 승인 토큰이 있어야 진행합니다. (2단계)" }),
     T("prod_verify", "운영 검증", 1850, 116, { icon: "check", mock: true, tool: "운영 원본 직접 확인", desc: "GCP 운영 진입점이 서비스 도메인 요청에 정상 응답하는지 봅니다. (2단계)" }),
@@ -43,8 +41,7 @@
   const EDGES = [
     ["start", "prepare"], ["prepare", "build"], ["prepare", "sast"], ["build", "stage"], ["sast", "stage", { label: "합류" }],
     ["stage", "dast"], ["dast", "result", { label: "재현 없음·승인" }],
-    ["dast", "fix_propose", { from: "top", to: "bottom", label: "재현", mock: true }], ["fix_propose", "web_approve", { from: "left", to: "right", mock: true }],
-    ["web_approve", "patch", { from: "left", to: "right", mock: true }], ["patch", "build", { from: "bottom", to: "top", mock: true }],
+    ["dast", "fix", { from: "top", to: "right", label: "재현 · 수정 적용" }], ["fix", "build", { from: "left", to: "top", label: "2차" }],
     ["result", "prod_deploy"], ["prod_deploy", "prod_verify"], ["prod_verify", "cutover"], ["cutover", "end"],
     ["start", "read_aws", { from: "bottom", to: "left", mock: true }], ["read_aws", "map", { mock: true }], ["map", "gen_plan", { mock: true }],
     ["gen_plan", "infra_approve", { mock: true }], ["infra_approve", "apply", { mock: true }], ["apply", "db_dump", { mock: true }],
@@ -152,8 +149,9 @@
       n.ref.g.setAttribute("tabindex", real ? 0 : -1);
       if (n.ref.out) {
         const tone = st === "pass" ? "ok" : st === "fail" ? "bad" : ["waiting", "warn"].includes(st) ? "warn" : st === "running" ? "run" : "";
-        const text = !real ? (n.mock ? "아직 없음" : "—") : st === "running" && Live.lastLine[n.id] ? "› " + Live.lastLine[n.id]
-          : data && data.summary ? data.summary : STATE[st];
+        const round = data && data.round > 1 ? `${data.round}차 · ` : "";
+        const text = !real ? (n.mock ? "아직 없음" : "—") : round + (st === "running" && Live.lastLine[n.id] ? "› " + Live.lastLine[n.id]
+          : data && data.summary ? data.summary : STATE[st]);
         n.ref.out.textContent = text.length > 30 ? text.slice(0, 29) + "…" : text;
         n.ref.out.setAttribute("class", `out ${tone ? "t-" + tone : ""}`);
       }
@@ -195,7 +193,11 @@
     const cut = nodeOf("cutover");
     const rollChip = cut ? branchChip("운영 반영", cut.state === "pass" ? "t-ok" : cut.state === "fail" ? "t-bad" : cut.state === "waiting" ? "t-wait" : cut.state === "running" ? "t-run" : "", STATE[cut.state])
       : branchChip("운영 반영", "t-mock", "추후(2단계)");
-    $("#branches").innerHTML = webChip + branchChip("수정 루프", "t-mock", "추후(1-B)") + branchChip("인프라", "t-mock", "추후(3단계)") + rollChip;
+    const fix = nodeOf("fix");
+    const fixChip = !fix ? branchChip("수정 루프", "t-mock", "이 실행에는 없음")
+      : branchChip("수정 루프", fix.state === "pass" ? "t-ok" : fix.state === "fail" ? "t-bad" : fix.state === "running" ? "t-run" : "",
+        fix.state === "pass" ? ((nodeOf("dast") || {}).round > 1 ? "2차 재검증" : "수정 PR") : fix.state === "pending" ? "재현 시 선택" : STATE[fix.state]);
+    $("#branches").innerHTML = webChip + fixChip + branchChip("인프라", "t-mock", "추후(3단계)") + rollChip;
   }
 
   function autoTarget() {
@@ -227,6 +229,15 @@
         ${rows ? `<table class="res"><thead><tr><th>항목(SAST 지문)</th><th>판정</th></tr></thead><tbody>${rows}</tbody></table>` : ""}
         <div class="callout">재현됨: 실제로 스크립트가 실행됨 · 차단됨: 저장은 됐지만 CSP 등으로 실행이 막힘 · 판정 불가는 통과로 보지 않습니다.${link}</div>`;
     }
+    if (id === "fix") {
+      const pr = d.pr || {};
+      const trace = (d.trace || []).map((t) => `<li><span class="g ${t.role === "sink" ? "g-bad" : t.role === "source" ? "g-warn" : "g-idle"}">${esc({ source: "입력", propagation: "전달", sink: "출력" }[t.role] || t.role)}</span>
+        <span class="mono">${esc(t.file)}:${esc(t.line)}</span> <code>${esc(t.code)}</code></li>`).join("");
+      return `<dl class="kv"><dt>수정 요약</dt><dd>${esc(d.summary || "—")}</dd><dt>PR</dt><dd>${pr.url ? `<a href="${esc(pr.url)}" target="_blank" rel="noopener noreferrer">#${esc(pr.number)} ↗</a>` : "—"}</dd>
+        <dt>수정 커밋</dt><dd class="mono">${esc((pr.commit || "—").slice(0, 12))}</dd><dt>브랜치</dt><dd class="mono">${esc(pr.branch || "—")}</dd></dl>
+        ${trace ? `<h3>코드 흐름(수정 전)</h3><ol class="flow">${trace}</ol>` : ""}
+        ${d.patch ? `<h3>패치</h3><pre class="console diff">${esc(d.patch)}</pre>` : ""}`;
+    }
     if (id === "cutover") return `<dl class="kv"><dt>이전 대상</dt><dd class="mono">${esc(d.previous || "—")}</dd><dt>TTL</dt><dd>${esc(d.ttl ?? "—")}</dd><dt>확인</dt><dd class="mono">${esc(JSON.stringify(d.verified || "—"))}</dd></dl>`;
     return "";
   }
@@ -235,8 +246,11 @@
     const st = real ? stateOf(id) : "pending";
     const dur = data && data.started_at ? fmtDur(((data.ended_at || Date.now() / 1000) - data.started_at)) + (data.ended_at ? "" : " 경과") : "—";
     const ask = data && data.decision ? `<div class="ask"><b>${esc(data.decision.prompt)}</b><div class="actions">${data.decision.options.map((o) =>
-      `<button type="button" class="btn ${o.value === "approve" ? "approve" : ""}" data-answer="${esc(o.value)}">${esc(o.label)}</button>`).join("")}</div></div>` : "";
-    Live.show(board && real ? board.run_id : "", id, st);
+      `<button type="button" class="btn ${o.value === "approve" ? "approve" : o.value === "fix" ? "primary" : ""}" data-answer="${esc(o.value)}">${esc(o.label)}</button>`).join("")}</div></div>` : "";
+    Live.show(board && real ? board.run_id : "", id, st, (data && data.round) || 1);
+    // 2차로 다시 돈 노드는 1차 결과를 접어서 함께 보여 준다
+    const past = (data && data.history || []).map((h) => `<details class="past"><summary>${esc(h.round)}차 · ${esc(STATE[h.state] || h.state)} · ${esc(h.summary || "")}</summary>
+      ${special(id, h.detail) || ""}</details>`).join("");
     const events = board ? board.nodes.filter((x) => byId[x.id]).flatMap((x) => [
       x.started_at ? { t: x.started_at, text: `${byId[x.id].label} 시작`, tone: "" } : null,
       x.ended_at ? { t: x.ended_at, text: `${byId[x.id].label}: ${x.summary || STATE[x.state]}`, tone: x.state === "pass" ? "ok" : x.state === "fail" ? "bad" : "warn" } : null,
@@ -251,7 +265,7 @@
         ${ask}
       </div>`;
     $("#p-rest").innerHTML = `
-      ${real && data ? `<div class="p-sec"><h3>세부</h3>${special(id, data.detail) || '<span class="hint">—</span>'}</div>` : ""}
+      ${real && data ? `<div class="p-sec"><h3>세부${data.round > 1 ? ` · ${esc(data.round)}차` : ""}</h3>${special(id, data.detail) || '<span class="hint">—</span>'}${past}</div>` : ""}
       <div class="p-sec"><h3>실행 기록</h3><ol class="log">${events.map((l) => `<li class="${l.tone ? "t-" + l.tone : ""}"><span class="t">${esc(clock(l.t))}</span><span>${esc(l.text)}</span></li>`).join("") || "<li><span></span><span>기록 없음</span></li>"}</ol></div>`;
   }
   $("#panel").addEventListener("click", async (ev) => {
@@ -345,10 +359,11 @@
     const lastLine = {};
     const box = () => $("#p-live");
     function stop() { clearTimeout(timer); timer = null; if (es) { es.close(); es = null; } cleanups.splice(0).forEach((f) => f()); }
-    function show(run, node, st) {
-      const k = run && ["build", "stage", "sast", "dast"].includes(node) ? `${run}:${node}` : "";
+    function show(run, node, st, round = 1) {
+      // 회차까지 키에 넣는다: 2차는 다른 빌드 번호·점검 ID 를 본다
+      const k = run && ["build", "stage", "sast", "dast"].includes(node) ? `${run}:${node}:${round}` : "";
       if (k === key) { ctx.state = st; return; }
-      stop(); key = k; ctx = { run, node, state: st };
+      stop(); key = k; ctx = { run, node, state: st, round };
       $("#panel").scrollTop = 0;
       if (!k) { box().innerHTML = ""; return; }
       ({ build: logView, stage: logView, sast: sastView, dast: dastView })[node](ctx, k);
@@ -437,7 +452,7 @@
         <div class="p-sec"><h3>판정 · 증거</h3><div id="lv-results" class="hint">불러오는 중…</div></div>`;
       const feed = $("#lv-feed"), stages = {}, meta = box().querySelector(".lv-meta");
       let titles = {}, fed = 0, results = [], hasFrame = false;
-      Theater.reset(c.run);
+      Theater.reset(`${c.run}:${c.round}`);
       Theater.add($("#lv-screen .tv"));
       $("#lv-big").onclick = openLive;
       const short = (id) => titles[id] ? titles[id].slice(0, 26) : String(id || "").replace("sast-", "").slice(0, 8);
@@ -663,13 +678,39 @@
     } catch (e) { $("#health-chip").textContent = "확인 실패"; }
   }
   $("#runs").addEventListener("change", async (e) => { current = e.target.value; sel = null; lastKey = ""; await loadRun(); });
-  $("#open-start").onclick = () => { $("#start").hidden = !$("#start").hidden; if (!$("#start").hidden) $("#run-commit").focus(); };
+  // 시작 폼: 저장소 주소만 넣으면 브랜치·최근 커밋을 불러와 고르게 한다(커밋 SHA 를 직접 넣지 않는다)
+  let refsSeq = 0;
+  async function loadRefs(branch) {
+    const repo = $("#run-repo").value.trim(), seq = ++refsSeq;
+    const bsel = $("#run-branch"), csel = $("#run-commit");
+    bsel.disabled = csel.disabled = true;
+    csel.innerHTML = '<option value="">불러오는 중…</option>';
+    $("#run-msg").textContent = "";
+    try {
+      const q = new URLSearchParams({ repo, ...(branch ? { branch } : {}) });
+      const r = await fetch(`/api/git/refs?${q}`);
+      const j = await r.json().catch(() => ({}));
+      if (seq !== refsSeq) return;
+      if (!r.ok) { csel.innerHTML = '<option value="">—</option>'; bsel.innerHTML = ""; $("#run-msg").textContent = j.detail || "저장소를 읽지 못했습니다"; return; }
+      bsel.innerHTML = j.branches.map((b) => `<option value="${esc(b)}">${esc(b)}${b === j.default_branch ? " (기본)" : ""}</option>`).join("");
+      bsel.value = j.branch;
+      csel.innerHTML = j.commits.map((c, i) => `<option value="${esc(c.sha)}">${esc(c.sha.slice(0, 7))} · ${esc(c.message.slice(0, 48))}${i === 0 ? " (최신)" : ""} · ${esc(c.author)}${c.date ? " · " + esc(new Date(c.date).toLocaleString("ko-KR", { hour12: false, month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })) : ""}</option>`).join("")
+        || '<option value="">커밋 없음</option>';
+      bsel.disabled = csel.disabled = false;
+    } catch (e) { if (seq === refsSeq) $("#run-msg").textContent = "저장소를 읽지 못했습니다"; }
+  }
+  $("#run-repo").addEventListener("change", () => loadRefs());
+  $("#run-branch").addEventListener("change", (e) => loadRefs(e.target.value));
+  $("#open-start").onclick = () => {
+    $("#start").hidden = !$("#start").hidden;
+    if (!$("#start").hidden) { loadRefs($("#run-branch").value || undefined); $("#run-commit").focus(); }
+  };
   $("#open-health").onclick = () => $("#health").showModal();
   $("#close-health").onclick = () => $("#health").close();
   $("#start").addEventListener("submit", async (ev) => {
     ev.preventDefault();
     const r = await fetch("/api/pipeline/runs", { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ repo: $("#run-repo").value.trim(), commit: $("#run-commit").value.trim(), cutover: $("#run-cutover").checked }) });
+      body: JSON.stringify({ repo: $("#run-repo").value.trim().replace(/\.git$|\/$/g, ""), commit: $("#run-commit").value, branch: $("#run-branch").value || "", cutover: $("#run-cutover").checked }) });
     const body = await r.json().catch(() => ({}));
     $("#run-msg").textContent = r.ok ? "시작했습니다" : "거부: " + (body.detail || r.status);
     if (r.ok) { current = body.run_id; sel = null; lastKey = ""; followOn(true); $("#start").hidden = true; await loadRuns(); await loadRun(); }

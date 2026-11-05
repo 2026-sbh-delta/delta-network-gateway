@@ -56,12 +56,15 @@ class Submission(BaseModel):
     model_config = ConfigDict(extra="forbid")
     binding: Binding
     report: dict
+    # 수정 후 재검증: 1차 플랫폼 점검 ID. 1차에서 재현된 항목은 이번 SAST 결과와 관계없이 다시 점검한다.
+    reverify_of: str | None = Field(default=None, pattern=r"^[0-9a-f-]{36}$")
 
 
 class PlatformRuns:
-    def __init__(self, root: Path, catalog, launch, observe, cancel, target_port):
+    def __init__(self, root: Path, catalog, launch, observe, cancel, target_port, history=None):
         self.root = root / ".platform"
         self.catalog, self.launch = catalog, launch
+        self.history = history or (lambda _run_id: None)
         self.observe, self.cancel = observe, cancel
         self.target_port = target_port
         self.lock = asyncio.Lock()
@@ -132,7 +135,14 @@ class PlatformRuns:
         if args.report.get("version") != "2.1.0" or len(args.report.get("runs", [])) != 1:
             raise ValueError("Single SARIF run required")
         targets = sarif_targets(args.report)
-        report = Report.model_validate(from_sarif(args.report, platform_limit(), platform_prefer())) if targets else None
+        carried, hints = self.carried(args.reverify_of) if args.reverify_of else ([], {})
+        fresh = from_sarif(args.report, MAX_FINDINGS, platform_prefer())["findings"] if targets else []
+        known = {f["id"] for f in carried}
+        chosen = (carried + [f for f in fresh if f["id"] not in known])[:platform_limit()]
+        run_label = ((args.report["runs"][0].get("properties") or {}).get("run_id") or "")
+        report = (Report.model_validate({"source": "delta-sast", "source_label": f"Delta SAST SARIF {run_label}".strip()[:200],
+                                         "findings": chosen}) if chosen else None)
+        eligible = len(known | {f["id"] for f in fresh}) if carried else len(targets)
         request_hash = fingerprint(submission)
         async with self.lock:
             record = self.read(run_id)
@@ -163,7 +173,7 @@ class PlatformRuns:
             if target.origin != binding["target_url"]:
                 raise ValueError("Registered staging target mismatch")
             record = {"binding": binding, "request_hash": request_hash,
-                      "eligible_count": len(targets),
+                      "eligible_count": eligible, "reverify_of": args.reverify_of,
                       "finding_ids": [f.id for f in report.findings] if report else []}
             # Record intent before launching. After a crash, never silently relaunch.
             self.write(run_id, record)
@@ -173,15 +183,31 @@ class PlatformRuns:
                     impact_payload = os.environ.get("DAST_PLATFORM_IMPACT_PAYLOAD", "bsod_v1")
                     self.launch(RunRequest(scenario="vulnerable", planner="agent",
                                            report=report.model_dump(), target_id=target_id,
-                                           concurrency=1, impact=True, auto_fix=False,
+                                           # 재현되면 바로 수정안을 만든다(오케스트레이터가 사람 승인 뒤 PR 로 올린다)
+                                           concurrency=1, impact=True, auto_fix=True,
                                            # 점검이 끝나면 이 SAST 점검에 재현 결과를 회신한다(server.py 의 피드백 단계)
                                            sast_run_id=args.binding.sast_run_id,
                                            payload_id=impact_payload if impact_payload in self.catalog.payloads else None),
-                                {"platform_binding": binding, "direct": platform_direct()}, run_id=run_id)
+                                {"platform_binding": binding, "direct": platform_direct(),
+                                 "commit": binding["commit_sha"], "hypotheses": hints,
+                                 **({"reverify_of": {"run_id": args.reverify_of}} if args.reverify_of else {})},
+                                run_id=run_id)
                 except Exception:
                     # The persisted request remains interrupted; a new run ID is required.
                     raise
             return self.view(run_id)
+
+    def carried(self, previous):
+        """1차 점검에서 재현(또는 CSP 차단)된 항목과 그 분석 가설. 재검증은 가설 단계를 건너뛴다."""
+        self.path(previous)
+        record = self.history(previous)
+        if not record:
+            raise ValueError("재검증할 1차 점검 기록이 없다")
+        inputs = (record.get("report") or record.get("input") or {}).get("findings", [])
+        hit = {r.get("finding_id"): r for r in record.get("results", []) if r.get("status") in {"REPRODUCED", "BLOCKED"}}
+        findings = [f for f in inputs if f.get("id") in hit]
+        hints = {fid: (r.get("evidence") or {}).get("hypothesis") for fid, r in hit.items()}
+        return findings, {fid: h for fid, h in hints.items() if h}
 
     async def stop(self, run_id):
         async with self.lock:

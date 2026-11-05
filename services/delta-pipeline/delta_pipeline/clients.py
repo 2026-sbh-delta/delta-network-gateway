@@ -15,6 +15,7 @@ from typing import Any
 
 JUDGE_TIMEOUT_SECONDS = 180  # delta-ai 의 LLM 제한(60초 × 2회)보다 길어야 한다
 DEFAULT_TIMEOUT_SECONDS = 15
+PR_TIMEOUT_SECONDS = 120  # 원격 저장소 받기·푸시·PR 생성
 QUEUE_WAIT_SECONDS = 120
 BUILD_SEARCH_LIMIT = 50
 HTTP_NOT_FOUND = 404
@@ -91,15 +92,28 @@ class Dast:
     def __init__(self, url: str, token: str) -> None:
         self._url, self._headers = url, {"Authorization": f"Bearer {token}"}
 
-    def submit(self, run_id: str, binding: dict[str, Any], report: dict[str, Any]) -> dict[str, Any]:
-        request = urllib.request.Request(f"{self._url}/api/platform/runs/{run_id}",
-                                         json.dumps({"binding": binding, "report": report}).encode(), method="PUT",
-                                         headers={**self._headers, "Content-Type": "application/json"})
+    def submit(self, run_id: str, binding: dict[str, Any], report: dict[str, Any],
+               reverify_of: str | None = None) -> dict[str, Any]:
+        body = {"binding": binding, "report": report, **({"reverify_of": reverify_of} if reverify_of else {})}
+        request = urllib.request.Request(f"{self._url}/api/platform/runs/{run_id}", json.dumps(body).encode(),
+                                         method="PUT", headers={**self._headers, "Content-Type": "application/json"})
         return _json(request, timeout=DEFAULT_TIMEOUT_SECONDS)
 
     def view(self, run_id: str) -> dict[str, Any]:
         return _json(urllib.request.Request(f"{self._url}/api/platform/runs/{run_id}", headers=self._headers),
                      timeout=DEFAULT_TIMEOUT_SECONDS)
+
+    def fix(self, run_id: str, finding_id: str) -> dict[str, Any]:
+        """재현 직후 DAST 가 만든 수정안(패치·코드 흐름). 아직 만드는 중이면 status=generating."""
+        path = f"/api/runs/{run_id}/findings/{urllib.parse.quote(finding_id, safe='')}/fix"
+        return _json(urllib.request.Request(self._url + path, headers=self._headers), timeout=DEFAULT_TIMEOUT_SECONDS)
+
+    def open_pr(self, run_id: str, finding_id: str, base: str | None = None) -> dict[str, Any]:
+        """사람이 '수정 적용'을 고른 뒤에만 부른다. 수정 브랜치를 원격에 올리고 PR 을 만든다(커밋 SHA 를 돌려준다)."""
+        path = f"/api/runs/{run_id}/findings/{urllib.parse.quote(finding_id, safe='')}/pr"
+        request = urllib.request.Request(self._url + path, json.dumps({"approve": True, **({"base": base} if base else {})}).encode(), method="POST",
+                                         headers={**self._headers, "Content-Type": "application/json"})
+        return _json(request, timeout=PR_TIMEOUT_SECONDS)
 
 
 class Staging:

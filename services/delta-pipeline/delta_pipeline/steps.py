@@ -28,6 +28,10 @@ BUILD_DEADLINE_SECONDS = 1200
 STAGE_DEADLINE_SECONDS = 900
 SAST_DEADLINE_SECONDS = 1200
 DAST_DEADLINE_SECONDS = 1800
+FIX_DEADLINE_SECONDS = 300  # 수정 에이전트 제한 240초 + 여유
+FIX = ("fix", "수정 적용 후 재검증")
+FIX_STATUSES = ("REPRODUCED", "BLOCKED")  # 수정안을 만드는 판정(DAST fixer 와 같다)
+ROUND_NODES = ("build", "sast", "stage", "dast")
 RUNNING_JENKINS_STATES = ("IN_PROGRESS", "NOT_EXECUTED", "PAUSED_PENDING_INPUT", "QUEUED")
 PROCEED = ("approve", "확인, 계속 진행")
 PASSING_GATE_RECORDS = ("pass", "approved")
@@ -68,6 +72,12 @@ class PipelineState(TypedDict, total=False):
     cutover_previous: str
     cutover_switched_at: float
     cutover_wait_seconds: int
+    # 조치 루프(1-B): 1차 DAST 재현 → 사람이 '수정 적용' → 수정 커밋으로 2차(빌드부터 DAST 재검증까지). 최대 1회.
+    round: int
+    commit: str  # 이번 회차에 빌드·점검하는 커밋(2차는 수정 커밋). 없으면 입력 커밋
+    fix_target: dict[str, str] | None
+    first_dast_run_id: str | None
+    fix_pr: dict[str, Any] | None
 
 
 class Stopped(Exception):
@@ -81,8 +91,11 @@ class SastClient(Protocol):
 
 
 class DastClient(Protocol):
-    def submit(self, run_id: str, binding: dict[str, Any], report: dict[str, Any]) -> dict[str, Any]: ...
+    def submit(self, run_id: str, binding: dict[str, Any], report: dict[str, Any],
+               reverify_of: str | None = None) -> dict[str, Any]: ...
     def view(self, run_id: str) -> dict[str, Any]: ...
+    def fix(self, run_id: str, finding_id: str) -> dict[str, Any]: ...
+    def open_pr(self, run_id: str, finding_id: str, base: str | None = None) -> dict[str, Any]: ...
 
 
 class StagingClient(Protocol):
@@ -204,9 +217,17 @@ class Steps:
                 self._deps.sleep(JENKINS_POLL_SECONDS)
         return call()
 
-    def _ask(self, key: str, node_id: str, what: str, count: int) -> dict[str, Any]:
+    def _commit(self, state: PipelineState) -> str:
+        return state.get("commit") or self._deps.options.commit
+
+    def _key(self, state: PipelineState, name: str) -> str:
+        """Jenkins·SAST 작업 키. 2차는 다른 키를 써서 1차 작업을 다시 찾지 않는다."""
+        round_ = state.get("round") or 1
+        return f"{self._deps.run_id}-{name}" if round_ == 1 else f"{self._deps.run_id}-r{round_}-{name}"
+
+    def _ask(self, key: str, node_id: str, what: str, count: int, **extra: Any) -> dict[str, Any]:
         self._board.update(node_id, state="waiting", summary=f"{what}: 사람 확인 필요 (항목 {count}건)")
-        return {"pending_gate": {"key": key, "node_id": node_id, "what": what, "count": count}}
+        return {"pending_gate": {"key": key, "node_id": node_id, "what": what, "count": count, **extra}}
 
     def _pass(self, key: str, node_id: str, summary: str) -> dict[str, Any]:
         self._board.update(node_id, state="pass", summary=summary)
@@ -215,8 +236,13 @@ class Steps:
     def ask_gate(self, state: PipelineState) -> dict[str, Any]:
         gate = state["pending_gate"] or {}
         what = gate["what"]
+        fixable = gate.get("fix_target") is not None
+        options = [FIX, PROCEED, ("stop", "중단")] if fixable else [PROCEED, ("stop", "중단")]
         answer = interrupt({"node_id": gate["node_id"], "prompt": f"{what} 결과를 보고 다음 단계로 갈지 정합니다.",
-                            "options": [PROCEED, ("stop", "중단")]})
+                            "options": options})
+        if answer == "fix" and fixable:
+            self._board.update(gate["node_id"], state="fail", summary=f"{what}: 재현 확인 → 수정 적용 선택")
+            return {"fix_target": gate["fix_target"], "pending_gate": None}
         if answer != "approve":
             self._board.update(gate["node_id"], state="fail", summary=f"{what}: 사람이 중단")
             raise Stopped(f"{what}에서 사람이 중단했다")
@@ -251,11 +277,11 @@ class Steps:
         raise ServiceUnavailable(f"{what} #{build} 이 제한 시간 안에 끝나지 않았다. 작업은 계속 돌 수 있다")
 
     # ── 빌드 ────────────────────────────────────────────
-    def build_start(self, _: PipelineState) -> dict[str, Any]:
+    def build_start(self, state: PipelineState) -> dict[str, Any]:
         options, jenkins = self._deps.options, self._deps.build_jenkins
         self._board.update("build", state="running", summary="빌드 에이전트에서 빌드·푸시 중")
-        build = self._ensure_build(jenkins, {"REPO": options.repo, "COMMIT": options.commit,
-                                             "IMAGE_REPO": self._deps.image_repo}, f"{self._deps.run_id}-build")
+        build = self._ensure_build(jenkins, {"REPO": options.repo, "COMMIT": self._commit(state),
+                                             "IMAGE_REPO": self._deps.image_repo}, self._key(state, "build"))
         self._board.add_detail("build", build=build, url=jenkins.console_url(build))
         return {"build": build}
 
@@ -263,7 +289,7 @@ class Steps:
         try:
             result = self._finish_job(self._deps.build_jenkins, state["build"], BUILD_DEADLINE_SECONDS, "빌드")
             image = str(result.get("image_ref", ""))
-            if result.get("commit") != self._deps.options.commit or "@sha256:" not in image:
+            if result.get("commit") != self._commit(state) or "@sha256:" not in image:
                 raise Stopped("빌드 결과가 요청한 커밋·digest 와 맞지 않는다")
         except Stopped as stop:
             self._board.update("build", state="fail", summary=str(stop))
@@ -274,10 +300,10 @@ class Steps:
         return {"image": image, "image_digest": digest}
 
     # ── SAST ────────────────────────────────────────────
-    def sast_start(self, _: PipelineState) -> dict[str, Any]:
-        options, run_id = self._deps.options, f"{self._deps.run_id}-sast"
+    def sast_start(self, state: PipelineState) -> dict[str, Any]:
+        options, run_id = self._deps.options, self._key(state, "sast")
         self._board.update("sast", state="running", summary="소스 점검 중")
-        self._deps.sast.start(run_id, options.repo, options.commit)
+        self._deps.sast.start(run_id, options.repo, self._commit(state))
         self._board.add_detail("sast", run_id=run_id)
         return {"sast_run_id": run_id}
 
@@ -287,11 +313,11 @@ class Steps:
         while time.time() < deadline:
             scan = self._read(lambda: self._deps.sast.scan(run_id))
             if scan.get("state") != "running":
-                return self._sast_gate(scan)
+                return self._sast_gate(scan, self._commit(state))
             self._deps.sleep(POLL_SECONDS)
         raise ServiceUnavailable("SAST 점검이 제한 시간 안에 끝나지 않았다")
 
-    def _sast_gate(self, scan: Mapping[str, Any]) -> dict[str, Any]:
+    def _sast_gate(self, scan: Mapping[str, Any], commit: str) -> dict[str, Any]:
         """명세 v1.1 7-1 의 최소판.
 
         점검 실패·요청 커밋 불일치는 멈춤. 결과 요약이나 점검 범위 증거(실제 커밋·파일 수)가 없거나 다르면
@@ -300,7 +326,6 @@ class Steps:
         if scan.get("state") != "done":
             self._board.update("sast", state="fail", summary=f"점검 실패: {scan.get('error')}")
             raise Stopped(f"SAST 점검 실패: {scan.get('error')}")
-        commit = self._deps.options.commit
         if scan.get("commit") and scan["commit"] != commit:
             self._board.update("sast", state="fail", summary="점검한 커밋이 요청과 다르다")
             raise Stopped("SAST 가 점검한 커밋이 요청과 다르다")
@@ -326,8 +351,8 @@ class Steps:
         jenkins = self._deps.deploy_jenkins
         self._board.update("stage", state="running", summary="스테이징 데이터 초기화 후 같은 digest 배포 중")
         # HOLDER: 스테이징(과 DB)을 이 실행이 점유한다. 점검이 끝나 풀기 전에는 다른 실행이 배포·초기화하지 못한다.
-        build = self._ensure_build(jenkins, {"IMAGE": state["image"], "COMMIT": self._deps.options.commit, "CLOUD": CLOUD,
-                                             "HOLDER": self._deps.run_id}, f"{self._deps.run_id}-stage")
+        build = self._ensure_build(jenkins, {"IMAGE": state["image"], "COMMIT": self._commit(state), "CLOUD": CLOUD,
+                                             "HOLDER": self._deps.run_id}, self._key(state, "stage"))
         self._board.add_detail("stage", build=build, url=jenkins.console_url(build))
         return {"deploy_build": build}
 
@@ -352,21 +377,25 @@ class Steps:
 
     # ── DAST ────────────────────────────────────────────
     def dast_start(self, state: PipelineState) -> dict[str, Any]:
-        if not state.get("dast_targets"):
-            # 명세 7-1: 범위 정상 + 후보 0건은 정상적인 0건. 이전 회차 재현 항목(7-3)은 1-A 에서 붙인다.
+        previous = state.get("first_dast_run_id")
+        if not state.get("dast_targets") and not previous:
+            # 명세 7-1: 범위 정상 + 후보 0건은 정상적인 0건. 2차는 1차 재현 항목(7-3)을 SAST 결과와 관계없이 다시 본다.
             self._board.update("dast", state="skipped", summary="SAST 가 넘긴 점검 대상이 없다")
             return {"dast_run_id": None, "gates": {"dast": "pass"}}
-        self._board.update("dast", state="running", summary="스테이징을 실제 브라우저로 점검 중")
+        self._board.update("dast", state="running", summary="수정 후 재검증: 1차 재현 항목을 다시 점검 중" if previous
+                           else "스테이징을 실제 브라우저로 점검 중")
         report = self._read(lambda: self._deps.sast.sarif(state["sast_run_id"]))
         # 점검 ID 를 실행에서 정해 재개해도 같은 점검을 받는다(입력이 같으면 DAST 가 기존 점검을 돌려준다)
-        run_id = str(uuid5(NAMESPACE_URL, f"delta-pipeline/{self._deps.run_id}/dast"))
-        binding = {"build_id": f"{self._deps.run_id}-build", "sast_run_id": state["sast_run_id"],
-                   "commit_sha": self._deps.options.commit, "image": state["image"],
+        round_ = state.get("round") or 1
+        run_id = str(uuid5(NAMESPACE_URL, f"delta-pipeline/{self._deps.run_id}/dast"
+                           + ("" if round_ == 1 else f"/r{round_}")))
+        binding = {"build_id": self._key(state, "build"), "sast_run_id": state["sast_run_id"],
+                   "commit_sha": self._commit(state), "image": state["image"],
                    "image_digest": state["image_digest"], "sast_evidence_sha256": evidence_hash(report),
                    "target_url": state["staging_url"], "execution_cloud": CLOUD}
         if state.get("staging_revision"):
             binding["runtime_revision"] = state["staging_revision"]
-        self._deps.dast.submit(run_id, binding, report)
+        self._deps.dast.submit(run_id, binding, report, previous)
         self._board.add_detail("dast", run_id=run_id, target_url=state["staging_url"])
         return {"dast_run_id": run_id}
 
@@ -376,11 +405,11 @@ class Steps:
         while time.time() < deadline:
             view = self._read(lambda: self._deps.dast.view(run_id))
             if view.get("status") not in ("running", "cancelling"):
-                return self._dast_gate(view)
+                return self._dast_gate(view, state)
             self._deps.sleep(POLL_SECONDS)
         raise ServiceUnavailable("DAST 점검이 제한 시간 안에 끝나지 않았다")
 
-    def _dast_gate(self, view: Mapping[str, Any]) -> dict[str, Any]:
+    def _dast_gate(self, view: Mapping[str, Any], state: PipelineState) -> dict[str, Any]:
         """명세 v1.1 7-2 의 최소판. 모두 NOT_REPRODUCED 일 때만 자동 통과, 나머지는 사람 확인(D3: 자동 통과 금지)."""
         status = view.get("status")
         results = [{"finding_id": r.get("finding_id"), "status": r.get("status")} for r in view.get("results", ())]
@@ -400,11 +429,61 @@ class Steps:
         labels = ", ".join(f"{s} {sum(r['status'] == s for r in results)}" for s in sorted({str(r["status"]) for r in results}))
         notes = [n for n in (f"누락 {missing}" if missing else "", f"예상 밖 {extra}" if extra else "",
                              f"미점검 {truncated}(점검 상한 초과)" if truncated > 0 else "") if n]
+        prefix = "수정 후 재검증 · " if (state.get("round") or 1) > 1 else ""
         if results and not notes and all(r["status"] in DAST_PASS for r in results):
-            return self._pass("dast", "dast", f"재현 없음 ({labels})")
-        # 재현·판정 불가·결과 누락·미점검은 사람이 본다
+            return self._pass("dast", "dast", f"{prefix}재현 없음 ({labels})")
+        # 재현·판정 불가·결과 누락·미점검은 사람이 본다. 1차에서 재현된 항목이 있으면 '수정 적용'을 고를 수 있다(1회)
         unresolved = sum(r["status"] not in DAST_PASS for r in results) + missing + extra + max(truncated, 0)
-        return self._ask("dast", "dast", f"DAST ({', '.join([labels or '결과 없음', *notes])})", unresolved)
+        hit = next((r["finding_id"] for r in results if r["status"] in FIX_STATUSES), None)
+        fix_target = ({"dast_run_id": str(state["dast_run_id"]), "finding_id": str(hit)}
+                      if hit and (state.get("round") or 1) == 1 else None)
+        return self._ask("dast", "dast", f"{prefix}DAST ({', '.join([labels or '결과 없음', *notes])})", unresolved,
+                         fix_target=fix_target)
+
+    # ── 조치 루프(1-B) ──────────────────────────────────
+    def fix_apply(self, state: PipelineState) -> dict[str, Any]:
+        """사람이 고른 '수정 적용': DAST 가 재현 직후 만든 수정안을 PR 로 올리고, 그 커밋으로 2차를 시작한다.
+
+        수정안은 DAST 수정 에이전트(SAST·DAST 근거, 작업 사본만 수정)가 만든다. 커밋 SHA 는 원격에 올라간 값만 받는다.
+        """
+        target = state.get("fix_target") or {}
+        run_id, finding_id = target.get("dast_run_id", ""), target.get("finding_id", "")
+        self._board.update("fix", state="running", summary="수정안 생성 중(SAST·DAST 근거)")
+        self._board.add_detail("fix", dast_run_id=run_id, finding_id=finding_id)
+        try:
+            fix = self._await_fix(run_id, finding_id)
+            self._board.add_detail("fix", summary=fix.get("summary"), files=fix.get("files"),
+                                   changes=fix.get("changes"), trace=fix.get("trace"), patch=fix.get("patch"))
+            self._board.update("fix", summary="수정안 준비 · PR 올리는 중")
+            pr = fix.get("pr") or self._deps.dast.open_pr(run_id, finding_id, self._deps.options.branch or None)
+            sha = str(pr.get("commit_sha") or "")
+            if not COMMIT_RE.fullmatch(sha):
+                raise Stopped(f"수정 커밋을 원격에서 확인하지 못했다({pr.get('status') or '응답 없음'})")
+        except Stopped as stop:
+            self._board.update("fix", state="fail", summary=str(stop))
+            raise
+        except ServiceUnavailable as exc:
+            self._board.update("fix", state="fail", summary=f"수정안·PR 요청 실패: {exc}")
+            raise
+        pr_brief = {"url": pr.get("url"), "number": pr.get("number"), "branch": pr.get("branch"), "commit": sha}
+        self._board.add_detail("fix", pr=pr_brief)
+        label = f"PR #{pr.get('number')}" if pr.get("number") else str(pr.get("branch"))
+        self._board.update("fix", state="pass", summary=f"{label} · 커밋 {sha[:7]} · 파일 {len(fix.get('files') or [])}개")
+        self._board.new_round(ROUND_NODES, 2)
+        # 2차: 새 커밋으로 빌드부터 다시. 게이트 기록을 비워 2차 판정 없이 넘어가지 못하게 한다
+        return {"round": 2, "commit": sha, "fix_target": None, "fix_pr": pr_brief,
+                "first_dast_run_id": run_id, "gates": {"sast": "", "dast": ""}, "dast_targets": 0}
+
+    def _await_fix(self, run_id: str, finding_id: str) -> dict[str, Any]:
+        deadline = time.time() + FIX_DEADLINE_SECONDS
+        while time.time() < deadline:
+            fix = self._read(lambda: self._deps.dast.fix(run_id, finding_id))
+            if fix.get("status") == "ready" and fix.get("patch"):
+                return fix
+            if fix.get("status") in ("failed", "none"):
+                raise Stopped(f"수정안을 만들지 못했다: {fix.get('error') or fix.get('status')}")
+            self._deps.sleep(POLL_SECONDS)
+        raise Stopped("수정안이 제한 시간 안에 만들어지지 않았다")
 
     def _release(self) -> None:
         """스테이징 점유를 푼다. 실패해도 만료(기본 1시간)로 풀리므로 실행 결과를 바꾸지 않는다."""
@@ -527,13 +606,15 @@ class Steps:
         assert_gates_passed(gates, required)
         self._release()
         digest = state["image_digest"][:19]
+        pr = state.get("fix_pr") or {}
+        fixed = f"수정 후 재검증 · PR #{pr.get('number')} · " if pr.get("number") else "수정 후 재검증 · " if pr else ""
         # 사람이 승인해 넘긴 게이트는 '보안 통과'가 아니다. 끝까지 연결은 됐지만 검증 완료로 표시하지 않는다
         approved = [GATE_LABEL.get(g, g) for g in required if gates.get(g) == "approved"]
         if approved:
-            self._board.finish("unresolved", f"연결 확인 완료 · 보안 미해결({'·'.join(approved)} 사람 승인으로 진행) · {digest}",
+            self._board.finish("unresolved", f"{fixed}연결 확인 완료 · 보안 미해결({'·'.join(approved)} 사람 승인으로 진행) · {digest}",
                                result="warn")
         else:
-            self._board.finish("verified", f"스테이징 검증 완료 · {digest}", passed=True)
+            self._board.finish("verified", f"{fixed}스테이징 검증 완료 · {digest}", passed=True)
         return {"halt": None}
 
     def halted(self, state: PipelineState) -> dict[str, Any]:

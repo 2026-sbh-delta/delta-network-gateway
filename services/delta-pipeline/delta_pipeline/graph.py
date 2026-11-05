@@ -1,6 +1,7 @@
 """전이 표. 다음 단계는 여기 적힌 코드만 정한다. LLM 은 전이를 고르지 않는다.
 
 웹 갈래 최소 연결(명세 v1.1 6-2, 작업 계획 1-0): prepare → (build ∥ sast) → join → stage → dast → done.
+조치 루프(1-B): dast 재현 → 사람이 '수정 적용' → fix_apply → (build ∥ sast) … dast 재검증 → done. 1회만 돈다.
 cutover 를 켠 실행은 dast 뒤에 서비스 도메인 전환(6-3)을 거친다: ask_cutover → cutover_check → cutover_switch → cutover_verify.
 """
 
@@ -43,15 +44,22 @@ def step_routes(cutover: bool) -> dict[str, tuple[Any, tuple[str, ...]]]:
             return HALTED
         return "dast_wait" if state.get("dast_run_id") else after_dast
 
+    def route_ask_dast(state: PipelineState) -> str:
+        if state.get("halt"):
+            return HALTED
+        return "fix_apply" if state.get("fix_target") else after_dast
+
     routes = {
         "prepare": (route_prepare, (*BRANCHES, HALTED)),
+        # 조치 루프(1-B): 수정 커밋으로 빌드 ∥ SAST 부터 다시 돈다(최대 1회, 2차 게이트에는 수정 선택지가 없다)
+        "fix_apply": (route_prepare, (*BRANCHES, HALTED)),
         "join": (route_gate("ask_sast", "stage_start"), ("ask_sast", "stage_start", HALTED)),
         "ask_sast": (after_step("stage_start"), ("stage_start", HALTED)),
         "stage_start": (after_step("stage_wait"), ("stage_wait", HALTED)),
         "stage_wait": (after_step("dast_start"), ("dast_start", HALTED)),
         "dast_start": (route_dast_start, ("dast_wait", after_dast, HALTED)),
         "dast_wait": (route_gate("ask_dast", after_dast), ("ask_dast", after_dast, HALTED)),
-        "ask_dast": (after_step(after_dast), (after_dast, HALTED)),
+        "ask_dast": (route_ask_dast, ("fix_apply", after_dast, HALTED)),
         "done": (after_step(END), (END, HALTED)),
     }
     if cutover:
@@ -68,7 +76,8 @@ def build_graph(deps: Deps, checkpointer: Any) -> Any:
     steps = Steps(deps)
     bodies = {"prepare": steps.prepare, "join": lambda _: {}, "ask_sast": steps.ask_gate,
               "stage_start": steps.stage_start, "stage_wait": steps.stage_wait, "dast_start": steps.dast_start,
-              "dast_wait": steps.dast_wait, "ask_dast": steps.ask_gate, "done": steps.done}
+              "dast_wait": steps.dast_wait, "ask_dast": steps.ask_gate, "fix_apply": steps.fix_apply,
+              "done": steps.done}
     if deps.options.cutover:
         bodies |= {"ask_cutover": steps.ask_cutover, "cutover_check": steps.cutover_check,
                    "cutover_switch": steps.cutover_switch, "cutover_verify": steps.cutover_verify}

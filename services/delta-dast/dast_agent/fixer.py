@@ -7,6 +7,7 @@ PR: 사용자가 승인했을 때만 만든다. 수정안을 만든 커밋에서
 """
 
 import asyncio
+import base64
 import json
 import os
 from pathlib import Path
@@ -72,7 +73,9 @@ def repo_source(repo: RepoDefinition) -> Path:
 def _remote_git(*args: str, cwd: Path | None = None) -> subprocess.CompletedProcess:
     # 토큰은 명령줄·로그에 남기지 않고 헤더로만 전달한다. 공개 저장소는 토큰 없이 받는다.
     token = os.environ.get("GITHUB_TOKEN")
-    auth = ["-c", f"http.extraHeader=Authorization: Bearer {token}"] if token else []
+    # GitHub git(HTTPS)은 토큰을 Basic(x-access-token:<토큰>)으로 받는다. Bearer 는 REST API 에만 쓴다.
+    basic = base64.b64encode(f"x-access-token:{token}".encode()).decode() if token else ""
+    auth = ["-c", f"http.extraHeader=Authorization: Basic {basic}"] if token else []
     env = os.environ | {"GIT_TERMINAL_PROMPT": "0"}
     return subprocess.run(["git", *GIT_ID, *auth, *args], cwd=cwd, env=env,
                           capture_output=True, text=True, timeout=180)
@@ -218,8 +221,10 @@ def pr_body(fix: dict, run_id: str) -> str:
 """
 
 
-def create_pr(fix: dict, repo: RepoDefinition, workdir: Path, run_id: str) -> dict:
-    """승인된 수정안을 브랜치에 커밋하고, 원격이 설정돼 있으면 GitHub PR을 만든다."""
+def create_pr(fix: dict, repo: RepoDefinition, workdir: Path, run_id: str, base: str | None = None) -> dict:
+    """승인된 수정안을 브랜치에 커밋하고, 원격이 설정돼 있으면 GitHub PR을 만든다.
+
+    base: PR 대상 브랜치(파이프라인이 커밋을 고른 브랜치). 없으면 대상 설정의 base_branch."""
     copy = workdir / "repo"
     branch = f"dast/fix-{fix['finding_id'].lower()}-{run_id[:8]}"
     title = f"fix(security): {fix['context']['sast'].get('title') or fix['finding_id']} 수정"
@@ -249,12 +254,14 @@ def create_pr(fix: dict, repo: RepoDefinition, workdir: Path, run_id: str) -> di
         for step in steps:
             if _remote_git(*step, cwd=clone).returncode:
                 raise RuntimeError(f"PR 준비 중 실패했습니다: git {step[0]}")
+        # 원격에 올라간 커밋(40자리). 파이프라인이 이 커밋으로 다시 빌드·점검한다(작업 사본의 커밋과 다르다).
+        pushed = _git(clone, "rev-parse", "HEAD").strip()
     request = urllib.request.Request(
         f"https://api.github.com/repos/{owner}/{name}/pulls", method="POST",
-        data=json.dumps({"title": title, "head": branch, "base": repo.base_branch, "body": body}).encode(),
+        data=json.dumps({"title": title, "head": branch, "base": base or repo.base_branch, "body": body}).encode(),
         headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json",
                  "X-GitHub-Api-Version": "2022-11-28"})
     with urllib.request.urlopen(request, timeout=30) as response:
         data = json.load(response)
     return {"status": "created", "url": data.get("html_url"), "number": data.get("number"),
-            "branch": branch, "commit": commit, "title": title}
+            "branch": branch, "commit": pushed[:7], "commit_sha": pushed, "title": title}

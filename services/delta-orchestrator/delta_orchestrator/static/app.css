@@ -281,3 +281,11 @@ dialog.viewer { width: min(1280px, calc(100vw - 32px)); }
 @media (prefers-reduced-motion: reduce) { .tv-cursor { transition: none; } .tv-ripple, .tv-alert, .tv.flash-bad { animation: none; } }
 .reply { margin-top: 10px; font-size: 12px; border-top: 1px solid var(--line); padding-top: 8px; }
 .reply ul { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 3px; color: var(--muted); }
+/* 조치 루프: 수정 패치, 이전 회차(1차) 결과 접기 */
+.console.diff { height: auto; max-height: 300px; }
+.flow code { font-family: var(--f-mono); font-size: 11px; color: #c9c9d1; overflow-wrap: anywhere; }
+.past { margin-top: 10px; border-top: 1px dashed var(--line); padding-top: 8px; font-size: 12px; }
+.past > summary { cursor: pointer; color: var(--muted); }
+/* 시작 폼: 저장소 주소로 불러온 브랜치·커밋 선택 */
+.startbar select { background: var(--field); font-family: var(--f-mono); font-size: 12px; max-width: min(460px, 100%); }
+.startbar select:disabled { opacity: .6; }

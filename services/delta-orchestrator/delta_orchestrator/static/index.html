@@ -23,8 +23,9 @@
   </header>
 
   <form id="start" class="startbar" hidden>
-    <label>저장소 <input id="run-repo" value="https://github.com/2026-sbh-delta/delta-sample-app" size="46" required></label>
-    <label>커밋 <input id="run-commit" placeholder="40자리 SHA" size="44" pattern="[0-9a-f]{40}" required></label>
+    <label>저장소 <input id="run-repo" value="https://github.com/2026-sbh-delta/delta-sample-app" size="42" required></label>
+    <label>브랜치 <select id="run-branch" aria-label="브랜치" disabled><option>불러오는 중…</option></select></label>
+    <label>커밋 <select id="run-commit" aria-label="커밋" required disabled><option value="">불러오는 중…</option></select></label>
     <label id="run-cutover-label" hidden class="toggle"><input type="checkbox" id="run-cutover"> 검증 뒤 서비스 도메인 전환</label>
     <button class="btn primary" type="submit">실행</button>
     <span id="run-msg" class="hint"></span>

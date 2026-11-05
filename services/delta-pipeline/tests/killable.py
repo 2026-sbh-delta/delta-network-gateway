@@ -58,12 +58,12 @@ def durable(job, fake: FakeJenkins):
 
 
 class RecordingDast(FakeDast):
-    def submit(self, run_id, binding, report):
+    def submit(self, run_id, binding, report, reverify_of=None):
         # 재개 때 같은 ID·같은 입력으로 다시 부르면 DAST 는 같은 점검을 돌려준다(새로 돌지 않음)
         if run_id not in recorded("dast"):
             record("dast", run_id)
         self.bindings.pop(run_id, None)
-        return super().submit(run_id, binding, report)
+        return super().submit(run_id, binding, report, reverify_of)
 
 
 def main():

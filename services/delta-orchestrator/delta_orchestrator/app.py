@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import time
 from pathlib import Path
 from urllib.parse import parse_qs
@@ -23,6 +24,8 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import (FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response,
                                StreamingResponse)
 from fastapi.staticfiles import StaticFiles
+
+from delta_pipeline.model import REPO_PREFIX
 
 from . import live
 from .access import COOKIE, Access, login_page
@@ -151,6 +154,52 @@ async def collect() -> dict:
     }
 
 
+GITHUB_API = "https://api.github.com"
+REPO_RE = re.compile(re.escape(REPO_PREFIX) + r"([A-Za-z0-9._-]+?)(?:\.git)?/?")
+BRANCH_RE = re.compile(r"[A-Za-z0-9._/-]{1,100}")
+_refs_cache: dict[tuple[str, str], tuple[float, dict]] = {}
+
+
+async def git_refs(client: httpx.AsyncClient, repo: str, branch: str | None) -> dict:
+    """시작 화면의 브랜치·커밋 선택지. 허용된 조직의 저장소만, GitHub 공개 API 로 읽는다(쓰기 없음).
+
+    같은 질의는 30초 동안 다시 묻지 않는다(비인증 호출은 IP 당 시간 60회 제한)."""
+    match = REPO_RE.fullmatch(repo.strip())
+    if not match or (branch is not None and (not BRANCH_RE.fullmatch(branch) or ".." in branch)):
+        raise HTTPException(400, f"{REPO_PREFIX} 아래 저장소 주소만 받습니다")
+    name = match.group(1)
+    key = (name, branch or "")
+    cached = _refs_cache.get(key)
+    if cached and time.monotonic() - cached[0] < 30:
+        return cached[1]
+    base = f"{GITHUB_API}/repos/{REPO_PREFIX.rstrip('/').rsplit('/', 1)[-1]}/{name}"
+    headers = {"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"}
+    try:
+        info, branches = await asyncio.gather(client.get(base, headers=headers, timeout=8),
+                                              client.get(base + "/branches?per_page=50", headers=headers, timeout=8))
+        if info.status_code == 404:
+            raise HTTPException(404, "저장소를 찾지 못했습니다")
+        info.raise_for_status()
+        branches.raise_for_status()
+        default = info.json().get("default_branch") or "main"
+        names = [b["name"] for b in branches.json()]
+        chosen = branch if branch in names else default
+        commits = await client.get(base + "/commits", params={"sha": chosen, "per_page": 15}, headers=headers, timeout=8)
+        commits.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(502, f"GitHub 조회 실패(HTTP {exc.response.status_code})") from None
+    except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
+        raise HTTPException(502, f"GitHub 조회 실패({type(exc).__name__})") from None
+    result = {"repo": f"{REPO_PREFIX}{name}", "default_branch": default, "branch": chosen,
+              # 최근 커밋이 있는 브랜치부터 보이게 기본 브랜치를 맨 앞에 둔다
+              "branches": sorted(names, key=lambda n: (n != default, n)),
+              "commits": [{"sha": c["sha"], "message": (c["commit"]["message"] or "").split("\n", 1)[0][:120],
+                           "author": (c["commit"].get("author") or {}).get("name", "")[:60],
+                           "date": (c["commit"].get("author") or {}).get("date")} for c in commits.json()]}
+    _refs_cache[key] = (time.monotonic(), result)
+    return result
+
+
 def create_app(pipelines: Pipelines | None = None) -> FastAPI:
     access = Access.from_env()
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
@@ -226,16 +275,24 @@ def create_app(pipelines: Pipelines | None = None) -> FastAPI:
             raise HTTPException(400, "JSON 객체가 필요합니다")
         return body
 
+    @app.get("/api/git/refs")
+    async def refs(repo: str, branch: str | None = None):
+        async with httpx.AsyncClient() as client:
+            return await git_refs(client, repo, branch)
+
     @app.post("/api/pipeline/runs", status_code=202)
     async def start_run(request: Request):
         body = await json_body(request)
         repo, commit, cutover = body.get("repo"), body.get("commit"), body.get("cutover", False)
+        branch = body.get("branch") or ""
         if not isinstance(repo, str) or not isinstance(commit, str) or not isinstance(cutover, bool):
             raise HTTPException(400, "repo와 commit(40자리 SHA)이 필요합니다(cutover는 true/false)")
+        if not isinstance(branch, str) or (branch and (not BRANCH_RE.fullmatch(branch) or ".." in branch)):
+            raise HTTPException(400, "브랜치 이름 형식이 아닙니다")
         if cutover and not (os.environ.get("DELTA_CUTOVER") and os.environ.get("CLOUDFLARE_API_TOKEN")):
             raise HTTPException(400, "서비스 도메인 전환 설정(대상 레코드·운영 진입점)이 아직 없습니다")
         try:
-            return {"run_id": need_pipelines().start(repo, commit, cutover=cutover)}
+            return {"run_id": need_pipelines().start(repo, commit, cutover=cutover, branch=branch)}
         except RuntimeError as exc:
             raise HTTPException(409, str(exc))
 

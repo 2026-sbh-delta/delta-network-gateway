@@ -66,11 +66,11 @@ class Pipelines:
     def running(self) -> bool:
         return self._thread is not None and self._thread.is_alive()
 
-    def start(self, repo: str, commit: str, *, cutover: bool = False) -> str:
+    def start(self, repo: str, commit: str, *, cutover: bool = False, branch: str = "") -> str:
         with self._lock:
             if self.running():
                 raise RuntimeError("이미 실행 중인 파이프라인이 있습니다(스테이징은 하나뿐)")
-            return self._launch(Options(repo, commit, cutover=cutover))
+            return self._launch(Options(repo, commit, cutover=cutover, branch=branch))
 
     def answer(self, run_id: str, value: str) -> bool:
         return bool(self.run and self.run.run_id == run_id and self.run.answer(value))
