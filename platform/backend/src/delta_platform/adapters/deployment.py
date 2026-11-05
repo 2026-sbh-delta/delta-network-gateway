@@ -29,6 +29,8 @@ def deployment_settings(settings):
 
 
 class DeploymentRunner(JenkinsRunner):
+    execution_timeout = 3900
+
     def __init__(self, settings, **kwargs):
         self.deployment_config = settings
         super().__init__(deployment_settings(settings), ecr=object(), **kwargs)

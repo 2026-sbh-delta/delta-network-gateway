@@ -10,6 +10,24 @@ spec.loader.exec_module(module)
 
 
 class OnpremRuntimeMergeTest(unittest.TestCase):
+    def test_deployment_sibling_is_bounded_and_preserves_other_components(self):
+        base = {
+            "app_env": {
+                "PLATFORM_PASSWORD_HASH": "unchanged",
+                "PLATFORM_ONPREM_SANDBOX_TOKEN": "keep",
+            }
+        }
+        extra = {key: "configured" for key in module.DEPLOYMENT_KEYS}
+        result = module.merge_component(base, extra, module.DEPLOYMENT_KEYS)
+        self.assertEqual(result["app_env"]["PLATFORM_PASSWORD_HASH"], "unchanged")
+        self.assertEqual(result["app_env"]["PLATFORM_ONPREM_SANDBOX_TOKEN"], "keep")
+        with self.assertRaises(ValueError):
+            module.merge_component(
+                base,
+                {**extra, "PLATFORM_PASSWORD_HASH": "replace"},
+                module.DEPLOYMENT_KEYS,
+            )
+
     def test_optional_component_preserves_existing_login_and_database(self):
         base = {
             "db_password": "unchanged",

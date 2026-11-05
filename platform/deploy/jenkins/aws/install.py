@@ -88,6 +88,18 @@ def main():
                 + config["keystore_password"],
             }
         )
+        if config.get("deployment_password"):
+            for filename in ("deployment-casc.yaml", "deployment.Jenkinsfile"):
+                if not (root / filename).is_file():
+                    raise ValueError("Trusted deployment controller files are missing")
+            env["JENKINS_DEPLOYMENT_PASSWORD"] = config["deployment_password"]
+            command += [
+                "--volume",
+                str(root / "deployment-casc.yaml") + ":/opt/delta/casc.yaml:ro",
+                "--volume",
+                str(root / "deployment.Jenkinsfile")
+                + ":/opt/delta/workloads/Jenkinsfile:ro",
+            ]
         command += [
             "--memory",
             "1536m",

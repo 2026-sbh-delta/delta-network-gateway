@@ -38,6 +38,13 @@ def profile_for(data, config):
         or choice["mode"] not in profile["modes"]
         or data["target"]["cloud"] not in profile["clouds"]
         or len(data["components"]) != 2
+        or profile.get("server_mode", "prepared") not in {"create", "prepared"}
+        or (
+            profile.get("server_mode") == "create"
+            and (
+                choice["mode"] != "new" or data["target"]["cloud"] not in {"aws", "gcp"}
+            )
+        )
     ):
         raise ValueError("Database profile changed or unavailable")
     return profile
@@ -52,6 +59,7 @@ def connect(value, *, autocommit=False):
     try:
         conn = psycopg.connect(
             host=value["host"],
+            **({"hostaddr": value["hostaddr"]} if value.get("hostaddr") else {}),
             port=int(value.get("port", 5432)),
             dbname=value["dbname"],
             user=value["username"],
@@ -67,15 +75,36 @@ def connect(value, *, autocommit=False):
     return conn, temp
 
 
+def read_source(profile, key, client):
+    if profile.get("secret_provider", "aws") == "gcp":
+        credentials, _ = google.auth.default(
+            scopes=["https://www.googleapis.com/auth/cloud-platform"]
+        )
+        session = AuthorizedSession(credentials)
+        response = session.get(
+            "https://secretmanager.googleapis.com/v1/"
+            + profile[key]
+            + "/versions/latest:access",
+            timeout=20,
+        )
+        response.raise_for_status()
+        value = json.loads(
+            base64.b64decode(response.json()["payload"]["data"], validate=True)
+        )
+    else:
+        value = json.loads(
+            client.get_secret_value(SecretId=profile[key])["SecretString"]
+        )
+    return {**value, **profile.get("connection", {})}
+
+
 def prepare(data, profile, *, client=None):
-    """Create only a dedicated logical DB/role; never modify an existing app's schema."""
+    """Prepare an app DB after server provisioning, or on an approved prepared server."""
     client = client or boto3.client("secretsmanager", region_name="ap-northeast-2")
     secret_key = (
         "admin_secret_id" if data["database"]["mode"] == "new" else "app_secret_id"
     )
-    source = json.loads(
-        client.get_secret_value(SecretId=profile[secret_key])["SecretString"]
-    )
+    source = read_source(profile, secret_key, client)
     environment = str(UUID(data["environment_id"]))
     name = "delta-platform/customer-db/" + environment
     tags = {
@@ -89,6 +118,10 @@ def prepare(data, profile, *, client=None):
         if {t["Key"]: t["Value"] for t in metadata.get("Tags", [])} != tags:
             raise ValueError("Database secret ownership mismatch")
         value = json.loads(client.get_secret_value(SecretId=name)["SecretString"])
+        if value["host"] != source["host"] or value.get("port", 5432) != source.get(
+            "port", 5432
+        ):
+            raise ValueError("Existing app database belongs to a different server")
     except client.exceptions.ResourceNotFoundException:
         value = dict(source)
         if data["database"]["mode"] == "new":

@@ -62,6 +62,12 @@ def database_catalog(settings):
         ids = set()
         for item in items:
             choice = DatabaseChoice(profile_id=item["id"], mode=item["modes"][0])
+            server_mode = item.get("server_mode", "prepared")
+            if server_mode not in {"create", "prepared"} or (
+                server_mode == "create"
+                and (item["modes"] != ["new"] or not set(item["clouds"]) <= {"aws", "gcp"})
+            ):
+                raise ValueError()
             if choice.profile_id in ids or not item["revision"] or item["engine"] != "postgres":
                 raise ValueError()
             if not set(item["clouds"]) <= {"aws", "gcp", "onprem"} or not set(item["modes"]) <= {
@@ -72,7 +78,12 @@ def database_catalog(settings):
             ids.add(choice.profile_id)
             # The catalog is public identity, never a secret or a connection string.
             result.append(
-                {k: item[k] for k in ("id", "label", "engine", "revision", "clouds", "modes")}
+                {
+                    **{
+                        k: item[k] for k in ("id", "label", "engine", "revision", "clouds", "modes")
+                    },
+                    "server_mode": server_mode,
+                }
             )
         return {"items": result}
     except (ValueError, TypeError, KeyError, IndexError):

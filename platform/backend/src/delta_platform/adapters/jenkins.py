@@ -77,6 +77,8 @@ def jenkins_target(settings):
 
 
 class JenkinsRunner:
+    execution_timeout = 2100
+
     def __init__(self, settings, *, transport=None, ecr=None, sleep=time.sleep):
         self.target = jenkins_target(settings)
         self.auth = (settings.jenkins_user, settings.jenkins_token.get_secret_value())
@@ -230,7 +232,7 @@ class JenkinsRunner:
                     external = "jenkins:queue:" + match[1]
             store.attach_build(run_id, token, external)
         prepared = store.prepare_submission(run_id, token, parameters)
-        deadline = datetime.fromisoformat(prepared["prepared_at"]).timestamp() + 2100
+        deadline = datetime.fromisoformat(prepared["prepared_at"]).timestamp() + self.execution_timeout
         previous = None
         while datetime.now(UTC).timestamp() < deadline:
             store.heartbeat(run_id, token)

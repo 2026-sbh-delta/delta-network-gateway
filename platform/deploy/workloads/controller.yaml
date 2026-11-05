@@ -1,0 +1,85 @@
+jenkins:
+  systemMessage: "Delta 플랫폼 빌드·배포"
+  numExecutors: 0
+  mode: EXCLUSIVE
+  securityRealm:
+    local:
+      allowsSignup: false
+      users:
+        - id: admin
+          password: ${JENKINS_ADMIN_PASSWORD}
+        - id: platform
+          password: ${JENKINS_PLATFORM_PASSWORD}
+        - id: platform-deployer
+          password: ${JENKINS_DEPLOYMENT_PASSWORD}
+  authorizationStrategy:
+    projectMatrix:
+      entries:
+        - user:
+            name: admin
+            permissions: ["Overall/Administer"]
+        - user:
+            name: platform
+            permissions: ["Overall/Read"]
+        - user:
+            name: platform-deployer
+            permissions: ["Overall/Read"]
+  nodes:
+    - permanent:
+        name: image-builder
+        remoteFS: /home/jenkins/agent
+        numExecutors: 1
+        mode: EXCLUSIVE
+        labelString: delta-image-builder
+        launcher:
+          inbound:
+            webSocket: true
+    - permanent:
+        name: deployer
+        remoteFS: /home/deployer/agent
+        numExecutors: 1
+        mode: EXCLUSIVE
+        labelString: delta-deployer
+        launcher:
+          inbound:
+            webSocket: true
+jobs:
+  - script: >
+      pipelineJob('delta-platform-image') {
+        parameters {
+          stringParam('DELTA_RUN_ID', '', '플랫폼 실행 UUID')
+          stringParam('DELTA_SOURCE', '', '공개 GitHub 저장소')
+          stringParam('DELTA_COMMIT', '', '확인한 40자리 커밋')
+          stringParam('DELTA_CONTEXT', '.', '빌드 context')
+          stringParam('DELTA_DOCKERFILE', 'Dockerfile', 'Dockerfile 경로')
+        }
+        definition {
+          cps {
+            script(new File('/opt/delta/Jenkinsfile').text)
+            sandbox(true)
+          }
+        }
+        configure { job ->
+          def props = job.get('properties')[0] ?: job.appendNode('properties'); def auth = props.appendNode('hudson.security.AuthorizationMatrixProperty')
+          auth.appendNode('inheritanceStrategy', [class: 'org.jenkinsci.plugins.matrixauth.inheritance.InheritParentStrategy'])
+          ['Read', 'Build', 'Cancel'].each { action -> auth.appendNode('permission', 'USER:hudson.model.Item.' + action + ':platform') }
+        }
+      }
+  - script: >
+      pipelineJob('delta-platform-deploy') {
+        parameters {
+          stringParam('DELTA_RUN_ID', '', '플랫폼 실행 UUID')
+          stringParam('DELTA_DEPLOYMENT', '', '승인한 배포 JSON (base64)')
+        }
+        definition {
+          cps {
+            script(new File('/opt/delta/workloads/Jenkinsfile').text)
+            sandbox(true)
+          }
+        }
+        configure { job ->
+          def props = job.get('properties')[0] ?: job.appendNode('properties'); def auth = props.appendNode('hudson.security.AuthorizationMatrixProperty')
+          auth.appendNode('inheritanceStrategy', [class: 'org.jenkinsci.plugins.matrixauth.inheritance.InheritParentStrategy'])
+          ['Read', 'Build', 'Cancel'].each { action -> auth.appendNode('permission', 'USER:hudson.model.Item.' + action + ':platform-deployer') }
+        }
+      }
