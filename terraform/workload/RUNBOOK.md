@@ -1,6 +1,6 @@
 # 공통 워크로드 네트워크 운영
 
-현재 구성은 네트워크 전용이다. 기존 시험 EC2 두 대와 시연 CloudFront의 정리 결과는 [통합 기록](../../docs/ai-dlc/aws-workload-consolidation.md)을 확인한다.
+기본 구성은 네트워크 전용이며 `application_enabled=true`로 공개 ALB와 사설 x86 FE/BE/RDS 앱 기반을 추가할 수 있다. 기존 시험 EC2 두 대와 시연 CloudFront의 정리 결과는 [통합 기록](../../docs/ai-dlc/aws-workload-consolidation.md), 새 앱의 실제 상태는 [앱 기록](../../docs/ai-dlc/aws-sample-app.md)을 확인한다.
 
 ## Plan과 계정 확인
 
@@ -24,13 +24,13 @@ aws ec2 describe-transit-gateway-attachments --profile sbh-delta-workload --regi
   --transit-gateway-attachment-ids tgw-attach-0cd5f3d3c73ee7643
 ```
 
-공통 VPC의 전용 서브넷은 두 AZ의 `10.10.0.0/24`, `10.10.1.0/24`, `10.10.2.0/24`, `10.10.3.0/24`다. GCP 목적지 `10.32.1.0/24`의 명시적 TGW 경로를 유지한다. IGW/NAT/인터넷 기본 경로와 공인 주소를 이 root에서 추가하지 않는다.
+공통 VPC의 기존 전용 서브넷은 두 AZ의 `10.10.0.0/24`, `10.10.1.0/24`, `10.10.2.0/24`, `10.10.3.0/24`다. GCP 목적지 `10.32.1.0/24`의 명시적 TGW 경로를 유지한다. 네트워크 전용 모드는 IGW/NAT/인터넷 기본 경로와 공인 주소를 추가하지 않는다. 앱 모드는 신규 public /24 두 개와 DB /24 두 개, ALB/IGW/NAT를 추가하고 선택 AZ의 기존 workload RT에만 NAT default route를 추가한다. 기존 TGW 전용 RT와 새 DB RT에는 인터넷 경로가 없다. 앱 EC2와 RDS에는 공인 주소를 부여하지 않는다.
 
 ## 이후 앱 연결
 
-새 앱은 별도 컴퓨트 구성에서 공통 VPC/워크로드 서브넷과 SG를 참조한다. 빈 네트워크 root만으로 앱이 배포됐다고 판단하지 않는다. 실제 서브넷 사용 현황과 예약 대역을 확인한 뒤 후속 계획을 만든다.
+승인된 Sample App은 이 root의 선택적 `modules/sample-app`에서 공통 네트워크를 참조한다. 비활성화 기본값만으로 앱이 배포됐다고 판단하지 않는다. 실제 서브넷 사용 현황과 예약 대역, state/계정 및 최신 Plan을 확인한다. 실제 활성화 입력은 ignored application.auto.tfvars에 유지한다.
 
-EIC Endpoint는 유지하지만 이 root에 접속할 EC2는 없다. 향후 EC2를 만들 때 실제 ID와 SG를 먼저 확인한 뒤 관리 접속을 설정한다. 종료된 시험 인스턴스 ID나 과거 HTTP 시험 명령을 재사용하지 않는다.
+EIC Endpoint는 유지한다. 네트워크 전용 모드에는 EC2가 없고 앱 모드는 역할별 EC2와 management SG에서 오는 SSH만 추가한다. 접속과 개별 배포/DB 초기화/관측/rollback은 [배포 도구](../../deploy/workload/README.md)를 따른다. 종료된 시험 인스턴스 ID나 과거 HTTP 시험 명령을 재사용하지 않는다.
 
 ## 중앙과 GCP 연결
 

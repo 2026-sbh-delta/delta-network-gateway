@@ -1,5 +1,14 @@
 mock_provider "aws" {
   override_during = plan
+  mock_data "aws_ami" {
+    defaults = { id = "ami-00000000000000001", architecture = "x86_64" }
+  }
+  mock_data "aws_ec2_instance_type" {
+    defaults = { supported_architectures = ["x86_64"] }
+  }
+  mock_resource "aws_db_instance" {
+    defaults = { master_user_secret = [{ secret_arn = "arn:aws:secretsmanager:ap-northeast-2:444455556666:secret:master-000001", kms_key_id = "test", secret_status = "active" }] }
+  }
   mock_data "aws_caller_identity" {
     defaults = { account_id = "444455556666" }
   }
@@ -345,4 +354,46 @@ run "reject_enabled_auto_accept_shared_attachments" {
     }
   }
   expect_failures = [data.aws_ec2_transit_gateway.central]
+}
+
+run "application_disabled_preserves_foundation" {
+  command = plan
+  assert {
+    condition     = output.application == null && length(aws_subnet.private) == 4
+    error_message = "Application resources must be opt-in and leave the existing foundation intact."
+  }
+}
+
+run "application_x86_private_services" {
+  command = plan
+  variables {
+    application_enabled = true
+    application         = { ami_id = "ami-00000000000000001" }
+  }
+  assert {
+    condition     = output.application.instance_architecture == "x86_64" && length(output.application.instances) == 2 && alltrue([for instance in output.application.instances : !instance.public_ip_enabled && instance.instance_type == "t3.small"])
+    error_message = "Both EC2 services must use x86 and private addresses."
+  }
+  assert {
+    condition     = !output.application.database.publicly_accessible && output.application.database.encrypted && output.application.database.instance_class == "db.t3.micro" && !contains(keys(output.application.database), "password")
+    error_message = "RDS must be private, encrypted and x86, with no password output."
+  }
+}
+
+run "reject_application_graviton_database" {
+  command = plan
+  variables {
+    application_enabled = true
+    application         = { ami_id = "ami-00000000000000001", db_instance_class = "db.t4g.micro" }
+  }
+  expect_failures = [var.application]
+}
+
+run "reject_application_https_without_hostname" {
+  command = plan
+  variables {
+    application_enabled = true
+    application         = { ami_id = "ami-00000000000000001", certificate_arn = "arn:aws:acm:ap-northeast-2:444455556666:certificate/test" }
+  }
+  expect_failures = [var.application]
 }

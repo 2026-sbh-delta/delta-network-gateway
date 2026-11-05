@@ -1,0 +1,13 @@
+# Copy to an ignored application.auto.tfvars, confirm the AMI and review plan first.
+application_enabled = true
+application = {
+  ami_id = "REPLACE_WITH_VERIFIED_AL2023_X86_64_AMI"
+  instance_type = "t3.small"
+  db_engine_version = "18.3"
+  db_instance_class = "db.t3.micro"
+  db_allocated_storage = 20
+  public_subnet_cidrs = { apne2-az1 = "10.10.10.0/24", apne2-az2 = "10.10.11.0/24" }
+  db_subnet_cidrs = { apne2-az1 = "10.10.20.0/24", apne2-az2 = "10.10.21.0/24" }
+  # certificate_arn = "arn:aws:acm:ap-northeast-2:ACCOUNT:certificate/ID"
+  # hostname = "notes.example.com"
+}

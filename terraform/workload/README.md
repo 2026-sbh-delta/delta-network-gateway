@@ -1,6 +1,6 @@
 # 공통 AWS 워크로드 네트워크
 
-Client와 Server의 기존 시험 환경을 `10.10.0.0/16` VPC 하나로 통합한 네트워크 전용 root다. EC2와 앱을 생성하지 않는다. 기존 VPC, 두 AZ의 TGW/워크로드 서브넷, Route Table, SG와 EIC Endpoint를 관리한다.
+기본값은 기존 `10.10.0.0/16` 공통 네트워크만 관리하는 root다. `application_enabled=true`를 명시하면 공개 ALB와 NAT, 사설 x86 FE/BE EC2 각 1대와 RDS PostgreSQL을 추가한다. 기존 VPC/네 서브넷/TGW/EIC의 ID와 backend key는 유지한다. [앱 설계와 실제 검증 상태](../../docs/ai-dlc/aws-sample-app.md)를 확인한다.
 
 승인과 실행 결과는 [통합 AI-DLC](../../docs/ai-dlc/aws-workload-consolidation.md)를 따른다. 코드 변경과 실제 Apply 상태는 구분한다.
 
@@ -33,6 +33,8 @@ VPC의 Name 태그는 `vpc_name`으로 지정하며 기본값은 `delta-board-vp
 | remote_cidrs | set(string) | `[]` | 반환 경로가 준비된 원격 사설망의 TGW 목적지 |
 | test_tcp_ports | set(number) | `[8080, 8081]` | 유지하는 워크로드 SG의 원격망 송신 포트 |
 | tags | map(string) | `{}` | 추가 공통 태그 |
+| application_enabled | bool | `false` | 샘플 앱 기반을 명시적으로 생성하는 선택 모드 |
+| application | object | `{}` 내부 기본값 사용 | 앱 세부 설정, 아래 내부 속성 표 참고 |
 
 ### azs 내부 속성
 
@@ -41,6 +43,22 @@ VPC의 Name 태그는 `vpc_name`으로 지정하며 기본값은 `delta-board-vp
 | map key | string | 필수 | `apne2-az1` 같은 물리 AZ ID |
 | tgw_subnet_cidr | string | 필수 | TGW Attachment 전용 /24 |
 | client_subnet_cidr | string | 필수 | 공통 워크로드 전용 /24, 기존 입력명 유지 |
+
+### application 내부 속성
+
+| 속성명 | 타입 | 기본값 | 역할 |
+| --- | --- | --- | --- |
+| public_subnet_cidrs | map(string) | `{apne2-az1="10.10.10.0/24", apne2-az2="10.10.11.0/24"}` | ALB/NAT용 신규 public 서브넷, 기존 두 AZ 키와 일치 |
+| db_subnet_cidrs | map(string) | `{apne2-az1="10.10.20.0/24", apne2-az2="10.10.21.0/24"}` | 인터넷 기본 경로가 없는 DB 전용 서브넷 |
+| ami_id | string | `null` | null이면 공식 AL2023 x86_64 SSM 조회. 실제 배포 입력은 조회한 AMI를 고정 |
+| instance_type | string | `t3.small` | FE/BE 각 EC2의 x86_64 유형 |
+| db_engine_version | string | `18.3` | PostgreSQL 엔진 major.minor. minor 자동 갱신은 끔 |
+| db_instance_class | string | `db.t3.micro` | x86 RDS 인스턴스 유형 |
+| db_allocated_storage | number | `20` | 암호화 gp3 DB 용량 GiB, 정수 20 이상 |
+| certificate_arn | string | `null` | 선택적 서울 ACM 인증서. 지정 시 HTTP redirect와 HTTPS listener |
+| hostname | string | `null` | 인증서에 해당하는 공개 도메인. certificate_arn 사용 시 필수 |
+| node_version | string | `24.19.0` | Linux x64 Node.js 고정 버전 |
+| node_sha256 | string | `14b342e71204f811bde6153be8e04b62aef63c236fef92b55f9c83154b409647` | 해당 Node.js Linux x64 tar.xz의 공식 SHA-256 |
 
 ## 출력 속성
 
@@ -55,6 +73,7 @@ VPC의 Name 태그는 `vpc_name`으로 지정하며 기본값은 `delta-board-vp
 | route_table_ids_by_az_id | AZ별 TGW와 워크로드 Route Table ID |
 | management_endpoint_id | 유지하는 EIC Endpoint ID |
 | central_handoff | 중앙 spoke 등록용 계정/역할/CIDR/Attachment/AZ와 수락 모드, 안정된 `aws_client` 키 |
+| application | 비활성화 시 null, 활성화 시 공개 URL/EC2/DB/secret ARN/S3/로그의 비밀값 없는 배포 인벤토리 |
 
 ## 실행
 
@@ -68,6 +87,10 @@ AWS_PROFILE=sbh-delta-workload terraform -chdir=terraform/workload plan \
 
 기존 backend의 정확한 bucket/key를 확인한다. 새 key로 초기화해 기존 VPC를 중복 생성하지 않는다. 실제 tfvars와 backend는 Git에서 제외한다.
 
-현재 공통 대역은 `10.10.0.0/16`이다. GCP `10.32.1.0/24` 경로를 유지하며 폐기된 Server 대역으로 향하는 경로를 등록하지 않는다. 향후 새 앱은 별도 컴퓨트 구성에서 생성하고 이 root의 네트워크를 참조한다.
+현재 공통 대역은 `10.10.0.0/16`이다. GCP `10.32.1.0/24` 경로를 유지하며 폐기된 Server 대역으로 향하는 경로를 등록하지 않는다. 샘플 앱은 선택적 child module [sample-app](modules/sample-app/README.md)을 사용한다. 앱 기본값은 비활성화이며 실제 배포 입력을 별도로 관리한다.
 
-[운영과 검증](RUNBOOK.md)을 따른다. EIC 접속 대상 EC2는 이 root가 제공하지 않는다. 기존 두 VPC의 ANF 시험은 과거 기록이며 단일 VPC local 통신의 검사 보장을 의미하지 않는다.
+[운영과 검증](RUNBOOK.md)을 따른다. 네트워크 전용 모드에는 EIC 접속 대상 EC2가 없다. 앱 모드는 역할별 EC2를 생성하며 기존 EIC를 관리 경로로 사용한다. 기존 두 VPC의 ANF 시험은 과거 기록이며 단일 VPC local 통신의 검사 보장을 의미하지 않는다.
+
+## 앱 실행과 상태
+
+앱 입력 예시는 [application.tfvars.example](application.tfvars.example), 개별 빌드/DB 초기화/배포/롤백은 [배포 도구](../../deploy/workload/README.md)를 따른다. 비밀번호는 Terraform에서 관리하지 않는다. `application_enabled=false`는 앱 전체 제거 계획을 만들므로 앱 버전 롤백에는 사용하지 않는다.

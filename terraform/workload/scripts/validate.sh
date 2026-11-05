@@ -19,6 +19,7 @@ cp "$module_dir/"*.tf "$validation_dir/"
 cp "$module_dir/.terraform.lock.hcl" "$validation_dir/"
 cp "$module_dir/terraform.tfvars.example" "$validation_dir/"
 cp -R "$module_dir/tests" "$validation_dir/"
+cp -R "$module_dir/modules" "$validation_dir/"
 
 init_args=(-backend=false -input=false -lockfile=readonly -no-color)
 if [[ -d "$module_dir/.terraform/providers" ]]; then
@@ -59,4 +60,10 @@ PY
 if [[ "${DELTA_KEEP_VALIDATION:-0}" == "1" ]]; then
   printf 'Validation artifacts: %s\n' "$validation_dir"
 fi
-exit "$test_exit"
+if [[ "$test_exit" != "0" ]]; then
+  exit "$test_exit"
+fi
+child_dir="$validation_dir/modules/sample-app"
+cp "$module_dir/.terraform.lock.hcl" "$child_dir/"
+"$terraform_bin" -chdir="$child_dir" init "${init_args[@]}"
+"$terraform_bin" -chdir="$child_dir" test -no-color
