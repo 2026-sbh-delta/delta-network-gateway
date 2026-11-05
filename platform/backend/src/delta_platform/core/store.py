@@ -758,8 +758,20 @@ class Store:
             return select_fields(row, RUN_FIELDS), True
 
     def enqueue_sandbox(
-        self, service_id, build_id, key, target, *, security_check_id=None, dast_target=None
+        self,
+        service_id,
+        build_id,
+        key,
+        target,
+        *,
+        security_check_id=None,
+        dast_target=None,
+        backend_build_id=None,
     ):
+        if backend_build_id and (target.get("cloud") != "onprem" or backend_build_id == build_id):
+            raise Problem(
+                "bundle_target_invalid", "온프레미스의 서로 다른 FE·BE 빌드가 필요합니다.", 409
+            )
         kind = "dast_check" if security_check_id else "sandbox_check"
         request_hash = digest(
             {
@@ -770,6 +782,7 @@ class Store:
                     else {}
                 ),
                 **({"security_check_id": str(security_check_id)} if security_check_id else {}),
+                **({"backend_build_id": str(backend_build_id)} if backend_build_id else {}),
             }
         )
         extra = {}
@@ -840,6 +853,54 @@ class Store:
                     "샌드박스에 전달할 빌드 정보를 확인할 수 없습니다.",
                     409,
                 )
+            if backend_build_id:
+                backend = (
+                    conn.execute(
+                        sa.select(runs).where(
+                            runs.c.id == backend_build_id,
+                            runs.c.kind == "image_build",
+                            runs.c.status == "succeeded",
+                        )
+                    )
+                    .mappings()
+                    .first()
+                )
+                project = conn.scalar(
+                    sa.select(services.c.project_id).where(services.c.id == service_id)
+                )
+                backend_project = (
+                    conn.scalar(
+                        sa.select(services.c.project_id).where(
+                            services.c.id == backend["service_id"]
+                        )
+                    )
+                    if backend
+                    else None
+                )
+                if (
+                    not backend
+                    or project != backend_project
+                    or backend["resolved_commit_sha"] != build["resolved_commit_sha"]
+                    or backend["input_snapshot"].get("repository_url")
+                    != build["input_snapshot"].get("repository_url")
+                    or backend["result"].get("platform") != "linux/amd64"
+                    or backend["result"].get("commit_sha") != build["resolved_commit_sha"]
+                    or backend["input_snapshot"]["container_port"] != 8080
+                ):
+                    raise Problem(
+                        "bundle_build_mismatch",
+                        "같은 프로젝트·저장소·커밋의 amd64 BE 빌드(8080)가 필요합니다.",
+                        409,
+                    )
+                extra["project_id"] = str(project)
+                extra["backend"] = {
+                    "build_id": str(backend_build_id),
+                    "service_id": str(backend["service_id"]),
+                    "image": backend["result"]["image"],
+                    "image_digest": backend["result"]["image_digest"],
+                    "container_port": 8080,
+                    "healthcheck_path": backend["input_snapshot"]["healthcheck_path"],
+                }
             if security_check_id:
                 security = (
                     conn.execute(
@@ -865,6 +926,7 @@ class Store:
                         "dast_source_mismatch", "같은 빌드의 완료된 SAST 검사가 필요합니다.", 409
                     )
                 extra = {
+                    **extra,
                     "security_check_id": str(security_check_id),
                     "sast_evidence_sha256": security["result"]["evidence_sha256"],
                     "security_target": security["input_snapshot"]["security_target"],

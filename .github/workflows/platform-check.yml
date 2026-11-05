@@ -13,6 +13,30 @@ permissions:
   contents: read
 
 jobs:
+  auto-instrumentation:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: 2026-sbh-delta/delta-sample-app
+          ref: e29af5449dbccc7e6c9bff11e4cb2f0ce5812ee8
+          path: platform/.runtime/otel-sample
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: '0.10.0'
+          python-version: '3.12'
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+      - name: Unchanged Node.js app, ON/OFF and Collector failure
+        run: |
+          python3 platform/deploy/instrumentation/prepare-agent.py --output platform/.runtime/otel-agent
+          uv run --project platform/deploy --frozen --with opentelemetry-proto==1.45.2 python platform/deploy/instrumentation/verify-node.py --app-dir platform/.runtime/otel-sample --agent-dir platform/.runtime/otel-agent --node "$(command -v node)" --output platform/.runtime/otel-proof.json
   test:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -93,9 +117,9 @@ jobs:
         run: uv run --with-editable ../../services/delta-ai pytest -q tests/integration_assessments.py
       - name: Deployment boundaries
         run: |
-          python3 -m unittest discover -s platform/deploy/tests -v
-          uv run --project platform/backend ruff check platform/deploy/scripts platform/deploy/tests platform/deploy/builds platform/deploy/sandbox platform/deploy/sandbox-gcp platform/deploy/jenkins platform/deploy/sast/aws platform/deploy/dast platform/deploy/onprem
-          uv run --project platform/backend ruff format --check platform/deploy/scripts platform/deploy/tests platform/deploy/builds platform/deploy/sandbox platform/deploy/sandbox-gcp platform/deploy/jenkins platform/deploy/sast/aws platform/deploy/dast platform/deploy/onprem
+          uv run --project platform/deploy --frozen python -m unittest discover -s platform/deploy/tests -v
+          uv run --project platform/backend ruff check platform/deploy/scripts platform/deploy/tests platform/deploy/builds platform/deploy/sandbox platform/deploy/sandbox-gcp platform/deploy/jenkins platform/deploy/sast/aws platform/deploy/dast platform/deploy/onprem platform/deploy/instrumentation
+          uv run --project platform/backend ruff format --check platform/deploy/scripts platform/deploy/tests platform/deploy/builds platform/deploy/sandbox platform/deploy/sandbox-gcp platform/deploy/jenkins platform/deploy/sast/aws platform/deploy/dast platform/deploy/onprem platform/deploy/instrumentation
       - name: Browser
         working-directory: platform/web
         run: |

@@ -1,0 +1,125 @@
+{
+  "_note": "실계정(11/04 읽기 전용 조회)의 타입·구조·OS·GuardDuty 기능을 본뜬 시험 인벤토리. 계정 ID·실제 주소는 넣지 않는다. target_baseline 은 대상 계획이 기본으로 만드는 값이고, 실제 실행기에서는 적용 뒤 다시 수집한 값으로 바꾼다",
+  "direction": "aws-to-gcp",
+  "service_id": "delta-migration-demo",
+  "services": [
+    {
+      "id": "web",
+      "server": "delta-web",
+      "path": "/",
+      "source_platform": "linux/arm64"
+    },
+    {
+      "id": "api",
+      "server": "delta-api",
+      "path": "/api/hello",
+      "source_platform": "linux/arm64"
+    }
+  ],
+  "databases": [],
+  "mapping": {
+    "region": "asia-northeast3",
+    "source_region": "ap-northeast-2",
+    "subnets": [
+      {
+        "name": "delta-workload-az1-server",
+        "cidr": "10.20.1.0/24",
+        "tier": "private",
+        "zone": "apne2-az1",
+        "origin": "operator"
+      }
+    ],
+    "servers": [
+      {
+        "name": "delta-web",
+        "instance_type": "t4g.small",
+        "os": "amazon_linux",
+        "multi_arch_image": false,
+        "instance_profile": false,
+        "origin": "operator"
+      },
+      {
+        "name": "delta-api",
+        "instance_type": "t4g.medium",
+        "os": "amazon_linux",
+        "multi_arch_image": false,
+        "instance_profile": false,
+        "origin": "operator"
+      }
+    ],
+    "security": {
+      "guardduty_enabled": true,
+      "guardduty_plans": [
+        "RUNTIME_MONITORING",
+        "EBS_MALWARE_PROTECTION"
+      ],
+      "origin": "operator"
+    }
+  },
+  "source_env": {
+    "provider": "aws",
+    "waf": {
+      "enabled": true,
+      "product": "aws_waf",
+      "mode": "block",
+      "rule_groups": [
+        "AWSManagedRulesSQLiRuleSet",
+        "AWSManagedRulesCommonRuleSet",
+        "AWSManagedRulesKnownBadInputsRuleSet"
+      ]
+    },
+    "identity": {
+      "mechanism": "irsa"
+    },
+    "secrets": {
+      "source": "aws_secrets_manager"
+    },
+    "logging": {
+      "central": true,
+      "destination": "cloudwatch"
+    },
+    "ingress": {
+      "tls": true
+    },
+    "network": {
+      "gateway": "haproxy",
+      "inspected": true,
+      "l7_visible": true
+    }
+  },
+  "source_edge": {
+    "_note": "출발 입구 WAF 대역이 막는 범주. 위 rule_groups 와 같은 범주다",
+    "waf_capabilities": [
+      "cve",
+      "java",
+      "lfi",
+      "rfi",
+      "sqli",
+      "xss"
+    ]
+  },
+  "target_baseline": {
+    "provider": "gcp",
+    "waf": {
+      "enabled": false
+    },
+    "identity": {
+      "mechanism": "workload_identity"
+    },
+    "secrets": {
+      "source": "gcp_secret_manager"
+    },
+    "logging": {
+      "central": true,
+      "destination": "cloud_logging"
+    },
+    "ingress": {
+      "tls": true
+    },
+    "network": {
+      "gateway": "haproxy",
+      "inspected": true,
+      "l7_visible": true
+    }
+  }
+}

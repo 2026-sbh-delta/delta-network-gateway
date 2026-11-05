@@ -22,9 +22,13 @@ from delta_ai.contract import (
 from delta_ai.findings import check_state, finding_id
 from delta_ai.waf_mapping import (
     AWS_GROUP_PARTIAL_NOTES,
+    aws_group_capabilities,
+    aws_group_names,
+    aws_waf_rules,
     cloud_armor_capabilities,
     cloud_armor_rule_names,
     cloud_armor_rules,
+    cloud_armor_source_capabilities,
     source_capabilities,
 )
 
@@ -41,7 +45,9 @@ OPTIONAL_RULES: dict[str, tuple[str, str]] = {  # 입력이 있을 때만 점검
     "PAR-NET-002": ("network", "네트워크 격리 실측"),
     "PAR-NET-003": ("network", "방화벽 관리 경로 노출"),
 }
-NATIVE_IDENTITY = {"aws": {"irsa", "pod_identity"}, "gcp": {"workload_identity"}, "onprem": {"none"}}
+# 쿠버네티스 워크로드 방식과 VM 방식(인스턴스 프로파일·VM 서비스 계정)을 둘 다 받는다
+NATIVE_IDENTITY = {"aws": {"irsa", "pod_identity", "instance_profile"}, "gcp": {"workload_identity", "service_account"},
+                   "onprem": {"none"}}
 SELF = "(self)"
 MANAGEMENT_PORTS = {"22", "ssh", "80", "http", "www", "443", "https", "8443"}
 NATIVE_SECRETS = {
@@ -73,23 +79,33 @@ def _replace(path: str, value: object) -> SpecOp:
     return SpecOp(op="replace", path=path, value=value)
 
 
+def _target_capabilities(target: EnvInventory, rule_groups: tuple[str, ...]) -> frozenset[str]:
+    return aws_group_capabilities(rule_groups) if target.provider == "aws" else cloud_armor_capabilities(rule_groups)
+
+
 def _waf_fix(source: EnvInventory, target: EnvInventory, missing: frozenset[str]) -> tuple[list[SpecOp], tuple[WafRule, ...]]:
-    """Cloud Armor 로 옮길 수 있을 때만 수정안을 만든다. 다른 대상은 사람이 정한다."""
-    if target.provider != "gcp" or source.provider != "aws" or not missing:
+    """AWS → GCP 는 Cloud Armor, GCP → AWS 는 AWS WAF 관리형 그룹으로 수정안을 만든다. 다른 조합은 사람이 정한다."""
+    if not missing or (source.provider, target.provider) not in (("aws", "gcp"), ("gcp", "aws")):
         return [], ()
-    current = cloud_armor_capabilities(target.waf.rule_groups or ())
+    current = _target_capabilities(target, target.waf.rule_groups or ())
+    if target.provider == "aws":
+        ops = [_replace("/waf/enabled", True), _replace("/waf/product", "aws_waf"), _replace("/waf/mode", "block"),
+               _replace("/waf/rule_groups", list(aws_group_names(current | missing)))]
+        return ops, aws_waf_rules(missing)
     ops = [_replace("/waf/enabled", True), _replace("/waf/product", "cloud_armor"), _replace("/waf/mode", "block"),
            _replace("/waf/rule_groups", list(cloud_armor_rule_names(current | missing)))]
     return ops, cloud_armor_rules(missing)
 
 
 def _source_coverage(source: EnvInventory) -> tuple[frozenset[str], tuple[str, ...]]:
-    return source_capabilities(source.waf.rule_groups or ())
+    groups = source.waf.rule_groups or ()
+    return cloud_armor_source_capabilities(groups) if source.provider == "gcp" else source_capabilities(groups)
 
 
 def _partial_notes(source: EnvInventory) -> list[Finding]:
     return [_finding("PAR-WAF-001", status="unknown", severity="low", evidence=note, location={"rule_group": group})
-            for group, note in AWS_GROUP_PARTIAL_NOTES.items() if group in (source.waf.rule_groups or ())]
+            for group, note in AWS_GROUP_PARTIAL_NOTES.items()
+            if source.provider == "aws" and group in (source.waf.rule_groups or ())]
 
 
 def _check_waf(source: EnvInventory, target: EnvInventory) -> list[Finding]:
@@ -121,7 +137,7 @@ def _check_waf(source: EnvInventory, target: EnvInventory) -> list[Finding]:
         findings.append(_finding("PAR-WAF-001", status="unknown", severity="high",
                                  evidence="대상 환경 WAF 규칙 그룹을 모른다", location={"field": "/waf/rule_groups"}))
         return findings
-    missing = capabilities - cloud_armor_capabilities(target.waf.rule_groups)
+    missing = capabilities - _target_capabilities(target, target.waf.rule_groups)
     if missing:
         ops, rules = _waf_fix(source, target, missing)
         findings.append(_finding("PAR-WAF-001", status="fail", severity="high", ops=ops, waf_rules=rules,

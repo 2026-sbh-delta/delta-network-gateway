@@ -1,10 +1,14 @@
-"""Render additive namespaced objects. Applying is an explicit separate step."""
+"""Render operator-owned YAML with registered source addresses, without applying it."""
 
 import argparse
 import ipaddress
 import json
+from pathlib import Path
+
+import yaml
 
 NAMESPACE = "delta-platform-sandbox"
+ROOT = Path(__file__).parent / "manifests"
 
 
 def resources(sources, node_port=32080):
@@ -20,146 +24,34 @@ def resources(sources, node_port=32080):
             or ip.is_unspecified
         ):
             raise ValueError("Only registered private IPv4 sources")
-
-    def obj(kind, name, *, api="v1", **fields):
-        return {
-            "apiVersion": api,
-            "kind": kind,
-            "metadata": {
-                "name": name,
-                "namespace": NAMESPACE,
-                "labels": {"app.kubernetes.io/managed-by": "delta-platform"},
-            },
-            **fields,
-        }
-
-    items = [
-        {
-            "apiVersion": "v1",
-            "kind": "Namespace",
-            "metadata": {
-                "name": NAMESPACE,
-                "labels": {
-                    "app.kubernetes.io/managed-by": "delta-platform",
-                    "pod-security.kubernetes.io/enforce": "restricted",
-                    "pod-security.kubernetes.io/enforce-version": "v1.36",
-                },
-            },
-        }
-    ]
-    for name in ("runtime", "controller", "scanner"):
-        items.append(obj("ServiceAccount", name, automountServiceAccountToken=False))
-    for name, rules in (
-        (
-            "controller",
-            [
+    items = []
+    for file in (ROOT / "base/sandbox.yaml", ROOT / "sandbox/network.yaml"):
+        items.extend(yaml.safe_load_all(file.read_text()))
+    for item in items:
+        if item["kind"] == "NetworkPolicy" and item["metadata"]["name"] == "sandbox":
+            item["spec"]["ingress"] = [
                 {
-                    "apiGroups": [""],
-                    "resources": ["pods", "secrets"],
-                    "verbs": ["get", "create", "delete"],
-                },
-                {
-                    "apiGroups": [""],
-                    "resources": ["services"],
-                    "resourceNames": ["sandbox"],
-                    "verbs": ["get"],
-                },
-            ],
-        ),
-        (
-            "scanner",
-            [
-                {"apiGroups": [""], "resources": ["pods"], "verbs": ["get"]},
-                {
-                    "apiGroups": [""],
-                    "resources": ["services"],
-                    "resourceNames": ["sandbox"],
-                    "verbs": ["get"],
-                },
-            ],
-        ),
-    ):
-        items.append(obj("Role", name, api="rbac.authorization.k8s.io/v1", rules=rules))
-        items.append(
-            obj(
-                "RoleBinding",
-                name,
-                api="rbac.authorization.k8s.io/v1",
-                roleRef={
-                    "apiGroup": "rbac.authorization.k8s.io",
-                    "kind": "Role",
-                    "name": name,
-                },
-                subjects=[
-                    {"kind": "ServiceAccount", "name": name, "namespace": NAMESPACE}
-                ],
-            )
-        )
-    items += [
-        obj(
-            "ResourceQuota",
-            "sandbox",
-            spec={
-                "hard": {
-                    "pods": "1",
-                    "secrets": "1",
-                    "persistentvolumeclaims": "0",
-                    "services": "1",
-                    "requests.cpu": "500m",
-                    "limits.cpu": "500m",
-                    "requests.memory": "256Mi",
-                    "limits.memory": "256Mi",
-                    "requests.ephemeral-storage": "256Mi",
-                    "limits.ephemeral-storage": "256Mi",
+                    "from": [{"ipBlock": {"cidr": s + "/32"}} for s in sources],
+                    "ports": [{"protocol": "TCP", "port": "http"}],
                 }
-            },
-        ),
-        obj(
-            "NetworkPolicy",
-            "sandbox",
-            api="networking.k8s.io/v1",
-            spec={
-                "podSelector": {},
-                "policyTypes": ["Ingress", "Egress"],
-                "egress": [],
-                "ingress": [
-                    {
-                        "from": [
-                            {"ipBlock": {"cidr": source + "/32"}} for source in sources
-                        ]
-                    }
-                ],
-            },
-        ),
-        obj(
-            "Service",
-            "sandbox",
-            spec={
-                "type": "NodePort",
-                "externalTrafficPolicy": "Local",
-                "selector": {"app": "delta-platform-sandbox"},
-                "ports": [
-                    {
-                        "name": "http",
-                        "port": 80,
-                        "targetPort": "http",
-                        "nodePort": node_port,
-                    }
-                ],
-            },
-        ),
-    ]
+            ]
+        if item["kind"] == "Service" and item["metadata"]["name"] == "sandbox":
+            item["spec"]["ports"][0]["nodePort"] = node_port
     return {"apiVersion": "v1", "kind": "List", "items": items}
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="기존 앱과 분리된 k3s 샌드박스 구성 출력"
-    )
+    parser = argparse.ArgumentParser(description="k3s 샌드박스 YAML 렌더링")
     parser.add_argument("--source", required=True, action="append")
     parser.add_argument("--node-port", type=int, default=32080)
+    parser.add_argument("--yaml", action="store_true")
     args = parser.parse_args()
-    print(json.dumps(resources(args.source, args.node_port), indent=2))
+    result = resources(args.source, args.node_port)
+    print(
+        yaml.safe_dump_all(result["items"], sort_keys=False)
+        if args.yaml
+        else json.dumps(result)
+    )
 
 
 if __name__ == "__main__":

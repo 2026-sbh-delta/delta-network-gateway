@@ -90,6 +90,11 @@ def main():
     ns = json.dumps(manifest["items"][0])
     remote("sudo k3s kubectl apply --dry-run=server -f -", ns)
     remote("sudo k3s kubectl apply -f -", ns)
+    # Quota admission uses persisted limits even during a multi-object dry run.
+    # Increase only our owned namespace quota before admitting the second Service.
+    quota = next(item for item in manifest["items"] if item["kind"] == "ResourceQuota")
+    remote("sudo k3s kubectl apply --dry-run=server -f -", json.dumps(quota))
+    remote("sudo k3s kubectl apply -f -", json.dumps(quota))
     body = json.dumps(manifest)
     remote("sudo k3s kubectl apply --dry-run=server -f -", body)
     save("apply.txt", remote("sudo k3s kubectl apply -f -", body))

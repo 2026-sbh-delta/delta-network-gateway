@@ -3,4 +3,10 @@ name = "delta-platform-deploy"
 version = "0.1.0"
 description = "플랫폼 AWS 배포 도구"
 requires-python = ">=3.12,<3.13"
-dependencies = ["boto3>=1.40,<2", "argon2-cffi>=25.1,<26", "python-dotenv>=1.2,<2"]
+dependencies = [
+    "boto3>=1.40,<2",
+    "argon2-cffi>=25.1,<26",
+    "python-dotenv>=1.2,<2",
+    "pyyaml>=6.0.3,<7",
+    "pydantic>=2.12,<3",
+]

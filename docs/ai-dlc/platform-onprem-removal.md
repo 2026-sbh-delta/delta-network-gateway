@@ -26,7 +26,7 @@
 
 | 확인 | 결과 |
 |---|---|
-| PostgreSQL 기반 백엔드 전체 `uv run --frozen pytest -q` | 208개 통과. 신규 테스트 1개의 예외 문구 단언을 수정한 뒤 해당 파일 9개 재실행 통과. 제품 코드 실패는 없었음 |
+| PostgreSQL 기반 백엔드 전체 `uv run --frozen pytest -q` | #28·#47·#49가 병합된 main과 통합한 뒤 최종 215개 통과, live 1개 제외. 기존 샌드박스와 FE·BE 묶음 실행을 포함 |
 | `tests/test_runtime_removal.py` | 최종 10개 통과. API 확인·멱등성·이력, 다른 서비스/재생성 UID 보호, 부분 삭제 재시도, 종료 대기, 만료된 Worker 차단, 진행 작업/승인 계획 차단, 대상 변조·PVC 연결 앱 삭제 거부 확인 |
 | 웹 `npm run build`, Prettier, Python Ruff | 통과 |
 | Playwright 삭제·환경 화면 15개 | 이름·취소·대기·실패 재시도·완료·새로고침·오래된 확인 대상·모바일·미연결 표시 및 기존 프로젝트 삭제 회귀 통과 |
@@ -46,3 +46,7 @@
 ## Git 게시 상태
 
 2026-11-05 사용자 승인 후 `feat(platform): add on-premise application removal`을 로컬 커밋했다. `git push`는 반복해서 GitHub의 `fatal error in commit_refs`로 거부됐고, GitHub API의 브랜치 생성도 HTTP 422 `Reference update failed`로 실패했다. 다른 브랜치 이름으로도 같은 결과였으며 저장소의 쓰기 권한은 확인했다. 원인은 미확정이다. PR 생성은 원격 브랜치 부재로 실패해 CI와 병합은 아직 진행하지 못했다. 원격 main과 기존 PR은 변경하지 않았다.
+
+후속: 사용자의 PR 순서별 병합 지시로 #28 → #47 → #49를 각각 `4556c08`, `f23de04`, `fbaf4af`에 병합했다. #49는 #47의 후속이므로 기준 브랜치를 main으로 변경했다. 세 PR의 CI는 모두 통과했고 초안 #39는 유지했다. 이후 앱 삭제 브랜치 `dd7824d`의 push 재시도도 성공했다. 새 main을 통합하면서 API의 두 입력 타입 import와 문서 2개의 충돌을 양쪽 기능을 보존하는 방식으로 해결했다. 병합 자체는 운영 배포나 실제 앱 삭제를 실행하지 않는다.
+
+통합 검증: 백엔드 전체 `uv run --frozen pytest -q` 215개 통과·live 1개 제외, `npm run build` TypeScript/웹 빌드 통과, 백엔드 Ruff 검사/형식과 `git diff --check` 통과. 추가 실환경 변경은 하지 않았다.
