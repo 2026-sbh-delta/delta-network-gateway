@@ -43,8 +43,6 @@ spec:
           value: onprem
         - name: APP_VERSION
           value: RELEASE_COMMIT
-        - name: OTEL_SERVICE_NAME
-          value: delta-notes-frontend
         - name: API_HOST
           value: backend
         - name: API_PORT
@@ -145,8 +143,6 @@ spec:
           value: onprem
         - name: APP_VERSION
           value: RELEASE_COMMIT
-        - name: OTEL_SERVICE_NAME
-          value: delta-notes-backend
         securityContext:
           allowPrivilegeEscalation: false
           readOnlyRootFilesystem: true

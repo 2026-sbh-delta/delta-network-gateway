@@ -34,6 +34,8 @@ def main():
     auth_group.add_argument("--profile", help="ECR pull 권한만 가진 AWS 프로필")
     p.add_argument("--region", default="ap-northeast-2")
     p.add_argument("--preview", action="store_true")
+    p.add_argument("--instrumentation", choices=("off", "nodejs"), default="off")
+    p.add_argument("--collector-endpoint")
     p.add_argument(
         "--postgres-image",
         help="선택: PostgreSQL 16 Alpine의 고정 digest. 최초 복원 전 BE를 중지한다.",
@@ -46,7 +48,10 @@ def main():
     ):
         raise ValueError("Pinned PostgreSQL image required")
     objects = release_renderer.render(
-        json.loads(a.result.read_text()), preview=a.preview
+        json.loads(a.result.read_text()),
+        preview=a.preview,
+        instrumentation=a.instrumentation,
+        collector_endpoint=a.collector_endpoint,
     )
     ssh = [
         "ssh",

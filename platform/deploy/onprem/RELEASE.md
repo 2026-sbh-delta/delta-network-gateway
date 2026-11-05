@@ -1,6 +1,6 @@
 # 온프레미스 발표 앱 실행
 
-기존 `demo`와 별도의 `delta-notes` 공간을 사용한다. 현재 샘플 앱은 메모리 저장 FE·BE이며 DB와 직접 OTel 계측 코드는 없다. 수정 버전 후보는 중지 상태다. 임시 검사는 `delta-platform-sandbox`에서 한 번에 하나만 실행한다. VM·VPN·팀의 SAST/DAST 서버·S3 state는 이 도구가 관리하지 않는다.
+기존 `demo`와 별도의 `delta-notes` 공간을 사용한다. 현재 샘플 앱은 메모리 저장 FE·BE이며 DB와 직접 OTel 계측 코드는 없다. 원본 이미지 후보는 실행 중이고 DB는 중지 상태다. 임시 검사는 `delta-platform-sandbox`에서 한 번에 하나만 실행한다. VM·VPN·팀의 SAST/DAST 서버·S3 state는 이 도구가 관리하지 않는다.
 
 ## 구성 파일과 책임
 
@@ -84,9 +84,11 @@ uv run --project platform/deploy python platform/deploy/onprem/restore-db.py \
 
 ## 관측과 접속
 
-앱 계측은 Oneport처럼 플랫폼이 배포 시 지원되는 런타임에 자동 계측 라이브러리를 연결하는 방향으로 전환한다. 자동 주입은 아직 구현하지 않았다. 현재 샘플 앱에 `OTEL_EXPORTER_OTLP_ENDPOINT`만 설정해도 trace가 생성되는 것은 아니다. 호스트 지표는 기존 native Collector 설정을 사용한다. 인증된 AWS gateway와 실제 왕복 경로 확인 전에는 중앙 전송 성공·대시보드 표시 완료로 기록하지 않는다. 설정은 [관측 문서](../../observability/onprem/README.md)를 따른다. 앱과 호스트 수집 인증을 공유하지 않는다.
+앱 계측은 Oneport처럼 플랫폼이 배포 시 자동 계측 라이브러리를 연결한다. Node.js 24의 실제 FE→BE trace와 HTTP 지표 수신을 확인했으며 소스·Dockerfile·앱 이미지 digest는 유지했다. [자동 계측 안내](../instrumentation/README.md)의 `--instrumentation nodejs`와 `--collector-endpoint`로 선택한다. endpoint 환경변수만 넣는 구성과는 다르다. 호스트 지표는 기존 native Collector가 담당한다.
 
-예약된 후보 주소는 사설 `10.40.0.10:32081`이며 현재 앱은 중지되어 응답하지 않는다. 원복된 이미지로 다시 배포한 뒤 Tailscale에 연결된 개발 PC에서 아래 SSH 터널로 확인할 수 있다.
+중앙 Collector의 환경값·인증서와 사설 경로가 준비되지 않아 현재 계측은 OFF이며 검증용 Collector는 제거했다. 인증된 AWS gateway로 전송·조회하기 전에는 중앙 저장·대시보드 완료로 기록하지 않는다. 설정은 [관측 문서](../../observability/onprem/README.md)를 따른다. 앱과 호스트 수집 인증을 공유하지 않는다.
+
+후보 주소는 사설 `10.40.0.10:32081`이며 원복된 FE·BE 이미지로 응답한다. Tailscale에 연결된 개발 PC에서 아래 SSH 터널로 확인할 수 있다. 메모리는 Pod 재시작 시 초기화되며 DB 이전 완료를 의미하지 않는다.
 
 ```bash
 ssh -i ~/.ssh/teammate_vm -N -L 18081:10.40.0.10:32081 onprem@delta-onprem.tail6bd796.ts.net
