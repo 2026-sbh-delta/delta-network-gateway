@@ -50,7 +50,8 @@ services:
       API_PORT: "8080"
       API_PROTOCOL: http
       API_ENDPOINT: /api
-      APP_NAME: Delta Notes
+      APP_NAME: Delta Board
+      CLOUD_PROVIDER: auto
       APP_ENV: aws
       APP_VERSION: ${APP_VERSION:?}
     ports: ["3000:3000"]

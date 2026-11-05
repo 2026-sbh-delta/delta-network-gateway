@@ -4,6 +4,10 @@
 
 `application.deployment_mode="compose"`는 기존 frontend EC2 한 대에 FE/BE 컨테이너를 실행한다. ALB와 RDS는 유지한다. 실제 승인/진행 상태는 [Compose 전환 기록](../../docs/ai-dlc/aws-compose-consolidation.md)을 따른다.
 
+현재 앱 Compose는 사용자 후속 요청으로 중지했고 자동 시작도 해제했다. 기존 EC2/RDS/이미지/설정을 보존하며 최신 상태는 [Compose 기록](../../docs/ai-dlc/aws-compose-consolidation.md)의 마지막 중지 절을 따른다.
+
+현재 FE 배포 설정은 APP_NAME=Delta Board/CLOUD_PROVIDER=auto다. 새 게시판의 단건 조회 API와 함께 배포하고 실제 공개 config의 cloudProvider=aws를 확인한다. 원본에 미커밋 변경이 있으면 원본을 보존한 별도 clean 로컬 배포 스냅샷의 커밋/파일 해시와 원격 게시 여부를 구분해 기록한다.
+
 기존 두 EC2에서 이전할 때 먼저 `retain_legacy_backend=true`로 Plan/Apply해 기존 BE를 보존하면서 FE 호스트의 앱 secret/이미지/로그 권한과 RDS SG 경로를 준비한다. EC2 user_data는 변경하지 않는다. 아래 배포와 공개 CRUD/재시작 검증이 끝난 뒤 `retain_legacy_backend=false`로 별도 Plan/Apply해 기존 BE EC2/전용 역할/SG를 제거한다. 신규 배포는 false를 사용한다. 새 RDS를 처음 만드는 경우에만 배포 전 `release.py init-db --sample-root ../delta-sample-app`을 실행한다. 이 명령은 Compose에서도 운영자 인증과 frontend 호스트의 SSH 터널을 사용한다. 기존 RDS를 재사용하는 이번 전환에서는 재실행하지 않는다.
 
 ```sh

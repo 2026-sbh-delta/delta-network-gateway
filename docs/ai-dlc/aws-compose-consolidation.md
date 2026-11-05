@@ -8,7 +8,9 @@
 - Ideation 방향: 사용자가 직접 지정한 x86 VM 1대와 FE/BE Docker Compose를 기준으로 한다. 이전의 FE/BE 별도 EC2 조건을 이 방향으로 대체한다.
 - Inception 및 U1~U3 Design/Implementation Plan: 2026-11-05 사용자 `가자잇`으로 아래 전환안의 구현/테스트/실제 배포와 정상화 후 기존 BE EC2 제거를 승인받았다.
 - 완료: U1~U3 구현/Test/Review와 실제 두 단계 Apply, Compose 전환, 공개 CRUD/데이터 보존/컨테이너 및 EC2 재시작, TLS/IAM/방화벽/로그 검증을 완료했다. Terraform mock37개, bootstrap Python3개/배포 Python14개가 통과했고 최종 실제 Plan은 No changes/종료0이다. Git 게시 상태는 Git 이력을 따른다.
-- 현재 운영 상태(2026-11-05 21:53 KST): 사용자 요청으로 FE/BE Compose 컨테이너와 프로젝트 네트워크를 내리고 메인 Compose 서비스의 자동 시작을 껐다. 기존 x86 EC2는 running, RDS는 available 상태이며 이미지/릴리스/데이터를 보존했다. 공개 API는 중지에 따른502다. 아래 전환/검증은 중지 전 기록이며 후속 중지 결과는 마지막 Operation 기록을 따른다.
+- 중지 당시 상태(2026-11-05 21:53 KST): 사용자 요청으로 FE/BE Compose 컨테이너와 프로젝트 네트워크를 내리고 메인 Compose 서비스의 자동 시작을 껐다. 기존 x86 EC2는 running, RDS는 available 상태이며 이미지/릴리스/데이터를 보존했다. 공개 API는 중지에 따른502다. 아래 전환/검증은 중지 전 기록이며 후속 중지 결과는 마지막 Operation 기록을 따른다.
+
+- 현재 운영 상태: 앱 컨테이너2개를 내리고 프로젝트 컨테이너/네트워크 잔여0개, delta-compose inactive/disabled를 확인했다. VM running, DB available, 디스크/DB 식별자 동일과 호스트 이미지9개/설정 해시 보존을 확인했다. 공개 API는 HTTP502다. 최신 결과는 마지막 Compose 중지 기록을 따른다.
 
 ## Ideation
 
@@ -186,3 +188,44 @@ U2의 첫 적용을 먼저 수행해 Compose가 연결할 호스트 권한을 �
 - 사용자 `커밋 푸시` 요청으로 최신 원격 main 기준 별도 작업 영역에 AWS Compose와 관련 문서만 반영한다. 별도 GCP 작업은 포함하지 않는다.
 - `bash terraform/workload/scripts/validate.sh`: root mock28개, child mock9개, bootstrap Python3개 통과. `python3 -m unittest discover -s deploy/workload/tests -v`: 14개 통과. `python3 -m py_compile`과 `git diff --check` 통과. 실제 Terraform Plan/Apply나 앱 재개는 이 게시 준비에서 실행하지 않았다.
 - 게시 커밋과 원격 반영은 Git 이력을 따른다. 앱은 중지 상태이며 인프라는 유지한다.
+
+
+## 후속 Operation: 새 게시판 Compose 배포와 재개 (2026-11-05 KST)
+
+- 사용자 요청: `aws, gcp에 compose 올려서 보여줘`. 기존 AWS/GCP 호스트의 새 게시판 배포와 재개 승인이다. 이 절은 AWS 실행 결과다.
+- 대상: 계정616723161368, 기존 i-0637ad326681c7480/10.10.1.211/t3.small과 ALB/RDS를 유지했다. 재개 전 inactive/disabled, 재개 후 delta-compose active/enabled를 확인했다.
+- 소스: 원본 앱의 fd9a661과 미커밋 작업은 유지했다. 서비스 파일27개를 대조한 배포 전용 로컬 clean 스냅샷 커밋은 547265cbb0ce5cfdb0816716cb3334adfbfbdef5다. 원격 Git 게시를 뜻하지 않으며 manifest의 source_dirty=false는 이 별도 스냅샷의 상태다.
+- 설정: 기존 배포 Compose에 APP_NAME=Delta Board/CLOUD_PROVIDER=auto를 반영했다. 원본 앱의 일반 Dockerfile로 두 amd64 이미지를 빌드했다. 기존 네트워크/secret/TLS/로그 설정과 DB 스키마는 변경하지 않았다.
+- bundle SHA-256: 14fdf13ef70416a8157a61bbb3dcae3a65f953b333d91e2d639b1f9e68bb8116.
+- BE image: sha256:55214dc2b3c67567d1fd52042b11dbe7d55e7a7b7f9a9bb758fe88262c8ecf3d.
+- FE image: sha256:95c5fb694d80942f1065e7bc1736d11bbf807f9ee44f3417d58393ed3996905e.
+- 접속: [Delta Board AWS](http://delta-lab-notes-alb-1242820262.ap-northeast-2.elb.amazonaws.com/#/posts). 실제 OS 감지 결과 aws와 주황 UI를 확인했다.
+
+| 날짜 | 명령 또는 검증 | 실제 결과 |
+| --- | --- | --- |
+| 2026-11-05 KST | `python3 -m unittest discover -s deploy/workload/tests -v` | 14개 통과 |
+| 2026-11-05 KST | `compose.py --inventory <application 출력> deploy --sample-root <로컬 clean 스냅샷> --output <작업 폴더>` | 종료0. 기존 호스트에서 개별 이미지 빌드/재개 |
+| 2026-11-05 KST | `compose.py --inventory <application 출력> status` | FE/BE running/healthy, 새 source_commit과 이미지 ID 일치 |
+| 2026-11-05 KST | 앱 저장소 `artifacts/cloud-deploy/verify-http.py aws` | 공개 config/health200, FE/BE 버전 동일, cloudProvider=aws, storage=postgres. 생성201/목록/단건200/없는 글404/자체 글 삭제204/삭제 후404 및 정적 파일4개 해시 일치 |
+| 2026-11-05 KST | 앱 저장소 `artifacts/cloud-deploy/preflight.py aws --stage after` | 기존 EC2 ID/사설 IP 보존, delta-compose active/enabled |
+| 2026-11-05 KST | Chrome 새 탭과 화면 캡처 | 실제 공개 게시판의 주황 배경/배지/정상 연결 확인 |
+
+검증 전 게시글0개, 자체 검증 글 정리 후0개다. DB를 재초기화하지 않았다. 이번 재배포에서 Terraform Plan/Apply, EC2/DB 생성 또는 삭제, 원본 저장소 커밋/원격 푸시를 실행하지 않았다. 기존 이전 이미지/포인터를 보존하며 실제 rollback은 미실행이다. 소스/HTTP/호스트 검증 자료는 앱 저장소의 ignored artifacts/cloud-deploy에 보관한다.
+
+
+## 후속 Operation: 게시판 Compose만 중지 (2026-11-05 KST)
+
+- 승인: 사용자 `이제 compose만 내려도 돼`. 기존 VM과 DB를 유지하고 앱 Compose만 내렸다.
+- 실제 확인 시각: 2026-11-05T23:13:47.231621+09:00 (Asia/Seoul).
+- 결과: 앱 컨테이너2개를 내리고 프로젝트 컨테이너/네트워크 잔여0개, delta-compose inactive/disabled를 확인했다. VM running, DB available, 디스크/DB 식별자 동일과 호스트 이미지9개/설정 해시 보존을 확인했다. 공개 API는 HTTP502다.
+- Docker daemon은 active이고 기존 native 서비스 상태는 유지했다. 비밀번호를 조회/출력하거나 앱 데이터를 변경하지 않았다. `--volumes`/`--rmi`/prune, VM/DB 중지 또는 삭제, Terraform Plan/Apply, 커밋/푸시는 이번 중지에서 실행하지 않았다.
+
+| 날짜 | 실행한 명령 또는 검증 | 결과 |
+| --- | --- | --- |
+| 2026-11-05 KST | `python3 artifacts/cloud-stop/stop-compose.py aws` (앱 저장소) | 종료0. 중지 전후 클라우드/호스트 상태와 보존 여부 확인 |
+| 2026-11-05 KST | 호스트 `systemctl disable --now delta-compose` | inactive/disabled |
+| 2026-11-05 KST | 호스트 `docker compose --project-name delta-notes --env-file /opt/delta-compose/current/.env --file /opt/delta-compose/current/compose.yaml down` | 프로젝트 컨테이너와 전용 네트워크 잔여0개 |
+| 2026-11-05 KST | Docker 이미지 ID 집합/설정 파일 SHA-256/다른 컨테이너 비교, VM/디스크/DB API 재조회 | 기존 이미지와 설정 및 다른 컨테이너 보존, 같은 VM/디스크/DB 식별자 |
+| 2026-11-05 KST | 공개 `/api/health` | HTTP502, 앱 중지 반영 |
+
+재개 요청 시 호스트에서 `sudo systemctl enable --now delta-compose`로 보존한 이미지와 설정을 사용한다. 이번 중지 작업에서는 재개하지 않았다. 증거는 앱 저장소의 ignored artifacts/cloud-stop/aws-before.json, aws-host.json, aws-after.json, aws-result.json에 보관했다. 앞선 게시판 배포/정상 동작 기록은 중지 전 이력이다.
