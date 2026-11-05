@@ -10,6 +10,20 @@ AWS ANF는 사용자 지시대로 disabled를 유지한다. AWS 측은 [중앙 �
 
 2026-11-04 실제 배포를 완료했다. 프로젝트 `366844544284`, Billing 활성과 필요한 권한/API를 확인했고 기존 업무 `10.30.1.0/24`를 보존했다. 새 중앙 `10.31.0.0/24`, 업무 `10.32.1.0/24`와 공유 endpoint를 생성했다. 인터넷 허용/거부 및 ALERT 위협 로그, AWS 양방향 사설 HTTP와 중앙 원본 로그 일치를 확인했다. 네 단일 BGP 경로 철회/복구와 저장 실패 ack0/재수집도 검증했고 총5개 root의 최종 Plan은 No changes다. [승인/실제 결과](../../docs/ai-dlc/gcp-central-network.md), [실행 Runbook](RUNBOOK.md)을 따른다.
 
+## 상태 파일 관리
+
+2026-11-05 GCS에서 중앙 S3로 state 이전을 완료했다. 이 root의 backend는 AWS 중앙 네트워크와 같은 S3 버킷을 사용하고 GCP 전용 key로 state를 분리한다. 리소스 관리는 기존 Google Provider가 담당한다. 이전 후 실제 Plan은 No changes/종료0이다.
+
+| 항목 | 값 |
+| --- | --- |
+| AWS 계정 / 리전 | `482840608926` / `ap-northeast-2` |
+| 버킷 | `sbh-delta-central-tf` |
+| default workspace의 key | `delta/lab/network-security-gcp/terraform.tfstate` |
+| 암호화 / 잠금 | `encrypt=true` / `use_lockfile=true` |
+| 인증 | S3 접근용 AWS 중앙 계정 인증과 GCP 리소스용 Google ADC |
+
+실제 `backend.hcl`은 Git에서 제외한다. 예시를 복사할 때 중앙 버킷과 계정 ID를 입력하고 파일 권한을 0600으로 제한한다. GCS에서의 기존 state 이전과 다른 작업 디렉터리의 연결은 [Runbook](RUNBOOK.md#gcs에서-s3로-이전)을 따른다. 실제 이전과 Plan 결과는 [AI-DLC](../../docs/ai-dlc/gcp-central-network.md#2026-11-05-gcp-state의-중앙-s3-이전)에 기록한다.
+
 ## 입력 속성
 
 | 속성명 | 타입 | 기본값 | 역할 |
@@ -87,7 +101,7 @@ bash terraform/network-security-gcp/scripts/validate.sh
 
 Jumbo frame은 기본 비활성 상태와 VPC MTU1460을 사용한다. API가 기본 false를 빈 블록으로 반환하므로 endpoint_settings에 false를 명시하지 않는다. 보안 프로필 URL도 API가 반환하는 canonical 형태로 지정해 반복 갱신을 방지한다.
 
-API를 활성화하는 리소스는 Terraform에서 제거해도 API를 비활성화하지 않는다. IAM은 필요한 topic/subscription의 개별 멤버만 관리하며 기존 IAM 정책을 덮어쓰지 않는다. GCS backend는 같은 프로젝트의 별도 보안 bucket에 두고 버전 관리, Uniform access와 Public access prevention을 확인한다. backend 준비와 유료 리소스 배포는 실제 대상/입력/저장 Plan을 검토한 뒤 수행한다.
+API를 활성화하는 리소스는 Terraform에서 제거해도 API를 비활성화하지 않는다. IAM은 필요한 topic/subscription의 개별 멤버만 관리하며 기존 IAM 정책을 덮어쓰지 않는다. S3 backend의 소유 계정, 암호화, 공개 접근 차단과 잠금을 확인한다. 2026-11-05 조회에서 기존 중앙 버킷의 버전 관리는 미설정이었으며 이 작업에서는 버킷 설정을 유지한다. 이전 전 state 백업과 GCS 원본은 복구용으로 보존한다. backend 이전과 유료 리소스 배포는 별도 작업이며 실제 배포는 저장 Plan을 검토한 뒤 수행한다.
 
 ## 검사 중단과 재개
 

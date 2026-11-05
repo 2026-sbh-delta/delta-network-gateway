@@ -8,6 +8,7 @@
 - Construction: 수정 승인된 U1~U5의 코드/문서 구현과 로컬 Test/Review를 완료했다. GCP/AWS 기반과 VPN/수집기를 실제 적용했고 양방향 통신과 GCP 자체 검사/중앙 원본 로그를 검증했다. AWS ANF 원복은 수행하지 않았다. 네 단일 BGP 경로 철회/복구, 저장 실패/재수집 및 최종 No changes 검증을 완료했다.
 - 실계정 확인: 사용자 ADC 로그인 후 `term2-delta` / Number `366844544284`의 ACTIVE 상태와 조직 `354852153719` 소속, 기존 네트워크/서울 쿼터와 필요한 IAM 권한을 확인했다. Billing 조회는 API 비활성 오류였고 필수 API 6개 활성화를 완료했다. 재조회에서 Billing 활성, 18개 권한/12개 API와 실제 입력/저장 Plan을 확인했다. AWS 중앙 STS는 `482840608926`, 실제 ANF 목록은 비어 있고 중앙 state도 disabled다.
 - 현재 운영: 사용자 후속 요청으로 GCP inspection_mode=disabled, endpoint/association 제거 완료. AWS ANF도 disabled를 유지한다. NCC/VPN/BGP와 기본 방화벽/로그 수집은 유지한다.
+- 상태 저장소(2026-11-05): 사용자 승인으로 GCP 네트워크 state를 중앙 S3의 전용 key로 이전했다. 리소스/출력과 check 결과의 동일성, GCS 원본과 다른 root의 state 보존, 잠금 해제와 이전 후 실제 Plan No changes/종료0을 확인했다. 상세 기록은 아래 S3 이전 절을 따른다.
 - Terraform: 로컬 mock과 실계정 Plan/Apply를 구분해 아래에 기록한다. 첫 GCP 부분 Apply를 복구했고 GCP 기반/4터널, AWS 수집기/업무 경로와 중앙 VPN을 적용했다. 초기 배포 뒤 총5개 root No changes를 확인했고, 후속 GCP 비용 중단 뒤 해당 root의 최신 실계정 Plan도 No changes/종료0이다. AWS root는 이번 중단에서 변경하지 않았다.
 - Git: 사용자 2026-11-04 지시로 구현/로그 수집/회귀 테스트/운영 문서를 분할 커밋해 `feat/gcp-central-network`에서 게시한다. 앞의 세 서명 커밋 푸시와 `main` 대상 [PR #27](https://github.com/2026-sbh-delta/delta-network-gateway/pull/27) 생성을 확인했고 운영 문서도 같은 PR에 포함한다. 최종 검사/병합 상태와 squash 결과는 해당 PR을 기준으로 확인한다.
 
@@ -105,14 +106,14 @@ flowchart LR
 
 | 경로 | 소유 범위 | state 구분 |
 | --- | --- | --- |
-| `terraform/network-security-gcp/` | 새 GCP VPC, NCC, HA VPN/Router, NGFW, 시험 VM/NLB, Log Sink/Pub/Sub/WIF | `term2-delta` 전용 GCS backend. 실제 bucket/Project Number는 사전 확인 후 결정 |
+| `terraform/network-security-gcp/` | 새 GCP VPC, NCC, HA VPN/Router, NGFW, 시험 VM/NLB, Log Sink/Pub/Sub/WIF | 중앙 `sbh-delta-central-tf` S3, key `delta/lab/network-security-gcp/terraform.tfstate`. 2026-11-05 GCS에서 이전 |
 | `terraform/network-security/` | 기존 중앙 TGW/ANF와 AWS VPN 추가 | 기존 중앙 S3 backend 유지 |
 | `terraform/gcp-log-ingest-aws/` | 중앙 계정의 Lambda, 실행 역할, 주기 실행, CloudWatch와 관측 | 기존 중앙 네트워크와 다른 S3 state key |
 | `services/gcp-log-collector/` | Pub/Sub pull, 로그 변환, CloudWatch 저장/ack와 재시도 | 애플리케이션 코드. Terraform state 소유 없음 |
 | `terraform/workload-client/` | 기존 Client의 GCP 목적지 Route/송신 규칙 | 기존 Client S3 state. 런타임 입력만 갱신 |
 | `terraform/workload-server/` | 기존 Server의 GCP 반환 Route/시험 VM /32 수신 | 기존 Server S3 state. 런타임 입력만 갱신 |
 
-위 경로에 코드를 작성했고 로그인 후 전용 GCS/S3 backend를 초기화했다. GCP는 부분 Apply 복구를 진행했으며 AWS 수집기는 실제 Apply를 완료했다. 새 네트워크/수집 리소스와 기존 Route/SG는 해당 소유 state에서만 변경한다. 기존 활성 API는 프로젝트의 공유 기능으로 import했고 `disable_on_destroy=false`로 보존한다.
+초기 배포 때 전용 GCS/S3 backend를 초기화했고 GCP 부분 Apply를 복구했다. 2026-11-05에는 GCP 네트워크 root의 state도 중앙 S3의 별도 key로 이전했다. AWS 수집기는 기존 별도 S3 state를 유지한다. 새 네트워크/수집 리소스와 기존 Route/SG는 해당 소유 state에서만 변경한다. 기존 활성 API는 프로젝트의 공유 기능으로 import했고 `disable_on_destroy=false`로 보존한다.
 
 ## Inception: Unit of Work와 Construction 결과
 
@@ -426,3 +427,47 @@ Terraform Plan/Apply, 클라우드 설정 변경, Git 커밋과 푸시는 이 �
 | --- | --- | --- |
 | 2026-11-05 | `git diff --check`, `python3 -B` 인라인 문서 검사 | 추가 문자의 제한, 코드 블록 짝, 로컬 링크와 공백 검사 통과. 변경 범위는 이 문서 1개이며 애플리케이션 테스트와 실계정 Plan/Apply는 재실행하지 않음 |
 | 2026-11-05 | `git ls-remote --exit-code origin refs/heads/main`, `git rev-parse HEAD` | 게시 전 원격 main과 로컬 HEAD가 `5749e6780e1316ff1a9c2ccfee06824ae960ab57`로 일치 |
+
+## 2026-11-05 GCP state의 중앙 S3 이전
+
+### Ideation과 승인
+
+- 문제: AWS root는 중앙 S3, GCP 네트워크 root는 GCS에 state를 저장해 운영자가 저장소 두 곳을 관리해야 한다.
+- 사용자: Delta 팀의 Terraform 운영자.
+- 성공 기준: GCP 네트워크 state를 기존 중앙 S3의 전용 key에서 읽고, 이전 전후 lineage/serial을 기록하고 리소스와 출력의 동일성을 검증하며 실제 Plan에서 의도하지 않은 변경이 없어야 한다.
+- Scope: `terraform/network-security-gcp`의 backend 선언과 예시/실제 설정, 현재 GCS state의 백업과 S3 이전, 검증과 관련 문서.
+- Non-goals: state 파일 병합, GCP/AWS 리소스 변경, 기존 GCS 원본 삭제, 다른 root 이전, 로그 전달 경로 정리.
+- 앞선 설명에서 중앙 버킷의 전용 key, 백업, `init -migrate-state`, 이전 후 Plan 검증과 GCS 원본 보존을 제시했다. 사용자 `network-security-gcp 상태 파일도 동일한 S3에서 관리하도록 변경 ㄱㄱ` 지시를 해당 방향과 실행 순서의 승인으로 기록한다.
+
+### Inception과 Construction 계획
+
+- Functional Requirements: 저장 위치를 `s3://sbh-delta-central-tf/delta/lab/network-security-gcp/terraform.tfstate`로 변경한다. 기존 AWS 중앙 state와 별도 key를 사용하고 `encrypt=true`, `use_lockfile=true`, `allowed_account_ids=["482840608926"]`를 지정한다.
+- Non-Functional Requirements: AWS 중앙 계정과 GCS 원본을 실제 확인한다. 버전 관리, 공개 접근 차단, 암호화와 목적지 충돌/잠금을 확인한다. state/백업/Plan/실제 backend 설정은 ignored 경로에 0600으로 보존하고 인증정보를 출력하지 않는다.
+- Architecture: Google Provider의 리소스 소유권과 인증은 유지하고, Terraform backend만 GCS에서 AWS 서울 S3로 전환한다. 실행 환경에는 Google 인증과 AWS 중앙 S3 접근 인증이 함께 필요하다.
+- Unit of Work: U7 한 단위로 사전 확인/백업, backend와 운영 문서 갱신, `init -migrate-state`, state 대조, 실제 Plan, Review 순서로 수행한다. 앞서 제시한 순서에 대한 사용자 실행 지시를 구현과 이전 승인으로 적용한다.
+- Acceptance Criteria: 소스 workspace를 확인하고 목적지 덮어쓰기가 없음을 확인한다. 이전된 state의 lineage/serial과 리소스/출력, 소스 보존을 검증한다. 이번 실제 migration에서 새 lineage/serial이 생성된 차이는 별도로 기록하고, 리소스/출력과 순서를 정규화한 check 결과를 포함한 나머지 내용의 동일성을 검증한다. 로컬 backend metadata가 S3를 가리키고 잠금이 해제돼 있어야 한다. 실제 Plan 결과와 실행하지 않은 Apply/게시 상태를 구분해 기록한다.
+- Operation/Rollback: 이전 후에는 S3를 유일한 활성 저장소로 사용한다. 롤백 시 S3의 최신 state와 GCS 보관본의 변경 여부를 먼저 비교하고, 최신 state를 보존한 역방향 migration을 검토한다. 오래된 GCS 보관본만 재연결하지 않는다.
+
+### 실행 상태
+
+- 2026-11-05: 문서/로컬 설정에서 현재 GCS backend와 default workspace를 확인했다. 실행 중인 Terraform CLI는 없고 언어 서버만 확인했다.
+- AWS SSO 갱신 후 실제 중앙 계정 `482840608926`과 서울 S3를 확인했다. 공개 접근 차단 4개와 AES256 기본 암호화를 확인했고 새 key/잠금은 없다. 버전 관리는 미설정이며 이번 범위에서는 기존 버킷 설정을 유지한다.
+- GCS 최신 원본의 default workspace, generation, serial51과 관리 리소스 인스턴스67개를 확인하고 ignored `.validation/s3-state-migration-20261105/`에 state와 backend 설정/metadata를 0600으로 백업했다. source 잠금은 없다.
+- backend 코드와 예시/실제 설정, 운영 안내를 S3로 변경했다. 격리 init/validate, mock14개와 Python10개는 통과했다.
+- `init -migrate-state -force-copy`는 종료0이며 로컬 backend가 S3로 전환됐다. 최초 전체 JSON 대조는 lineage/serial과 check 결과 배열 순서 차이로 실패했다. source lineage `074a3141-e542-8d3c-e7da-57443edb906a`/serial51에 대해 S3는 새 lineage `da626520-1419-9a7f-e711-86edac961f61`/serial1을 생성했다. 리소스/출력과 check 결과를 config/object 주소 순서로 정규화한 내용은 동일하다. 나머지 모든 state 필드도 일치하며 metadata를 강제로 덮어쓰지 않았다.
+- 후속 `terraform state list`와 원격 대조는 종료0이다. S3 AES256, 로컬 S3 backend, GCS 원본 내용/generation 보존, 양쪽 잠금 부재와 기존 중앙/수집기 state의 ETag/수정시각 보존을 확인했다.
+- 이전 후 실제 Plan은 No changes/종료0이고 JSON의 리소스/출력 변경도 없다. 이후 S3 state 내용과 잠금 해제, GCS 원본 보존을 다시 대조했다. U7 Implementation/Test/Review와 backend 이전은 완료했으며 리소스 Apply는 실행하지 않았다. 사용자 지시에 따라 변경을 커밋하고 푸시하며 게시 결과는 Git 이력을 따른다.
+
+### U7 검증 기록
+
+| 날짜 | 실행한 명령 또는 확인 | 실제 결과 |
+| --- | --- | --- |
+| 2026-11-05 17:33~17:35 KST | `aws sts get-caller-identity --profile sbh-delta-security`, `aws sso login --profile sbh-delta-security --no-browser`, `ps -axo pid=,comm=` | 최초 SSO 만료를 확인했고 로그인 갱신 완료. 실행 중인 Terraform CLI 없음, 언어 서버만 확인 |
+| 2026-11-05 17:38 KST | ignored `run.py preflight`: STS/S3 메타데이터와 GCS 목록/원본 GET | AWS 중앙 계정/서울, PAB4개 true, AES256 확인. 버전 관리 미설정. 새 S3 state/잠금과 GCS 잠금 없음. default workspace 원본153789바이트/serial51/관리 인스턴스67개를 0600 백업 |
+| 2026-11-05 17:39 KST | `bash terraform/network-security-gcp/scripts/validate.sh` | 격리 init/validate/fmt 통과. mock14개, Python10개 통과. mock Plan의 ephemeral PSK 미노출 확인. 실계정 검증과 별도 |
+| 2026-11-05 17:39 KST | `terraform -chdir=terraform/network-security-gcp init -migrate-state -force-copy -input=false -lockfile=readonly -backend-config=backend.hcl -no-color` | 종료0, 기존 Provider/lock 유지. S3에153788바이트 state 생성. GCS 원본은 보존. migration 전 목적지 부재와 source 내용/generation 불변을 재확인 |
+| 2026-11-05 17:40~17:42 KST | 전체 JSON 비교, check 결과의 config/object 주소 정규화, `terraform state list` | 최초 비교는 metadata/배열 순서 차이로 실패. 새 lineage/serial을 기록하고 리소스/출력/check 결과 내용과 나머지 모든 필드 동일 확인. 강제 state push 없음. 원본/다른 root 보존 및 양쪽 잠금 해제 확인 |
+| 2026-11-05 17:42~17:43 KST | `terraform plan -parallelism=2 -detailed-exitcode -lock-timeout=60s -input=false -no-color -out=<ignored verification.tfplan>`, `terraform show -json <plan>`, `terraform state list`, S3/GCS 재조회 | 실제 No changes/종료0. 리소스/출력 변경0. S3 lineage/serial1과 전체 state 내용 보존, S3 잠금 해제, GCS 원본 generation/내용 및 기존 두 AWS root의 state 불변 확인 |
+| 2026-11-05 | `git diff --check`, `python3` 인라인 문서/backend/권한 검사 | 공백, 추가 문자 제한, 로컬 링크, 코드 블록, 입력/출력 표와 민감 산출물0600 검사 통과. 로컬 backend의 S3 key와 credential 미포함, Plan 요약/최종 원격 대조 보고서 확인. 애플리케이션 테스트나 리소스 Apply를 추가 실행한 결과가 아님 |
+
+실행 도구와 원본/이전 state, backend 백업, preflight/비교 보고서와 Plan은 이 root의 ignored `.validation/s3-state-migration-20261105/`에 보관한다. 민감 산출물은 0600이다. GCS 원본 SHA-256은 `ee213ffe26aa0442d342e6b56043c42397361041d22a32019065baae80c114e9`, S3 snapshot SHA-256은 `8dc9d737ad1beb29df5a0e608236d06d3b718d47cfc05f5c771f9d5fb96917d9`다. 최초 migration이 생성한 식별 metadata와 검사 결과 배열 순서 차이를 기록한 값이며 리소스/출력 변경을 뜻하지 않는다.

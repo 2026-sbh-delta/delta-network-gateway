@@ -17,9 +17,31 @@ Python 실행 환경에는 `google-auth`와 `requests`가 필요하다. prefligh
 ## 실행 입력과 state 준비
 
 1. `terraform.tfvars.example`은 mock용 합성값이다. 실제 Project Number, 비중복 Subnet, AWS Prefix/ASN, 시험 출발지 CIDR, 고정 이미지와 중앙 역할 ARN을 확인해 ignored `terraform.tfvars`를 작성한다. 처음에는 `aws_vpn_tunnels={}`다.
-2. 같은 프로젝트의 전용 GCS state bucket을 준비하거나 기존 bucket의 소유 프로젝트, 버전 관리, Uniform access, Public access prevention과 최소 접근 권한을 확인한다. 실제 `backend.hcl`을 작성하고 파일 권한을 0600으로 제한한다. 이전 GCP state는 이전하지 않는다.
+2. 기존 중앙 S3 버킷 `sbh-delta-central-tf`의 소유 계정 `482840608926`, 서울 리전, 버전 관리, 암호화, 공개 접근 차단과 접근 권한을 확인한다. GCP 전용 key는 `delta/lab/network-security-gcp/terraform.tfstate`다. 실제 `backend.hcl`에 `encrypt=true`, `use_lockfile=true`, `allowed_account_ids=["482840608926"]`를 지정하고 파일 권한을 0600으로 제한한다. 기존 GCS state가 있으면 아래 이전 절차를 먼저 수행한다.
 3. Google/Google Beta Provider를 초기화하고 실제 저장 Plan의 프로젝트, 생성 목록, 검사 정책과 비용을 검토한다. 워크로드는 공인 IP가 없어야 하고 공개 주소는 NLB에만 있어야 한다. 실제 Apply는 이 검토 후의 별도 실행 단계다.
 4. 검사 endpoint와 association이 준비되기 전에 시험 공개 진입을 열지 않는다. 초기 단일 Zone 구성은 워크로드의 다중 Zone 가용성 보장이 아니다.
+
+## GCS에서 S3로 이전
+
+2026-11-05 사용자 요청으로 이 root의 state를 기존 AWS 중앙 버킷의 별도 key로 이전했고 실제 Plan No changes/종료0을 확인했다. 원래 위치는 `gs://delta-network-gateway-tf-366844544284/delta/lab/network-security-gcp/default.tfstate`이며 복구용 원본으로 보존한다. 아래는 최초 이전 때 수행한 절차다. 이미 이전된 다른 작업 디렉터리는 이 절 뒤의 연결 안내를 따른다. [이전과 검증 기록](../../docs/ai-dlc/gcp-central-network.md#2026-11-05-gcp-state의-중앙-s3-이전)
+
+1. 모든 실행 환경의 Plan/Apply/state 쓰기를 중단한다. 기존 저장 Plan도 재사용하지 않는다. Google ADC와 `sbh-delta-security`의 AWS 인증을 확인하고 `aws sts get-caller-identity`의 계정이 `482840608926`인지 확인한다.
+2. 현재 GCS backend metadata를 보존하고 모든 workspace, 원격 잠금과 최신 GCS object generation을 확인한다. 현재 source는 default workspace 하나다. 최신 state와 기존 `backend.hcl`, 로컬 backend metadata를 ignored 경로에 0600으로 백업한다. `errored.tfstate`를 최신 원본으로 사용하지 않는다.
+3. 중앙 S3의 소유 계정/리전, 암호화, 공개 접근 차단과 새 state key/잠금의 부재를 확인한다. 2026-11-05 조회에서 버전 관리는 미설정이므로 이 작업에서는 GCS 원본과 별도 백업을 보존한다. 기존 버킷 설정과 다른 root의 key는 유지한다.
+4. `versions.tf`의 backend를 `s3`로 변경하고 실제 `backend.hcl`을 위 중앙 S3 설정으로 작성한다. 기존 `.terraform`의 GCS metadata는 migration이 읽을 수 있도록 유지한다. 백업 이후 GCS generation이 바뀌었다면 새 원본을 다시 확인한다.
+
+```bash
+export AWS_PROFILE=sbh-delta-security
+terraform -chdir=terraform/network-security-gcp init \
+  -migrate-state -backend-config=backend.hcl -lockfile=readonly
+```
+
+5. 이전 확인에는 검토한 source와 비어 있는 destination만 사용한다. 자동 실행의 `-force-copy`는 이전 질문에 자동 동의하므로 목적지 부재와 source 불변을 재확인한 승인 범위에서만 사용한다. 최초 이전에 `-reconfigure`를 사용하면 기존 state가 복사되지 않는다.
+6. S3 state의 lineage, serial, 리소스 전체와 출력을 백업과 대조한다. 이번 Terraform 1.16.4 실행에서는 신규 S3 state에 새 lineage/serial1이 생성됐다. 해당 metadata를 기록하고 check 결과의 배열 순서를 정규화해 나머지 모든 내용이 동일함을 확인했다. GCS 원본의 내용/generation 보존, 양쪽 잠금 해제와 로컬 backend가 S3를 가리키는지도 확인한다. 새 실제 `terraform plan -parallelism=2 -detailed-exitcode`로 리소스 변경이 없는지 검증한다. state 이전에는 리소스 Apply가 필요하지 않다.
+
+이전 완료 후 다른 작업 디렉터리를 연결할 때는 최신 코드와 S3용 `backend.hcl`을 준비하고, 기존 S3 state의 lineage와 key를 확인한 다음 `terraform init -reconfigure -backend-config=backend.hcl -lockfile=readonly`로 연결한다. 이 단계에서는 이미 존재하는 S3 state를 사용한다. 모든 실행 환경이 S3를 사용하게 하며 보관한 GCS state로 새 작업을 시작하지 않는다.
+
+롤백 시에는 작업을 중지하고 S3의 최신 state를 새로 백업한다. GCS 보관본과 lineage/serial을 비교한 뒤 S3에서 GCS로 역방향 migration을 검토한다. 이전 후 변경된 S3 state를 보존해야 하므로 오래된 GCS state에 `-reconfigure`만 수행하지 않는다. 이번 작업에서 GCS 원본이나 버킷을 삭제하지 않는다.
 
 ## AWS ANF를 끈 채 VPN 연결
 
