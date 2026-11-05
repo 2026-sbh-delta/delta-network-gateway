@@ -12,9 +12,9 @@
 
 ## 현재 상태
 
-- AWS Compose 중지/EC2 보존(2026-11-05): 사용자 요청으로 FE/BE 컨테이너 두 개와 프로젝트 네트워크를 내리고 메인 Compose 서비스 자동 시작을 해제했다. 기존 x86 t3.small EC2 running/RDS available, 두 이미지와 데이터 보존 및 공개 API502를 실제 확인했다. 중지 작업에서는 Terraform 변경/Plan/Apply를 실행하지 않았다. Git 게시 상태는 Git 이력을 따른다. 앞선 단일 EC2 전환/검증 이력과 [중지 결과 및 재개 절차](ai-dlc/aws-compose-consolidation.md)를 구분한다.
+- AWS Compose 중지/EC2 보존(2026-11-05): 사용자 후속 요청으로 게시판 FE/BE2개와 프로젝트 네트워크를 내리고 delta-compose 자동 시작을 해제했다. 앱 컨테이너2개를 내리고 프로젝트 컨테이너/네트워크 잔여0개, delta-compose inactive/disabled를 확인했다. VM running, DB available, 디스크/DB 식별자 동일과 호스트 이미지9개/설정 해시 보존을 확인했다. 공개 API는 HTTP502다. 기존 EC2/RDS/ALB를 유지하며 이번 중지에서 Terraform Plan/Apply나 Git 게시를 실행하지 않았다. [최신 중지 및 재개 절차](ai-dlc/aws-compose-consolidation.md)를 따른다.
 
-- GCP Compose 중지/VM 보존(2026-11-05): 사용자 요청으로 FE/BE/DB Proxy 컨테이너3개와 전용 Compose network를 내리고 앱 서비스 자동 시작을 해제했다. 기존 x86 e2-small VM RUNNING, boot disk/Cloud SQL RUNNABLE/ALB/이미지/설정 보존과 공개 API503을 확인했다. 중지 작업에서 Terraform 변경/Plan/Apply는 실행하지 않았다. Git 게시 상태는 Git 이력을 따른다. 앞선 통신/재부팅 검증은 중지 전 이력이며 [최신 중지 상태와 재개 절차](ai-dlc/gcp-compose-consolidation.md#후속-operation-compose만-내리고-vm-보존)를 따른다.
+- GCP Compose 중지/VM 보존(2026-11-05): 사용자 후속 요청으로 게시판 FE/BE/Proxy3개와 프로젝트 네트워크를 내리고 delta-compose 자동 시작을 해제했다. 앱 컨테이너3개를 내리고 프로젝트 컨테이너/네트워크 잔여0개, delta-compose inactive/disabled를 확인했다. VM RUNNING, DB RUNNABLE, 디스크/DB 식별자 동일과 호스트 이미지9개/설정 해시 보존을 확인했다. 공개 API는 HTTP503다. 기존 VM/Cloud SQL/PSC/ALB를 유지하며 이번 중지에서 Terraform Plan/Apply나 Git 게시를 실행하지 않았다. [최신 중지 및 재개 절차](ai-dlc/gcp-compose-consolidation.md)를 따른다.
 
 - Sample App GCP 초기 교체 기록(2026-11-05): 위 Compose 통합 전의 VM2대 배포 기록이다. 기존 NLB/시험 VM 제거와 API404 확인 후 공개 리전 ALB, 사설 x86 e2-small FE/BE 각1대와 새 Cloud SQL PostgreSQL16/PSC를 실제 배포했다. ALB/FE/BE/DB 접속점 subnet을 분리했고 VM/SQL 공인 IP 없음, ALB HEALTHY/PSC ACCEPTED, 공개 CRUD와 BE 재시작 후 보존, FE DB 차단 로그와 양방향 TGW 사설 HTTP200/임시 시험 규칙 정리를 확인했다. GCP 두 root와 AWS central 최종 Plan No changes/종료0. 앱은 미커밋 PostgreSQL 변경 snapshot이며 게시/별도 AWS 앱 상태와 구분한다. [공개 앱](http://34.64.134.28) / [실제 검증과 실행 상태](ai-dlc/gcp-sample-app.md)
 
