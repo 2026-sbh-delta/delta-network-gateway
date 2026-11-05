@@ -10,5 +10,5 @@ terraform {
       version = "= 8.10.0"
     }
   }
-  backend "gcs" {}
+  backend "s3" {}
 }

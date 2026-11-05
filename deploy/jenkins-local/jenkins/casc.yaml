@@ -19,6 +19,10 @@ credentials:
               scope: GLOBAL
               id: delta-api-token
               secret: ${DELTA_API_TOKEN}
+          - string:
+              scope: GLOBAL
+              id: traffic-control-token
+              secret: ${TRAFFIC_CONTROL_TOKEN}
 
 jobs:
   - script: >
@@ -30,6 +34,24 @@ jobs:
         definition {
           cps {
             script(new File('/pipelines/pipeline/Jenkinsfile').text)
+            sandbox(true)
+          }
+        }
+      }
+  - script: >
+      pipelineJob('delta-cloud-migration') {
+        description('클라우드 이전: 판단 → 갭 메우기 → 대상 배포 → 동등성 확인 → 서비스별 단계 전환')
+        parameters {
+          choiceParam('DIRECTION', ['aws-to-gcp', 'gcp-to-aws'], '이전 방향')
+          choiceParam('SCENARIO', ['good', 'scc-standard', 'iam-gap', 'security-gap', 'bad-target', 'gate-down'], '시험할 상황')
+          choiceParam('SCC_TIER', ['ask', 'premium', 'standard'], '대상 SCC 등급. ask 면 판단 뒤 묻는다')
+          stringParam('ACCEPT_GAPS', '', '미리 승인할 능력(쉼표)')
+          choiceParam('CUTOVER_MODE', ['auto', 'manual'], 'manual 은 traffic-control 화면에서 비율을 바꾼다')
+          stringParam('CUTOVER_STEPS', 'web=10,50,100;api=10,50,100', 'auto 의 서비스별 단계')
+        }
+        definition {
+          cps {
+            script(new File('/pipelines/pipeline/Jenkinsfile.migration').text)
             sandbox(true)
           }
         }

@@ -1,4 +1,4 @@
-"""AWS 관리형 규칙 그룹 → 공격 범주 → Cloud Armor 사전 구성 규칙.
+"""AWS 관리형 규칙 그룹 ↔ 공격 범주 ↔ Cloud Armor 사전 구성 규칙.
 
 두 제품의 규칙은 1:1 이 아니다. 여기 매핑은 "같은 범주를 켠다"는 뜻이지 같은 탐지를 보장하지 않는다 —
 동등성 판단은 PAR-WAF-002 의 실제 공격 결과로 한다.
@@ -62,5 +62,44 @@ def cloud_armor_rules(capabilities: frozenset[str]) -> tuple[WafRule, ...]:
             expression=f"evaluatePreconfiguredWaf('{_rule_name(capability)}', {{'sensitivity': {SENSITIVITY}}})",
             capability=capability,
         )
+        for index, capability in enumerate(sorted(capabilities))
+    )
+
+
+# GCP → AWS: 범주마다 켤 AWS 관리형 그룹. lfi 는 Linux 그룹도 있지만 xss·rfi 와 같이 Common 이 덮는다
+AWS_CAPABILITY_GROUP: dict[str, str] = {
+    "sqli": "AWSManagedRulesSQLiRuleSet",
+    "xss": "AWSManagedRulesCommonRuleSet",
+    "lfi": "AWSManagedRulesCommonRuleSet",
+    "rfi": "AWSManagedRulesCommonRuleSet",
+    "java": "AWSManagedRulesKnownBadInputsRuleSet",
+    "cve": "AWSManagedRulesKnownBadInputsRuleSet",
+    "rce": "AWSManagedRulesUnixRuleSet",
+    "php": "AWSManagedRulesPHPRuleSet",
+}
+AWS_MANAGED_GROUP_ACTION = "managed_group"  # WebACL 에 관리형 그룹을 넣는다. 차단은 그룹의 규칙이 한다
+
+
+def cloud_armor_source_capabilities(rule_names: tuple[str, ...]) -> tuple[frozenset[str], tuple[str, ...]]:
+    """GCP 출발: (AWS 로 옮길 수 있는 범주, 대응 그룹이 없는 규칙)."""
+    capabilities = {name: next(iter(cloud_armor_capabilities((name,)))) for name in rule_names}
+    movable = frozenset(c for c in capabilities.values() if c in AWS_CAPABILITY_GROUP)
+    unmapped = tuple(name for name, c in capabilities.items() if c not in AWS_CAPABILITY_GROUP)
+    return movable, unmapped
+
+
+def aws_group_capabilities(rule_groups: tuple[str, ...]) -> frozenset[str]:
+    return source_capabilities(rule_groups)[0]
+
+
+def aws_group_names(capabilities: frozenset[str]) -> tuple[str, ...]:
+    return tuple(sorted({AWS_CAPABILITY_GROUP[c] for c in capabilities}))
+
+
+def aws_waf_rules(capabilities: frozenset[str]) -> tuple[WafRule, ...]:
+    """범주마다 한 줄을 낸다. 같은 그룹이 여러 범주를 덮어도 파이프라인이 범주별로 확인하려는 것이다."""
+    return tuple(
+        WafRule(priority=BASE_PRIORITY + PRIORITY_STEP * index, action=AWS_MANAGED_GROUP_ACTION,
+                expression=f"AWS/{AWS_CAPABILITY_GROUP[capability]}", capability=capability)
         for index, capability in enumerate(sorted(capabilities))
     )

@@ -19,7 +19,7 @@ from delta_platform.core.store import Store
 logger = logging.getLogger("delta_platform.worker")
 
 
-def process_one(store, reader, builder=None, sandbox=None, security=None, dast=None):
+def process_one(store, reader, builder=None, sandbox=None, security=None, dast=None, remover=None):
     claim = store.claim()
     if claim is None:
         return False
@@ -43,7 +43,15 @@ def process_one(store, reader, builder=None, sandbox=None, security=None, dast=N
     beat = threading.Thread(target=heartbeat, daemon=True)
     beat.start()
     try:
-        if claim["kind"] == "image_build":
+        if claim["kind"] == "runtime_remove":
+            from delta_platform.adapters.onprem_removal import OnpremRemover
+
+            try:
+                remover = remover or OnpremRemover(Settings())
+            except Problem as exc:
+                raise SandboxError(exc.code, exc.message) from None
+            result = remover.execute(claim, store, progress)
+        elif claim["kind"] == "image_build":
             builder = builder or build_runner(Settings(), claim)
             result = builder.execute(claim, store, progress)
         elif claim["kind"] == "security_check":

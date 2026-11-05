@@ -10,6 +10,8 @@ import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 VERSION = os.environ.get("APP_VERSION", "dev")
+SERVICE = os.environ.get("SERVICE", "demo")  # 이전 시험에서 web·api 를 같은 이미지로 띄운다
+HEALTH_PATHS = ("/health", "/api/health")  # edge 가 경로로 서비스를 고르므로 api 쪽 확인 경로가 따로 있다
 FAIL_RATE = float(os.environ.get("FAIL_RATE", "0"))
 PORT = 8080
 LISTEN_BACKLOG = 128  # 기본값 5 는 동시 요청이 몰리면 SYN 재전송으로 1초씩 밀린다
@@ -34,14 +36,15 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def do_GET(self) -> None:
-        if self.path == "/health":
+        path = self.path.split("?", 1)[0]
+        if path in HEALTH_PATHS:
             self._reply(200, {"status": "ok"})
-        elif self.path == "/api/hello":
+        elif path in ("/", "/api/hello"):
             if should_fail(FAIL_RATE, random.random()):
-                print(f"ERROR GET /api/hello 500: injected failure FAIL_RATE={FAIL_RATE}", file=sys.stderr, flush=True)
+                print(f"ERROR GET {path} 500: injected failure FAIL_RATE={FAIL_RATE}", file=sys.stderr, flush=True)
                 self._reply(500, {"error": "injected failure"})
             else:
-                self._reply(200, {"message": "hello", "version": VERSION})
+                self._reply(200, {"message": "hello", "service": SERVICE, "version": VERSION})
         else:
             self._reply(404, {"error": "not found"})
 

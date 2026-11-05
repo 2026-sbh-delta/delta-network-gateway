@@ -18,7 +18,7 @@ ANF 비용 중단과 원복은 [전환 Runbook](RUNBOOK.md#anf-비용-중단과-
 
 업무 계정의 VPC/ALB/Backend/보조 Endpoint, GCP/온프레미스 내부 장비, NAT/IGW/중앙 인터넷 출구, Organizations/OU/SCP/Identity Center 변경은 생성하지 않는다. 동일 VPC 내부 통신과 원격 네트워크 내부 통신이 자동 검사되는 구성도 아니다.
 
-동일 Workload 계정의 별도 Client/Server VPC를 중앙 ANF로 연결한 실제 HTTP 허용/차단과 FLOW/ALERT 검증을 완료했다. 배포 상태와 명령/결과는 [Server AI-DLC](../../docs/ai-dlc/aws-workload-server.md), 소비자 실행은 [Server root](../workload-server/README.md)를 따른다.
+동일 Workload 계정의 두 VPC 간 HTTP 허용/차단과 FLOW/ALERT 검증은 [과거 Server 기록](../../docs/ai-dlc/aws-workload-server.md)에 보존한다. 현재는 `10.10.0.0/16`의 [공통 네트워크 root](../workload/README.md)로 통합한다. 폐기 대역의 연결과 정책을 정리한 실제 결과는 [통합 기록](../../docs/ai-dlc/aws-workload-consolidation.md)을 따른다.
 
 ## 준비할 값
 

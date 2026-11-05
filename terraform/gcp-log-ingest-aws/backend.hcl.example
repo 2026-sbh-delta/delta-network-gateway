@@ -1,6 +1,0 @@
-bucket = "REPLACE-WITH-CENTRAL-STATE-BUCKET"
-key = "delta/lab/gcp-log-ingest-aws/terraform.tfstate"
-region = "ap-northeast-2"
-encrypt = true
-use_lockfile = true
-allowed_account_ids = ["REPLACE-WITH-CENTRAL-ACCOUNT-ID"]

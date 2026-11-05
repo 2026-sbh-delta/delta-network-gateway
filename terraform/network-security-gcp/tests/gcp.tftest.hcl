@@ -21,9 +21,6 @@ mock_provider "google" {
   mock_resource "google_network_security_security_profile" { defaults = { id = "projects/term2-delta/locations/global/securityProfiles/delta-lab-threat" } }
   mock_resource "google_network_security_security_profile_group" { defaults = { id = "projects/term2-delta/locations/global/securityProfileGroups/delta-lab-threat" } }
   mock_resource "google_network_security_firewall_endpoint" { defaults = { id = "projects/term2-delta/locations/asia-northeast3-a/firewallEndpoints/delta-lab-central" } }
-  mock_resource "google_logging_project_sink" { defaults = { writer_identity = "serviceAccount:mock@logging-123456789012.iam.gserviceaccount.com" } }
-  mock_resource "google_pubsub_topic" { defaults = { id = "projects/term2-delta/topics/delta-lab-network-security" } }
-  mock_resource "google_iam_workload_identity_pool" { defaults = { name = "projects/123456789012/locations/global/workloadIdentityPools/delta-lab-aws" } }
 }
 mock_provider "google-beta" {
   override_during = plan
@@ -47,10 +44,6 @@ run "bootstrap_central_and_workload_are_separate" {
   assert {
     condition     = google_compute_network_firewall_policy_rule.ingress["internet_inspect"].action == "apply_security_profile_group" && google_compute_network_firewall_policy_rule.ingress["internet_deny"].action == "deny" && toset(google_compute_forwarding_rule.demo.ports) == toset(["8080", "8081"])
     error_message = "Forward both control ports and use real GCP firewall inspect/deny actions."
-  }
-  assert {
-    condition     = length(google_pubsub_subscription.collector.push_config) == 0 && google_pubsub_subscription.collector.message_retention_duration == "604800s" && google_pubsub_subscription.collector.dead_letter_policy[0].max_delivery_attempts == 10 && strcontains(google_iam_workload_identity_pool_provider.aws.attribute_condition, "111122223333:assumed-role/delta-lab-gcp-log-collector/")
-    error_message = "Use durable pull delivery and trust only the exact central collector role."
   }
 }
 run "wrong_project_number" {
@@ -106,7 +99,7 @@ run "complete_four_tunnel_handoff" {
     vpn_shared_secrets = { a1 = "synthetic-test-key-a1", a2 = "synthetic-test-key-a2", b1 = "synthetic-test-key-b1", b2 = "synthetic-test-key-b2" }
   }
   assert {
-    condition     = length(google_compute_vpn_tunnel.aws) == 4 && length(google_compute_router_peer.aws) == 4 && length(google_network_connectivity_spoke.aws) == 1 && toset(google_network_connectivity_spoke.aws[0].linked_vpn_tunnels[0].include_export_ranges) == toset(["10.10.0.0/16", "10.20.0.0/16"])
+    condition     = length(google_compute_vpn_tunnel.aws) == 4 && length(google_compute_router_peer.aws) == 4 && length(google_network_connectivity_spoke.aws) == 1 && toset(google_network_connectivity_spoke.aws[0].linked_vpn_tunnels[0].include_export_ranges) == toset(["10.10.0.0/16"])
     error_message = "The complete handoff must create four BGP tunnels and filter imported AWS prefixes."
   }
   assert {

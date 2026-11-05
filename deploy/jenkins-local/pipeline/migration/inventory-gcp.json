@@ -1,0 +1,126 @@
+{
+  "_note": "AWS 인벤토리를 거꾸로 둔 GCP 출발 시험 인벤토리. 같은 두 서비스를 E2 에서 돌린다고 본다. 실제 GCP 프로젝트는 조회하지 않았다(GCP 는 상시무료만 쓴다). target_baseline 은 대상 계획이 기본으로 만드는 값이다",
+  "direction": "gcp-to-aws",
+  "service_id": "delta-migration-demo",
+  "services": [
+    {
+      "id": "web",
+      "server": "delta-web",
+      "path": "/",
+      "source_platform": "linux/amd64"
+    },
+    {
+      "id": "api",
+      "server": "delta-api",
+      "path": "/api/hello",
+      "source_platform": "linux/amd64"
+    }
+  ],
+  "databases": [],
+  "mapping": {
+    "region": "ap-northeast-2",
+    "source_region": "asia-northeast3",
+    "subnets": [
+      {
+        "name": "delta-gcp-server",
+        "cidr": "10.60.1.0/24",
+        "tier": "private",
+        "target_cidr": "10.10.4.0/24",
+        "origin": "operator"
+      }
+    ],
+    "servers": [
+      {
+        "name": "delta-web",
+        "instance_type": "e2-small",
+        "os": "debian",
+        "service_account": false,
+        "origin": "operator"
+      },
+      {
+        "name": "delta-api",
+        "instance_type": "e2-medium",
+        "os": "cos",
+        "service_account": false,
+        "origin": "operator"
+      }
+    ],
+    "security": {
+      "scc_services": [
+        "Event Threat Detection",
+        "Container Threat Detection",
+        "VM Threat Detection"
+      ],
+      "origin": "operator"
+    }
+  },
+  "source_env": {
+    "provider": "gcp",
+    "waf": {
+      "enabled": true,
+      "product": "cloud_armor",
+      "mode": "block",
+      "rule_groups": [
+        "sqli-v422-stable",
+        "xss-v422-stable",
+        "lfi-v422-stable",
+        "rfi-v422-stable",
+        "java-v422-stable",
+        "cve-canary"
+      ]
+    },
+    "identity": {
+      "mechanism": "service_account"
+    },
+    "secrets": {
+      "source": "gcp_secret_manager"
+    },
+    "logging": {
+      "central": true,
+      "destination": "cloud_logging"
+    },
+    "ingress": {
+      "tls": true
+    },
+    "network": {
+      "gateway": "haproxy",
+      "inspected": true,
+      "l7_visible": true
+    }
+  },
+  "source_edge": {
+    "_note": "출발 입구 WAF 대역이 막는 범주. 위 rule_groups 와 같은 범주다",
+    "waf_capabilities": [
+      "cve",
+      "java",
+      "lfi",
+      "rfi",
+      "sqli",
+      "xss"
+    ]
+  },
+  "target_baseline": {
+    "provider": "aws",
+    "waf": {
+      "enabled": false
+    },
+    "identity": {
+      "mechanism": "instance_profile"
+    },
+    "secrets": {
+      "source": "aws_secrets_manager"
+    },
+    "logging": {
+      "central": true,
+      "destination": "cloudwatch"
+    },
+    "ingress": {
+      "tls": true
+    },
+    "network": {
+      "gateway": "haproxy",
+      "inspected": true,
+      "l7_visible": true
+    }
+  }
+}

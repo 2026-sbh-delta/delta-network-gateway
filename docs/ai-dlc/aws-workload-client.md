@@ -1,5 +1,7 @@
 # AWS Workload 클라이언트 AI-DLC
 
+2026-11-05 후속: 기존 Client 기반을 공통 `terraform/workload` 네트워크로 통합했고 시험 EC2와 루트 EBS를 삭제했다. 아래 Client 배포와 통신 결과는 과거 기록이다. 현재 운영 구성과 실제 정리 상태는 [워크로드 통합 기록](aws-workload-consolidation.md)과 [공통 root](../../terraform/workload/README.md)를 따른다.
+
 ## 단계와 승인 상태
 
 - 기준일: 2026-11-01 (Asia/Seoul).

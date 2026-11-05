@@ -153,7 +153,7 @@ runs = sa.Table(
     timestamp("finished_at"),
     sa.UniqueConstraint("service_id", "kind", "request_key", name="run_request_unique"),
     sa.CheckConstraint(
-        "kind IN ('source_preflight', 'image_build', 'sandbox_check', 'security_check', 'dast_check')",
+        "kind IN ('source_preflight', 'image_build', 'sandbox_check', 'security_check', 'dast_check', 'runtime_remove')",
         name="run_kind",
     ),
     sa.CheckConstraint("attempt >= 0", name="run_attempt"),
@@ -163,7 +163,7 @@ runs = sa.Table(
         name="run_lease",
     ),
     sa.CheckConstraint(
-        "(status IN ('queued','running') AND finished_at IS NULL AND result IS NULL AND error IS NULL) OR (status = 'succeeded' AND finished_at IS NOT NULL AND resolved_commit_sha IS NOT NULL AND result IS NOT NULL AND error IS NULL) OR (status = 'failed' AND finished_at IS NOT NULL AND error IS NOT NULL AND result IS NULL)",
+        "(status IN ('queued','running') AND finished_at IS NULL AND result IS NULL AND error IS NULL) OR (status = 'succeeded' AND finished_at IS NOT NULL AND (resolved_commit_sha IS NOT NULL OR kind = 'runtime_remove') AND result IS NOT NULL AND error IS NULL) OR (status = 'failed' AND finished_at IS NOT NULL AND error IS NOT NULL AND result IS NULL)",
         name="run_outcome",
     ),
 )

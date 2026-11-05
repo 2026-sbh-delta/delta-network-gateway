@@ -17,9 +17,31 @@ Python 실행 환경에는 `google-auth`와 `requests`가 필요하다. prefligh
 ## 실행 입력과 state 준비
 
 1. `terraform.tfvars.example`은 mock용 합성값이다. 실제 Project Number, 비중복 Subnet, AWS Prefix/ASN, 시험 출발지 CIDR, 고정 이미지와 중앙 역할 ARN을 확인해 ignored `terraform.tfvars`를 작성한다. 처음에는 `aws_vpn_tunnels={}`다.
-2. 같은 프로젝트의 전용 GCS state bucket을 준비하거나 기존 bucket의 소유 프로젝트, 버전 관리, Uniform access, Public access prevention과 최소 접근 권한을 확인한다. 실제 `backend.hcl`을 작성하고 파일 권한을 0600으로 제한한다. 이전 GCP state는 이전하지 않는다.
+2. 기존 중앙 S3 버킷 `sbh-delta-central-tf`의 소유 계정 `482840608926`, 서울 리전, 버전 관리, 암호화, 공개 접근 차단과 접근 권한을 확인한다. GCP 전용 key는 `delta/lab/network-security-gcp/terraform.tfstate`다. 실제 `backend.hcl`에 `encrypt=true`, `use_lockfile=true`, `allowed_account_ids=["482840608926"]`를 지정하고 파일 권한을 0600으로 제한한다. 기존 GCS state가 있으면 아래 이전 절차를 먼저 수행한다.
 3. Google/Google Beta Provider를 초기화하고 실제 저장 Plan의 프로젝트, 생성 목록, 검사 정책과 비용을 검토한다. 워크로드는 공인 IP가 없어야 하고 공개 주소는 NLB에만 있어야 한다. 실제 Apply는 이 검토 후의 별도 실행 단계다.
 4. 검사 endpoint와 association이 준비되기 전에 시험 공개 진입을 열지 않는다. 초기 단일 Zone 구성은 워크로드의 다중 Zone 가용성 보장이 아니다.
+
+## GCS에서 S3로 이전
+
+2026-11-05 사용자 요청으로 이 root의 state를 기존 AWS 중앙 버킷의 별도 key로 이전했고 실제 Plan No changes/종료0을 확인했다. 원래 위치는 `gs://delta-network-gateway-tf-366844544284/delta/lab/network-security-gcp/default.tfstate`이며 복구용 원본으로 보존한다. 아래는 최초 이전 때 수행한 절차다. 이미 이전된 다른 작업 디렉터리는 이 절 뒤의 연결 안내를 따른다. [이전과 검증 기록](../../docs/ai-dlc/gcp-central-network.md#2026-11-05-gcp-state의-중앙-s3-이전)
+
+1. 모든 실행 환경의 Plan/Apply/state 쓰기를 중단한다. 기존 저장 Plan도 재사용하지 않는다. Google ADC와 `sbh-delta-security`의 AWS 인증을 확인하고 `aws sts get-caller-identity`의 계정이 `482840608926`인지 확인한다.
+2. 현재 GCS backend metadata를 보존하고 모든 workspace, 원격 잠금과 최신 GCS object generation을 확인한다. 현재 source는 default workspace 하나다. 최신 state와 기존 `backend.hcl`, 로컬 backend metadata를 ignored 경로에 0600으로 백업한다. `errored.tfstate`를 최신 원본으로 사용하지 않는다.
+3. 중앙 S3의 소유 계정/리전, 암호화, 공개 접근 차단과 새 state key/잠금의 부재를 확인한다. 2026-11-05 조회에서 버전 관리는 미설정이므로 이 작업에서는 GCS 원본과 별도 백업을 보존한다. 기존 버킷 설정과 다른 root의 key는 유지한다.
+4. `versions.tf`의 backend를 `s3`로 변경하고 실제 `backend.hcl`을 위 중앙 S3 설정으로 작성한다. 기존 `.terraform`의 GCS metadata는 migration이 읽을 수 있도록 유지한다. 백업 이후 GCS generation이 바뀌었다면 새 원본을 다시 확인한다.
+
+```bash
+export AWS_PROFILE=sbh-delta-security
+terraform -chdir=terraform/network-security-gcp init \
+  -migrate-state -backend-config=backend.hcl -lockfile=readonly
+```
+
+5. 이전 확인에는 검토한 source와 비어 있는 destination만 사용한다. 자동 실행의 `-force-copy`는 이전 질문에 자동 동의하므로 목적지 부재와 source 불변을 재확인한 승인 범위에서만 사용한다. 최초 이전에 `-reconfigure`를 사용하면 기존 state가 복사되지 않는다.
+6. S3 state의 lineage, serial, 리소스 전체와 출력을 백업과 대조한다. 이번 Terraform 1.16.4 실행에서는 신규 S3 state에 새 lineage/serial1이 생성됐다. 해당 metadata를 기록하고 check 결과의 배열 순서를 정규화해 나머지 모든 내용이 동일함을 확인했다. GCS 원본의 내용/generation 보존, 양쪽 잠금 해제와 로컬 backend가 S3를 가리키는지도 확인한다. 새 실제 `terraform plan -parallelism=2 -detailed-exitcode`로 리소스 변경이 없는지 검증한다. state 이전에는 리소스 Apply가 필요하지 않다.
+
+이전 완료 후 다른 작업 디렉터리를 연결할 때는 최신 코드와 S3용 `backend.hcl`을 준비하고, 기존 S3 state의 lineage와 key를 확인한 다음 `terraform init -reconfigure -backend-config=backend.hcl -lockfile=readonly`로 연결한다. 이 단계에서는 이미 존재하는 S3 state를 사용한다. 모든 실행 환경이 S3를 사용하게 하며 보관한 GCS state로 새 작업을 시작하지 않는다.
+
+롤백 시에는 작업을 중지하고 S3의 최신 state를 새로 백업한다. GCS 보관본과 lineage/serial을 비교한 뒤 S3에서 GCS로 역방향 migration을 검토한다. 이전 후 변경된 S3 state를 보존해야 하므로 오래된 GCS state에 `-reconfigure`만 수행하지 않는다. 이번 작업에서 GCS 원본이나 버킷을 삭제하지 않는다.
 
 ## AWS ANF를 끈 채 VPN 연결
 
@@ -43,11 +65,11 @@ python3 terraform/network-security-gcp/scripts/prepare_vpn_inputs.py \
 
 GCP의 다음 Plan에서 4터널, BGP Peer 4개와 NCC hybrid spoke를 확인한다. PSK는 sensitive/ephemeral 입력과 write-only 필드를 사용한다. 적용 시에도 동일한 ephemeral 입력을 안전하게 제공한다. 저장 Plan/일반 출력에 원문 PSK가 없는지 확인한다.
 
-## 로그 수집 연결
+## 로그 수집
 
-GCP `log_handoff`의 정확한 subscription과 WIF audience를 [AWS 수집기 모듈](../gcp-log-ingest-aws/README.md)에 전달한다. GCP는 AWS 역할의 계정과 역할명을 제한하고, 지정된 pull subscription/DLQ 읽기만 허용한다. 로그 수집기는 업무 VPN에 연결하지 않는다.
+원본은 GCP Cloud Logging에서 확인하고, AWS 중앙 수집은 [플랫폼 로그 안내](../../platform/deploy/logging/README.md)를 따른다. 플랫폼 계정 `616723161368`의 `/delta-platform/central/gcp`로 전달하며 플랫폼 전용 Sink는 `delta-platform-logs`다. 이 네트워크 root에서 전용 AWS 전달 입력이나 출력을 다시 만들지 않는다. 플랫폼 수집은 업무 VPN과 독립적이다.
 
-Cloud Logging sink writer는 주 topic 게시자다. Pub/Sub 서비스 에이전트는 DLQ 게시와 원본 subscription 소비 권한을 가진다. 이 권한이 없으면 dead lettering이 정상 동작한다고 간주하지 않는다.
+Pub/Sub 서비스 에이전트는 프로젝트의 공유 자원이며 이 root의 기존 주소로 보존한다. 플랫폼의 전용 Topic, Subscription과 권한은 플랫폼 root가 소유한다. 이전 네트워크 계정 전용 전달의 정리 결과와 보존한 로그는 [AI-DLC 기록](../../docs/ai-dlc/gcp-central-network.md#2026-11-05-gcp-로그-전달-경로-정리-검토)을 따른다.
 
 ## 세 흐름을 실제로 대조
 
@@ -56,16 +78,16 @@ Cloud Logging sink writer는 주 topic 게시자다. Pub/Sub 서비스 에이전
 | Internet -> GCP | NLB 8080 응답, VM 두 리스너, 8081 거부와 실제 방화벽 규칙 로그 | LB 미전달/비정상 헬스/앱 미기동은 방화벽 거부가 아님 |
 | GCP IDS | 공식적으로 재현 가능한 안전한 시험 트래픽과 실제 Threat ID/action 로그 | 포트 차단만으로 IDS/IPS 성공 판정하지 않음. 공식 시험 URI에서 실제 IDs 30844/30852/35107/55558과 ALERT를 확인. 앱은 URI만 반환하므로 실제 취약점/파일 접근 성공으로 해석하지 않음 |
 | AWS <-> GCP | 4터널/BGP, NCC의 AWS Prefix/업무 subnet, 양쪽 실제 TCP 요청과 반환 경로, 터널별 장애 전환 | 터널 UP만으로 앱 통신이나 장애 전환 성공 판정하지 않음. AWS ANF 검사로 보고하지 않음 |
-| GCP -> AWS 로그 | 새 원본의 project/logName/insertId/시각/요청 정보와 CloudWatch 원본 JSON, 5분 이내 도착 실측 | Lambda 실행 로그나 합성 메시지 저장만으로 실제 GCP 수집 완료 판정하지 않음 |
+| GCP -> 플랫폼 AWS 로그 | 새 원본의 project/logName/insertId/시각/요청 정보와 `/delta-platform/central/gcp`의 원본 JSON 및 실제 도착 시각 | Lambda 실행 로그나 합성 메시지 저장만으로 실제 네트워크 로그 수집 완료 판정하지 않음 |
 
 각 요청에 고유한 `request_id`를 붙여 앱 응답과 로그의 tuple/발생 시각을 대조한다. 초기 평문 HTTP 검증을 HTTPS 본문 검사로 확대하지 않는다. AWS 방화벽과 SG는 별개이므로 시험할 사설 서비스의 SG/리스너도 확인한다. 기존 AWS SG를 이 root에서 변경하지 않는다.
 
 ## 관측, 중지와 복구
 
 - GCP에서 endpoint/association 준비 상태, 규칙/위협 로그, NLB 헬스, VM 리스너, NCC 경로, VPN/BGP를 확인한다.
-- Pub/Sub의 backlog, oldest unacked age와 DLQ를 확인한다. 원본 subscription과 DLQ는 7일 보존이다. DLQ는 자동 폐기하지 않으며 원인을 해결한 뒤 권한 있는 운영자가 원본을 검토해 재전달한다. DLQ 자동 재처리 기능은 제공하지 않는다.
-- AWS의 Lambda Errors 경보와 `ingest_summary`의 pulled/stored/acked/failed를 확인한다. `event_id`로 재전달 중복을 식별한다. 실패 원문이나 인증 토큰을 로그에 넣지 않는다.
-- 수집 장애 시 EventBridge poll rule을 중지하고 메시지를 남긴다. 원인 해결 후 재개하여 저장과 ack를 대조한다. 보존 기간을 넘긴 데이터까지 복구된다고 주장하지 않는다.
+- 플랫폼 전용 Pub/Sub 구독의 backlog, oldest unacked age와 DLQ를 확인한다. 플랫폼 일반 구독은 24시간, 실패 구독은 7일 보존이다. DLQ는 자동 폐기하지 않으며 원인을 해결한 뒤 권한 있는 운영자가 원본을 검토해 재전달한다.
+- 플랫폼의 Lambda Errors 경보와 `ingest_summary`의 pulled/stored/acked/failed를 확인한다. `event_id`로 재전달 중복을 식별한다. 실패 원문이나 인증 토큰을 로그에 넣지 않는다.
+- 수집 장애 시 플랫폼 운영 절차로 해당 Sink와 실행 규칙을 조정하고 메시지를 보존한다. 원인 해결 후 저장과 ack를 대조한다. 보존 기간을 넘긴 데이터까지 복구된다고 주장하지 않는다. 폐기한 네트워크 계정 수집기를 임의로 재생성하지 않는다.
 - 검사 장애나 정리가 필요하면 공개 forwarding rule을 먼저 닫고 association과 endpoint를 정리한다. VM 중지만으로 검사 과금 중단을 선언하지 않는다. state, 원본 로그와 기존 AWS 기반은 보존한다.
 - VPN 롤백은 신규 VPN 경로/전파와 계약을 의존 순서에 맞게 정리한다. ANF를 재생성하지 않는다. 실제 적용 뒤 최종 Plan과 기존 AWS 통신을 다시 확인한다.
 

@@ -34,7 +34,7 @@ class OnpremRuntimeTest(unittest.TestCase):
         quota = next(o["spec"]["hard"] for o in objects if o["kind"] == "ResourceQuota")
         self.assertEqual(
             (quota["pods"], quota["secrets"], quota["persistentvolumeclaims"]),
-            ("1", "1", "0"),
+            ("2", "2", "0"),
         )
         service = next(o["spec"] for o in objects if o["kind"] == "Service")
         self.assertEqual(service["externalTrafficPolicy"], "Local")

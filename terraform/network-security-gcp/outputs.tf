@@ -31,7 +31,3 @@ output "demo_address" {
   description = "Public passthrough NLB address; ports 8080/8081 are forwarded."
   value       = google_compute_address.demo.address
 }
-output "log_handoff" {
-  description = "Nonsecret AWS log collector configuration."
-  value       = { project_id = var.project_id, subscription = google_pubsub_subscription.collector.id, dead_letter_subscription = google_pubsub_subscription.dead_letter.id, wif_audience = "//iam.googleapis.com/projects/${var.project_number}/locations/global/workloadIdentityPools/${google_iam_workload_identity_pool.aws.workload_identity_pool_id}/providers/aws-collector" }
-}

@@ -1,4 +1,5 @@
 # 로컬 시험 전용. docker.sock 을 Jenkins 에 주므로 AWS·공용 서버에 그대로 쓰지 않는다.
+# 포트·네트워크는 다른 스택과 같이 띄울 때만 바꾼다(기본값이 README 의 주소다).
 name: delta-jenkins-local
 
 services:
@@ -8,10 +9,12 @@ services:
     environment:
       JENKINS_ADMIN_PASSWORD: ${JENKINS_ADMIN_PASSWORD:?up.sh 로 실행한다}
       DELTA_API_TOKEN: ${DELTA_API_TOKEN:?up.sh 로 실행한다}
+      TRAFFIC_CONTROL_TOKEN: ${TRAFFIC_CONTROL_TOKEN:?up.sh 로 실행한다}
+      DELTA_NETWORK: ${DELTA_NETWORK:-delta-local}
       CASC_JENKINS_CONFIG: /pipelines/casc.yaml
       JAVA_OPTS: -Djenkins.install.runSetupWizard=false -Xmx1g
     ports:
-      - "127.0.0.1:18080:8080"
+      - "127.0.0.1:${JENKINS_PORT:-18080}:8080"
     volumes:
       - jenkins-home:/var/jenkins_home
       - /var/run/docker.sock:/var/run/docker.sock
@@ -29,7 +32,7 @@ services:
       DELTA_LLM: ${DELTA_LLM:-fake}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
     ports:
-      - "127.0.0.1:18090:8090"  # 시연 콘솔·온프레미스 수집기가 호출한다
+      - "127.0.0.1:${DELTA_AI_PORT:-18090}:8090"  # 시연 콘솔·온프레미스 수집기가 호출한다
     volumes:
       - delta-ai-var:/app/var
 
@@ -37,13 +40,30 @@ services:
   haproxy:
     image: haproxy:3.0-alpine
     ports:
-      - "127.0.0.1:18081:80"
+      - "127.0.0.1:${GATEWAY_PORT:-18081}:80"
+      - "127.0.0.1:${MIGRATION_GATEWAY_PORT:-18083}:81"  # 클라우드 이전 시험 gateway
     volumes:
       - ./haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+      - ./haproxy/waf:/usr/local/etc/haproxy/waf:ro
+
+  # 서비스별 이전 비율 화면. HAProxy 관리 포트 대신 이 서버만 밖에 연다
+  traffic-control:
+    build:
+      context: .
+      dockerfile: traffic-control/Dockerfile
+    environment:
+      TRAFFIC_CONTROL_TOKEN: ${TRAFFIC_CONTROL_TOKEN:?up.sh 로 실행한다}
+      PUBLIC_PORT: ${TRAFFIC_CONTROL_PORT:-18082}
+    ports:
+      - "127.0.0.1:${TRAFFIC_CONTROL_PORT:-18082}:8080"
+    volumes:
+      - ./pipeline/migration/services.json:/config/services.json:ro
+    depends_on:
+      - haproxy
 
 networks:
   default:
-    name: delta-local
+    name: ${DELTA_NETWORK:-delta-local}
 
 volumes:
   jenkins-home:

@@ -1,0 +1,111 @@
+.service-list-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  margin-top: 12px;
+  padding-right: 16px;
+}
+.service-list-item .service-row {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  border: 0;
+}
+.project-delete-trigger {
+  flex-shrink: 0;
+  color: #ad4141;
+  border-color: #e9caca;
+  font-size: 0.8rem;
+}
+.project-delete-trigger:hover {
+  color: #8a2424;
+  background: #fff3f1;
+  border-color: #d7a5a5;
+}
+.project-delete-dialog {
+  width: min(520px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+  box-sizing: border-box;
+  border: 1px solid #dfe5ef;
+  border-radius: 16px;
+  padding: 28px;
+  color: #26354c;
+  background: #fff;
+  box-shadow: 0 24px 80px #0b173340;
+}
+.project-delete-dialog::backdrop {
+  background: #101e3680;
+}
+.project-delete-dialog form {
+  display: block;
+}
+.delete-project-eyebrow {
+  color: #8c6470;
+  font-size: 0.75rem;
+}
+.project-delete-dialog h2 {
+  margin: 12px 0 16px;
+  font-size: 1.4rem;
+}
+.delete-project-name {
+  padding: 12px 16px;
+  background: #f4f6fa;
+  border-radius: 8px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.project-delete-dialog p {
+  line-height: 1.7;
+  word-break: keep-all;
+  font-size: 0.88rem;
+}
+.delete-project-boundary {
+  color: #6b788e;
+}
+.project-delete-dialog label {
+  display: block;
+  margin: 24px 0 8px;
+  font-size: 0.83rem;
+}
+.project-delete-dialog input {
+  width: 100%;
+  box-sizing: border-box;
+}
+.delete-project-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 24px;
+}
+.project-delete-confirm {
+  background: #b23939;
+  border-color: #b23939;
+  color: #fff;
+}
+.project-delete-confirm:hover:not(:disabled) {
+  background: #922c2c;
+  border-color: #922c2c;
+}
+@media (max-width: 600px) {
+  .service-list-item {
+    gap: 4px;
+    padding-right: 10px;
+  }
+  .service-list-item .service-row {
+    padding: 16px 10px;
+    gap: 10px;
+  }
+  .service-list-item .ref,
+  .service-list-item .arrow {
+    display: none;
+  }
+  .project-delete-dialog {
+    padding: 22px;
+  }
+  .delete-project-actions button {
+    flex: 1;
+  }
+}

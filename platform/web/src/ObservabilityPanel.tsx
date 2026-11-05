@@ -1,5 +1,6 @@
+import { RuntimeComponents } from "./RuntimeComponents";
 import { useEffect, useState } from "react";
-import { message, type Service } from "./api";
+import { api, message, type Service } from "./api";
 import {
   observabilityApi,
   type Environment,
@@ -81,115 +82,167 @@ function MetricCard({
 }) {
   return (
     <article className={`obs-metric state-${metric.status}`}>
-      <span>{title}</span>
-      <MetricValue metric={metric} suffix={suffix} />
-      <Sparkline metric={metric} />
-      <small>
-        {metric.status === "ok"
-          ? metric.value === null
-            ? "값 없음"
-            : stamp(metric.collected_at)
-          : metric.message || stateLabel[metric.status]}
-      </small>
+      <div className="dashboard-metric-heading">
+        <span>{title}</span>
+        <span className={`obs-pill state-${metric.status}`}>
+          {stateLabel[metric.status]}
+        </span>
+      </div>
+      {metric.status === "ok" && metric.value !== null ? (
+        <MetricValue metric={metric} suffix={suffix} />
+      ) : (
+        <>
+          <div className="obs-value">—</div>
+          <span className="dashboard-metric-reason">{metricText(metric)}</span>
+        </>
+      )}
+      <Sparkline metric={metric} title={title} />
+      {metric.status === "ok" && (
+        <small>
+          {metric.value === null ? "값 없음" : stamp(metric.collected_at)}
+        </small>
+      )}
     </article>
   );
 }
-function Sparkline({ metric }: { metric: Metric }) {
-  if (metric.status !== "ok" || metric.series.length < 2) return null;
-  const values = metric.series.map((point) => point.value);
+function Sparkline({ metric, title }: { metric: Metric; title: string }) {
+  const series = metric.series
+    .filter(
+      (point) =>
+        Number.isFinite(point.value) && Number.isFinite(Date.parse(point.at)),
+    )
+    .slice()
+    .sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
+  if (metric.status !== "ok" || series.length < 2)
+    return <div className="dashboard-chart-empty">추이 데이터 없음</div>;
+  const values = series.map((point) => point.value);
   const low = Math.min(...values);
   const span = Math.max(...values) - low || 1;
-  const points = values
+  const start = Date.parse(series[0].at);
+  const duration = Date.parse(series[series.length - 1].at) - start;
+  if (!duration)
+    return <div className="dashboard-chart-empty">추이 데이터 없음</div>;
+  const points = series
     .map(
-      (value, index) =>
-        `${(index / (values.length - 1)) * 100},${24 - ((value - low) / span) * 20}`,
+      (point) =>
+        `${((Date.parse(point.at) - start) / duration) * 300},${72 - ((point.value - low) / span) * 56}`,
     )
     .join(" ");
   return (
-    <svg
-      className="obs-sparkline"
-      viewBox="0 0 100 26"
-      role="img"
-      aria-label="선택 기간 추이"
-    >
-      <polyline points={points} />
-    </svg>
+    <div className="dashboard-chart">
+      <svg
+        viewBox="0 0 300 88"
+        preserveAspectRatio="none"
+        role="img"
+        aria-label={`${title} 선택 기간 추이`}
+      >
+        {[16, 44, 72].map((y) => (
+          <line key={y} x1="0" x2="300" y1={y} y2={y} />
+        ))}
+        <polygon points={`0,88 ${points} 300,88`} />
+        <polyline points={points} />
+      </svg>
+      <div>
+        <span>
+          {new Date(start).toLocaleTimeString("ko-KR", {
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: false,
+          })}
+        </span>
+        <span>
+          {new Date(start + duration).toLocaleTimeString("ko-KR", {
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: false,
+          })}
+        </span>
+      </div>
+    </div>
   );
 }
-export function ObservabilityPanel({
-  initialServiceId = "",
-  onServiceChange,
-}: {
-  initialServiceId?: string;
-  onServiceChange?: (id: string) => void;
-}) {
-  const [services, setServices] = useState<Service[]>([]);
-  const [serviceId, setServiceId] = useState(initialServiceId);
+export function ObservabilityPanel({ serviceId }: { serviceId: string }) {
+  const [service, setService] = useState<Service | null>(null);
   const [environments, setEnvironments] = useState<Environment[]>([]);
-  const [environmentId, setEnvironmentId] = useState("");
+  const [environmentId, setEnvironmentId] = useState(() => {
+    try {
+      return sessionStorage.getItem(`delta:environment:${serviceId}`) ?? "";
+    } catch {
+      return "";
+    }
+  });
+  useEffect(() => {
+    if (environmentId) {
+      try {
+        sessionStorage.setItem(`delta:environment:${serviceId}`, environmentId);
+      } catch {
+        /* Storage may be disabled. */
+      }
+    }
+  }, [serviceId, environmentId]);
   const [minutes, setMinutes] = useState(15);
   const [snapshot, setSnapshot] = useState<Observability | null>(null);
-  const [serviceState, setServiceState] = useState<
-    "loading" | "ready" | "error"
-  >("loading");
   const [environmentState, setEnvironmentState] = useState<
     "idle" | "loading" | "ready" | "error"
   >("idle");
   const [snapshotState, setSnapshotState] = useState<
     "idle" | "loading" | "ready" | "error"
   >("idle");
-  const [error, setError] = useState("");
+  const [serviceError, setServiceError] = useState("");
+  const [environmentError, setEnvironmentError] = useState("");
+  const [snapshotError, setSnapshotError] = useState("");
+  const [retry, setRetry] = useState(0);
   const [reload, setReload] = useState(0);
   useEffect(() => {
-    let alive = true;
-    observabilityApi
-      .services()
-      .then((page) => {
-        if (!alive) return;
-        setServices(page.items);
-        setServiceId((id) => id || page.items[0]?.id || "");
-        setServiceState("ready");
+    const controller = new AbortController();
+    setServiceError("");
+    api<Service>(
+      `/services/${encodeURIComponent(serviceId)}`,
+      undefined,
+      undefined,
+      controller.signal,
+    )
+      .then((data) => {
+        if (!controller.signal.aborted) setService(data);
       })
       .catch((e) => {
-        if (alive) {
-          setServiceState("error");
-          setError(message(e));
-        }
+        if (!controller.signal.aborted) setServiceError(message(e));
       });
-    return () => {
-      alive = false;
-    };
-  }, []);
+    return () => controller.abort();
+  }, [serviceId, retry]);
   useEffect(() => {
-    setEnvironments([]);
-    setEnvironmentId("");
-    setSnapshot(null);
-    setSnapshotState("idle");
-    if (!serviceId) return;
     const controller = new AbortController();
     setEnvironmentState("loading");
-    setError("");
+    setEnvironmentError("");
     observabilityApi
       .environments(serviceId, controller.signal)
       .then(({ items }) => {
         if (controller.signal.aborted) return;
         setEnvironments(items);
-        setEnvironmentId(items[0]?.id ?? "");
+        setEnvironmentId((current) =>
+          items.some((item) => item.id === current)
+            ? current
+            : (items[0]?.id ?? ""),
+        );
         setEnvironmentState("ready");
       })
       .catch((e) => {
         if (!controller.signal.aborted) {
           setEnvironmentState("error");
-          setError(message(e));
+          setEnvironmentError(message(e));
         }
       });
     return () => controller.abort();
-  }, [serviceId]);
+  }, [serviceId, retry]);
   useEffect(() => {
-    if (!serviceId || !environmentId) return;
+    if (!environmentId) {
+      setSnapshot(null);
+      setSnapshotState("idle");
+      return;
+    }
     const controller = new AbortController();
     setSnapshotState("loading");
-    setError("");
+    setSnapshotError("");
     observabilityApi
       .snapshot(serviceId, environmentId, minutes, controller.signal)
       .then((data) => {
@@ -201,7 +254,7 @@ export function ObservabilityPanel({
       .catch((e) => {
         if (!controller.signal.aborted) {
           setSnapshotState("error");
-          setError(message(e));
+          setSnapshotError(message(e));
         }
       });
     return () => controller.abort();
@@ -210,7 +263,13 @@ export function ObservabilityPanel({
     const timer = window.setInterval(() => setReload((n) => n + 1), 30000);
     return () => window.clearInterval(timer);
   }, []);
-  const service = services.find((item) => item.id === serviceId);
+  const selectedEnvironment = environments.find(
+    (item) => item.id === environmentId,
+  );
+  const error = serviceError || environmentError || snapshotError;
+  const busy = environmentState === "loading" || snapshotState === "loading";
+  const noEnvironment =
+    environmentState === "ready" && environments.length === 0;
   const selectionMatches =
     snapshot?.service_id === serviceId &&
     snapshot.environment.id === environmentId &&
@@ -222,124 +281,163 @@ export function ObservabilityPanel({
   const appState = snapshot?.metrics.app_up;
   const dbState = snapshot?.metrics.db_up;
   return (
-    <section className="observability" aria-label="관측 대시보드">
-      <div className="page-heading">
+    <section
+      className="observability developer-dashboard"
+      aria-label="관측 대시보드"
+    >
+      <header className="dashboard-heading">
         <div>
-          <div className="eyebrow">PLATFORM / OBSERVABILITY</div>
-          <h1>서비스 대시보드</h1>
-          <p>선택한 실행 환경의 최근 관측 결과입니다.</p>
+          <a
+            className="dashboard-project"
+            href={`#/overview/${encodeURIComponent(serviceId)}`}
+          >
+            {service?.name ?? "서비스 개요"}
+          </a>
+          <h1>대시보드</h1>
+          <p>트래픽, 실행 상태와 최근 오류를 한눈에 확인하세요.</p>
         </div>
-        <button
-          onClick={() => setReload((n) => n + 1)}
-          disabled={!serviceId || !environmentId}
-        >
-          지금 새로고침
-        </button>
-      </div>
-      <section className="panel obs-controls">
-        <label>
-          서비스
-          <select
-            aria-label="서비스 선택"
-            value={serviceId}
-            onChange={(e) => {
-              setServiceId(e.target.value);
-              onServiceChange?.(e.target.value);
+        <div className="dashboard-refresh">
+          <span className="dashboard-live">
+            {environmentId ? "30초마다 갱신" : "환경 연결 대기"}
+          </span>
+          <button
+            onClick={() => {
+              setRetry((n) => n + 1);
+              setReload((n) => n + 1);
             }}
-            disabled={serviceState !== "ready" || !services.length}
+            disabled={busy}
           >
-            <option value="">
-              {serviceState === "loading"
-                ? "불러오는 중…"
-                : serviceState === "error"
-                  ? "서비스 조회 오류"
-                  : "서비스 없음"}
-            </option>
-            {services.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          환경
-          <select
-            aria-label="환경 선택"
-            value={environmentId}
-            onChange={(e) => setEnvironmentId(e.target.value)}
-            disabled={environmentState !== "ready" || !environments.length}
-          >
-            <option value="">
+            {busy ? "조회 중…" : "지금 새로고침"}
+          </button>
+        </div>
+      </header>
+      <div className="dashboard-toolbar">
+        <div
+          className="dashboard-environments"
+          role="group"
+          aria-label="실행 환경"
+        >
+          {environments.map((item) => (
+            <button
+              key={item.id}
+              aria-pressed={environmentId === item.id}
+              onClick={() => setEnvironmentId(item.id)}
+            >
+              {item.name}
+            </button>
+          ))}
+          {!environments.length && (
+            <span>
               {environmentState === "loading"
-                ? "불러오는 중…"
+                ? "환경 조회 중…"
                 : environmentState === "error"
-                  ? "환경 조회 오류"
-                  : "환경 없음"}
-            </option>
-            {environments.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.name} · {item.cloud.toUpperCase()} · {item.region}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          기간
-          <select
-            aria-label="조회 기간"
-            value={minutes}
-            onChange={(e) => setMinutes(Number(e.target.value))}
-          >
-            <option value={15}>최근 15분</option>
-            <option value={30}>최근 30분</option>
-            <option value={60}>최근 1시간</option>
-            <option value={120}>최근 2시간</option>
-          </select>
-        </label>
-      </section>
+                  ? "환경 조회 실패"
+                  : "연결된 환경 없음"}
+            </span>
+          )}
+        </div>
+        <div className="dashboard-period" role="group" aria-label="조회 기간">
+          {[15, 30, 60, 120].map((value) => (
+            <button
+              key={value}
+              aria-pressed={minutes === value}
+              onClick={() => setMinutes(value)}
+            >
+              {value < 60 ? `${value}분` : `${value / 60}시간`}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="dashboard-context">
+        <span>
+          {selectedEnvironment
+            ? `${selectedEnvironment.cloud.toUpperCase()} · ${selectedEnvironment.region}${selectedEnvironment.version ? ` · ${selectedEnvironment.version}` : ""}`
+            : "실행 환경을 연결하면 관측이 시작됩니다."}
+        </span>
+        <span>
+          {selectionMatches && snapshot
+            ? `마지막 관측 ${stamp(snapshot.observed_at)}`
+            : "수집된 데이터 없음"}
+        </span>
+      </div>
       {error && (
         <div className="error" role="alert">
           {error}
+          {selectionMatches && " · 이전 관측 결과를 표시하고 있습니다."}
         </div>
       )}
-      {serviceState === "ready" && !services.length && (
-        <div className="panel obs-empty">등록된 서비스가 없습니다.</div>
-      )}
-      {serviceId && environmentState === "ready" && !environments.length && (
-        <div className="panel obs-empty">
-          이 서비스에 연결된 환경이 없습니다.
+      {noEnvironment && (
+        <div className="dashboard-notice">
+          <span className="dashboard-notice-icon" aria-hidden="true">
+            ◎
+          </span>
+          <div>
+            <strong>실행 환경 연결이 필요합니다</strong>
+            <p>
+              이 서비스에 연결된 환경이 없습니다. 실행 환경과 관측 수집을
+              연결하면 지표가 표시됩니다.
+            </p>
+          </div>
+          <a href={`#/overview/${encodeURIComponent(serviceId)}`}>
+            서비스 개요로 이동 →
+          </a>
         </div>
       )}
-      {snapshotState === "loading" && !selectionMatches && (
-        <div className="panel obs-empty" role="status">
-          관측 데이터를 불러오는 중입니다.
-        </div>
-      )}
-      {snapshotState === "error" && !selectionMatches && (
-        <div className="panel obs-empty">
-          관측 데이터를 가져오지 못했습니다. 다시 시도해 주세요.
-        </div>
+      {!selectionMatches && (
+        <>
+          {busy && (
+            <p className="dashboard-loading" role="status">
+              관측 데이터를 불러오는 중입니다.
+            </p>
+          )}
+          <div className="obs-metrics">
+            {["요청 수", "오류율", "p95 지연"].map((title) => (
+              <MetricCard
+                key={title}
+                title={title}
+                metric={{
+                  status: "no_data",
+                  value: null,
+                  unit: "",
+                  collected_at: null,
+                  message: error
+                    ? "다시 조회해 주세요"
+                    : busy
+                      ? "불러오는 중"
+                      : "환경 연결 후 수집",
+                  series: [],
+                }}
+              />
+            ))}
+          </div>
+          <div className="obs-columns dashboard-placeholders">
+            {[
+              ["앱 · DB", "앱 상태와 DB 연결 정보를 표시합니다."],
+              ["가상 머신", "서버별 CPU, 메모리, 디스크 사용량을 표시합니다."],
+              ["최근 경고 · 오류", "수집된 경고와 오류 로그를 표시합니다."],
+              [
+                "대표 요청 경로",
+                "요청이 각 서비스를 통과한 시간과 경로를 표시합니다.",
+              ],
+            ].map(([title, text]) => (
+              <section key={title} className="panel">
+                <div className="panel-top">
+                  <h2>{title}</h2>
+                  <span className="obs-pill">
+                    {error ? "조회 확인 필요" : busy ? "조회 중" : "연결 대기"}
+                  </span>
+                </div>
+                <div className="dashboard-panel-empty">
+                  <span aria-hidden="true">—</span>
+                  <p>{text}</p>
+                </div>
+              </section>
+            ))}
+          </div>
+        </>
       )}
       {snapshot && selectionMatches && (
         <>
-          <div className="obs-summary">
-            <div>
-              <strong>{service?.name}</strong>
-              <span>
-                {snapshot.environment.name} ·{" "}
-                {snapshot.environment.cloud.toUpperCase()} ·{" "}
-                {snapshot.environment.region}
-                {snapshot.environment.version
-                  ? ` · ${snapshot.environment.version}`
-                  : ""}
-              </span>
-            </div>
-            <small>
-              마지막 관측 {stamp(snapshot.observed_at)} · 최근{" "}
-              {snapshot.window.minutes}분 · 30초마다 자동 갱신
-            </small>
-          </div>
           <div className="obs-metrics">
             <MetricCard title="요청 수" metric={snapshot.metrics.requests} />
             <MetricCard
@@ -362,7 +460,9 @@ export function ObservabilityPanel({
                 >
                   {appState?.status === "ok" && appState.value !== null
                     ? appState.value === 1
-                      ? "앱 실행 중"
+                      ? service?.application_bundle
+                        ? "대표 서비스 응답"
+                        : "앱 실행 중"
                       : "앱 중지"
                     : appState
                       ? metricText(appState)
@@ -370,7 +470,7 @@ export function ObservabilityPanel({
                 </span>
               </div>
               <p className="obs-line">
-                앱 상태{" "}
+                {service?.application_bundle ? "대표 서비스 상태" : "앱 상태"}{" "}
                 <b>
                   {appState?.status === "ok" && appState.value !== null
                     ? appState.value === 1
@@ -384,45 +484,59 @@ export function ObservabilityPanel({
               <p className="obs-line">
                 DB 연결{" "}
                 <b>
-                  {dbState?.status === "ok" && dbState.value !== null
-                    ? dbState.value === 1
-                      ? "연결됨"
-                      : "연결 안 됨"
-                    : dbState
-                      ? metricText(dbState)
-                      : stateLabel.no_data}
+                  {service?.application_bundle?.database === "none" ||
+                  service?.application_bundle?.database === "memory"
+                    ? "미구성"
+                    : dbState?.status === "ok" && dbState.value !== null
+                      ? dbState.value === 1
+                        ? "연결됨"
+                        : "연결 안 됨"
+                      : dbState
+                        ? metricText(dbState)
+                        : stateLabel.no_data}
                 </b>
               </p>
-              {snapshot.migration && (
-                <div className="obs-migration">
-                  <div className="obs-migration-head">
-                    <b>DB 이전</b>
-                    <span
-                      className={`obs-pill state-${snapshot.migration.status}`}
-                    >
-                      {migrationStatus[snapshot.migration.status]}
-                    </span>
+              <RuntimeComponents service={service} snapshot={snapshot} />
+              {service?.application_bundle?.database === "memory" && (
+                <p className="release-notice">
+                  메모리 저장 · 백엔드 재시작 시 데이터가 사라집니다. 데이터
+                  보존·DB 이전 검증 대상이 아닙니다.
+                </p>
+              )}
+              {snapshot.migration &&
+                service?.application_bundle?.database !== "none" &&
+                service?.application_bundle?.database !== "memory" && (
+                  <div className="obs-migration">
+                    <div className="obs-migration-head">
+                      <b>DB 이전</b>
+                      <span
+                        className={`obs-pill state-${snapshot.migration.status}`}
+                      >
+                        {migrationStatus[snapshot.migration.status]}
+                      </span>
+                    </div>
+                    <p>단계: {migrationStage[snapshot.migration.stage]}</p>
+                    <p>
+                      검증:{" "}
+                      {snapshot.migration.validation === "passed"
+                        ? "통과"
+                        : "대기"}
+                      {" · "}
+                      미반영 WAL:{" "}
+                      {snapshot.migration.lag_bytes === null
+                        ? "정보 없음"
+                        : `${snapshot.migration.lag_bytes.toLocaleString("ko-KR")} 바이트`}
+                    </p>
+                    <small>
+                      마지막 갱신 {stamp(snapshot.migration.observed_at)}
+                    </small>
                   </div>
-                  <p>단계: {migrationStage[snapshot.migration.stage]}</p>
-                  <p>
-                    검증:{" "}
-                    {snapshot.migration.validation === "passed"
-                      ? "통과"
-                      : "대기"}
-                    {" · "}
-                    미반영 WAL:{" "}
-                    {snapshot.migration.lag_bytes === null
-                      ? "정보 없음"
-                      : `${snapshot.migration.lag_bytes.toLocaleString("ko-KR")} 바이트`}
-                  </p>
-                  <small>
-                    마지막 갱신 {stamp(snapshot.migration.observed_at)}
-                  </small>
-                </div>
-              )}
-              {!snapshot.migration && (
-                <p className="obs-migration-none">DB 이전 실행 없음</p>
-              )}
+                )}
+              {!snapshot.migration &&
+                service?.application_bundle?.database !== "none" &&
+                service?.application_bundle?.database !== "memory" && (
+                  <p className="obs-migration-none">DB 이전 실행 없음</p>
+                )}
             </section>
             <section className="panel">
               <div className="panel-top">

@@ -1,5 +1,7 @@
 # AWS → GCP 매핑 판단
 
+2026-11-05 후속: AWS 기본 대상 풀을 공통 `10.10.0.0/16`로 바꾸고 기존 네 서브넷을 예약한다. AWS 공통 root는 네트워크만 관리한다. 아래 Server state 대조 결과는 과거 기록이며 현재 대상 root나 주소로 재사용하지 않는다. [워크로드 통합 기록](aws-workload-consolidation.md)을 따른다. `mapping-workload-server.json` 파일명은 평가 사례와의 호환을 위해 유지하되 내부 주소와 출처는 운영자 제공 예제로 갱신한다.
+
 - 기준일: 2026-11-02 (Asia/Seoul)
 - 현재 단계: Construction 로컬 구현 (2026-11-02 사용자 승인). **커밋·푸시 안 함. GCP 생성과 Terraform Plan·Apply 도 안 함.**
 - 결정 근거: [ADR-AI-37](../../services/delta-ai/docs/adr/ADR-AI-37-aws-front-door.md), [38](../../services/delta-ai/docs/adr/ADR-AI-38-terraform-vs-cartography.md), [39](../../services/delta-ai/docs/adr/ADR-AI-39-migration-mapping.md)

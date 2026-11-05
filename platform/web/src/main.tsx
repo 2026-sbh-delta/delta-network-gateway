@@ -14,6 +14,9 @@ import {
 } from "./api";
 import "./style.css";
 import "./presentation.css";
+import "./dashboard.css";
+import "./release.css";
+import { ApplicationPanel } from "./ApplicationPanel";
 import {
   AppShell,
   Icon,
@@ -21,6 +24,7 @@ import {
   useWorkspaceRoute,
   type View,
 } from "./AppShell";
+import { DeleteProjectDialog } from "./DeleteProjectDialog";
 import { BuildPanel } from "./BuildPanel";
 import { ObservabilityPanel } from "./ObservabilityPanel";
 import { WorkflowPlanningPanel } from "./WorkflowPlanningPanel";
@@ -433,63 +437,18 @@ function Detail({
             )}
           </div>
           {view === "overview" && (
-            <>
-              <section className="service-overview panel">
-                <div className="overview-intro">
-                  <div className="eyebrow">SOURCE READINESS</div>
-                  <h2>등록한 서비스의 준비 상태</h2>
-                  <p>
-                    소스를 확인하고, 검증한 이미지로 다음 환경을 준비하세요.
-                  </p>
-                  <Status run={run} />
-                </div>
-                <dl className="overview-facts">
-                  <div>
-                    <dt>소스 기준</dt>
-                    <dd>{service.source_ref}</dd>
-                  </div>
-                  <div>
-                    <dt>앱 포트</dt>
-                    <dd>{service.container_port}</dd>
-                  </div>
-                  <div>
-                    <dt>헬스 체크</dt>
-                    <dd>{service.healthcheck_path}</dd>
-                  </div>
-                </dl>
-              </section>
-              <div className="section-heading">
-                <h2>다음 작업</h2>
-                <span>준비 → 계획 → 확인</span>
-              </div>
-              <div className="next-actions">
-                {sections.slice(1).map((item, i) => (
-                  <button
-                    className="next-action"
-                    key={item.view}
-                    onClick={() => onNavigate(item.view)}
-                  >
-                    <span className="action-index">0{i + 1}</span>
-                    <Icon name={item.view} />
-                    <strong>{item.title}</strong>
-                    <span>{item.description}</span>
-                    <span className="action-arrow">
-                      <Icon name="arrow" />
-                    </span>
-                  </button>
-                ))}
-              </div>
-              <p className="overview-note">
-                소스 확인, 이미지 빌드, 보안 검사와 이전 실행은 각각의 결과로
-                확인합니다.
-              </p>
-            </>
+            <ApplicationPanel service={service} onNavigate={onNavigate} />
           )}
           {view === "migration" && (
             <WorkflowPlanningPanel key={`${id}-workflows`} serviceId={id} />
           )}
           {view === "build" && (
             <>
+              <ApplicationPanel
+                service={service}
+                mode="build"
+                onNavigate={onNavigate}
+              />
               <div className="work-stage-heading">
                 <span>01</span>
                 <div>
@@ -670,6 +629,8 @@ function Workspace({
   const [services, setServices] = useState<Service[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [register, setRegister] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Service | null>(null);
+  const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const loadGeneration = useRef(0);
@@ -730,12 +691,30 @@ function Workspace({
       }
     >
       <ErrorBox error={error} />
-      {route.view === "monitoring" ? (
-        <ObservabilityPanel
-          key={route.serviceId ?? "all"}
-          initialServiceId={route.serviceId ?? undefined}
-          onServiceChange={(id) => navigate("monitoring", id)}
+      {notice && (
+        <p className="success-note" role="status">
+          {notice}
+        </p>
+      )}
+      {deleteTarget && (
+        <DeleteProjectDialog
+          key={deleteTarget.id}
+          service={deleteTarget}
+          onCancel={() => setDeleteTarget(null)}
+          onDeleted={(deleted) => {
+            loadGeneration.current++;
+            setLoading(false);
+            setServices((items) =>
+              items.filter((item) => item.id !== deleted.id),
+            );
+            setDeleteTarget(null);
+            setNotice(`${deleted.name} 프로젝트를 삭제했습니다.`);
+            if (route.serviceId === deleted.id) navigate("overview", null);
+          }}
         />
+      )}
+      {route.view === "monitoring" && route.serviceId ? (
+        <ObservabilityPanel key={route.serviceId} serviceId={route.serviceId} />
       ) : route.serviceId ? (
         <Detail
           key={route.serviceId}
@@ -760,33 +739,38 @@ function Workspace({
               + 서비스 등록
             </button>
           </div>
-          <section className="workspace-journey" aria-label="서비스 작업 흐름">
-            <div className="journey-copy">
-              <span className="eyebrow">ONE WORKSPACE</span>
-              <h2>
-                준비부터 이전까지.
-                <br />
-                모든 단계를 한곳에서.
-              </h2>
-              <p>
-                검사 결과를 확인하고,
-                <br />
-                다음 환경을 계획하세요.
-              </p>
-            </div>
-            <ol className="journey-steps">
-              {sections.slice(1).map((item, i) => (
-                <li key={item.view}>
-                  <span>0{i + 1}</span>
-                  <div>
-                    <strong>{item.title}</strong>
-                    <small>{item.description}</small>
-                  </div>
-                  <Icon name={item.view} />
-                </li>
-              ))}
-            </ol>
-          </section>
+          {route.view === "overview" && (
+            <section
+              className="workspace-journey"
+              aria-label="서비스 작업 흐름"
+            >
+              <div className="journey-copy">
+                <span className="eyebrow">ONE WORKSPACE</span>
+                <h2>
+                  준비부터 이전까지.
+                  <br />
+                  모든 단계를 한곳에서.
+                </h2>
+                <p>
+                  검사 결과를 확인하고,
+                  <br />
+                  다음 환경을 계획하세요.
+                </p>
+              </div>
+              <ol className="journey-steps">
+                {sections.slice(1).map((item, i) => (
+                  <li key={item.view}>
+                    <span>0{i + 1}</span>
+                    <div>
+                      <strong>{item.title}</strong>
+                      <small>{item.description}</small>
+                    </div>
+                    <Icon name={item.view} />
+                  </li>
+                ))}
+              </ol>
+            </section>
+          )}
           {register && (
             <Register
               onCreated={(s) => {
@@ -839,25 +823,36 @@ function Workspace({
             ) : (
               <div className="service-list">
                 {services.map((s) => (
-                  <button
-                    className="service-row"
-                    key={s.id}
-                    onClick={() => openService(s.id)}
-                  >
-                    <span className="service-icon">
-                      {s.name[0].toUpperCase()}
-                    </span>
-                    <span className="service-text">
-                      <strong>{s.name}</strong>
-                      <small>
-                        {s.repository_url.replace("https://github.com/", "")}
-                      </small>
-                    </span>
-                    <span className="ref">{s.source_ref}</span>
-                    <span className="arrow">
-                      <Icon name="arrow" />
-                    </span>
-                  </button>
+                  <div className="service-list-item" key={s.id}>
+                    <button
+                      className="service-row"
+                      onClick={() => openService(s.id)}
+                    >
+                      <span className="service-icon">
+                        {s.name[0].toUpperCase()}
+                      </span>
+                      <span className="service-text">
+                        <strong>{s.name}</strong>
+                        <small>
+                          {s.repository_url.replace("https://github.com/", "")}
+                        </small>
+                      </span>
+                      <span className="ref">{s.source_ref}</span>
+                      <span className="arrow">
+                        <Icon name="arrow" />
+                      </span>
+                    </button>
+                    <button
+                      className="project-delete-trigger"
+                      aria-label={`${s.name} 프로젝트 삭제`}
+                      onClick={() => {
+                        setNotice("");
+                        setDeleteTarget(s);
+                      }}
+                    >
+                      삭제
+                    </button>
+                  </div>
                 ))}
               </div>
             )}

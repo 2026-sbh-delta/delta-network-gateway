@@ -44,7 +44,14 @@ const metric = (
   unit: "",
   collected_at: status === "ok" ? "2026-11-04T00:00:00Z" : null,
   message: status === "ok" ? null : `${status} test fixture`,
-  series: [],
+  series:
+    status === "ok" && value !== null
+      ? [
+          { at: "2026-11-03T23:45:00Z", value: value * 0.6 },
+          { at: "2026-11-03T23:49:00Z", value: value * 0.9 },
+          { at: "2026-11-04T00:00:00Z", value },
+        ]
+      : [],
 });
 function snapshot(
   env: ReturnType<typeof environment>,
@@ -154,6 +161,10 @@ async function installBoundary(page: Page) {
     }
     if (path === "/services")
       return route.fulfill({ status: 200, json: services });
+    const selected = services.items.find(
+      (item) => path === `/services/${item.id}`,
+    );
+    if (selected) return route.fulfill({ json: selected });
     const envMatch = path.match(/^\/services\/(svc-[ab])\/environments$/);
     if (envMatch)
       return route.fulfill({
@@ -275,13 +286,24 @@ test("대시보드에서 환경을 바꾸고 누락·오류·오래된 값을 �
   await page.getByRole("button", { name: "로그인", exact: true }).click();
   await page.getByRole("button", { name: "메뉴 열기" }).click();
   await page.getByRole("button", { name: "모니터링", exact: true }).click();
+  await page.getByRole("button", { name: /주문 서비스 example/ }).click();
   await expect(
-    page.getByRole("heading", { name: "서비스 대시보드" }),
+    page.getByRole("heading", { name: "대시보드", exact: true }),
   ).toBeVisible();
   await expect(page.getByText("23", { exact: true })).toBeVisible();
   await expect(page.getByText("test warning")).toBeVisible();
   await expect(page.getByText("GET /orders")).toBeVisible();
-  await page.getByLabel("환경 선택").selectOption("env-b");
+  await expect(
+    page.getByRole("img", { name: "요청 수 선택 기간 추이" }),
+  ).toBeVisible();
+  await page.screenshot({
+    path: info.outputPath("dashboard-healthy.png"),
+    fullPage: true,
+  });
+  await page
+    .getByRole("group", { name: "실행 환경" })
+    .getByRole("button", { name: "검증", exact: true })
+    .click();
   await expect(
     page.getByText("데이터 없음 · no_data test fixture").first(),
   ).toBeVisible();
@@ -306,7 +328,10 @@ test("대시보드에서 환경을 바꾸고 누락·오류·오래된 값을 �
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
-  await page.getByLabel("환경 선택").selectOption("env-onprem");
+  await page
+    .getByRole("group", { name: "실행 환경" })
+    .getByRole("button", { name: "온프레미스", exact: true })
+    .click();
   const vm = page.locator(".obs-instance");
   await expect(vm).toContainText("수집 중");
   await expect(vm).toContainText("CPU 25%");
@@ -339,24 +364,34 @@ test("DB 이전의 stale·blocked·cleaned 상태와 WAL 바이트를 표시한�
   await page.getByRole("button", { name: "로그인", exact: true }).click();
   await page.getByRole("button", { name: "메뉴 열기" }).click();
   await page.getByRole("button", { name: "모니터링", exact: true }).click();
+  await page.getByRole("button", { name: /주문 서비스 example/ }).click();
 
   const migration = page.locator(".obs-migration");
   await expect(
     page.getByText("DB 이전 실행 없음", { exact: true }),
   ).toBeVisible();
-  await page.getByLabel("환경 선택").selectOption("env-b");
+  await page
+    .getByRole("group", { name: "실행 환경" })
+    .getByRole("button", { name: "검증", exact: true })
+    .click();
   await expect(migration).toContainText("오래된 상태");
   await expect(migration).toContainText("변경 동기화 중");
   await expect(migration).toContainText("검증: 대기");
   await expect(migration).toContainText("미반영 WAL: 정보 없음");
   await expect(migration).toContainText("마지막 갱신");
 
-  await page.getByLabel("환경 선택").selectOption("env-c");
+  await page
+    .getByRole("group", { name: "실행 환경" })
+    .getByRole("button", { name: "복제 차단", exact: true })
+    .click();
   await expect(migration).toContainText("차단됨");
   await expect(migration).toContainText("원본 쓰기 차단 중");
   await expect(migration).toContainText("16,384 바이트");
 
-  await page.getByLabel("환경 선택").selectOption("env-d");
+  await page
+    .getByRole("group", { name: "실행 환경" })
+    .getByRole("button", { name: "전환 완료", exact: true })
+    .click();
   await expect(migration).toContainText("실행 단계 완료");
   await expect(migration).toContainText("DB 전환·복제 정리 완료");
   await expect(migration).toContainText("검증: 통과");
@@ -376,4 +411,121 @@ test("DB 이전의 stale·blocked·cleaned 상태와 WAL 바이트를 표시한�
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
+});
+
+test("프로젝트 대시보드는 프로젝트 선택 없이 현재 프로젝트의 지표를 표시한다", async ({
+  page,
+}) => {
+  await installBoundary(page);
+  await page.goto("/#/monitoring/svc-a");
+  await page.getByLabel("아이디", { exact: true }).fill("browser-fixture");
+  await page.getByLabel("비밀번호", { exact: true }).fill("test-only");
+  await page.getByRole("button", { name: "로그인", exact: true }).click();
+  await expect(page.getByText("23", { exact: true })).toBeVisible();
+  await expect(page.locator("main").getByRole("combobox")).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "주문 서비스" })).toBeVisible();
+  await page
+    .getByRole("group", { name: "실행 환경" })
+    .getByRole("button", { name: "검증", exact: true })
+    .click();
+  await expect(page.locator(".obs-metric").first()).toContainText(
+    "데이터 없음",
+  );
+  await expect(page).toHaveURL(/#\/monitoring\/svc-a$/);
+  await page.reload();
+  await expect(page.getByRole("link", { name: "주문 서비스" })).toBeVisible();
+  await expect(page.locator("main").getByRole("combobox")).toHaveCount(0);
+});
+
+test("환경 미연결 상태도 지표 구조를 유지하며 같은 프로젝트에서 재조회할 수 있다", async ({
+  page,
+}, info) => {
+  await installBoundary(page);
+  let queries = 0;
+  await page.route("**/api/v1/services/svc-a/environments", (route) => {
+    queries++;
+    return route.fulfill({ json: { items: [] } });
+  });
+  await page.goto("/#/monitoring/svc-a");
+  await page.getByLabel("아이디", { exact: true }).fill("browser-fixture");
+  await page.getByLabel("비밀번호", { exact: true }).fill("test-only");
+  await page.getByRole("button", { name: "로그인", exact: true }).click();
+  await expect(
+    page.getByText("실행 환경 연결이 필요합니다", { exact: true }),
+  ).toBeVisible();
+  await expect(page.locator(".obs-metric")).toHaveCount(3);
+  await expect(page.locator(".obs-metric .obs-value")).toHaveText([
+    "—",
+    "—",
+    "—",
+  ]);
+  await expect(page.getByRole("img", { name: /선택 기간 추이/ })).toHaveCount(
+    0,
+  );
+  await expect(page.locator("main").getByRole("combobox")).toHaveCount(0);
+  const before = queries;
+  await page.getByRole("button", { name: "지금 새로고침" }).click();
+  await expect.poll(() => queries).toBeGreaterThan(before);
+  await expect(
+    page.getByRole("button", { name: "지금 새로고침" }),
+  ).toBeEnabled();
+  await page.screenshot({
+    path: info.outputPath("dashboard-empty-desktop.png"),
+    fullPage: true,
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({
+    path: info.outputPath("dashboard-empty-mobile.png"),
+    fullPage: true,
+  });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await page.getByRole("link", { name: "서비스 개요로 이동 →" }).click();
+  await expect(page).toHaveURL(/#\/overview\/svc-a$/);
+});
+
+test("기간 변경은 현재 프로젝트와 환경을 유지하고 이전 기간의 값을 숨긴다", async ({
+  page,
+}) => {
+  await installBoundary(page);
+  let release: (() => void) | undefined;
+  const pending = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route(
+    "**/api/v1/services/svc-a/observability?**",
+    async (route) => {
+      const url = new URL(route.request().url());
+      if (url.searchParams.get("minutes") !== "30") return route.fallback();
+      await pending;
+      const value = snapshot(environment("env-a", "운영"));
+      value.window.minutes = 30;
+      value.metrics.requests.value = 46;
+      return route.fulfill({ json: value });
+    },
+  );
+  await page.goto("/#/monitoring/svc-a");
+  await page.getByLabel("아이디", { exact: true }).fill("browser-fixture");
+  await page.getByLabel("비밀번호", { exact: true }).fill("test-only");
+  await page.getByRole("button", { name: "로그인", exact: true }).click();
+  await expect(page.getByText("23", { exact: true })).toBeVisible();
+  await page
+    .getByRole("group", { name: "조회 기간" })
+    .getByRole("button", { name: "30분", exact: true })
+    .click();
+  await expect(page.getByText("23", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("status")).toContainText(
+    "관측 데이터를 불러오는 중",
+  );
+  release!();
+  await expect(page.getByText("46", { exact: true })).toBeVisible();
+  await expect(
+    page
+      .getByRole("group", { name: "실행 환경" })
+      .getByRole("button", { name: "운영", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await expect(page).toHaveURL(/#\/monitoring\/svc-a$/);
 });

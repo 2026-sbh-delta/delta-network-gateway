@@ -35,6 +35,14 @@ class EmptyInput(StrictInput):
     pass
 
 
+class DeleteServiceInput(StrictInput):
+    confirmation_name: str = Field(min_length=1, max_length=80)
+
+
+class RemoveRuntimeInput(DeleteServiceInput):
+    binding_hash: str = Field(pattern=r"^[a-f0-9]{64}$")
+
+
 class BuildInput(StrictInput):
     source_check_id: str = Field(min_length=36, max_length=36)
 
@@ -54,7 +62,24 @@ class ImageCheckInput(StrictInput):
         return str(UUID(value))
 
 
-class DastCheckInput(ImageCheckInput):
+class SandboxCheckInput(ImageCheckInput):
+    backend_build_id: str | None = None
+
+    @field_validator("backend_build_id")
+    @classmethod
+    def valid_backend_id(cls, value):
+        return str(UUID(value)) if value else None
+
+    @model_validator(mode="after")
+    def bundle_target(self):
+        if self.backend_build_id and self.execution_cloud != "onprem":
+            raise ValueError("FE·BE 배포 묶음은 현재 온프레미스에서 지원합니다.")
+        if self.backend_build_id == self.build_id:
+            raise ValueError("FE와 BE에는 각각의 빌드가 필요합니다.")
+        return self
+
+
+class DastCheckInput(SandboxCheckInput):
     security_check_id: str = Field(min_length=36, max_length=36)
 
     @field_validator("security_check_id")

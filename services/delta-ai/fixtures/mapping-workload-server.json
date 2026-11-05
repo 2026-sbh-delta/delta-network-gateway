@@ -5,12 +5,12 @@
   "evidence": {
     "mapping": {
       "subnets": [
-        {"name": "delta-lab-server-apne2-az1-server", "cidr": "10.20.1.0/24", "tier": "private", "zone": "apne2-az1", "origin": "terraform"},
-        {"name": "delta-lab-server-apne2-az2-server", "cidr": "10.20.3.0/24", "tier": "private", "zone": "apne2-az2", "origin": "terraform"}
+        {"name": "example-workload-apne2-az1", "cidr": "10.10.1.0/24", "tier": "private", "zone": "apne2-az1", "origin": "operator"},
+        {"name": "example-workload-apne2-az2", "cidr": "10.10.3.0/24", "tier": "private", "zone": "apne2-az2", "origin": "operator"}
       ],
       "servers": [
         {"name": "delta-lab-server", "instance_type": "t4g.nano", "os": "amazon_linux", "multi_arch_image": true,
-         "instance_profile": false, "origin": "terraform"}
+         "instance_profile": false, "origin": "operator"}
       ],
       "security": {"guardduty_enabled": false, "origin": "operator"}
     }

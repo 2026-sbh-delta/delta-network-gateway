@@ -10,6 +10,7 @@ import sqlalchemy as sa
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from delta_platform.core.errors import Problem
+from delta_platform.core.runtime import OnpremRuntime
 from delta_platform.core.schema import environments
 from delta_platform.core.store import Store
 
@@ -33,9 +34,12 @@ class EnvironmentInput(BaseModel):
     account_id: str | None = Field(default=None, pattern=r"^[0-9]{12}$")
     gcp_project: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9-]{4,28}[a-z0-9]$")
     instances: list[Instance] = Field(default_factory=list, max_length=3)
+    runtime: OnpremRuntime | None = None
 
     @model_validator(mode="after")
     def resource_identity(self):
+        if self.runtime and self.cloud != "onprem":
+            raise ValueError("Only on-premise runtime removal is supported")
         if self.cloud == "aws" and (not self.account_id or self.gcp_project):
             raise ValueError("AWS account required")
         if self.cloud == "gcp" and (not self.gcp_project or self.account_id):
@@ -62,12 +66,20 @@ class EnvironmentStore:
         Store(self.engine).service(service_id)
         with self.engine.connect() as conn:
             rows = conn.execute(
-                sa.select(*[environments.c[f] for f in FIELDS])
+                sa.select(*[environments.c[f] for f in FIELDS], environments.c.binding)
                 .where(environments.c.service_id == service_id)
                 .order_by(environments.c.created_at)
                 .limit(20)
             ).mappings()
-            return {"items": [dict(row) for row in rows]}
+            return {
+                "items": [
+                    {
+                        **{f: row[f] for f in FIELDS},
+                        "runtime_registered": bool(row["binding"].get("runtime")),
+                    }
+                    for row in rows
+                ]
+            }
 
     def get(self, service_id, environment_id):
         Store(self.engine).service(service_id)
@@ -92,6 +104,13 @@ class EnvironmentStore:
         payload = data.model_dump(mode="json")
         public = {f: payload.pop(f) for f in ("name", "cloud", "region", "version")}
         with self.engine.begin() as conn:
+            from delta_platform.core.removals import assert_no_removal
+            from delta_platform.core.schema import services
+
+            conn.execute(
+                sa.select(services.c.id).where(services.c.id == service_id).with_for_update()
+            ).one()
+            assert_no_removal(conn, service_id)
             row = (
                 conn.execute(
                     sa.select(environments)
@@ -105,6 +124,8 @@ class EnvironmentStore:
                 .first()
             )
             if row:
+                if row["binding"].get("runtime_status") == "removed":
+                    raise Problem("environment_removed", "삭제한 앱은 새 환경으로 등록하세요.", 409)
                 if environment_id and row["id"] != environment_id:
                     raise Problem("environment_conflict", "기존 환경 ID와 다릅니다.", 409)
                 if row["cloud"] != data.cloud or row["region"] != data.region:
@@ -140,12 +161,15 @@ def main():
 
     parser = argparse.ArgumentParser(description="운영자가 검증한 고객 VM 환경 연결")
     parser.add_argument("--service-id", required=True, type=UUID)
+    parser.add_argument("--environment-id", type=UUID)
     parser.add_argument("--input", required=True, type=Path)
     args = parser.parse_args()
     data = EnvironmentInput.model_validate_json(args.input.read_text())
     engine = engine_for(Settings())
     try:
-        identifier = EnvironmentStore(engine).bind(args.service_id, data)
+        identifier = EnvironmentStore(engine).bind(
+            args.service_id, data, environment_id=args.environment_id
+        )
         print(json.dumps({"environment_id": str(identifier)}))
     finally:
         engine.dispose()

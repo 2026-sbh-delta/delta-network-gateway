@@ -28,9 +28,12 @@ from delta_platform.core.errors import Problem
 from delta_platform.core.inputs import (
     BuildInput,
     DastCheckInput,
+    DeleteServiceInput,
     EmptyInput,
     ImageCheckInput,
     LoginInput,
+    RemoveRuntimeInput,
+    SandboxCheckInput,
     ServiceInput,
     request_key,
 )
@@ -188,9 +191,43 @@ def create_app(settings=None, engine=None, *, dashboard=None):
     def service_detail(service_id: UUID):
         return store.service(service_id)
 
+    @protected.post("/services/{service_id}/delete", status_code=204)
+    def delete_service(service_id: UUID, body: DeleteServiceInput):
+        store.delete_service(service_id, body.confirmation_name)
+        return Response(status_code=204)
+
     @protected.get("/services/{service_id}/environments")
     def service_environments(service_id: UUID):
         return environments.list(service_id)
+
+    @protected.get("/services/{service_id}/environments/{environment_id}/removal")
+    def removal_preview(service_id: UUID, environment_id: UUID):
+        from delta_platform.adapters.onprem_removal import configured_target
+        from delta_platform.core.removals import RemovalStore
+
+        env = environments.get(service_id, environment_id)
+        try:
+            target = configured_target(settings)
+        except Problem:
+            target = None
+        return RemovalStore(engine).preview(env, target)
+
+    @protected.post("/services/{service_id}/environments/{environment_id}/removal")
+    def remove_runtime(
+        service_id: UUID, environment_id: UUID, body: RemoveRuntimeInput, request: Request
+    ):
+        from delta_platform.adapters.onprem_removal import configured_target
+        from delta_platform.core.removals import RemovalStore
+
+        result, created = RemovalStore(engine).enqueue(
+            service_id,
+            environment_id,
+            body.confirmation_name,
+            body.binding_hash,
+            request_key(request.headers.get("Idempotency-Key")),
+            configured_target(settings),
+        )
+        return JSONResponse(jsonable_encoder(result), status_code=202 if created else 200)
 
     @protected.get("/services/{service_id}/observability")
     def service_observability(
@@ -326,6 +363,7 @@ def create_app(settings=None, engine=None, *, dashboard=None):
             UUID(body.build_id),
             request_key(request.headers.get("Idempotency-Key")),
             sandbox_target(settings, body.execution_cloud),
+            backend_build_id=UUID(body.backend_build_id) if body.backend_build_id else None,
             security_check_id=UUID(body.security_check_id),
             dast_target=dast_target(settings),
         )
@@ -351,12 +389,13 @@ def create_app(settings=None, engine=None, *, dashboard=None):
         return store.cancel_sandbox(run_id, "dast_check")
 
     @protected.post("/services/{service_id}/sandbox-checks")
-    def sandbox_check(service_id: UUID, body: ImageCheckInput, request: Request):
+    def sandbox_check(service_id: UUID, body: SandboxCheckInput, request: Request):
         result, created = store.enqueue_sandbox(
             service_id,
             UUID(body.build_id),
             request_key(request.headers.get("Idempotency-Key")),
             sandbox_target(settings, body.execution_cloud),
+            backend_build_id=UUID(body.backend_build_id) if body.backend_build_id else None,
         )
         return JSONResponse(jsonable_encoder(result), status_code=202 if created else 200)
 
