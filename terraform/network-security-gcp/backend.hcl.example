@@ -1,3 +1,7 @@
-# Existing dedicated bucket with versioning, uniform access and public access prevention.
-bucket = "REPLACE-WITH-VERIFIED-TERM2-DELTA-STATE-BUCKET"
-prefix = "delta/lab/network-security-gcp"
+# Use the existing central S3 bucket and a dedicated GCP state key. No credentials here.
+bucket              = "REPLACE_WITH_EXISTING_CENTRAL_STATE_BUCKET"
+key                 = "delta/lab/network-security-gcp/terraform.tfstate"
+region              = "ap-northeast-2"
+encrypt             = true
+use_lockfile        = true
+allowed_account_ids = ["REPLACE_WITH_CENTRAL_ACCOUNT_ID"]

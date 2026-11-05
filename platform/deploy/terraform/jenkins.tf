@@ -43,12 +43,12 @@ resource "aws_ebs_volume" "jenkins" {
 }
 resource "aws_instance" "jenkins" {
   for_each = {
-    controller = { ip = "10.80.1.20", type = "t3.small", profile = data.aws_iam_instance_profile.jenkins_controller.name, sg = aws_security_group.jenkins_controller.id, disk = 12 }
-    agent      = { ip = "10.80.1.21", type = "t3.medium", profile = data.aws_iam_instance_profile.jenkins_agent.name, sg = aws_security_group.jenkins_agent.id, disk = 40 }
+    controller = { ip = "10.80.10.20", type = "t3.small", profile = data.aws_iam_instance_profile.jenkins_controller.name, sg = aws_security_group.jenkins_controller.id, disk = 12 }
+    agent      = { ip = "10.80.11.21", type = "t3.medium", profile = data.aws_iam_instance_profile.jenkins_agent.name, sg = aws_security_group.jenkins_agent.id, disk = 40 }
   }
   ami                         = var.jenkins_ami_id
   instance_type               = each.value.type
-  subnet_id                   = aws_subnet.private.id
+  subnet_id                   = aws_subnet.service["jenkins_${each.key}"].id
   private_ip                  = each.value.ip
   associate_public_ip_address = false
   vpc_security_group_ids      = [each.value.sg]
@@ -68,7 +68,7 @@ resource "aws_instance" "jenkins" {
   })
   user_data_replace_on_change = true
   tags                        = { Name = "${var.name}-jenkins-${each.key}" }
-  depends_on                  = [aws_route.nat, aws_eip.nat, aws_vpc_security_group_egress_rule.jenkins_https]
+  depends_on                  = [aws_route.nat, aws_eip.nat, aws_vpc_security_group_egress_rule.jenkins_https, aws_route.service_nat, aws_vpc_security_group_ingress_rule.service_nat]
 }
 resource "aws_volume_attachment" "jenkins" {
   device_name = "/dev/sdf"

@@ -21,17 +21,13 @@ output "firewall_endpoint" {
 }
 output "gateway_handoff" {
   description = "Nonsecret values for the AWS two-peer VPN input contract."
-  value       = { project_id = var.project_id, project_number = var.project_number, router_asn = var.router_asn, remote_cidrs = [var.subnets.workload], aws_cidrs = sort(tolist(var.aws_cidrs)), interfaces = google_compute_ha_vpn_gateway.aws.vpn_interfaces }
+  value       = { project_id = var.project_id, project_number = var.project_number, router_asn = var.router_asn, remote_cidrs = local.advertised_vpn_cidrs, aws_cidrs = sort(tolist(var.aws_cidrs)), interfaces = google_compute_ha_vpn_gateway.aws.vpn_interfaces }
 }
-output "server_ip" {
-  description = "Private demo server IP."
-  value       = google_compute_instance.server.network_interface[0].network_ip
-}
-output "demo_address" {
-  description = "Public passthrough NLB address; ports 8080/8081 are forwarded."
-  value       = google_compute_address.demo.address
-}
-output "log_handoff" {
-  description = "Nonsecret AWS log collector configuration."
-  value       = { project_id = var.project_id, subscription = google_pubsub_subscription.collector.id, dead_letter_subscription = google_pubsub_subscription.dead_letter.id, wif_audience = "//iam.googleapis.com/projects/${var.project_number}/locations/global/workloadIdentityPools/${google_iam_workload_identity_pool.aws.workload_identity_pool_id}/providers/aws-collector" }
+output "application_network" {
+  description = "Existing VPC and distinct application subnet IDs/CIDRs for the workload-gcp root."
+  value = {
+    network = google_compute_network.vpc["workload"].id
+    subnets = merge({ frontend = google_compute_subnetwork.subnet["workload"].id }, { for k, v in google_compute_subnetwork.application : k => v.id })
+    cidrs   = merge({ frontend = var.subnets.workload }, var.application_subnets)
+  }
 }

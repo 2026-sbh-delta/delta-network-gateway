@@ -1,0 +1,90 @@
+name: delta-notes
+services:
+  backend:
+    image: ${BE_IMAGE:?}
+    platform: linux/amd64
+    environment:
+      HOST: 0.0.0.0
+      PORT: "8080"
+      APP_ENV: aws
+      APP_VERSION: ${APP_VERSION:?}
+      API_ENDPOINT: /api
+      STORAGE_BACKEND: postgres
+      PGHOST: ${PGHOST:?}
+      PGPORT: "5432"
+      PGDATABASE: delta_notes
+      PGUSER: delta_notes_app
+      PGSSLMODE: verify-full
+      PGSSLROOTCERT: /run/rds-ca.pem
+    entrypoint: ["/bin/sh", "/run/backend-entrypoint.sh"]
+    command: ["node", "server.mjs"]
+    volumes:
+      - /etc/delta-sample/rds-ca.pem:/run/rds-ca.pem:ro
+      - ./tooling/backend-entrypoint.sh:/run/backend-entrypoint.sh:ro
+    secrets: [db_password]
+    networks:
+      app:
+        ipv4_address: 172.30.240.11
+    init: true
+    restart: unless-stopped
+    read_only: true
+    tmpfs: ["/tmp:size=16m,mode=1777"]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 512m
+    logging:
+      driver: awslogs
+      options:
+        awslogs-region: ${AWS_REGION:?}
+        awslogs-group: ${BE_LOG_GROUP:?}
+        awslogs-stream: ${HOST_ID:?}/compose/backend
+        mode: non-blocking
+        max-buffer-size: 4m
+  frontend:
+    image: ${FE_IMAGE:?}
+    platform: linux/amd64
+    environment:
+      HOST: 0.0.0.0
+      PORT: "3000"
+      API_HOST: backend
+      API_PORT: "8080"
+      API_PROTOCOL: http
+      API_ENDPOINT: /api
+      APP_NAME: Delta Board
+      CLOUD_PROVIDER: auto
+      APP_ENV: aws
+      APP_VERSION: ${APP_VERSION:?}
+    ports: ["3000:3000"]
+    networks:
+      app:
+        ipv4_address: 172.30.240.10
+    depends_on:
+      backend:
+        condition: service_healthy
+    init: true
+    restart: unless-stopped
+    read_only: true
+    tmpfs: ["/tmp:size=16m,mode=1777"]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 256m
+    logging:
+      driver: awslogs
+      options:
+        awslogs-region: ${AWS_REGION:?}
+        awslogs-group: ${FE_LOG_GROUP:?}
+        awslogs-stream: ${HOST_ID:?}/compose/frontend
+        mode: non-blocking
+        max-buffer-size: 4m
+networks:
+  app:
+    name: delta-notes-app
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: br-delta-notes
+    ipam:
+      config:
+        - subnet: 172.30.240.0/24
+secrets:
+  db_password:
+    file: /run/delta-compose/db-password

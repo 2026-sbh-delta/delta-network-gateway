@@ -1,0 +1,6 @@
+bucket = "sbh-delta-central-tf"
+key = "delta/lab/workload-gcp/terraform.tfstate"
+region = "ap-northeast-2"
+encrypt = true
+use_lockfile = true
+allowed_account_ids = ["482840608926"]

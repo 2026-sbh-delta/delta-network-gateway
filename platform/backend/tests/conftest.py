@@ -26,7 +26,7 @@ def clean_db(engine):
     with engine.begin() as conn:
         conn.execute(
             sa.text(
-                "TRUNCATE sessions, auth_rate_limits, run_events, workflow_executions, workflows, runs, service_environments, services"
+                "TRUNCATE sessions, auth_rate_limits, run_events, workflow_executions, workflows, deployment_plans, runs, service_environments, services"
             )
         )
 

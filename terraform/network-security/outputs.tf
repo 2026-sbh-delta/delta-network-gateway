@@ -3,6 +3,35 @@ output "central_account_id" {
   value       = data.aws_caller_identity.current.account_id
 }
 
+output "guardduty" {
+  description = "Account/Region detector identity and managed protection states; no finding contents or credentials."
+  value = {
+    account_id                   = data.aws_caller_identity.current.account_id
+    region                       = var.region
+    detector_id                  = aws_guardduty_detector.account.id
+    arn                          = aws_guardduty_detector.account.arn
+    enabled                      = aws_guardduty_detector.account.enable
+    finding_publishing_frequency = aws_guardduty_detector.account.finding_publishing_frequency
+    features = { for name, feature in aws_guardduty_detector_feature.protection : name => {
+      status                   = feature.status
+      additional_configuration = { for config in feature.additional_configuration : config.name => config.status }
+    } }
+  }
+}
+
+output "guardduty_findings" {
+  description = "Enterprise finding log storage and platform forwarding configuration; no finding contents."
+  value = {
+    log_group_name           = aws_cloudwatch_log_group.guardduty_findings.name
+    log_group_arn            = aws_cloudwatch_log_group.guardduty_findings.arn
+    event_rule_name          = aws_cloudwatch_event_rule.guardduty_findings.name
+    event_rule_arn           = aws_cloudwatch_event_rule.guardduty_findings.arn
+    destination_arn          = var.guardduty_findings_destination_arn
+    forwarding_enabled       = var.guardduty_findings_forwarding_enabled
+    subscription_filter_name = try(aws_cloudwatch_log_subscription_filter.guardduty_platform[0].name, null)
+  }
+}
+
 output "region" {
   description = "Region of the central deployment."
   value       = var.region

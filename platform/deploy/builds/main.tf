@@ -80,7 +80,7 @@ resource "aws_iam_role_policy" "platform_builds" {
     Version = "2012-10-17", Statement = [
       { Effect = "Allow", Action = ["codebuild:StartBuild"], Resource = local.project_arn },
       { Effect = "Allow", Action = ["codebuild:BatchGetBuilds", "codebuild:StopBuild"], Resource = local.project_arn },
-      { Effect = "Allow", Action = ["ecr:DescribeImages"], Resource = aws_ecr_repository.customer.arn },
+      { Effect = "Allow", Action = ["ecr:DescribeImages", "ecr:BatchDeleteImage"], Resource = aws_ecr_repository.customer.arn },
       { Effect = "Allow", Action = ["logs:GetLogEvents"], Resource = "${aws_cloudwatch_log_group.build.arn}:*" }
     ]
   })

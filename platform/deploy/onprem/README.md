@@ -48,6 +48,14 @@ Worker VPC와 공용 DAST VPC 양쪽의 왕복 경로·방화벽을 확인한다
 
 ## VPN 연결 후 활성화
 
+### Tailscale 호스트 경로 사용
+
+2026-11-05 사용자가 승인한 연결은 관리 플랫폼·DAST의 전용 `tag:delta-client`에서 온프레미스 VM의 `10.40.0.10/32`로 가는 TCP 6443/32080/32081뿐이다. VM에는 자기 주소 /32만 광고하고 다른 홈랩 대역·exit node는 추가하지 않는다. 두 AWS 기기는 경로만 수신하고 DNS는 변경하지 않는다. 실제 route table에 다른 홈랩 대역이 없는지와 미허용 SSH·관리망 접근 차단을 검증한다.
+
+Kubernetes API/NodePort 대상은 기존 사설 IP와 CA 검증을 유지한다. NetworkPolicy의 출발지는 AWS VPC 주소가 아니라 등록된 두 기기의 Tailscale IPv4 /32를 추가한다. `render.py --source`는 개별 RFC1918/Tailscale IPv4만 받아 /32로 렌더링하며 넓은 CIDR은 거부한다. 운영 `frontend-entry` 정책을 재배포할 때에도 검증한 두 출발지 /32를 기존 manifest에 병합해야 한다. 원복은 이번 grant·태그·자기 /32 광고·두 기기와 추가한 정책 출발지만 제거하며 기존 관리 연결은 유지한다.
+
+기존 공통 SSM 설정의8KB 상한을 넘기지 않도록 온프레미스 샌드박스의 target/token 두 값은 `<기존 runtime 경로의 접두어>/onprem/runtime` SecureString에 별도로 저장한다. 예: `/delta-platform/runtime`의 전용 경로는 `/delta-platform/onprem/runtime`이다. 배포의 `read-runtime.py`가 이 한 경로를 `GetParameters`로 읽어 병합한다. 파라미터가 없으면 기존 환경을 유지하고, 잘못된 키·충돌·줄바꿈·권한 오류는 배포를 중단한다. 기존 로그인/DB/다른 컴포넌트 값은 덮어쓰지 않는다. 새 helper와 archive 구성을 함께 배포해야 한다.
+
 1. Worker와 DAST 각각에서 API 연결을 확인한다. controller 토큰은 전용 namespace만, scanner는 읽기만 가능한지 확인한다. 임시 앱의32080 HTTP 응답과 미허용 출발지 차단도 확인한다.
 2. 기존 플랫폼 비밀 설정의 로그인·DB·Jenkins·AWS/GCP 값을 보존하면서 아래 값만 병합한다. 토큰은 채팅·CI 로그·Git에 출력하지 않는다.
 

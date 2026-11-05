@@ -180,16 +180,19 @@ def test_gcp_to_aws_needs_no_rebuild_and_asks_no_tier(judge):
     assert mp.target_tfvars(plan) == {"region": "ap-northeast-2"}
 
 
-def test_aws_root_gaps_name_what_workload_server_cannot_take_yet(judge):
+def test_aws_network_root_does_not_claim_compute_deployment_support(judge):
     inventory = mp.apply_scenario(INVENTORY_GCP, "good")
     result, state = settle_mapping(judge, inventory, mp.initial_state(None, []))
 
     gaps = mp.terraform_gaps(mp.target_plan(inventory, result, state))
 
-    assert gaps["root"] == "terraform/workload-server"
+    assert gaps["root"] == "terraform/workload"
     missing = gaps["missing_variables"]
-    assert missing["instance_type"]["needed"] == {"web": "t3.small", "api": "t3.medium"}
-    assert missing["ami_architecture"]["needed"] == {"web": "linux/amd64", "api": "linux/amd64"}
+    assert missing["compute_deployment"]["supported"] is False
+    assert missing["compute_deployment"]["needed"] == [
+        {"id": "web", "machine_type": "t3.small", "target_platform": "linux/amd64"},
+        {"id": "api", "machine_type": "t3.medium", "target_platform": "linux/amd64"},
+    ]
     assert missing["guardduty_features"] == ["RUNTIME_MONITORING"]
 
 

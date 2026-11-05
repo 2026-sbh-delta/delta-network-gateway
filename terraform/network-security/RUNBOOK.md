@@ -1,5 +1,132 @@
 # 검증, 장애 대응과 해체
 
+## GuardDuty 등록과 운영
+
+계정 482840608926, 서울 리전에서 [승인된 GuardDuty 구성](../../docs/ai-dlc/aws-guardduty.md)을 독립적으로 관리한다. ANF inspection_mode와 무관하며 기본 탐지만 활성화한다. 관리자 위임이나 다른 계정의 findings 통합은 추가하지 않는다.
+
+```bash
+aws sts get-caller-identity --profile sbh-delta-security
+aws guardduty list-detectors --profile sbh-delta-security --region ap-northeast-2
+AWS_PROFILE=sbh-delta-security terraform -chdir=terraform/network-security state list
+```
+
+신규 계정에서 detector가 0개일 때는 반드시 중지 상태로 먼저 생성한다. 아래 준비 단계는 이미 활성화한 detector의 일반 갱신에는 반복하지 않는다. 기존 detector가 있는데 state에 없으면 소유권과 현재 설정을 확인하고 Import한다. Workload 계정에는 이 신규 준비 절차를 사용하지 않는다.
+
+```bash
+umask 077
+mkdir -p terraform/network-security/.validation/guardduty
+AWS_PROFILE=sbh-delta-security terraform -chdir=terraform/network-security plan \
+  -input=false -parallelism=1 -lock-timeout=2m -var=guardduty_enabled=false \
+  -out=.validation/guardduty/prepare.tfplan
+AWS_PROFILE=sbh-delta-security terraform -chdir=terraform/network-security show .validation/guardduty/prepare.tfplan
+```
+
+GuardDuty 탐지와 Finding 로그 전달 자원 추가만 있고 기존 네트워크/ANF/VPN/로그 변경이 없는지 확인한 뒤 저장 Plan을 적용한다. detector 생성 시 기본 활성화될 수 있는 선택 기능을 끄는 동안 기본 탐지는 중지한다.
+
+```bash
+AWS_PROFILE=sbh-delta-security terraform -chdir=terraform/network-security apply \
+  -input=false -parallelism=1 .validation/guardduty/prepare.tfplan
+AWS_PROFILE=sbh-delta-security terraform -chdir=terraform/network-security output -json guardduty
+```
+
+최초 준비 Apply가 S3_DATA_EVENTS/EKS_AUDIT_LOGS의 `cannot enable a data source while the detector is disabled` 400으로 일부 실패하면 아래 복구 절차를 먼저 수행한다. 다른 feature의 정상 반영과 detector 중지 상태를 보존한다. 성공으로 표시하거나 기본 탐지를 먼저 켜지 않는다.
+
+출력의 detector_id로 `aws guardduty get-detector --profile sbh-delta-security --region ap-northeast-2 --detector-id <ID>`를 조회한다. Status DISABLED와 모든 선택 기능/추가 설정 DISABLED를 확인한다. 목록 밖에 지원되는 선택 기능이 나타나면 입력 맵에 DISABLED로 추가해 중지 상태에서 먼저 적용한다. RUNTIME_MONITORING을 관리하며 과거 EKS_RUNTIME_MONITORING은 중복 구성하지 않는다. AI_ANALYST처럼 해당 리전에 응답이 없는 기능을 다른 리전의 목록만 보고 전달하지 않는다.
+
+중지 상태의 전체 API 확인을 마친 뒤 기본 true로 별도 Plan을 만든다. 실제 입력에 false를 따로 저장했다면 먼저 true로 갱신한다.
+
+```bash
+AWS_PROFILE=sbh-delta-security terraform -chdir=terraform/network-security plan \
+  -input=false -parallelism=1 -lock-timeout=2m -out=.validation/guardduty/enable.tfplan
+AWS_PROFILE=sbh-delta-security terraform -chdir=terraform/network-security show .validation/guardduty/enable.tfplan
+AWS_PROFILE=sbh-delta-security terraform -chdir=terraform/network-security apply \
+  -input=false -parallelism=1 .validation/guardduty/enable.tfplan
+AWS_PROFILE=sbh-delta-security terraform -chdir=terraform/network-security output -json guardduty
+AWS_PROFILE=sbh-delta-security terraform -chdir=terraform/network-security plan -input=false -detailed-exitcode
+```
+
+활성화 Plan은 detector enable의 false→true 변경만 있어야 한다. 적용 후 기본 CloudTrail/DNS/Flow와 detector Status ENABLED, 모든 선택 기능/자동 에이전트 관리 DISABLED, 최종 No changes/종료0을 확인한다. 기존 VPC Endpoint를 GuardDuty 목적으로 새로 만들지 않는다.
+
+준비 중 실패하면 중지 상태를 유지하며 원인을 해결한다. 활성화 후 원복이 필요하면 실제 tfvars에 `guardduty_enabled=false`를 저장하고 새 Plan/Apply로 일시 중지한다. detector와 findings를 보존하며 단순 삭제는 사용하지 않는다. true로 갱신하면 재개한다. 기본값은 true이므로 일회성 CLI false만으로 지속 중지를 보장하지 않는다.
+
+Detector는 `prevent_destroy`로 보호한다. Feature 리소스를 맵에서 빼거나 state에서 지워도 AWS 보호 기능은 꺼지지 않는다. 필수 전체 맵을 유지하며 status와 추가 설정을 DISABLED로 적용한다. 삭제로 findings를 잃는 전체 비활성화와 일시 중지를 구분한다.
+
+### 중앙 준비 중 S3/EKS 400을 복구하기
+
+2026-11-05에는 두 기능을 각각 DISABLED로 보내도 위 400이 발생했다. detector가 DISABLED이고 나머지 선택 기능/추가 설정이 모두 DISABLED인 것을 전체 get-detector 응답으로 먼저 확인한다. 부분 Apply에서 출력이 아직 없으면 list-detectors에서 정확히 1개인 ID를 확인한다. 아래 ID를 그 중앙 계정의 실제 ID로 바꾼다.
+
+```bash
+aws guardduty update-detector --profile sbh-delta-security --region ap-northeast-2 \
+  --detector-id REPLACE_WITH_VERIFIED_CENTRAL_DETECTOR_ID --no-enable \
+  --features Name=S3_DATA_EVENTS,Status=DISABLED Name=EKS_AUDIT_LOGS,Status=DISABLED
+```
+
+`Enable=false`와 두 기능의 DISABLED를 한 요청에 전달하는 방식으로 성공을 확인했다. 서버 내부의 정확한 검증 조건은 확인하지 않았다. 응답 후 다시 get-detector로 detector DISABLED와 모든 선택 기능/추가 설정 DISABLED를 확인하고, 새 중지 상태 Plan으로 아직 등록되지 않은 feature만 마무리한다.
+
+```bash
+AWS_PROFILE=sbh-delta-security terraform -chdir=terraform/network-security plan \
+  -input=false -parallelism=1 -lock-timeout=2m -var=guardduty_enabled=false \
+  -out=.validation/guardduty/prepare-recovery.tfplan
+AWS_PROFILE=sbh-delta-security terraform -chdir=terraform/network-security show .validation/guardduty/prepare-recovery.tfplan
+AWS_PROFILE=sbh-delta-security terraform -chdir=terraform/network-security apply \
+  -input=false -parallelism=1 .validation/guardduty/prepare-recovery.tfplan
+```
+
+기존 자원의 변경/삭제나 detector 활성화가 없는 Plan만 적용한다. 이 준비가 끝나고 API/state가 일치할 때 위 별도 활성화 Plan으로 진행한다. 이미 활성화해 정상 관리 중인 detector에 이 준비용 중지 절차를 다시 실행하지 않는다.
+
+## GuardDuty Finding 로그 전달
+
+`terraform/network-security`가 중앙 계정 `482840608926`의 `/delta/security/guardduty`, 기본 EventBridge 버스의 Finding 규칙/타깃/쓰기 정책과 구독을 관리한다. 플랫폼 계정 `616723161368`의 기존 수신 리소스는 조회만 한다. [승인과 실제 실행 기록](../../docs/ai-dlc/aws-guardduty-logging.md)을 먼저 확인한다.
+
+```bash
+AWS_PROFILE=sbh-delta-security terraform -chdir=terraform/network-security output -json guardduty_findings
+aws events describe-rule --profile sbh-delta-security --region ap-northeast-2 \
+  --name delta-lab-guardduty-findings
+aws events list-targets-by-rule --profile sbh-delta-security --region ap-northeast-2 \
+  --rule delta-lab-guardduty-findings
+aws logs describe-log-groups --profile sbh-delta-security --region ap-northeast-2 \
+  --log-group-name-prefix /delta/security/guardduty
+aws logs describe-subscription-filters --profile sbh-delta-security --region ap-northeast-2 \
+  --log-group-name /delta/security/guardduty
+```
+
+규칙 이름은 기본 `name`/`environment` 기준이다. 값을 바꿨으면 출력의 `event_rule_name`을 사용한다. 타깃은 원본 그룹 ARN이어야 하고 RoleArn이나 입력 변환이 없어야 한다. 규칙의 account/region/source/detail-type과 별도 로그 쓰기 정책, 구독의 지정 Destination ARN 및 빈 필터를 대조한다.
+
+실제 적용 전 새 저장 Plan에서 송신 리소스 5개 추가만 있는지 확인한다. 기존 detector/보호 설정, ANF disabled, 관리 자원 ID와 기존 출력은 적용 전후 비교한다. 플랫폼 Terraform에는 실제 그룹 이름과 다른 이전 정의가 있으므로 송신 연결을 위해 플랫폼 root를 Apply하지 않는다.
+
+```bash
+umask 077
+mkdir -p terraform/network-security/.validation/guardduty-logging
+AWS_PROFILE=sbh-delta-security terraform -chdir=terraform/network-security plan \
+  -input=false -parallelism=1 -lock-timeout=2m \
+  -out=.validation/guardduty-logging/connect.tfplan
+# 별도 show -json 결과도 ignored 검증 경로에 보관하고 변경 주소/값을 검토한다.
+AWS_PROFILE=sbh-delta-security terraform -chdir=terraform/network-security apply \
+  -input=false -parallelism=1 .validation/guardduty-logging/connect.tfplan
+```
+
+단일 샘플 검증은 실제 샘플 생성까지 승인된 경우에 실행한다. 먼저 해당 유형의 기존 Finding ID를 조회한다. `DELTA_GUARDDUTY_DETECTOR_ID`에는 기존 `guardduty` 출력의 detector_id를 넣는다. 아래 API는 지정한 한 유형의 검증용 샘플만 만들며 실제 공격을 실행하지 않는다.
+
+```bash
+aws guardduty list-findings --profile sbh-delta-security --region ap-northeast-2 \
+  --detector-id "$DELTA_GUARDDUTY_DETECTOR_ID" \
+  --finding-criteria '{"Criterion":{"type":{"Eq":["Backdoor:EC2/DenialOfService.Tcp"]}}}'
+aws guardduty create-sample-findings --profile sbh-delta-security --region ap-northeast-2 \
+  --detector-id "$DELTA_GUARDDUTY_DETECTOR_ID" \
+  --finding-types Backdoor:EC2/DenialOfService.Tcp
+aws logs filter-log-events --profile sbh-delta-security --region ap-northeast-2 \
+  --log-group-name /delta/security/guardduty --start-time "$DELTA_FINDING_START_MS"
+aws logs filter-log-events --profile sbh-delta-workload --region ap-northeast-2 \
+  --log-group-name /delta-cp/central/aws --start-time "$DELTA_FINDING_START_MS" \
+  --filter-pattern '{ $.account_id = "482840608926" && $.log_group = "/delta/security/guardduty" }'
+```
+
+`DELTA_FINDING_START_MS`에는 샘플 생성 직전의 Unix 밀리초를 사용한다. 원본 이벤트의 account/region/type/Finding ID와 `detail.service.additionalInfo.sample=true`를 확인하고 플랫폼 레코드의 `message`가 원본 JSON 문자열과 같은지 대조한다. GuardDuty API는 `Service.AdditionalInfo.Value`의 JSON 내부 sample 값을 확인한다. 플랫폼 `account_id`, `region`, `log_group`, `log_stream`, `source_timestamp`, `event_id`도 확인한다. 중앙 이벤트 시각은 수집 시각이며 원본 시각과 구분한다. 원본/중앙 응답 전체는 ignored 경로에만 보관한다.
+
+샘플 생성 응답이나 구독 생성 성공만으로 수신 성공을 기록하지 않는다. 소스에 없으면 규칙/타깃/쓰기 정책과 EventBridge `FailedInvocations`를 확인하고, 소스에만 있으면 구독/계정 허용, CloudWatch Logs `DeliveryErrors`/`DeliveryThrottling`과 수신 수집기를 확인한다. 새 Finding과 기존 Finding 갱신의 알림 주기는 다르므로 기존 샘플 갱신 지연과 새 샘플 전달 실패를 구분한다. 검증 후 기존 Findings는 보관 처리하거나 삭제하지 않는다.
+
+전달만 중지하려면 실제 ignored tfvars에 `guardduty_findings_forwarding_enabled=false`를 저장한 뒤 새 Plan을 검토해 구독 1개만 제거한다. true로 되돌려 새 Plan/Apply하면 구독을 재생성한다. 원본 그룹/규칙/탐지와 로그는 유지한다. `retain_logs_on_destroy=true`로 관리에서 제거한 그룹은 재관리 시 Import가 필요하다. 모든 실제 검증 후 중앙 root의 `plan -detailed-exitcode`가 No changes/종료0인지 확인한다.
+
 ## ANF 비용 중단과 원복
 
 승인 범위와 실제 결과는 [ANF 비용 절감 AI-DLC](../../docs/ai-dlc/anf-cost-mode.md)를 따른다. 나머지 검사/관제 절차는 `inspection_mode=enabled` 기준이다. 아래 명령을 실행했다는 사실만으로 통신이나 원복을 성공으로 기록하지 않는다.

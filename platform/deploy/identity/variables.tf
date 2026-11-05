@@ -51,5 +51,5 @@ variable "platform_vpc_id" {
 }
 variable "platform_subnet_ids" {
   type        = set(string)
-  description = "기존 플랫폼 public/private subnet ID"
+  description = "플랫폼 root가 관리하는 public/private 및 역할별 service subnet ID"
 }

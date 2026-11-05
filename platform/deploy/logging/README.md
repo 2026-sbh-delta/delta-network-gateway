@@ -1,6 +1,6 @@
 # AWS·GCP 중앙 로그 수신
 
-AWS와 GCP에 이미 모이는 로그를 **플랫폼 계정의 CloudWatch Logs에 복사**한다. 별도 로그 서버 IP는 없다. 원본 저장소와 기존 네트워크 계정의 수집기는 유지한다.
+AWS와 GCP에 이미 모이는 로그를 **플랫폼 계정의 CloudWatch Logs에 복사**한다. 별도 로그 서버 IP는 없다. AWS 원본 로그와 GCP Cloud Logging 저장은 유지한다.
 
 ```text
 AWS CloudWatch Logs → 구독 필터 → Destination → Kinesis → Lambda ─┐
@@ -9,8 +9,8 @@ GCP Cloud Logging  → Sink → Pub/Sub → Lambda(WIF 인증) ─────�
 ```
 
 - 중앙 계정: `616723161368`, 리전: `ap-northeast-2`(서울).
-- AWS 저장: `/delta-cp/central/aws`.
-- GCP 저장: `/delta-cp/central/gcp`.
+- AWS 저장: `/delta-cp/central/aws` (2026-11-06 조회).
+- GCP 저장: `/delta-cp/central/gcp` (2026-11-06 조회).
 - 플랫폼 서비스(오케스트레이터·Jenkins·SAST·DAST·차분 에이전트) 로그: `/delta-cp/platform/<서비스>`(각 호스트가 직접 기록, `terraform/platform-aws`).
 - **이름 분리(11/5):** 같은 계정에 A 기업 로그(`/delta/…`, `/aws/…`)가 함께 있다. 플랫폼 로그는 모두 `/delta-cp/` 아래에 둔다. 권한·KMS 분리는 후순위다.
 - GCP 프로젝트: `term2-delta`. VM·Cloud Run·방화벽/VPN/Router 로그를 기본 수집한다. 감사 로그는 기본 제외한다.
@@ -18,6 +18,8 @@ GCP Cloud Logging  → Sink → Pub/Sub → Lambda(WIF 인증) ─────�
 - 같은 메시지가 재전달될 수 있다. 집계 시 `event_id`로 중복을 구분한다.
 - 중앙 로그 기본 3일, 전송 대기 24시간, 실패 보관 7일. 원본 로그 보관 설정은 변경하지 않는다.
 - OTel 메트릭·트레이스 수신 주소가 아니다. 이 작업으로 플랫폼 웹의 로그 화면이 자동 연결되지는 않는다.
+
+2026-11-06 현재 운영 그룹은 위 `/delta-cp/central/*`이며 AWS 수집기의 `DESTINATION_LOG_GROUP`도 확인했다. 다만 tracked `aws.tf`는 아직 이전 `/delta-platform/central/*`를 정의한다. 아래 배포 명령은 최초 구축 절차이며, 현재 환경에 실행하려면 이 차이를 먼저 검토해야 한다. 이번 GuardDuty 송신 경로 설계에서는 플랫폼 root의 코드/state/운영 설정이나 Plan/Apply를 변경 또는 실행하지 않았다. [조회 근거와 검증 한계](../../../docs/ai-dlc/platform-central-logging.md#2026-11-06-guardduty-송신-연결-설계와-현재-로그-이름)
 
 ## 팀원에게 전달할 AWS 설정
 
@@ -28,6 +30,8 @@ arn:aws:logs:ap-northeast-2:616723161368:destination:delta-platform-logs
 ```
 
 현재 허용 계정은 `482840608926`, `616723161368`다. 다른 계정은 Terraform의 `source_aws_accounts`에 먼저 추가한다. 송신 로그 그룹도 **서울 리전**이어야 한다. 다른 리전에는 해당 리전용 Destination을 별도 준비한다.
+
+2026-11-06 중앙 계정 `482840608926`의 `/delta/security/guardduty`는 `delta-platform-central` 구독으로 위 Destination에 연결했다. 원본과 `/delta-cp/central/aws`에서 같은 GuardDuty 샘플1건의 본문/출처/시각/ID를 확인했다. 구독은 이 저장소의 중앙 Terraform root가 관리하며 [중앙 Runbook](../../../terraform/network-security/RUNBOOK.md#guardduty-finding-로그-전달)으로 조회/중지/재개한다. [실제 검증 기록](../../../docs/ai-dlc/aws-guardduty-logging.md)을 따른다.
 
 송신 계정에서 필요한 로그 그룹 하나를 선택하고 실행한다. `SOURCE_LOG_GROUP`만 실제 값으로 바꾼다. 빈 필터는 **선택한 그룹의 모든 새 이벤트**를 전달하며, 과거 로그를 복사하지 않는다. 기존 구독은 먼저 조회하고 덮어쓰지 않는다.
 
@@ -46,7 +50,7 @@ aws logs put-subscription-filter \
 
 실행 주체에는 원본 로그 그룹과 Destination에 대한 `logs:PutSubscriptionFilter`, 원본 그룹의 `logs:DescribeSubscriptionFilters` 권한이 필요하다. 수신 측 Destination 정책만으로 송신 IAM 권한을 대신할 수 없다. 논리 Destination에 연결하므로 위 명령에 `--role-arn`이나 Access Key를 넣지 않는다.
 
-**재전송 금지:** `/delta-cp/*`(중앙·플랫폼 서비스)와 `/aws/lambda/delta-platform-logs-*`는 구독 대상에서 제외한다. 수집기도 이 그룹에서 온 이벤트는 버린다. 계정 전체 구독을 만드는 작업이 아니다. 그룹당 기존 구독 한도도 확인한다.
+**재전송 금지:** `/delta-cp/*`(중앙·플랫폼 서비스), 이전 `/delta-platform/central/*`와 `/aws/lambda/delta-platform-logs-*`는 구독 대상에서 제외한다. 수집기도 이 그룹에서 온 이벤트는 버린다. 계정 전체 구독을 만드는 작업이 아니다. 그룹당 기존 구독 한도도 확인한다.
 
 ## 팀원에게 전달할 GCP 설정
 
@@ -59,7 +63,7 @@ aws logs put-subscription-filter \
 
 VM의 앱 파일/stdout 로그가 Cloud Logging에 없다면 Ops Agent 등 원본 수집 설정이 먼저 필요하다. 이 Sink는 이미 있는 로그만 전달한다. 추가 로그 종류는 `gcp_log_filter`를 검토해 확장한다. 다른 프로젝트는 별도 Sink·권한·수집기 계약이 필요하다.
 
-기존 `delta-lab-network-security` Sink/Topic/Subscription은 이번 root에서 소유하거나 변경하지 않는다. 네트워크 로그가 두 중앙 계정에 복사되는 동안 저장·전송 비용도 각각 발생한다. 정리할 때는 팀과 소비자를 확인한 뒤 결정한다.
+이 root는 플랫폼 전용 Sink와 Topic 및 Subscription만 소유한다. 기존 네트워크 계정 전용 `delta-lab-network-security` 전달 경로의 정리와 보존 로그는 [네트워크 정리 기록](../../../docs/ai-dlc/gcp-central-network.md#2026-11-05-gcp-로그-전달-경로-정리-검토)을 따른다. 공통 `services/gcp-log-collector`는 이 플랫폼 수집에서도 계속 사용한다.
 
 ## 배포
 
@@ -131,7 +135,7 @@ CloudWatch에서 수집기 `Errors`, AWS `IteratorAge`, `FailedEnvelopes`, 실�
 
 - AWS: 쓰기 실패는 체크포인트를 넘기지 않고 재시도한다. 3회 재시도 또는 최대 1시간 처리 지연 후 원본 이벤트 묶음을 S3에 보관한다. 장애 복구 후 원본의 시각과 ID를 보존해 재처리한다.
 - GCP: 중앙 저장에 성공한 메시지만 ack한다. 반복 실패는 Pub/Sub DLQ에 보관한다. DLQ를 먼저 확인한 후 원본 형식으로 재게시한다. 수동 pull로 정상 Subscription의 ack를 소모하지 않는다.
-- 일시 중지: AWS는 송신 구독 제거, GCP는 **새 플랫폼 Sink만** 비활성화한다. 큐가 비었는지 확인한 후 해당 수집기를 중지한다. 기존 네트워크 수집기를 끄지 않는다.
+- 일시 중지: AWS는 송신 구독 제거, GCP는 **플랫폼 Sink만** 비활성화한다. 변경 전파와 대기 메시지를 확인한 후 해당 수집기를 중지한다. Cloud Logging 원본 저장은 유지한다.
 - 롤백: 새 root의 Plan을 검토해 제거한다. S3 실패 원본이 남아 있으면 `force_destroy=false`로 삭제를 막는다. 먼저 필요한 로그를 보관한다.
 
 1 shard Kinesis에는 유휴 시간에도 비용이 있다. Lambda/PubSub/중앙 로그에도 사용량 비용이 생긴다. 해커톤 후 유지 여부와 원본·중앙 중복 보관 기간을 확인한다.

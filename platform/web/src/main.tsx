@@ -1,3 +1,5 @@
+import { ApplicationRegistration } from "./ApplicationRegistration";
+import { ApplicationProgress } from "./ApplicationProgress";
 import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
@@ -11,6 +13,9 @@ import {
   type Run,
   type RunEvent,
   type Page,
+  type DeploymentOption,
+  type DeploymentTargetInput,
+  type ServiceRegistrationInput,
 } from "./api";
 import "./style.css";
 import "./presentation.css";
@@ -28,6 +33,7 @@ import { DeleteProjectDialog } from "./DeleteProjectDialog";
 import { BuildPanel } from "./BuildPanel";
 import { ObservabilityPanel } from "./ObservabilityPanel";
 import { WorkflowPlanningPanel } from "./WorkflowPlanningPanel";
+import { DeploymentPanel } from "./DeploymentPanel";
 
 const labels = {
   queued: "확인 대기",
@@ -136,7 +142,19 @@ function Login({ onLogin }: { onLogin: (s: Session) => void }) {
   );
 }
 
-function Register({
+function Register(props: {
+  onCreated: (s: Service) => void;
+  onCancel: () => void;
+}) {
+  const [single, setSingle] = useState(false);
+  return single ? (
+    <SingleRegister {...props} />
+  ) : (
+    <ApplicationRegistration {...props} onSingle={() => setSingle(true)} />
+  );
+}
+
+function SingleRegister({
   onCreated,
   onCancel,
 }: {
@@ -146,11 +164,59 @@ function Register({
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const attempt = useRef<{ payload: string; key: string } | null>(null);
+  const [options, setOptions] = useState<DeploymentOption[]>([]);
+  const [catalogError, setCatalogError] = useState("");
+  const [catalogLoading, setCatalogLoading] = useState(true);
+  const [catalogRetry, setCatalogRetry] = useState(0);
+  const [target, setTarget] = useState<DeploymentTargetInput | null>(null);
+  useEffect(() => {
+    const controller = new AbortController();
+    setCatalogLoading(true);
+    setCatalogError("");
+    api<{ items: DeploymentOption[] }>(
+      "/deployment-options",
+      undefined,
+      undefined,
+      controller.signal,
+    )
+      .then((result) => {
+        setOptions(result.items);
+        const first =
+          result.items.find((item) => item.cloud === "aws") ?? result.items[0];
+        if (first)
+          setTarget({
+            cloud: first.cloud,
+            region: first.region,
+            profile_id: first.profiles[0]?.id ?? "",
+            ...(first.cloud === "onprem" && first.hosts[0]
+              ? { host_id: first.hosts[0].id }
+              : {}),
+          });
+      })
+      .catch((e) => {
+        setCatalogError(message(e));
+      })
+      .finally(() => setCatalogLoading(false));
+    return () => controller.abort();
+  }, [catalogRetry]);
+  const selectedOption = options.find((item) => item.cloud === target?.cloud);
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     const input = Object.fromEntries(data.entries()) as unknown as ServiceInput;
     input.container_port = Number(data.get("container_port"));
+    if (
+      !target?.profile_id ||
+      !selectedOption?.profiles.some(
+        (profile) => profile.id === target.profile_id,
+      ) ||
+      (target.cloud === "onprem" &&
+        !selectedOption.hosts.some((host) => host.id === target.host_id))
+    ) {
+      setError("최초 배포 환경과 사양을 선택하세요.");
+      return;
+    }
+    (input as ServiceRegistrationInput).deployment_target = target;
     const payload = JSON.stringify(input);
     if (attempt.current?.payload !== payload)
       attempt.current = { payload, key: crypto.randomUUID() };
@@ -228,13 +294,119 @@ function Register({
             헬스 체크 경로
             <input name="healthcheck_path" defaultValue="/health" required />
           </label>
+          <label>
+            최초 배포 환경
+            <select
+              aria-label="최초 배포 환경"
+              value={target?.cloud ?? ""}
+              required
+              onChange={(e) => {
+                const option = options.find(
+                  (item) => item.cloud === e.target.value,
+                );
+                if (option)
+                  setTarget({
+                    cloud: option.cloud,
+                    region: option.region,
+                    profile_id: option.profiles[0]?.id ?? "",
+                    ...(option.cloud === "onprem" && option.hosts[0]
+                      ? { host_id: option.hosts[0].id }
+                      : {}),
+                  });
+              }}
+            >
+              <option value="">환경 선택</option>
+              {options.map((item) => (
+                <option key={item.cloud} value={item.cloud}>
+                  {item.label} · {item.region}
+                </option>
+              ))}
+            </select>
+            {selectedOption?.reason && <small>{selectedOption.reason}</small>}
+          </label>
+          <label>
+            VM 사양 / 앱 자원 한도
+            <select
+              aria-label="최초 배포 사양"
+              value={target?.profile_id ?? ""}
+              required
+              onChange={(e) =>
+                setTarget((current) =>
+                  current
+                    ? { ...current, profile_id: e.target.value }
+                    : current,
+                )
+              }
+            >
+              <option value="">사양 선택</option>
+              {selectedOption?.profiles.map((profile) => (
+                <option key={profile.id} value={profile.id}>
+                  {profile.label} · {profile.cpu} · {profile.memory_mb} MB
+                </option>
+              ))}
+            </select>
+          </label>
+          {selectedOption?.cloud === "onprem" && (
+            <label>
+              등록 호스트
+              <select
+                aria-label="최초 배포 호스트"
+                value={target?.host_id ?? ""}
+                required
+                onChange={(e) =>
+                  setTarget((current) =>
+                    current ? { ...current, host_id: e.target.value } : current,
+                  )
+                }
+              >
+                <option value="">호스트 선택</option>
+                {selectedOption.hosts.map((host) => (
+                  <option key={host.id} value={host.id}>
+                    {host.label}
+                  </option>
+                ))}
+              </select>
+              <small>
+                선택한 호스트에 앱을 배포합니다. 새 VM은 만들지 않습니다.
+              </small>
+            </label>
+          )}
         </div>
+        {catalogLoading && (
+          <p className="muted" role="status">
+            배포 환경 선택 항목을 불러오는 중입니다.
+          </p>
+        )}
+        {!catalogLoading && (catalogError || options.length === 0) && (
+          <p className="notice">
+            {catalogError
+              ? `배포 선택 목록을 가져오지 못했습니다: ${catalogError}`
+              : "선택할 수 있는 배포 환경이 없습니다."}{" "}
+            환경을 선택할 수 있을 때까지 등록이 보류됩니다.
+            <button type="button" onClick={() => setCatalogRetry((n) => n + 1)}>
+              다시 불러오기
+            </button>
+          </p>
+        )}
         <p className="notice">
           지금은 소스만 확인합니다. 포트와 헬스 체크 경로는 이후 배포에 사용할
           정보입니다.
         </p>
         <ErrorBox error={error} />
-        <button className="primary" disabled={busy}>
+        <button
+          className="primary"
+          disabled={
+            busy ||
+            catalogLoading ||
+            options.length === 0 ||
+            !target?.profile_id ||
+            !selectedOption?.profiles.some(
+              (profile) => profile.id === target.profile_id,
+            ) ||
+            (target.cloud === "onprem" &&
+              !selectedOption.hosts.some((host) => host.id === target.host_id))
+          }
+        >
           {busy ? "등록 중…" : "등록하고 상세 보기"}
         </button>
       </form>
@@ -422,7 +594,7 @@ function Detail({
                 {service.repository_url.replace("https://", "")} ↗
               </a>
             </div>
-            {view === "build" && (
+            {view === "build" && !service.application && (
               <button
                 className="primary"
                 onClick={check}
@@ -436,13 +608,27 @@ function Detail({
               </button>
             )}
           </div>
+          {service.application && (view === "overview" || view === "build") && (
+            <ApplicationProgress service={service} />
+          )}
           {view === "overview" && (
-            <ApplicationPanel service={service} onNavigate={onNavigate} />
+            <>
+              <ApplicationPanel service={service} onNavigate={onNavigate} />
+              {!service.application && (
+                <DeploymentPanel key={`${id}-deployment`} serviceId={id} />
+              )}
+            </>
           )}
           {view === "migration" && (
-            <WorkflowPlanningPanel key={`${id}-workflows`} serviceId={id} />
+            <>
+              <DeploymentPanel key={`${id}-deployment`} serviceId={id} />
+              <details className="panel technical-details">
+                <summary>기존 분석·검토 계획 보기</summary>
+                <WorkflowPlanningPanel key={`${id}-workflows`} serviceId={id} />
+              </details>
+            </>
           )}
-          {view === "build" && (
+          {view === "build" && !service.application && (
             <>
               <ApplicationPanel
                 service={service}

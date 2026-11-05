@@ -1,0 +1,100 @@
+# 운영자가 새 전용 namespace에 한 번 준비한다. 기존 demo/delta-notes는 변경하지 않는다.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: delta-apps
+  labels:
+    app.kubernetes.io/managed-by: delta-platform
+    pod-security.kubernetes.io/enforce: restricted
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: delta-app
+  namespace: delta-apps
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: delta-deployer
+  namespace: delta-apps
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: apps-budget
+  namespace: delta-apps
+spec:
+  hard:
+    requests.cpu: '1500m'
+    limits.cpu: '1500m'
+    requests.memory: 1536Mi
+    limits.memory: 1536Mi
+    pods: '6'
+    services.nodeports: '3'
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+  namespace: delta-apps
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+  ingress: []
+  egress: []
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: delta-deployer
+  namespace: delta-apps
+rules:
+  - apiGroups: [apps]
+    resources: [deployments]
+    verbs: [get, list, watch, create, delete]
+  - apiGroups: ['']
+    resources: [services, secrets]
+    verbs: [get, create, delete]
+  - apiGroups: [networking.k8s.io]
+    resources: [networkpolicies]
+    verbs: [get, create, delete]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: delta-deployer
+  namespace: delta-apps
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: delta-deployer
+subjects:
+  - kind: ServiceAccount
+    name: delta-deployer
+    namespace: delta-apps
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: delta-apps-identity-reader
+rules:
+  - apiGroups: ['']
+    resources: [namespaces]
+    resourceNames: [delta-apps, kube-system]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: delta-apps-identity-reader
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: delta-apps-identity-reader
+subjects:
+  - kind: ServiceAccount
+    name: delta-deployer
+    namespace: delta-apps

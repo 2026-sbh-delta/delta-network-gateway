@@ -26,7 +26,7 @@ resource "aws_iam_role_policy" "app" {
         Effect = "Allow", Action = ["ecr:BatchGetImage", "ecr:GetDownloadUrlForLayer", "ecr:BatchCheckLayerAvailability"], Resource = aws_ecr_repository.platform.arn
       },
       {
-        Effect = "Allow", Action = ["ssm:GetParameter"], Resource = "arn:aws:ssm:${var.region}:${var.account_id}:parameter/${var.name}/runtime"
+        Effect = "Allow", Action = ["ssm:GetParameter"], Resource = ["arn:aws:ssm:${var.region}:${var.account_id}:parameter/${var.name}/runtime", "arn:aws:ssm:${var.region}:${var.account_id}:parameter/${var.name}/runtime/onprem-removal"]
       },
       {
         Effect = "Allow", Action = ["s3:PutObject", "s3:GetObject"], Resource = "${aws_s3_bucket.backup.arn}/database/*"

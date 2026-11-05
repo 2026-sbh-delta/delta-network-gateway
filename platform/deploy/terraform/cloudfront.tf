@@ -45,6 +45,7 @@ resource "aws_cloudfront_origin_request_policy" "platform" {
 }
 resource "aws_cloudfront_distribution" "platform" {
 
+  aliases             = var.custom_domain == null ? [] : [var.custom_domain]
   enabled             = true
   is_ipv6_enabled     = true
   http_version        = "http2"
@@ -88,7 +89,20 @@ resource "aws_cloudfront_distribution" "platform" {
     }
   }
   viewer_certificate {
-    cloudfront_default_certificate = true
+    cloudfront_default_certificate = var.custom_domain == null
+    acm_certificate_arn            = var.custom_domain_certificate_arn
+    ssl_support_method             = var.custom_domain == null ? null : "sni-only"
+    minimum_protocol_version       = var.custom_domain == null ? "TLSv1" : "TLSv1.2_2021"
+  }
+  lifecycle {
+    precondition {
+      condition     = (var.custom_domain == null) == (var.custom_domain_certificate_arn == null)
+      error_message = "관리 도메인과 ACM 인증서 ARN은 함께 지정해야 합니다."
+    }
+    precondition {
+      condition     = var.custom_domain_certificate_arn == null ? true : split(":", var.custom_domain_certificate_arn)[4] == var.account_id
+      error_message = "CloudFront와 같은 계정의 ACM 인증서가 필요합니다."
+    }
   }
   depends_on = [aws_vpc_security_group_ingress_rule.cloudfront]
 

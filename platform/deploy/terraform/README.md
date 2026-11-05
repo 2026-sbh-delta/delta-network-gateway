@@ -5,8 +5,8 @@
 ## 구성과 한계
 
 - 앱 `t4g.small`, NAT `t4g.micro`, AL2023 ARM64. 작은 팀의 U1 사용량을 기준으로 한 단일 AZ 구성이다. HA·자동 확장 구성은 아니다.
-- Jenkins 컨트롤러 `t3.small`과 전용 에이전트 `t3.medium`은 같은 사설 subnet의 `10.80.1.20/21`을 사용한다. 컨트롤러 이력은 별도 암호화 20 GiB EBS에 보존한다. 플랫폼/에이전트 SG만 컨트롤러 443에 접근한다. VM 역할은 [Jenkins IAM](../jenkins/identity/README.md)에서 먼저 준비한다.
-- CloudFront의 기본 HTTPS 도메인을 사용한다. API·로그인 응답은 캐시하지 않으며 세션 쿠키·Origin·CSRF·요청 키를 전달한다.
+- Jenkins 컨트롤러 `t3.small`과 전용 에이전트 `t3.medium`은 서로 다른 전용 subnet의 `10.80.10.20`/`10.80.11.21`을 사용한다. 컨트롤러 이력은 별도 암호화 20 GiB EBS에 보존한다. 플랫폼/에이전트 SG만 컨트롤러 443에 접근한다. VM 역할은 [Jenkins IAM](../jenkins/identity/README.md)에서 먼저 준비한다.
+- 기본값은 CloudFront HTTPS 주소이며 `custom_domain`과 동일 계정 us-east-1의 발급 완료된 ACM 인증서 ARN으로 관리 도메인을 지정할 수 있다. API·로그인 응답은 캐시하지 않으며 세션 쿠키·Origin·CSRF·요청 키를 전달한다. 도메인을 활성화할 때 SSM의 `PLATFORM_PUBLIC_ORIGIN`도 새 HTTPS origin으로 맞춘다.
 - PostgreSQL은 별도 암호화 gp3 20 GiB에 저장한다. VM 교체와 데이터 디스크 수명을 분리하고 디스크에 `prevent_destroy`를 적용한다.
 - S3 비공개·암호화·버전 관리, DB 백업 7일 보관. 백업 실행·복원 검증 여부는 [AWS 배포 기록](../../../docs/ai-dlc/platform-aws.md)을 따른다.
 - SSM으로 관리한다. VM 역할은 ECR 읽기, 특정 설정 경로 읽기, 해당 백업·릴리스 경로 접근만 추가한다. API·Worker 컨테이너에는 AWS 키를 넣지 않는다.
@@ -21,6 +21,8 @@
 | --- | --- | --- | --- |
 | `account_id` | string | 필수 | STS로 확인한 배포 계정, provider가 다른 계정을 거부 |
 | `region` | string | ap-northeast-2 | AWS 리전 |
+| `custom_domain` | string 또는 null | null | 관리 플랫폼의 DNS 호스트명. 미지정 시 CloudFront 기본 주소 |
+| `custom_domain_certificate_arn` | string 또는 null | null | 도메인과 함께 지정하는 동일 계정 us-east-1 ACM 인증서 ARN |
 | `availability_zone` | string | 필수 | 앱·NAT·DB 디스크의 AZ |
 | `ami_id` | string | 필수 | AWS 조회로 확인한 AL2023 ARM64 AMI |
 | `name` | string | delta-platform | 리소스·SSM 경로 접두어 |
@@ -34,6 +36,7 @@
 | 속성명 | 역할 |
 | --- | --- |
 | `platform_url` | 팀 접속용 HTTPS 주소 |
+| `cloudfront_url` | DNS CNAME 대상 확인·복구용 기존 CloudFront HTTPS 주소 |
 | `instance_id` | 플랫폼 VM의 SSM 배포 대상 |
 | `nat_instance_id` | NAT VM 진단 대상 |
 | `ecr_repository_url` | 플랫폼 이미지 저장소 |

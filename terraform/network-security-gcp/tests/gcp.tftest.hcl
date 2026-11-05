@@ -21,9 +21,6 @@ mock_provider "google" {
   mock_resource "google_network_security_security_profile" { defaults = { id = "projects/term2-delta/locations/global/securityProfiles/delta-lab-threat" } }
   mock_resource "google_network_security_security_profile_group" { defaults = { id = "projects/term2-delta/locations/global/securityProfileGroups/delta-lab-threat" } }
   mock_resource "google_network_security_firewall_endpoint" { defaults = { id = "projects/term2-delta/locations/asia-northeast3-a/firewallEndpoints/delta-lab-central" } }
-  mock_resource "google_logging_project_sink" { defaults = { writer_identity = "serviceAccount:mock@logging-123456789012.iam.gserviceaccount.com" } }
-  mock_resource "google_pubsub_topic" { defaults = { id = "projects/term2-delta/topics/delta-lab-network-security" } }
-  mock_resource "google_iam_workload_identity_pool" { defaults = { name = "projects/123456789012/locations/global/workloadIdentityPools/delta-lab-aws" } }
 }
 mock_provider "google-beta" {
   override_during = plan
@@ -37,20 +34,16 @@ run "bootstrap_central_and_workload_are_separate" {
     error_message = "The central detection/connectivity VPC must be separate from the workload VPC."
   }
   assert {
-    condition     = google_network_security_firewall_endpoint.central[0].parent == "projects/term2-delta" && google_network_security_security_profile.threat.parent == "projects/term2-delta" && length(google_network_security_firewall_endpoint_association.vpc) == 2 && google_network_security_firewall_endpoint_association.vpc["workload"].location == google_compute_instance.server.zone
+    condition     = google_network_security_firewall_endpoint.central[0].parent == "projects/term2-delta" && google_network_security_security_profile.threat.parent == "projects/term2-delta" && length(google_network_security_firewall_endpoint_association.vpc) == 2 && google_network_security_firewall_endpoint_association.vpc["workload"].location == var.zone
     error_message = "Share a project-level endpoint across VPCs in the workload zone, without requiring an organization."
   }
   assert {
-    condition     = length(google_compute_instance.server.network_interface[0].access_config) == 0 && google_compute_instance.server.network_interface[0].network_ip == "10.30.1.10" && length(google_compute_vpn_tunnel.aws) == 0 && length(google_network_connectivity_spoke.aws) == 0
+    condition     = length(google_compute_vpn_tunnel.aws) == 0 && length(google_network_connectivity_spoke.aws) == 0
     error_message = "Bootstrap must have a private server and no incomplete AWS tunnels."
   }
   assert {
-    condition     = google_compute_network_firewall_policy_rule.ingress["internet_inspect"].action == "apply_security_profile_group" && google_compute_network_firewall_policy_rule.ingress["internet_deny"].action == "deny" && toset(google_compute_forwarding_rule.demo.ports) == toset(["8080", "8081"])
+    condition     = google_compute_network_firewall_policy_rule.deny_ingress.action == "deny" && toset(google_compute_network_firewall_policy_rule.ingress["private_inspect"].match[0].layer4_configs[0].ports) == toset(["3000", "8080"])
     error_message = "Forward both control ports and use real GCP firewall inspect/deny actions."
-  }
-  assert {
-    condition     = length(google_pubsub_subscription.collector.push_config) == 0 && google_pubsub_subscription.collector.message_retention_duration == "604800s" && google_pubsub_subscription.collector.dead_letter_policy[0].max_delivery_attempts == 10 && strcontains(google_iam_workload_identity_pool_provider.aws.attribute_condition, "111122223333:assumed-role/delta-lab-gcp-log-collector/")
-    error_message = "Use durable pull delivery and trust only the exact central collector role."
   }
 }
 run "wrong_project_number" {
@@ -83,17 +76,6 @@ run "no_internet_default_route_advertisement" {
   variables { aws_cidrs = ["0.0.0.0/0"] }
   expect_failures = [terraform_data.contract]
 }
-run "no_unrestricted_demo_source" {
-  command = plan
-  variables { internet_source_cidrs = ["0.0.0.0/0"] }
-  expect_failures = [var.internet_source_cidrs]
-}
-run "no_floating_image" {
-  command = plan
-  variables { server_image = "projects/ubuntu-os-cloud/global/images/family/ubuntu-2404-lts-amd64" }
-  expect_failures = [var.server_image]
-}
-
 run "complete_four_tunnel_handoff" {
   command = plan
   variables {
@@ -106,12 +88,12 @@ run "complete_four_tunnel_handoff" {
     vpn_shared_secrets = { a1 = "synthetic-test-key-a1", a2 = "synthetic-test-key-a2", b1 = "synthetic-test-key-b1", b2 = "synthetic-test-key-b2" }
   }
   assert {
-    condition     = length(google_compute_vpn_tunnel.aws) == 4 && length(google_compute_router_peer.aws) == 4 && length(google_network_connectivity_spoke.aws) == 1 && toset(google_network_connectivity_spoke.aws[0].linked_vpn_tunnels[0].include_export_ranges) == toset(["10.10.0.0/16", "10.20.0.0/16"])
+    condition     = length(google_compute_vpn_tunnel.aws) == 4 && length(google_compute_router_peer.aws) == 4 && length(google_network_connectivity_spoke.aws) == 1 && toset(google_network_connectivity_spoke.aws[0].linked_vpn_tunnels[0].include_export_ranges) == toset(["10.10.0.0/16", "10.80.0.0/16"])
     error_message = "The complete handoff must create four BGP tunnels and filter imported AWS prefixes."
   }
   assert {
-    condition     = alltrue([for peer in google_compute_router_peer.aws : one(peer.advertised_ip_ranges).range == "10.30.1.0/24"])
-    error_message = "Only the workload prefix may be advertised to AWS."
+    condition     = alltrue([for peer in google_compute_router_peer.aws : toset([for r in peer.advertised_ip_ranges : r.range]) == toset(["10.30.1.0/24", "10.31.0.2/32"])])
+    error_message = "Only workload and platform database endpoint prefixes may be advertised to AWS."
   }
 }
 run "reject_partial_handoff" {
@@ -127,11 +109,11 @@ run "bypass_preserves_endpoint_and_basic_denies" {
   command = plan
   variables { inspection_mode = "bypass" }
   assert {
-    condition     = length(google_network_security_firewall_endpoint.central) == 1 && length(google_network_security_firewall_endpoint_association.vpc) == 2 && google_compute_network_firewall_policy_rule.ingress["private_inspect"].action == "allow" && google_compute_network_firewall_policy_rule.ingress["internet_inspect"].action == "allow" && google_compute_network_firewall_policy_rule.private_egress.action == "allow"
+    condition     = length(google_network_security_firewall_endpoint.central) == 1 && length(google_network_security_firewall_endpoint_association.vpc) == 2 && google_compute_network_firewall_policy_rule.ingress["private_inspect"].action == "allow" && google_compute_network_firewall_policy_rule.private_egress.action == "allow"
     error_message = "Bypass must keep endpoints while removing all three L7 interception actions."
   }
   assert {
-    condition     = google_compute_network_firewall_policy_rule.ingress["internet_deny"].action == "deny" && google_compute_network_firewall_policy_rule.deny_ingress.action == "deny" && google_compute_network_firewall_policy_rule.private_egress.security_profile_group == null && google_compute_network_firewall_policy_rule.private_egress.enable_logging
+    condition     = google_compute_network_firewall_policy_rule.deny_ingress.action == "deny" && google_compute_network_firewall_policy_rule.private_egress.security_profile_group == null && google_compute_network_firewall_policy_rule.private_egress.enable_logging
     error_message = "Keep basic denies/logging and remove the profile reference from an allow rule."
   }
 }
@@ -153,11 +135,11 @@ run "disabled_preserves_four_tunnels_and_workload" {
     error_message = "Disabled must remove billable endpoints and associations, with an explicit disabled output."
   }
   assert {
-    condition     = length(google_compute_vpn_tunnel.aws) == 4 && length(google_compute_router_peer.aws) == 4 && length(google_network_connectivity_spoke.aws) == 1 && length(google_compute_network.vpc) == 2 && google_compute_instance.server.network_interface[0].network_ip == "10.30.1.10" && google_compute_route.lb_return.dest_range == "0.0.0.0/0"
+    condition     = length(google_compute_vpn_tunnel.aws) == 4 && length(google_compute_router_peer.aws) == 4 && length(google_network_connectivity_spoke.aws) == 1 && length(google_compute_network.vpc) == 2
     error_message = "Disabled must retain private routing, the workload and the LB return path."
   }
   assert {
-    condition     = google_compute_network_firewall_policy_rule.ingress["private_inspect"].action == "allow" && google_compute_network_firewall_policy_rule.ingress["internet_inspect"].action == "allow" && google_compute_network_firewall_policy_rule.private_egress.action == "allow" && google_compute_network_firewall_policy_rule.ingress["internet_deny"].action == "deny"
+    condition     = google_compute_network_firewall_policy_rule.ingress["private_inspect"].action == "allow" && google_compute_network_firewall_policy_rule.private_egress.action == "allow"
     error_message = "Routing must work without L7 endpoints while the internet deny remains enforced."
   }
 }
@@ -166,4 +148,25 @@ run "reject_unknown_inspection_mode" {
   command = plan
   variables { inspection_mode = "off" }
   expect_failures = [var.inspection_mode]
+}
+
+run "application_subnets_advertise_compute_and_database" {
+  command = plan
+  variables {
+    application_subnets          = { backend = "10.32.2.0/24", database = "10.32.3.0/24", proxy = "10.32.4.0/23" }
+    application_service_accounts = { frontend = "fe@term2-delta.iam.gserviceaccount.com", backend = "be@term2-delta.iam.gserviceaccount.com" }
+  }
+  assert {
+    condition     = toset(output.gateway_handoff.remote_cidrs) == toset(["10.30.1.0/24", "10.32.2.0/24", "10.32.3.0/24", "10.31.0.2/32"]) && google_compute_subnetwork.application["proxy"].purpose == "REGIONAL_MANAGED_PROXY"
+    error_message = "Advertise FE/BE and database prefixes, but exclude the proxy-only subnet."
+  }
+  assert {
+    condition     = google_compute_network_firewall_policy_rule.database_allow[0].priority < google_compute_network_firewall_policy_rule.database_deny[0].priority && toset(google_compute_network_firewall_policy_rule.database_allow[0].target_service_accounts) == toset(["be@term2-delta.iam.gserviceaccount.com"])
+    error_message = "Only the BE identity may connect to the database proxy endpoint."
+  }
+}
+run "reject_overlapping_application_subnet" {
+  command = plan
+  variables { application_subnets = { backend = "10.30.1.0/24", database = "10.32.3.0/24", proxy = "10.32.4.0/23" } }
+  expect_failures = [terraform_data.contract]
 }

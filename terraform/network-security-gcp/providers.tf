@@ -11,14 +11,17 @@ provider "google-beta" {
 data "google_project" "current" { project_id = var.project_id }
 
 locals {
-  project_parent    = "projects/${var.project_id}"
-  subnet_map        = { central = var.subnets.central, workload = var.subnets.workload }
-  all_private_cidrs = concat(values(local.subnet_map), sort(tolist(var.aws_cidrs)))
+  advertised_vpn_cidrs      = concat(local.advertised_workload_cidrs, sort(tolist(var.platform_database_endpoint_cidrs)))
+  project_parent            = "projects/${var.project_id}"
+  subnet_map                = { central = var.subnets.central, workload = var.subnets.workload }
+  all_private_cidrs         = concat(values(local.subnet_map), values(var.application_subnets), sort(tolist(var.aws_cidrs)))
+  advertised_workload_cidrs = concat([var.subnets.workload], [for key in ["backend", "database"] : var.application_subnets[key] if contains(keys(var.application_subnets), key)])
+  imported_aws_cidrs        = sort(tolist(setunion(var.aws_cidrs, var.platform_aws_cidrs)))
   cidr_ranges = [for cidr in local.all_private_cidrs : {
     start = try(sum([for i, octet in split(".", cidrhost(cidr, 0)) : tonumber(octet) * pow(256, 3 - i)]), -1)
     end   = try(sum([for i, octet in split(".", cidrhost(cidr, -1)) : tonumber(octet) * pow(256, 3 - i)]), -1)
   }]
-  required_apis = toset(["compute.googleapis.com", "networksecurity.googleapis.com", "networkconnectivity.googleapis.com", "pubsub.googleapis.com", "logging.googleapis.com", "iam.googleapis.com", "iamcredentials.googleapis.com", "sts.googleapis.com", "iap.googleapis.com", "oslogin.googleapis.com", "privateca.googleapis.com", "cloudbilling.googleapis.com"])
+  required_apis = toset(["compute.googleapis.com", "networksecurity.googleapis.com", "networkconnectivity.googleapis.com", "pubsub.googleapis.com", "logging.googleapis.com", "iam.googleapis.com", "iamcredentials.googleapis.com", "sts.googleapis.com", "iap.googleapis.com", "oslogin.googleapis.com", "privateca.googleapis.com", "cloudbilling.googleapis.com", "sqladmin.googleapis.com", "secretmanager.googleapis.com", "dns.googleapis.com", "storage.googleapis.com"])
 }
 
 resource "terraform_data" "contract" {
@@ -33,7 +36,7 @@ resource "terraform_data" "contract" {
       error_message = "Workload and endpoint must be in the selected region."
     }
     precondition {
-      condition     = length(var.aws_cidrs) > 0 && alltrue([for cidr in concat(local.all_private_cidrs, tolist(var.internet_source_cidrs)) : try(cidrhost(cidr, 0) == split("/", cidr)[0] && length(split(".", cidrhost(cidr, 0))) == 4 && cidr != "0.0.0.0/0", false)])
+      condition     = length(var.aws_cidrs) > 0 && alltrue([for cidr in local.all_private_cidrs : try(cidrhost(cidr, 0) == split("/", cidr)[0] && length(split(".", cidrhost(cidr, 0))) == 4 && cidr != "0.0.0.0/0", false)])
       error_message = "Use canonical, non-default IPv4 prefixes."
     }
     precondition {
@@ -59,4 +62,13 @@ resource "google_project_service" "required" {
   service            = each.key
   disable_on_destroy = false
   depends_on         = [terraform_data.contract]
+}
+
+# Shared project service agent is also used by the platform log pipeline.
+# Keep its Terraform address while retiring the network-only exporter.
+resource "google_project_service_identity" "pubsub" {
+  provider   = google-beta
+  project    = var.project_id
+  service    = "pubsub.googleapis.com"
+  depends_on = [google_project_service.required]
 }

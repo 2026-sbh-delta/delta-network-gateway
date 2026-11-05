@@ -1,0 +1,409 @@
+{
+  "data": {
+    "google_project": {
+      "current": {
+        "project_id": "${var.project_id}"
+      }
+    },
+    "google_compute_image": {
+      "ubuntu": {
+        "project": "ubuntu-os-cloud",
+        "name": "${var.image}"
+      }
+    }
+  },
+  "resource": {
+    "google_service_account": {
+      "vm": {
+        "for_each": {
+          "frontend": "fe",
+          "backend": "be"
+        },
+        "account_id": "${var.name}-${each.value}",
+        "display_name": "${var.name} ${each.key}"
+      }
+    },
+    "google_storage_bucket": {
+      "releases": {
+        "name": "${var.project_id}-${var.name}-releases",
+        "location": "${var.region}",
+        "uniform_bucket_level_access": true,
+        "public_access_prevention": "enforced",
+        "force_destroy": false,
+        "versioning": {
+          "enabled": true
+        },
+        "lifecycle_rule": [
+          {
+            "condition": {
+              "age": 30,
+              "with_state": "ARCHIVED"
+            },
+            "action": {
+              "type": "Delete"
+            }
+          }
+        ]
+      }
+    },
+    "google_storage_bucket_iam_member": {
+      "read": {
+        "for_each": "${google_service_account.vm}",
+        "bucket": "${google_storage_bucket.releases.name}",
+        "role": "roles/storage.objectViewer",
+        "member": "serviceAccount:${each.value.email}",
+        "condition": {
+          "title": "read_own_releases",
+          "expression": "resource.name.startsWith('projects/_/buckets/${google_storage_bucket.releases.name}/objects/releases/${each.key}/')"
+        }
+      }
+    },
+    "google_secret_manager_secret": {
+      "database": {
+        "for_each": "${toset([\"app\", \"admin\"])}",
+        "secret_id": "${var.name}-db-${each.key}",
+        "replication": {
+          "auto": {}
+        }
+      }
+    },
+    "google_secret_manager_secret_iam_member": {
+      "app": {
+        "secret_id": "${google_secret_manager_secret.database[\"app\"].id}",
+        "role": "roles/secretmanager.secretAccessor",
+        "member": "serviceAccount:${google_service_account.vm[\"backend\"].email}"
+      },
+      "compose_app": {
+        "count": "${var.compose_host_access ? 1 : 0}",
+        "secret_id": "${google_secret_manager_secret.database[\"app\"].id}",
+        "role": "roles/secretmanager.secretAccessor",
+        "member": "serviceAccount:${google_service_account.vm[\"frontend\"].email}"
+      }
+    },
+    "google_project_iam_member": {
+      "sql_client": {
+        "project": "${var.project_id}",
+        "role": "roles/cloudsql.client",
+        "member": "serviceAccount:${google_service_account.vm[\"backend\"].email}",
+        "condition": {
+          "title": "connect_application_sql",
+          "expression": "resource.name == 'projects/${var.project_id}/instances/${var.name}-db'"
+        }
+      },
+      "compose_sql_client": {
+        "project": "${var.project_id}",
+        "role": "roles/cloudsql.client",
+        "member": "serviceAccount:${google_service_account.vm[\"frontend\"].email}",
+        "condition": {
+          "title": "connect_application_sql",
+          "expression": "resource.name == 'projects/${var.project_id}/instances/${var.name}-db'"
+        },
+        "count": "${var.compose_host_access ? 1 : 0}"
+      }
+    },
+    "google_sql_database_instance": {
+      "database": {
+        "name": "${var.name}-db",
+        "region": "${var.region}",
+        "database_version": "POSTGRES_16",
+        "deletion_protection": "${var.deletion_protection}",
+        "settings": {
+          "tier": "${var.db_tier}",
+          "edition": "ENTERPRISE",
+          "availability_type": "ZONAL",
+          "disk_type": "PD_SSD",
+          "disk_size": 10,
+          "disk_autoresize": true,
+          "disk_autoresize_limit": 30,
+          "deletion_protection_enabled": "${var.deletion_protection}",
+          "location_preference": {
+            "zone": "${var.zone}"
+          },
+          "backup_configuration": {
+            "enabled": true,
+            "start_time": "18:00",
+            "backup_retention_settings": {
+              "retained_backups": 7,
+              "retention_unit": "COUNT"
+            }
+          },
+          "ip_configuration": {
+            "ipv4_enabled": false,
+            "ssl_mode": "ENCRYPTED_ONLY",
+            "psc_config": {
+              "psc_enabled": true,
+              "allowed_consumer_projects": [
+                "${var.project_id}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "google_sql_database": {
+      "notes": {
+        "name": "delta_notes",
+        "instance": "${google_sql_database_instance.database.name}"
+      }
+    },
+    "google_compute_address": {
+      "database": {
+        "name": "${var.name}-db",
+        "region": "${var.region}",
+        "address_type": "INTERNAL",
+        "subnetwork": "${var.network.subnets.database}",
+        "address": "${cidrhost(var.network.cidrs.database,10)}"
+      },
+      "frontend": {
+        "name": "${var.name}-public",
+        "region": "${var.region}",
+        "address_type": "EXTERNAL",
+        "network_tier": "PREMIUM"
+      }
+    },
+    "google_compute_forwarding_rule": {
+      "database": {
+        "name": "${var.name}-db",
+        "region": "${var.region}",
+        "network": "${var.network.network}",
+        "ip_address": "${google_compute_address.database.id}",
+        "load_balancing_scheme": "",
+        "target": "${google_sql_database_instance.database.psc_service_attachment_link}",
+        "allow_psc_global_access": false
+      },
+      "frontend": {
+        "name": "${var.name}-http",
+        "region": "${var.region}",
+        "ip_address": "${google_compute_address.frontend.address}",
+        "port_range": "80",
+        "ip_protocol": "TCP",
+        "network": "${var.network.network}",
+        "target": "${google_compute_region_target_http_proxy.frontend.id}",
+        "load_balancing_scheme": "EXTERNAL_MANAGED",
+        "network_tier": "PREMIUM"
+      }
+    },
+    "google_dns_managed_zone": {
+      "sql": {
+        "name": "${var.name}-sql",
+        "dns_name": "${google_sql_database_instance.database.dns_name}",
+        "description": "Private application Cloud SQL PSC name",
+        "visibility": "private",
+        "private_visibility_config": {
+          "networks": [
+            {
+              "network_url": "${var.network.network}"
+            }
+          ]
+        }
+      },
+      "apis": {
+        "name": "${var.name}-googleapis",
+        "dns_name": "googleapis.com.",
+        "description": "Google API access for private application VMs",
+        "visibility": "private",
+        "private_visibility_config": {
+          "networks": [
+            {
+              "network_url": "${var.network.network}"
+            }
+          ]
+        }
+      }
+    },
+    "google_dns_record_set": {
+      "sql": {
+        "name": "${google_sql_database_instance.database.dns_name}",
+        "managed_zone": "${google_dns_managed_zone.sql.name}",
+        "type": "A",
+        "ttl": 60,
+        "rrdatas": [
+          "${google_compute_address.database.address}"
+        ]
+      },
+      "api_vip": {
+        "name": "private.googleapis.com.",
+        "managed_zone": "${google_dns_managed_zone.apis.name}",
+        "type": "A",
+        "ttl": 300,
+        "rrdatas": [
+          "199.36.153.8",
+          "199.36.153.9",
+          "199.36.153.10",
+          "199.36.153.11"
+        ]
+      },
+      "api_wildcard": {
+        "name": "*.googleapis.com.",
+        "managed_zone": "${google_dns_managed_zone.apis.name}",
+        "type": "CNAME",
+        "ttl": 300,
+        "rrdatas": [
+          "private.googleapis.com."
+        ]
+      }
+    },
+    "google_compute_route": {
+      "googleapis": {
+        "for_each": {
+          "vip": "199.36.153.8/30",
+          "direct": "34.126.0.0/18"
+        },
+        "name": "${var.name}-googleapis-${each.key}",
+        "network": "${var.network.network}",
+        "dest_range": "${each.value}",
+        "next_hop_gateway": "default-internet-gateway",
+        "priority": 900,
+        "tags": [
+          "delta-board-gcp-app"
+        ]
+      }
+    },
+    "google_compute_instance": {
+      "vm": {
+        "for_each": "${var.single_vm_compose ? { frontend = { port = 3000 } } : { frontend = { port = 3000 }, backend = { port = 8080 } }}",
+        "name": "${var.name}-${each.key}",
+        "zone": "${var.zone}",
+        "machine_type": "${var.machine_type}",
+        "deletion_protection": "${each.key == \"backend\" ? var.backend_deletion_protection : var.deletion_protection}",
+        "tags": [
+          "delta-board-gcp-app"
+        ],
+        "boot_disk": {
+          "initialize_params": {
+            "image": "${data.google_compute_image.ubuntu.self_link}",
+            "size": 20,
+            "type": "pd-balanced"
+          }
+        },
+        "network_interface": [
+          {
+            "subnetwork": "${var.network.subnets[each.key]}",
+            "network_ip": "${cidrhost(var.network.cidrs[each.key],20)}"
+          }
+        ],
+        "metadata": {
+          "enable-oslogin": "TRUE",
+          "block-project-ssh-keys": "TRUE"
+        },
+        "metadata_startup_script": "${templatefile(\"${path.module}/templates/bootstrap.py.tftpl\", {config=base64encode(jsonencode({ROLE=each.key,PORT=each.value.port,HOST=\"0.0.0.0\",APP_ENV=\"gcp\",API_ENDPOINT=\"/api\",API_HOST=cidrhost(var.network.cidrs.backend,20),ARTIFACT_BUCKET=google_storage_bucket.releases.name,PROJECT=var.project_id,APP_SECRET=google_secret_manager_secret.database[\"app\"].secret_id,CONNECTION=google_sql_database_instance.database.connection_name,PGHOST=\"127.0.0.1\",PGPORT=\"5432\",PGDATABASE=google_sql_database.notes.name,PGUSER=\"delta_app\",PGSSLMODE=\"disable\",STORAGE_BACKEND=\"postgres\"})), runtime=base64encode(file(\"${path.module}/templates/runtime.py\")), installer=base64encode(file(\"${path.module}/templates/install.py\")), role=each.key})}",
+        "service_account": {
+          "email": "${google_service_account.vm[each.key].email}",
+          "scopes": [
+            "cloud-platform"
+          ]
+        },
+        "shielded_instance_config": {
+          "enable_secure_boot": true,
+          "enable_vtpm": true,
+          "enable_integrity_monitoring": true
+        },
+        "depends_on": [
+          "google_storage_bucket_iam_member.read",
+          "google_secret_manager_secret_iam_member.app",
+          "google_project_iam_member.sql_client",
+          "google_dns_record_set.sql",
+          "google_dns_record_set.api_wildcard",
+          "google_compute_route.googleapis"
+        ]
+      }
+    },
+    "google_compute_instance_group": {
+      "frontend": {
+        "name": "${var.name}-frontend",
+        "zone": "${var.zone}",
+        "instances": [
+          "${google_compute_instance.vm[\"frontend\"].self_link}"
+        ],
+        "named_port": {
+          "name": "http",
+          "port": 3000
+        }
+      }
+    },
+    "google_compute_region_health_check": {
+      "frontend": {
+        "name": "${var.name}-frontend",
+        "region": "${var.region}",
+        "http_health_check": {
+          "port": 3000,
+          "request_path": "/healthz"
+        }
+      }
+    },
+    "google_compute_region_backend_service": {
+      "frontend": {
+        "name": "${var.name}-frontend",
+        "region": "${var.region}",
+        "protocol": "HTTP",
+        "port_name": "http",
+        "load_balancing_scheme": "EXTERNAL_MANAGED",
+        "health_checks": [
+          "${google_compute_region_health_check.frontend.id}"
+        ],
+        "backend": {
+          "group": "${google_compute_instance_group.frontend.id}",
+          "balancing_mode": "UTILIZATION",
+          "capacity_scaler": 1.0
+        },
+        "log_config": {
+          "enable": true,
+          "sample_rate": 1.0
+        }
+      }
+    },
+    "google_compute_region_url_map": {
+      "frontend": {
+        "name": "${var.name}",
+        "region": "${var.region}",
+        "default_service": "${google_compute_region_backend_service.frontend.id}"
+      }
+    },
+    "google_compute_region_target_http_proxy": {
+      "frontend": {
+        "name": "${var.name}",
+        "region": "${var.region}",
+        "url_map": "${google_compute_region_url_map.frontend.id}"
+      }
+    },
+    "terraform_data": {
+      "contract": {
+        "input": "gcp-sample-app-v1",
+        "lifecycle": {
+          "precondition": [
+            {
+              "condition": "${tostring(data.google_project.current.number) == var.project_number}",
+              "error_message": "Wrong project identity."
+            },
+            {
+              "condition": "${strcontains(var.image,\"-amd64-\")}",
+              "error_message": "The VM image must use X86_64."
+            },
+            {
+              "condition": "${toset(keys(var.network.subnets)) == toset([\"frontend\",\"backend\",\"database\",\"proxy\"])}",
+              "error_message": "Four distinct application subnet roles are required."
+            },
+            {
+              "condition": "${length(distinct(values(var.network.subnets))) == 4}",
+              "error_message": "FE, BE, PSC and ALB proxy must use separate subnets."
+            },
+            {
+              "condition": "${startswith(var.zone, \"${var.region}-\")}",
+              "error_message": "VM zone must be in the approved region."
+            },
+            {
+              "condition": "${!var.single_vm_compose || var.compose_host_access}",
+              "error_message": "Compose mode requires explicit host SQL and app-secret access."
+            }
+          ]
+        }
+      }
+    }
+  },
+  "output": {
+    "application": {
+      "description": "Nonsecret deployment inventory; no database passwords.",
+      "value": "${{project_id=var.project_id,project_number=var.project_number,region=var.region,zone=var.zone,url=\"http://${google_compute_address.frontend.address}\",artifact_bucket=google_storage_bucket.releases.name,instances={for k,v in google_compute_instance.vm:k=>{name=v.name,id=v.instance_id,private_ip=v.network_interface[0].network_ip}},database={name=google_sql_database_instance.database.name,connection_name=google_sql_database_instance.database.connection_name,dns_name=google_sql_database_instance.database.dns_name,psc_ip=google_compute_address.database.address,app_secret=google_secret_manager_secret.database[\"app\"].secret_id,admin_secret=google_secret_manager_secret.database[\"admin\"].secret_id,database=google_sql_database.notes.name,user=\"delta_app\"}}}"
+    }
+  }
+}

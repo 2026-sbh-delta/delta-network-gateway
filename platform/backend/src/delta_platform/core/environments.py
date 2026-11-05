@@ -76,6 +76,7 @@ class EnvironmentStore:
                     {
                         **{f: row[f] for f in FIELDS},
                         "runtime_registered": bool(row["binding"].get("runtime")),
+                        "runtime_status": row["binding"].get("runtime_status", "active"),
                     }
                     for row in rows
                 ]

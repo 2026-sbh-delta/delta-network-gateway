@@ -541,11 +541,11 @@ def test_values_from_the_other_cloud_are_rejected_per_direction(mapping, message
         _request(**mapping)
 
 
-async def test_aws_target_may_use_the_aws_server_vpc_but_gcp_target_may_not(tmp_path):
-    subnet = {**SUBNET, "cidr": "10.60.1.0/24", "target_cidr": "10.20.1.0/24"}
+async def test_aws_target_may_use_free_common_vpc_space_but_gcp_target_may_not(tmp_path):
+    subnet = {**SUBNET, "cidr": "10.60.1.0/24", "target_cidr": "10.10.4.0/24"}
 
     to_aws = await _assess(tmp_path, **_gcp(subnets=[subnet]))
-    to_gcp = await _assess(tmp_path, subnets=[{**SUBNET, "target_cidr": "10.20.1.0/24"}])
+    to_gcp = await _assess(tmp_path, subnets=[{**SUBNET, "target_cidr": "10.10.4.0/24"}])
 
     assert "MAP-NET-002" not in {f.rule_id for f in to_aws.findings}
     assert "MAP-NET-002" in {f.rule_id for f in to_gcp.findings}
@@ -554,4 +554,11 @@ async def test_aws_target_may_use_the_aws_server_vpc_but_gcp_target_may_not(tmp_
 async def test_default_aws_target_cidr_comes_from_the_aws_pool(tmp_path):
     result = await _assess(tmp_path, **_gcp(subnets=[{**SUBNET, "cidr": "10.60.1.0/24", "target_cidr": None}]))
 
-    assert _rows(result, "subnet")[0].target.startswith("10.20.")
+    assert _rows(result, "subnet")[0].target.startswith("10.10.4.0/24")
+
+
+@pytest.mark.parametrize("existing", ["10.10.0.0/24", "10.10.1.0/24", "10.10.2.0/24", "10.10.3.0/24"])
+async def test_aws_mapping_rejects_subnets_retained_by_the_common_network(tmp_path, existing):
+    result = await _assess(tmp_path, **_gcp(subnets=[{**SUBNET, "cidr": "10.60.1.0/24", "target_cidr": existing}]))
+
+    assert "MAP-NET-002" in {f.rule_id for f in result.findings}

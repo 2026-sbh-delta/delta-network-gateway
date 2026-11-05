@@ -1,8 +1,10 @@
-# GCP 검사 로그를 AWS로 전달
+# GCP 로그를 AWS로 전달
 
 Pub/Sub pull subscription의 원래 LogEntry를 CloudWatch Logs에 저장한 뒤 ack한다. 부분 저장 실패, 실패한 ack, 잘못된 JSON, 다른 프로젝트와 oversized 메시지는 재시도/DLQ를 위해 ack하지 않는다. at-least-once이므로 저장 후 ack 실패 시 중복될 수 있고 `event_id`는 같은 원본에 대해 유지된다. 원문을 자르거나 성공하지 않은 저장을 성공으로 기록하지 않는다.
 
 CloudWatch event timestamp는 수집 시각이며 원본 발생 시각은 `source_timestamp`와 `original.timestamp`에 보존한다. 원본 project/logName/insertId와 JSON을 함께 저장한다. 이 수집기는 트래픽 검사나 AWS ANF를 실행하지 않는다.
+
+현재 [플랫폼 중앙 로그 수집](../../platform/deploy/logging/README.md)에서 사용하는 공통 코드다. 네트워크 계정 전용 전달 경로 정리와 별개로 플랫폼의 빌드와 테스트에서 계속 사용한다.
 
 ## 실행과 패키징
 
@@ -25,4 +27,4 @@ AWS Lambda가 제공하는 임시 역할 자격 증명과 Region을 Google AWS W
 
 한 pull은 최대 100개를 요청하지만 실제 반환 수가 더 적을 수 있다. 한 호출에서 최대 10회 pull하며, 추가 pull은 처음 10초 안이고 Lambda 잔여 시간이 40초 이상일 때만 시작한다. 빈 배치나 저장/ack 실패가 나오면 중단한다. 30초 long poll과 후속 저장/ack 시간을 남기며 CloudWatch byte 제한에 맞춰 저장 배치를 나눈다. 전체 저장 실패와 부분 거부를 구분하고 받아들인 이벤트의 ack ID만 처리한다. Lambda timeout 직전의 실패나 ack 유실도 중복 재처리로 복구할 수 있으며 exactly-once를 보장하지 않는다.
 
-운영 중 `ingest_summary`의 pulled/stored/acked/failed와 Lambda Errors, GCP subscription backlog/DLQ를 함께 확인한다. subscription pull 자체가 실패하면 빈 배치 성공으로 처리하지 않는다. 실제 end-to-end 검증은 [Runbook](../../terraform/network-security-gcp/RUNBOOK.md)을 따른다.
+운영 중 `ingest_summary`의 pulled/stored/acked/failed와 Lambda Errors, GCP subscription backlog/DLQ를 함께 확인한다. subscription pull 자체가 실패하면 빈 배치 성공으로 처리하지 않는다. 실제 end-to-end 검증은 [플랫폼 실행 안내](../../platform/deploy/logging/README.md#검증과-운영)를 따른다.

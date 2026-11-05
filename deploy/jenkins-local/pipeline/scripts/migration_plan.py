@@ -24,8 +24,7 @@ CIDR_OP = re.compile(r"^/mapping/subnets/(\d+)/target_cidr$")
 CLOUD_ARMOR_VERSION = re.compile(r"(-v\d+)?-(stable|canary)$")
 SCC_TIERS = ("premium", "standard")
 # 대상 root. 로컬 실행기는 Terraform 을 돌리지 않고, 채울 값과 root 에 없는 변수만 낸다
-TERRAFORM_ROOTS = {"gcp": "terraform/network-security-gcp", "aws": "terraform/workload-server"}
-AWS_ROOT_FIXED = {"instance_type": "t4g.nano", "architecture": "arm64"}  # workload-server 에 박혀 있는 값
+TERRAFORM_ROOTS = {"gcp": "terraform/network-security-gcp", "aws": "terraform/workload"}
 # network-security-gcp/workload.tf 에 박혀 있는 값. 서버 한 대, 앱은 startup script 가 넣고, 앞단은 패스스루 NLB 다
 GCP_ROOT_FIXED = {"machine_type": "e2-micro", "servers": 1}
 PASSTHROUGH_NLB = "앞단이 패스스루 NLB 라 Cloud Armor WAF 규칙을 붙일 수 없다. 외부 Application LB 나 프록시 NLB 가 필요하다"
@@ -274,17 +273,16 @@ def target_plan(inventory: Mapping[str, Any], result: Mapping[str, Any], state: 
 def target_tfvars(plan: Mapping[str, Any]) -> dict[str, Any]:
     """대상 root 에 이미 있는 변수만 채운다. 없는 변수는 terraform_gaps 가 낸다."""
     # 서브넷은 어느 쪽도 채우지 않는다. network-security-gcp 의 subnets 는 central 과 workload 를 같이 받는 객체이고,
-    # workload-server 의 azs 는 AZ 두 개와 TGW 서브넷까지 받는다. 서브넷 하나로는 채울 수 없어 terraform_gaps 가 낸다
+    # workload 는 네트워크 전용이며 컴퓨트를 만들지 않는다. 서브넷/컴퓨트 지원 범위는 terraform_gaps 가 낸다
     return {"region": plan["region"]}
 
 
 def _aws_root_gaps(plan: Mapping[str, Any]) -> dict[str, Any]:
-    types = {s["id"]: s["machine_type"] for s in plan["services"] if s["machine_type"] != AWS_ROOT_FIXED["instance_type"]}
-    archs = {s["id"]: s["target_platform"] for s in plan["services"]
-             if s["target_platform"] != f"linux/{AWS_ROOT_FIXED['architecture']}"}
     features = [name for name in plan.get("security", []) if name.isupper()]  # GuardDuty 기능 이름만 대문자다
-    return {"instance_type": {"fixed": AWS_ROOT_FIXED["instance_type"], "needed": types},
-            "ami_architecture": {"fixed": AWS_ROOT_FIXED["architecture"], "needed": archs},
+    return {"compute_deployment": {
+                "supported": False,
+                "reason": "공통 AWS root는 네트워크 전용이다. 컴퓨트와 앱 배포 구성을 별도로 준비해야 한다",
+                "needed": [{key: service[key] for key in ("id", "machine_type", "target_platform")} for service in plan["services"]]},
             "wafv2_web_acl_rules": plan["waf_rules"], "guardduty_features": features,
             "subnets": plan["subnets"]}
 

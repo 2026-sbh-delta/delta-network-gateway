@@ -4,13 +4,16 @@ regions:  # 대상이면 만들 리전, 출발이면 비용 비교에만 쓴다
   gcp: asia-northeast3
 cidr_pool:  # 대상 대역을 고를 범위
   gcp: 10.60.0.0/16
-  aws: 10.20.0.0/16  # AWS Server VPC. workload-server root 가 이 안에 서브넷을 만든다
+  aws: 10.10.0.0/16  # 공통 AWS 워크로드 VPC. 실제 서브넷 사용 현황은 추가 입력으로 확인한다
 subnet_prefix: 24
 reserved_cidrs:  # 어느 방향이든 대상과 겹치면 안 되는 대역
-  - 10.10.0.0/16   # AWS Client VPC
   - 10.250.0.0/16  # 중앙 VPC
   - 10.40.0.0/24   # 온프레미스 데모망
 reserved_for_target:  # 그 클라우드가 대상일 때 더 피할 대역. 대상 VPC 자신은 대상이 쓰므로 넣지 않는다
   gcp:
-    - 10.20.0.0/16   # AWS Server VPC
-  aws: []
+    - 10.10.0.0/16   # AWS 공통 VPC는 GCP 대상 풀과 겹치면 안 된다
+  aws:
+    - 10.10.0.0/24   # 기존 TGW 서브넷
+    - 10.10.1.0/24   # 기존 워크로드 서브넷
+    - 10.10.2.0/24   # 기존 TGW 서브넷
+    - 10.10.3.0/24   # 기존 워크로드 서브넷

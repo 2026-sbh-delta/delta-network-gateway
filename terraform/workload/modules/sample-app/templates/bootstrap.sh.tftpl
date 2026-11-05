@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+set -euo pipefail
+test "$(uname -m)" = x86_64
+dnf install -y awscli-2 amazon-cloudwatch-agent python3 tar xz
+id delta-sample >/dev/null 2>&1 || useradd --system --home-dir /opt/delta-sample --shell /sbin/nologin delta-sample
+install -d -m 0755 /opt/delta-sample/releases /opt/delta-sample/bin /etc/delta-sample
+install -d -m 0750 -o delta-sample -g delta-sample /var/log/delta-sample
+touch /var/log/delta-sample/app.log
+chown delta-sample:delta-sample /var/log/delta-sample/app.log
+chmod 0640 /var/log/delta-sample/app.log
+curl --fail --silent --show-error --retry 5 -o /tmp/delta-node.tar.xz https://nodejs.org/dist/v${node_version}/node-v${node_version}-linux-x64.tar.xz
+echo '${node_sha256}  /tmp/delta-node.tar.xz' | sha256sum --check --status
+tar -xJf /tmp/delta-node.tar.xz -C /opt
+ln -sfn /opt/node-v${node_version}-linux-x64/bin/node /usr/local/bin/node
+ln -sfn /opt/node-v${node_version}-linux-x64/bin/npm /usr/local/bin/npm
+rm /tmp/delta-node.tar.xz
+echo '${runtime_config}' | base64 --decode > /etc/delta-sample/runtime.json
+chmod 0644 /etc/delta-sample/runtime.json
+echo '${runtime_wrapper}' | base64 --decode > /opt/delta-sample/bin/runtime.py
+echo '${release_installer}' | base64 --decode > /opt/delta-sample/bin/install-release.py
+chmod 0755 /opt/delta-sample/bin/*.py
+curl --fail --silent --show-error --retry 5 -o /etc/delta-sample/rds-ca.pem https://truststore.pki.rds.amazonaws.com/ap-northeast-2/ap-northeast-2-bundle.pem
+echo '${log_config}' | base64 --decode > /etc/delta-sample/cloudwatch.json
+cat > /etc/systemd/system/delta-sample.service <<'UNIT'
+[Unit]
+Description=Delta sample ${role}
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=0
+[Service]
+User=delta-sample
+Group=delta-sample
+WorkingDirectory=/opt/delta-sample/current
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 /opt/delta-sample/bin/runtime.py
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=15
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/log/delta-sample
+StandardOutput=append:/var/log/delta-sample/app.log
+StandardError=append:/var/log/delta-sample/app.log
+[Install]
+WantedBy=multi-user.target
+UNIT
+cat > /etc/logrotate.d/delta-sample <<'LOG'
+/var/log/delta-sample/app.log {
+    daily
+    rotate 7
+    size 10M
+    copytruncate
+    compress
+    missingok
+    notifempty
+    create 0640 delta-sample delta-sample
+}
+LOG
+systemctl daemon-reload
+/opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -c file:/etc/delta-sample/cloudwatch.json -s
+touch /etc/delta-sample/bootstrap-ready
+# Release installation enables the service only after DB initialization.
