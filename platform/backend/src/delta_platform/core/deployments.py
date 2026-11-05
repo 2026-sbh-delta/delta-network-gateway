@@ -60,7 +60,9 @@ class DeploymentStore:
     def _component(self, conn, build_id, service, *, primary=None):
         build = conn.execute(sa.select(runs).where(runs.c.id == build_id)).mappings().first()
         owner = (
-            conn.execute(sa.select(services).where(services.c.id == build["service_id"]))
+            conn.execute(
+                sa.select(services).where(services.c.id == build["service_id"]).with_for_update()
+            )
             .mappings()
             .first()
             if build
@@ -69,6 +71,7 @@ class DeploymentStore:
         if (
             not build
             or not owner
+            or owner["deletion_requested"]
             or owner["project_id"] != service["project_id"]
             or build["kind"] != "image_build"
             or build["status"] != "succeeded"

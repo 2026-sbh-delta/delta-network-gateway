@@ -216,3 +216,85 @@ test("삭제 처리 중 중복 요청과 닫기를 막고 오래된 목록 응�
   await expect(page.locator(".service-list-item")).toHaveCount(1);
   expect(io.requests).toHaveLength(1);
 });
+
+test("실제 자원 정리 완료까지 프로젝트를 유지하고 실패 후 재시도한다", async ({
+  page,
+}) => {
+  await fixture(page);
+  let status = "running";
+  let requests = 0;
+  await page.route("**/api/v1/services/delete-0/delete", (route) => {
+    requests++;
+    return route.fulfill({
+      status: 202,
+      json: { status: "queued", run: { id: "cleanup" } },
+    });
+  });
+  await page.route("**/api/v1/services/delete-0/deletion", (route) =>
+    route.fulfill({
+      json: {
+        status,
+        run:
+          status === "failed"
+            ? {
+                error: {
+                  code: "cleanup_failed",
+                  message: "VM 정리에 실패했습니다. 다시 시도하세요.",
+                },
+              }
+            : null,
+      },
+    }),
+  );
+  await page.goto("/");
+  await page
+    .getByRole("button", { name: "주문 프로젝트 프로젝트 삭제", exact: true })
+    .click();
+  const modal = page.getByRole("dialog");
+  await modal
+    .getByLabel("확인을 위해 프로젝트 이름을 입력하세요")
+    .fill("주문 프로젝트");
+  await modal
+    .getByRole("button", { name: "프로젝트 삭제", exact: true })
+    .click();
+  await expect(modal.getByRole("status")).toContainText("실제 자원을 정리");
+  await expect(page.locator(".service-list-item")).toHaveCount(2);
+  await expect(
+    modal.getByRole("button", { name: "삭제 중…", exact: true }),
+  ).toBeDisabled();
+  status = "failed";
+  await expect(modal.getByRole("alert")).toContainText("VM 정리에 실패");
+  await expect(page.locator(".service-list-item")).toHaveCount(2);
+  status = "deleted";
+  await modal
+    .getByRole("button", { name: "프로젝트 삭제", exact: true })
+    .click();
+  await expect(modal).toHaveCount(0);
+  await expect(page.locator(".service-list-item")).toHaveCount(1);
+  expect(requests).toBe(2);
+});
+
+test("새로고침 후에도 진행 중인 삭제 상태를 조회한다", async ({ page }) => {
+  await fixture(page);
+  await page.route("**/api/v1/services", (route) =>
+    route.fulfill({
+      json: {
+        items: [{ ...services[0], deletion_requested: true }, services[1]],
+        next_cursor: null,
+      },
+    }),
+  );
+  await page.route("**/api/v1/services/delete-0/deletion", (route) =>
+    route.fulfill({ json: { status: "running", run: null } }),
+  );
+  await page.goto("/");
+  await page
+    .getByRole("button", { name: "주문 프로젝트 프로젝트 삭제", exact: true })
+    .click();
+  await expect(page.getByRole("dialog").getByRole("status")).toContainText(
+    "실제 자원을 정리",
+  );
+  await page.getByRole("button", { name: "닫기", exact: true }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.locator(".service-list-item")).toHaveCount(2);
+});

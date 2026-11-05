@@ -20,7 +20,15 @@ logger = logging.getLogger("delta_platform.worker")
 
 
 def process_one(
-    store, reader, builder=None, sandbox=None, security=None, dast=None, remover=None, deployer=None
+    store,
+    reader,
+    builder=None,
+    sandbox=None,
+    security=None,
+    dast=None,
+    remover=None,
+    deployer=None,
+    project_remover=None,
 ):
     claim = store.claim()
     if claim is None:
@@ -45,7 +53,11 @@ def process_one(
     beat = threading.Thread(target=heartbeat, daemon=True)
     beat.start()
     try:
-        if claim["kind"] == "runtime_remove":
+        if claim["kind"] == "service_remove":
+            from delta_platform.adapters.project_removal import ProjectRemover
+
+            result = (project_remover or ProjectRemover(Settings())).execute(claim, store, progress)
+        elif claim["kind"] == "runtime_remove":
             from delta_platform.adapters.onprem_removal import OnpremRemover
 
             try:

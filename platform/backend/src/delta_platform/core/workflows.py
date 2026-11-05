@@ -11,7 +11,7 @@ from sqlalchemy.dialects.postgresql import insert
 
 from delta_platform.core.errors import Problem
 from delta_platform.core.schema import environments, runs, services, workflow_executions, workflows
-from delta_platform.core.store import digest
+from delta_platform.core.store import Store, digest
 
 
 class ExecutionIntent(BaseModel):
@@ -116,6 +116,7 @@ class WorkflowStore:
             )
             if not service:
                 raise Problem("service_not_found", "서비스를 찾을 수 없습니다.", 404)
+            Store._assert_no_removal(conn, service_id)
             build = (
                 conn.execute(sa.select(runs).where(runs.c.id == body.build_id)).mappings().first()
             )
@@ -218,6 +219,7 @@ class WorkflowStore:
             return {"items": [view(row) for row in rows]}
 
     def _check_targets(self, conn, workflow):
+        Store._assert_no_removal(conn, workflow["service_id"])
         snapshot = workflow["input_snapshot"]
         if digest(snapshot) != workflow["input_hash"]:
             raise Problem("plan_integrity_error", "저장한 계획의 해시가 다릅니다.", 409)
