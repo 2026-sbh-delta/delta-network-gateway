@@ -172,6 +172,10 @@ async def test_second_run_waits_unless_replace(target):
 
     with pytest.raises(Busy):
         await registry.start(_req(run_id="run-2"))
+    # run-1 의 점검이 끝나 점유를 풀기 전에는 replace 여도 배포(=초기화)하지 못한다
+    with pytest.raises(Busy, match="점유"):
+        await registry.start(_req(run_id="run-2", replace=True))
+    assert registry.release("aws", "run-1") is True
     await registry.start(_req(run_id="run-2", replace=True))
     await registry.wait("run-2")
 
@@ -247,6 +251,7 @@ async def test_new_runner_ip_replaces_the_old_rule(public_target):
     registry = StagingRegistry({"aws": make_provider(public_target, ec2=ec2, public_ip="52.78.10.20")})
     await registry.start(_req(scanner_ip="auto"))
     await registry.wait("run-1")
+    registry.release("aws", "run-1")
 
     await registry.start(_req(run_id="run-2", scanner_ip="3.35.120.9", replace=True))
     await registry.wait("run-2")

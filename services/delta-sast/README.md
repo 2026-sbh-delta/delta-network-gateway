@@ -1,6 +1,20 @@
 # delta-sast
 
-Python(Flask) 소스를 점검해 SARIF 2.1.0을 낸다. DAST는 이 SARIF만 읽는다. 설계는 [docs/ai-dlc/sast.md](../../docs/ai-dlc/sast.md).
+소스를 점검해 SARIF 2.1.0을 낸다. DAST는 이 SARIF만 읽는다. 설계는 [docs/ai-dlc/sast.md](../../docs/ai-dlc/sast.md).
+
+## 지원 언어와 구조
+
+| 언어 | 엔진 | 범위 |
+|---|---|---|
+| Python | 자체 해석기(`graph.py`) | Flask 경로, HTML 조립, 모듈 저장소·DB 저장형 |
+| JavaScript·TypeScript | 다언어 엔진(`poly/`) | Node `http`·Express 서버, 브라우저 DOM(`innerHTML` 등), SQL 문자열 DB |
+| Java | 다언어 엔진 | 서블릿, Spring MVC(어노테이션 입력·경로), JDBC |
+| Go | 다언어 엔진 | `net/http`, `database/sql` |
+
+다언어 엔진은 언어별 규칙 묶음(`delta_sast/poly/packs/<언어>.yaml`) 하나로 언어를 더한다. 언어 의미(대입·전달·문자열 조립)는 Opengrep taint가 따라가고,
+언어를 모르는 연결기(`poly/link.py`)가 조각을 다섯 이음새로 잇는다: 함수 인자→매개변수, 반환→부른 곳, DB 쓰기→같은 테이블 읽기(열 일치),
+서버 응답 경로→같은 경로를 부르는 브라우저 호출, 위험 출력. 저장소·원격 호출을 감싼 함수(조회·`fetch` 결과를 반환)는 인자가 결과로 번지지 않게 한다(조회 키 ≠ 데이터).
+파일 사이 호출은 이 이음새로만 잇는다. 못 이은 흐름은 결과가 없을 뿐 통과로 보지 않는다. 명세: `본선/자료/SAST_다언어_명세_v1.md`(팀 저장소 밖).
 
 ```text
 ① 목록   locate.py   Opengrep 규칙(rules/locate.yaml)으로 입력·싱크·비밀값 위치 표시

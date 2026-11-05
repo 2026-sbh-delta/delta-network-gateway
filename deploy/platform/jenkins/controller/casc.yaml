@@ -1,0 +1,93 @@
+jenkins:
+  systemMessage: "Delta 플랫폼 빌드·배포"
+  # 내장 노드에는 배포 전용 실행기 1개만 둔다(레이블 delta-deploy, EXCLUSIVE: 그 레이블을 요구한 작업만).
+  # 이미지 안의 신뢰된 Jenkinsfile.deploy만 여기서 돈다. 저장소 코드는 빌드 에이전트(별도 인스턴스)에서만 실행된다.
+  numExecutors: 1
+  labelString: "delta-deploy"
+  mode: EXCLUSIVE
+  securityRealm:
+    local:
+      allowsSignup: false
+      users:
+        - id: admin
+          password: ${JENKINS_ADMIN_PASSWORD}
+        - id: platform
+          password: ${JENKINS_PLATFORM_PASSWORD}
+  authorizationStrategy:
+    globalMatrix:
+      entries:
+        - user:
+            name: admin
+            permissions: ["Overall/Administer"]
+        - user:
+            name: platform
+            permissions: ["Overall/Read", "Job/Read", "Job/Build", "Job/Cancel"]
+  nodes:
+    - permanent:
+        name: builder
+        remoteFS: /home/jenkins/agent
+        numExecutors: 1
+        mode: EXCLUSIVE
+        labelString: delta-builder
+        launcher:
+          inbound:
+            webSocket: true
+jobs:
+  - script: >
+      pipelineJob('delta-build') {
+        description('오케스트레이터가 고정한 커밋을 빌드 에이전트에서 빌드하고 스테이징 이미지 저장소에 푸시한다. 결과: result.json(digest)')
+        parameters {
+          stringParam('RUN_ID', '', '오케스트레이터 작업 키(재개 때 같은 빌드를 찾는다, 이미지 태그로도 쓴다)')
+          stringParam('REPO', '', '허용된 GitHub https 저장소')
+          stringParam('COMMIT', '', '40자리 커밋 SHA')
+          stringParam('IMAGE_REPO', '', '푸시할 이미지 저장소(스테이징 AR)')
+          stringParam('FRONTEND_IMAGE_REPO', '', '선택: FE AR 이미지 경로. 기본 IMAGE_REPO/frontend')
+          stringParam('BACKEND_IMAGE_REPO', '', '선택: BE AR 이미지 경로. 기본 IMAGE_REPO/backend')
+          stringParam('ECR_IMAGE_REPO', '', '선택: 동일 manifest를 복사할 기존 ECR 저장소')
+        }
+        definition {
+          cps {
+            script(new File('/opt/delta/Jenkinsfile.build').text)
+            sandbox(true)
+          }
+        }
+      }
+  - script: >
+      pipelineJob('delta-deploy') {
+        description('스테이징 배포. 컨트롤러 배포 전용 실행기에서 스테이징 도구(변경 토큰)를 부른다. 결과: result.json')
+        parameters {
+          stringParam('RUN_ID', '', '배포 ID(멱등 키, 재개 때 같은 빌드를 찾는다)')
+          stringParam('IMAGE', '', 'digest로 고정한 이미지')
+          textParam('IMAGES_JSON', '', 'frontend/backend digest 고정 이미지 JSON')
+          stringParam('BUNDLE_SHA256', '', 'schema2 canonical 묶음 해시')
+          stringParam('COMMIT', '', '커밋 SHA')
+          stringParam('CLOUD', 'gcp', '대상 클라우드')
+          stringParam('HOLDER', '', '스테이징 점유 실행 ID(오케스트레이터 실행). 비우면 RUN_ID')
+        }
+        definition {
+          cps {
+            script(new File('/opt/delta/Jenkinsfile.deploy').text)
+            sandbox(true)
+          }
+        }
+      }
+  - script: >
+      pipelineJob('delta-release') {
+        description('사람 서명 승인·서버 인벤토리를 검증하고 운영 대상 하나만 배포한다. AWS/GCP 동시 갱신 없음')
+        parameters {
+          stringParam('RUN_ID', '', '기존 JenkinsClient 작업 키; DEPLOYMENT_ID 별칭')
+          stringParam('DEPLOYMENT_ID', '', '선택: 명시적 운영 배포 멱등 키')
+          stringParam('COMMIT', '', 'full40 commit SHA')
+          stringParam('TARGET_ID', '', '서버 인벤토리에 등록된 단일 production 대상')
+          textParam('IMAGES_JSON', '', 'frontend/backend digest 고정 이미지 JSON')
+          stringParam('BUNDLE_SHA256', '', 'schema2 canonical 묶음 해시')
+          textParam('BUNDLE_JSON', '', '선택: registry_images를 포함한 schema2 빌드 결과. AWS는 필수')
+          stringParam('APPROVAL', '', 'pipeline 발급 Ed25519 claims/signature envelope')
+        }
+        definition {
+          cps {
+            script(new File('/opt/delta/Jenkinsfile.release').text)
+            sandbox(true)
+          }
+        }
+      }

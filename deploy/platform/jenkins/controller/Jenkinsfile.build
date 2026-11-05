@@ -1,0 +1,106 @@
+// 빌드 에이전트에서만 돈다. 저장소 코드(Dockerfile)는 에이전트의 자체 Docker 데몬 안에서 실행된다.
+// 푸시 자격 증명: 에이전트 인스턴스 역할 → GCP WIF(delta-build-push@, 스테이징 저장소 쓰기만).
+pipeline {
+  agent { label 'delta-builder' }
+  options { timestamps(); disableConcurrentBuilds(); timeout(time: 20, unit: 'MINUTES') }
+  stages {
+    stage('입력 확인') {
+      steps {
+        sh '''
+          set -eu
+          rm -f result.json result.json.tmp meta-frontend.json meta-backend.json
+          # Docker 태그 규칙(첫 글자 영숫자·_)과 스테이징 배포 ID 한도(64자)를 함께 지킨다
+          echo "$RUN_ID" | grep -Eq '^[A-Za-z0-9_][A-Za-z0-9._-]{0,63}$'
+          echo "$REPO" | grep -Eq '^https://github\\.com/2026-sbh-delta/[A-Za-z0-9._-]+$'
+          echo "$COMMIT" | grep -Eq '^[0-9a-f]{40}$'
+          echo "$IMAGE_REPO" | grep -Eq '^asia-northeast3-docker\\.pkg\\.dev/term2-delta/delta-lab-staging/[a-z0-9._/-]+$'
+        '''
+      }
+    }
+    stage('체크아웃') {
+      steps {
+        sh '''
+          set -eu
+          rm -rf src && git init -q src
+          git -C src fetch -q --depth 1 "$REPO" "$COMMIT" && git -C src checkout -q FETCH_HEAD
+          test "$(git -C src rev-parse HEAD)" = "$COMMIT"
+        '''
+      }
+    }
+    stage('빌드·푸시') {
+      steps {
+        sh '''
+          set -eu
+          export FRONTEND_IMAGE_REPO="${FRONTEND_IMAGE_REPO:-$IMAGE_REPO/frontend}"
+          export BACKEND_IMAGE_REPO="${BACKEND_IMAGE_REPO:-$IMAGE_REPO/backend}"
+          for repo in "$FRONTEND_IMAGE_REPO" "$BACKEND_IMAGE_REPO"; do
+            echo "$repo" | grep -Eq '^asia-northeast3-docker[.]pkg[.]dev/term2-delta/delta-lab-staging/[a-z0-9._/-]+$'
+          done
+          if [ -n "${ECR_IMAGE_REPO:-}" ]; then
+            echo "$ECR_IMAGE_REPO" | grep -Eq '^[0-9]{12}[.]dkr[.]ecr[.][a-z0-9-]+[.]amazonaws[.]com/[a-z0-9._/-]+$'
+          fi
+          # 같은 작업 키는 성공 묶음만 재사용한다. 입력 변경은 클라우드 인증 전 거부한다.
+          mkdir -p .delta-build-cache
+          python3 - <<'PYCODE'
+import hashlib, json, os
+fields = {k: os.environ.get(k, "") for k in ("REPO", "COMMIT", "FRONTEND_IMAGE_REPO", "BACKEND_IMAGE_REPO", "ECR_IMAGE_REPO")}
+fields["platform"] = "linux/amd64"
+identity = hashlib.sha256(json.dumps(fields, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+path = ".delta-build-cache/" + os.environ["RUN_ID"] + ".request"
+if os.path.exists(path) and open(path).read() != identity:
+    raise SystemExit("같은 RUN_ID의 빌드 입력이 다르다")
+open(path, "w").write(identity)
+PYCODE
+          if [ -f ".delta-build-cache/$RUN_ID.json" ]; then
+            cp ".delta-build-cache/$RUN_ID.json" result.json
+            exit 0
+          fi
+          export DOCKER_CONFIG="$(mktemp -d)"
+          trap 'rm -rf "$DOCKER_CONFIG"' EXIT
+          unset AWS_PROFILE AWS_DEFAULT_PROFILE
+          export AWS_SHARED_CREDENTIALS_FILE=/dev/null AWS_CONFIG_FILE=/dev/null
+          python3 /opt/delta/ar-token.py | docker login -u oauth2accesstoken --password-stdin https://asia-northeast3-docker.pkg.dev >/dev/null
+          docker buildx build --platform linux/amd64 --provenance=false --sbom=false \
+            -t "$FRONTEND_IMAGE_REPO:$RUN_ID-frontend" --push --metadata-file meta-frontend.json src/frontend
+          docker buildx build --platform linux/amd64 --provenance=false --sbom=false \
+            -t "$BACKEND_IMAGE_REPO:$RUN_ID-backend" --push --metadata-file meta-backend.json src/backend
+          if [ -n "${ECR_IMAGE_REPO:-}" ]; then
+            export ECR_REGISTRY="${ECR_IMAGE_REPO%%/*}"
+            export ECR_REGION="$(echo "$ECR_REGISTRY" | cut -d. -f4)"
+            aws ecr get-login-password --region "$ECR_REGION" | docker login -u AWS --password-stdin "$ECR_REGISTRY" >/dev/null
+          fi
+          python3 - <<'PYCODE'
+import hashlib, json, os, re, subprocess
+services = ("frontend", "backend")
+images, digests, aws_images = {}, {}, {}
+for service in services:
+    digest = json.load(open("meta-" + service + ".json"))["containerimage.digest"]
+    if not re.fullmatch(r"sha256:[0-9a-f]{64}", digest):
+        raise SystemExit("manifest digest가 올바르지 않다")
+    repo = os.environ[service.upper() + "_IMAGE_REPO"]
+    images[service], digests[service] = repo + "@" + digest, digest
+    if os.environ.get("ECR_IMAGE_REPO"):
+        dest = os.environ["ECR_IMAGE_REPO"] + ":" + os.environ["RUN_ID"] + "-" + service
+        subprocess.run(["skopeo", "copy", "--preserve-digests", "--authfile", os.environ["DOCKER_CONFIG"] + "/config.json",
+                        "docker://" + images[service], "docker://" + dest], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        raw = subprocess.run(["skopeo", "inspect", "--raw", "--authfile", os.environ["DOCKER_CONFIG"] + "/config.json", "docker://" + dest],
+                             check=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL).stdout
+        if "sha256:" + hashlib.sha256(raw).hexdigest() != digest:
+            raise SystemExit("복사한 ECR manifest digest가 다르다")
+        aws_images[service] = os.environ["ECR_IMAGE_REPO"] + "@" + digest
+core = {"schema": 2, "commit": os.environ["COMMIT"], "platform": "linux/amd64", "image_digests": digests}
+result = {**core, "images": images, "bundle_sha256": hashlib.sha256(json.dumps(core, sort_keys=True, separators=(",", ":")).encode()).hexdigest(),
+          "image_ref": images["frontend"], "image_digest": digests["frontend"], "registry_images": {"gcp": images}}
+if aws_images:
+    result["registry_images"]["aws"] = aws_images
+with open("result.json.tmp", "w") as output:
+    json.dump(result, output)
+os.replace("result.json.tmp", "result.json")
+PYCODE
+          cp result.json ".delta-build-cache/$RUN_ID.json"
+        '''
+        archiveArtifacts artifacts: 'result.json', fingerprint: false
+      }
+    }
+  }
+}

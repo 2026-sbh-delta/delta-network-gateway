@@ -1,0 +1,51 @@
+# Go 규칙 묶음(net/http, database/sql). 메타변수 약속은 javascript.yaml과 같다.
+id: go
+languages: [go]
+param_style: leading  # 'name Type' → 첫 토큰이 이름
+
+functions:
+  - "func $NAME($...PARAMS) { ... }"
+  - "func $NAME($...PARAMS) $RT { ... }"
+  - "func ($RECV $T) $NAME($...PARAMS) { ... }"
+  - "func ($RECV $T) $NAME($...PARAMS) $RT { ... }"
+
+requests:
+  - "func $NAME($W http.ResponseWriter, $REQ *http.Request) { ... }"
+  - "func ($RECV $T) $NAME($W http.ResponseWriter, $REQ *http.Request) { ... }"
+
+sinks:
+  html_text:
+    - "fmt.Fprintf($W, $FMT, ..., $X, ...)"
+    - "fmt.Fprint($W, ..., $X, ...)"
+    - "fmt.Fprintln($W, ..., $X, ...)"
+    - "$W.Write([]byte($X))"
+    - "io.WriteString($W, $X)"
+    - "template.HTML($X)"
+  sql:
+    - {pattern: "$DB.Query($X, ...)", not: ["$DB.Query(\"...\", ...)"]}
+    - {pattern: "$DB.QueryRow($X, ...)", not: ["$DB.QueryRow(\"...\", ...)"]}
+    - {pattern: "$DB.Exec($X, ...)", not: ["$DB.Exec(\"...\", ...)"]}
+  shell:
+    - "exec.Command($X, ...)"
+    - "exec.Command($C, ..., $X, ...)"
+
+sanitizers:
+  - "html.EscapeString(...)"
+  - "template.HTMLEscapeString(...)"
+  - "url.QueryEscape(...)"
+
+sql_reads:
+  - "$DB.Query(\"$Q\", ...)"
+  - "$DB.QueryRow(\"$Q\", ...)"
+sql_writes:
+  - "$DB.Exec(\"$Q\", ..., $X, ...)"
+
+responses:
+  - "json.NewEncoder($W).Encode($X)"
+
+routes:
+  - {pattern: "http.HandleFunc($URL, $H)", handler_metavar: $H}
+  - {pattern: "$MUX.HandleFunc($URL, $H)", handler_metavar: $H}
+
+returns:
+  - "return $X"

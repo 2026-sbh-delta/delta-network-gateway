@@ -189,6 +189,15 @@ def render_html(record: dict, story: dict, writer: str, directory: Path) -> str:
     doc_no = f'DAST-{when:%Y%m%d}-{data["session"][:8]}'
     counts = {key: sum(1 for f in findings if f["status"] == key) for key in RESULT}
     ids = {f["finding_id"]: f"V-{i:02d}" for i, f in enumerate(findings, 1)}
+    # SAST·DAST 결과로 LLM이 정한 조치 순서(있을 때만)
+    ranked = (record.get("priority") or {}).get("items") or []
+    level = {"urgent": "긴급", "high": "높음", "medium": "보통", "low": "낮음"}
+    priority_html = "" if not ranked else (
+        "<h3>조치 우선순위</h3><p>" + e(record["priority"].get("summary")) + "</p>"
+        '<table class="list"><thead><tr><th>순위</th><th>번호</th><th>수준</th><th>근거</th></tr></thead><tbody>'
+        + "".join(f'<tr><td>{e(i["rank"])}</td><td>{e(ids.get(i["finding_id"], i["finding_id"]))}</td>'
+                  f'<td>{e(level.get(i["level"], i["level"]))}</td><td class="l">{e(i["rationale"])}</td></tr>'
+                  for i in ranked) + "</tbody></table>")
 
     toc = [("1", "점검 개요", [("1.1", "점검 목적"), ("1.2", "점검 대상 및 범위"), ("1.3", "점검 방법"), ("1.4", "판정 기준")]),
            ("2", "점검 결과 요약", [("2.1", "종합 결과"), ("2.2", "취약점 목록")]),
@@ -322,6 +331,7 @@ def render_html(record: dict, story: dict, writer: str, directory: Path) -> str:
 
 <section class="page">
 <h2>4. 조치 권고 사항</h2>
+{priority_html}
 <table class="list"><thead><tr><th>번호</th><th>위험도</th><th>항목</th><th>조치 방안</th></tr></thead><tbody>{actions}</tbody></table>
 <ul class="note-list"><li>조치 후 동일 항목으로 재점검하여 결과가 ‘양호’로 바뀌는지 확인할 것을 권고함</li></ul>
 </section>

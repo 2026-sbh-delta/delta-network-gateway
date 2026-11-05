@@ -1,0 +1,90 @@
+# JavaScript·TypeScript 규칙 묶음(서버 Node·Express, 브라우저). 언어 의미(대입·전달·문자열 조립)는 Opengrep taint가 따라간다.
+# 메타변수 약속: $NAME 함수 이름, $...PARAMS 매개변수 목록, $REQ 요청 객체, $X 위험한 값, $Q SQL 문자열,
+#               $URL 경로·호출 주소, $M HTTP 메서드, $F 호출하는 함수 이름.
+id: javascript
+languages: [javascript, typescript]
+
+# 이름 있는 함수. 이름 없는 콜백은 감싸는 이름 있는 함수의 일부로 본다(요약 단위).
+functions:
+  - "function $NAME($...PARAMS) { ... }"
+  - "async function $NAME($...PARAMS) { ... }"
+  - "$NAME = ($...PARAMS) => $BODY"
+  - "$NAME = async ($...PARAMS) => $BODY"
+  - "$NAME: ($...PARAMS) => $BODY"
+  - "$NAME: async ($...PARAMS) => $BODY"
+  - "$NAME = function ($...PARAMS) { ... }"
+
+# 요청 객체가 들어오는 핸들러. 이 안에서 $REQ로부터 나온 값은 외부 입력이다.
+requests:
+  - "createServer(($REQ, $RES) => $BODY)"
+  - "createServer(async ($REQ, $RES) => $BODY)"
+  - "createServer(function ($REQ, $RES) { ... })"
+  - "$APP.$M($URL, ..., ($REQ, $RES, ...) => $BODY)"
+  - "$APP.$M($URL, ..., async ($REQ, $RES, ...) => $BODY)"
+  - "$APP.$M($URL, ..., function ($REQ, $RES, ...) { ... })"
+
+# 위험한 출력. 맥락별로 둔다(html_text는 서버·브라우저 HTML, sql, shell, template).
+sinks:
+  html_text:
+    - "$RES.send($X)"
+    - "$RES.write($X)"
+    - "document.write($X)"
+    - "document.writeln($X)"
+    - "$E.innerHTML = $X"
+    - "$E.outerHTML = $X"
+    - "$E.innerHTML += $X"
+    - "$E.insertAdjacentHTML($P, $X)"
+    - "$J($E).html($X)"
+  sql:
+    - {pattern: "$DB.query($X, ...)", not: ["$DB.query(\"...\", ...)"]}
+    - {pattern: "$DB.execute($X, ...)", not: ["$DB.execute(\"...\", ...)"]}
+    - {pattern: "$DB.raw($X, ...)", not: ["$DB.raw(\"...\", ...)"]}
+  shell:
+    - "exec($X, ...)"
+    - "execSync($X, ...)"
+    - "$CP.exec($X, ...)"
+    - "$CP.execSync($X, ...)"
+  template:
+    - "eval($X)"
+    - "new Function(..., $X)"
+
+# SQL 문자열 리터럴로 부르는 DB 호출. 읽기(SELECT)는 결과가 저장소에서 온 값이고, 쓰기(INSERT·UPDATE)는 $X가 열 값이다.
+sql_reads:
+  - "$DB.query(\"$Q\", ...)"
+  - "$DB.execute(\"$Q\", ...)"
+  - "$DB.all(\"$Q\", ...)"
+  - "$DB.get(\"$Q\", ...)"
+sql_writes:
+  - "$DB.query(\"$Q\", [..., $X, ...])"
+  - "$DB.execute(\"$Q\", [..., $X, ...])"
+  - "$DB.run(\"$Q\", [..., $X, ...])"
+  - "$DB.query(\"$Q\", ..., $X, ...)"
+
+# 서버가 응답 데이터로 내보내는 값(JSON API). 경로 안에 있을 때만 응답으로 본다.
+responses:
+  - "JSON.stringify($X)"
+  - "$RES.json($X)"
+  - "$RES.jsonp($X)"
+
+# 브라우저에서 서버를 부르는 곳. 결과는 그 경로의 응답 데이터다.
+fetches:
+  - "fetch($URL, ...)"
+  - "axios($URL, ...)"
+  - "axios.$M($URL, ...)"
+
+# 경로 선언. 매치 구간 안이 그 경로의 처리다. prefix는 뒤에 경로 변수가 붙는 경우.
+routes:
+  - {pattern: "if ($P === $URL) { ... }"}
+  - {pattern: "if ($P == $URL) { ... }"}
+  - {pattern: "if ($P.startsWith($URL)) { ... }", prefix: true}
+  - {pattern: "$APP.$M($URL, ...)", method_metavar: $M, method_regex: "^(get|post|put|patch|delete|all)$"}
+
+# 메서드 분기. 매치 구간 안은 이 메서드다.
+methods:
+  - "if ($REQ.method === $M) { ... }"
+  - "if ($REQ.method == $M) { ... }"
+
+returns:
+  - "return $X;"
+  - "($...PARAMS) => $X"
+  - "async ($...PARAMS) => $X"

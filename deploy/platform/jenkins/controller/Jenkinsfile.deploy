@@ -1,0 +1,17 @@
+// 컨트롤러 배포 전용 실행기(delta-deploy)에서만 돈다. 이미지 안의 신뢰된 스크립트만 실행한다(앱 코드 없음).
+pipeline {
+  agent { label 'delta-deploy' }
+  options { timestamps(); timeout(time: 12, unit: 'MINUTES') }
+  stages {
+    stage('스테이징 배포') {
+      steps {
+        // 이전 실행의 결과가 이번 결과로 올라가지 않게 먼저 지운다
+        sh 'rm -f result.json && python3 /opt/delta/staging_deploy.py'
+      }
+    }
+  }
+  // 실패해도 result.json(단계·오류)을 남겨 오케스트레이터가 원인을 읽게 한다.
+  post {
+    always { archiveArtifacts artifacts: 'result.json', allowEmptyArchive: true, fingerprint: false }
+  }
+}

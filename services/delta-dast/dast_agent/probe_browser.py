@@ -28,8 +28,12 @@ CLICK_DELAY = float(os.environ.get("DAST_CLICK_DELAY", "1"))
 CURSOR_GLIDE = 0.6
 FRAME_INTERVAL = 0.08
 PROBE_TYPE_DELAY_MS = int(os.environ.get("DAST_PROBE_TYPE_DELAY_MS", "6"))
+# 영향 시연 페이로드(1천 자 넘음)를 입력하는 데 쓰는 시간. 한 글자씩이면 10초 넘게 걸려 덩어리로 빠르게 채운다.
+IMPACT_TYPE_SECONDS = float(os.environ.get("DAST_IMPACT_TYPE_SECONDS", "1.5"))
 # 취약점이 트리거된 순간에는 실제 효과를 보여주도록 조금 더 머문다.
 EXECUTION_HOLD = float(os.environ.get("DAST_TRIGGER_DELAY", "2"))
+# 바로 검사는 탐지 직후 바로 끝난다. 블루스크린이 100%(약 3.75초)까지 차서 그대로 멈춘 화면이 마지막 프레임·증거로 남게 머문다.
+DIRECT_HOLD = float(os.environ.get("DAST_DIRECT_HOLD", "4"))
 CANARY_DIR = Path(__file__).with_name("canaries")
 # 반사 위치별로 시도할 카나리. 이스케이프된 출력은 음성 확인용으로 하나만 시도한다.
 CANARIES_BY_CONTEXT = {
@@ -85,6 +89,7 @@ class ProbeBrowser:
         self.finding, self.target, self.payload_id = finding, target, payload_id
         self.run_id, self.output, self.emit = run_id, output, emit
         self.nonce = secrets.token_hex(16)
+        self.direct = False  # 바로 검사: 반사 확인 없이 영향 시연 페이로드를 넣는다(agent.py DIRECT_PROMPT)
         # payload_template은 취약 확정 뒤에만 쓰는 영향 시연용이다. 탐지는 카나리로 한다.
         self.probe = payload_template.replace("{{DAST_NONCE}}", self.nonce)
         self.canaries = {key: value.replace("{{DAST_NONCE}}", self.nonce)
@@ -283,7 +288,7 @@ class ProbeBrowser:
             await self.stage(self.phase, "done", "실행 확인")
             await self.capture("executed")
             # 실제 XSS 효과(붉은 화면·흔들림)가 실시간 화면에 남도록 잠시 멈춘다.
-            await asyncio.sleep(EXECUTION_HOLD)
+            await asyncio.sleep(DIRECT_HOLD if self.direct else EXECUTION_HOLD)
 
     async def capture(self, label: str):
         self._shots += 1
@@ -315,7 +320,11 @@ class ProbeBrowser:
     def impact_allowed(self) -> bool:
         # 영향 시연 페이로드는 HTML 본문 출력용이다. 반사 위치가 맞으면 탐지와 시연을 한 번에 한다.
         return self.evidence["impact"] is None and (
-            bool(self.evidence["executed"]) or "html_unescaped" in self.contexts())
+            self.direct or bool(self.evidence["executed"]) or "html_unescaped" in self.contexts())
+
+    def csp_settled(self) -> bool:
+        # 검사 문자열이 출력됐고 CSP가 실행을 막았다. 다른 문자열도 같은 정책에 막히므로 더 시도할 이유가 없다.
+        return self.evidence["csp_blocked"] and bool(self.evidence["rendered"])
 
     def status(self) -> dict:
         return {
@@ -328,6 +337,7 @@ class ProbeBrowser:
             "probe_typed": self.evidence["probe_typed"],
             "probe_rendered": bool(self.evidence["rendered"]),
             "probe_executed": bool(self.evidence["executed"]),
+            "probe_blocked_by_csp": self.csp_settled(),
             "actions_left": MAX_ACTIONS - len(self.evidence["actions"]),
         }
 
@@ -401,6 +411,8 @@ class ProbeBrowser:
             raise ActionError("등록되지 않은 카나리다.")
         if len(self.evidence["canaries"]) >= MAX_CANARIES:
             raise ActionError(f"카나리는 최대 {MAX_CANARIES}회까지 시도한다. finish로 종료하라.")
+        if self.csp_settled():
+            raise ActionError("CSP가 이미 실행을 막았다. 다른 검사 문자열도 같은 정책에 막히므로 not_executed로 finish하라.")
         await self._require_focus()
         self.phase = "detect"
         self.evidence["canaries"].append(canary_id)
@@ -430,10 +442,17 @@ class ProbeBrowser:
         await self.stage("impact", "running", self.payload_id)
         await self.emit({"type": "probe", "payload_id": self.payload_id,
                          "message": "영향 시연용 페이로드를 입력합니다(시연용)."})
-        # 시연에서 실제 페이로드가 입력되는 모습이 보이도록 한 글자씩 입력한다.
-        await self.page.keyboard.type(self.probe, delay=PROBE_TYPE_DELAY_MS)
+        # 입력되는 모습은 보이되 오래 걸리지 않게, 페이로드를 덩어리로 나눠 IMPACT_TYPE_SECONDS 안에 채운다.
+        await self.type_fast(self.probe, IMPACT_TYPE_SECONDS)
         await self.capture("impact-typed")
         await asyncio.sleep(1.0)
+
+    async def type_fast(self, text: str, seconds: float):
+        steps = max(1, int(seconds / 0.05))
+        size = max(1, -(-len(text) // steps))
+        for start in range(0, len(text), size):
+            await self.page.keyboard.insert_text(text[start:start + size])
+            await asyncio.sleep(0.05)
 
     async def key(self, combo: str, repeat: int = 1):
         for _ in range(max(1, min(repeat, 20))):

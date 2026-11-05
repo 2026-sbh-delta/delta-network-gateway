@@ -76,7 +76,9 @@ def test_scan_lifecycle_and_sarif(client, fixtures, llm):
     scan = wait_done(client, "r1")
     assert scan["state"] == "done", scan
     assert scan["summary"]["dast_targets"] == 3
-    assert [s["name"] for s in scan["steps"]] == ["accepted", "fetch", "scan", "judge", "done"]
+    scope = scan["summary"]["scope"]
+    assert scope["files"] > 0 and scope["languages"].get("python", 0) > 0 and scope["commit"] is None
+    assert [s["name"] for s in scan["steps"]] == ["accepted", "fetch", "scope", "scan", "judge", "done"]
     sarif = client.get("/v1/sast/scans/r1/sarif", headers=AUTH).json()
     assert sarif["runs"][0]["properties"]["run_id"] == "r1"
     assert llm.calls == 0  # 게시판 예제는 규칙만으로 판정된다

@@ -1,0 +1,32 @@
+{
+  "id": "staging-gcp",
+  "label": "GCP 스테이징 게시판",
+  "staging": "gcp",
+  "entry_path": "/",
+  "allowed_path_prefixes": [
+    "/"
+  ],
+  "routes": [
+    {
+      "id": "board-post",
+      "kind": "stored_xss",
+      "board_path": "/board",
+      "create_path": "/new",
+      "create_link_selector": "a[href=\"/new\"]",
+      "field": "body",
+      "input_selector": "[name=body]",
+      "title_selector": "[name=title]",
+      "title_value": "DAST 검증 게시글",
+      "submit_selector": "form button",
+      "submit_path": "/posts",
+      "saved_detail_link_selector": "#saved-post",
+      "detail_path_regex": "^/posts/[a-f0-9]{32}$",
+      "output_selector": "#post-body",
+      "asset_paths": []
+    }
+  ],
+  "repo": {
+    "remote": "https://github.com/2026-sbh-delta/delta-sample-app",
+    "base_branch": "main"
+  }
+}

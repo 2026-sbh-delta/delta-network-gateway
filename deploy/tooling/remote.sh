@@ -96,12 +96,9 @@ dast_model=$(param dast_llm_model)
 [ -n "$sast_model" ] && printf 'SAST_LLM_MODEL=%s\n' "$sast_model" >> "$base/llm.env"
 [ -n "$dast_model" ] && printf 'DAST_CLAUDE_MODEL=%s\n' "$dast_model" >> "$base/llm.env"
 
-# SAST가 점검할 예제 소스(DAST 실습 게시판과 같은 코드)를 DAST 이미지에서 꺼내 둔다
-tmp=$(docker create "$DAST_IMAGE")
+# SAST가 점검할 소스는 시연 게시판 저장소(delta-sample-app)를 커밋 단위로 받는다. 로컬 소스 폴더는 비워 둔다
+mkdir -p "$base/sources"
 rm -rf "$base/sources/sample-target"
-docker cp "$tmp:/app/sample-target" "$base/sources/sample-target"
-docker rm "$tmp" >/dev/null
-chmod -R a+rX "$base/sources"
 
 # Preserve the repository policy configured by the platform connection.
 sast_runtime=()
@@ -123,7 +120,7 @@ docker run -d --name delta-sast --restart unless-stopped --network host \
 docker run -d --name delta-dast --restart unless-stopped --network host --shm-size=1g \
   --env-file "$base/secrets.env" --env-file "$base/llm.env" \
   "${dast_runtime[@]}" \
-  -e DELTA_RUNTIME=server -e DELTA_SAST_URL=http://127.0.0.1:8790 -e DELTA_SAST_REPO=/srv/sources/sample-target \
+  -e DELTA_RUNTIME=server -e DELTA_SAST_URL=http://127.0.0.1:8790 \
   -v "$base/dast-runs:/app/runs" -v "$base/dast-data:/app/data" "${llm_mounts[@]}" \
   "$DAST_IMAGE" >/dev/null
 

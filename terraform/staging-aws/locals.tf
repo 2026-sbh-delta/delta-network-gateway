@@ -18,6 +18,10 @@ resource "terraform_data" "contract" {
   }
   lifecycle {
     precondition {
+      condition     = !var.dual_container || var.create_vpc_endpoints || var.existing_nat_egress
+      error_message = "Dual DB mode requires Secrets Manager HTTPS through VPC endpoints or explicitly attested existing NAT routes."
+    }
+    precondition {
       condition     = var.alb_internet_facing || length(var.scanner_cidrs) + length(var.scanner_security_group_ids) > 0
       error_message = "Set scanner_cidrs or scanner_security_group_ids; otherwise nothing can reach the internal ALB."
     }
@@ -34,4 +38,11 @@ resource "terraform_data" "contract" {
       error_message = "subnet_ids must span at least two AZs for the ALB."
     }
   }
+}
+
+locals {
+  ingress_container_name = var.dual_container ? "frontend" : var.container_name
+  ingress_container_port = var.dual_container ? 3000 : var.container_port
+  database_name          = "board_staging"
+  database_user          = "board_app"
 }

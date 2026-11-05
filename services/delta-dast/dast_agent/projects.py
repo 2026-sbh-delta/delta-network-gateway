@@ -64,7 +64,7 @@ def ensure_default(target_id: str) -> None:
     with _lock:
         if not _read():
             _write([{"id": "sample-board", "name": "실습 게시판(예제)", "repo_url": "", "prod_url": "",
-                     "target_id": target_id, "description": "로컬 실습 게시판과 sample-target 소스",
+                     "target_id": target_id, "description": "로컬 실습 게시판과 delta-sample-app 소스",
                      "created_at": time.time()}])
 
 

@@ -1,0 +1,8 @@
+#!/bin/bash
+# ${service} 호스트 초기화: Docker만 설치한다. 컨테이너는 deploy/platform 스크립트가 SSM으로 띄운다.
+set -euo pipefail
+dnf install -y docker
+systemctl enable --now docker
+install -d -m 0750 /opt/delta /opt/delta/state
+# 컨테이너 사용자(uid 10001)가 상태·증거를 쓴다
+chown 10001:10001 /opt/delta/state

@@ -1,0 +1,67 @@
+# Java 규칙 묶음(서블릿, Spring MVC, JDBC). 메타변수 약속은 javascript.yaml과 같다.
+id: java
+languages: [java]
+param_style: trailing  # 'Type name' → 마지막 토큰이 이름
+
+functions:
+  - "$RT $NAME($...PARAMS) { ... }"
+  - "$NAME($...PARAMS) { ... }"
+
+# 서블릿 요청 객체
+requests:
+  - "$RT $M(..., HttpServletRequest $REQ, ...) { ... }"
+
+# 요청 객체 없이 바로 입력이 되는 매개변수(Spring)
+inputs:
+  - {inside: "$RT $M(..., @RequestParam $T $P, ...) { ... }", pattern: "$P"}
+  - {inside: "$RT $M(..., @RequestParam($A) $T $P, ...) { ... }", pattern: "$P"}
+  - {inside: "$RT $M(..., @PathVariable $T $P, ...) { ... }", pattern: "$P"}
+  - {inside: "$RT $M(..., @RequestBody $T $P, ...) { ... }", pattern: "$P"}
+  - {inside: "$RT $M(..., @RequestHeader $T $P, ...) { ... }", pattern: "$P"}
+
+sinks:
+  html_text:
+    - "$RES.getWriter().write($X)"
+    - "$RES.getWriter().print($X)"
+    - "$RES.getWriter().println($X)"
+    - "$OUT.println($X)"
+    # @RestController·@ResponseBody가 HTML 조각을 문자열로 돌려준다
+    - "return \"$S\" + $X + \"$E\";"
+    - "return \"$S\" + $X;"
+  sql:
+    - {pattern: "$ST.executeQuery($X)", not: ["$ST.executeQuery(\"...\")"]}
+    - {pattern: "$ST.execute($X)", not: ["$ST.execute(\"...\")"]}
+    - {pattern: "$ST.executeUpdate($X)", not: ["$ST.executeUpdate(\"...\")"]}
+    - {pattern: "$J.queryForObject($X, ...)", not: ["$J.queryForObject(\"...\", ...)"]}
+    - {pattern: "$J.queryForList($X, ...)", not: ["$J.queryForList(\"...\", ...)"]}
+    - {pattern: "$J.update($X, ...)", not: ["$J.update(\"...\", ...)"]}
+  shell:
+    - "Runtime.getRuntime().exec($X)"
+    - "new ProcessBuilder(..., $X, ...)"
+
+sanitizers:
+  - "$U.htmlEscape(...)"
+  - "HtmlUtils.htmlEscape(...)"
+  - "$U.escapeHtml4(...)"
+  - "Encode.forHtml(...)"
+
+sql_reads:
+  - "$J.queryForObject(\"$Q\", ...)"
+  - "$J.queryForList(\"$Q\", ...)"
+  - "$J.query(\"$Q\", ...)"
+  - "$ST.executeQuery(\"$Q\")"
+sql_writes:
+  - "$J.update(\"$Q\", ..., $X, ...)"
+
+responses:
+  - "ResponseEntity.ok($X)"
+
+routes:
+  - {pattern: "@GetMapping($URL) $RT $NAME(...) { ... }", method: GET}
+  - {pattern: "@PostMapping($URL) $RT $NAME(...) { ... }", method: POST}
+  - {pattern: "@PutMapping($URL) $RT $NAME(...) { ... }", method: PUT}
+  - {pattern: "@DeleteMapping($URL) $RT $NAME(...) { ... }", method: DELETE}
+  - {pattern: "@RequestMapping($URL) $RT $NAME(...) { ... }"}
+
+returns:
+  - "return $X;"

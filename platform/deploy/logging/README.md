@@ -9,8 +9,10 @@ GCP Cloud Logging  → Sink → Pub/Sub → Lambda(WIF 인증) ─────�
 ```
 
 - 중앙 계정: `616723161368`, 리전: `ap-northeast-2`(서울).
-- AWS 실제 저장: `/delta-cp/central/aws` (2026-11-06 조회).
-- GCP 실제 저장: `/delta-cp/central/gcp` (2026-11-06 조회).
+- AWS 저장: `/delta-cp/central/aws` (2026-11-06 조회).
+- GCP 저장: `/delta-cp/central/gcp` (2026-11-06 조회).
+- 플랫폼 서비스(오케스트레이터·Jenkins·SAST·DAST·차분 에이전트) 로그: `/delta-cp/platform/<서비스>`(각 호스트가 직접 기록, `terraform/platform-aws`).
+- **이름 분리(11/5):** 같은 계정에 A 기업 로그(`/delta/…`, `/aws/…`)가 함께 있다. 플랫폼 로그는 모두 `/delta-cp/` 아래에 둔다. 권한·KMS 분리는 후순위다.
 - GCP 프로젝트: `term2-delta`. VM·Cloud Run·방화벽/VPN/Router 로그를 기본 수집한다. 감사 로그는 기본 제외한다.
 - 원본 계정/프로젝트·로그 이름·원본 시각·이벤트 ID를 함께 저장한다. CloudWatch 화면의 이벤트 시각은 **수집 시각**이다.
 - 같은 메시지가 재전달될 수 있다. 집계 시 `event_id`로 중복을 구분한다.
@@ -48,7 +50,7 @@ aws logs put-subscription-filter \
 
 실행 주체에는 원본 로그 그룹과 Destination에 대한 `logs:PutSubscriptionFilter`, 원본 그룹의 `logs:DescribeSubscriptionFilters` 권한이 필요하다. 수신 측 Destination 정책만으로 송신 IAM 권한을 대신할 수 없다. 논리 Destination에 연결하므로 위 명령에 `--role-arn`이나 Access Key를 넣지 않는다.
 
-**재전송 금지:** 현재 `/delta-cp/central/*`, 이전 `/delta-platform/central/*`와 `/aws/lambda/delta-platform-logs-*`는 구독 대상에서 제외한다. 계정 전체 구독을 만드는 작업이 아니다. 그룹당 기존 구독 한도도 확인한다.
+**재전송 금지:** `/delta-cp/*`(중앙·플랫폼 서비스), 이전 `/delta-platform/central/*`와 `/aws/lambda/delta-platform-logs-*`는 구독 대상에서 제외한다. 수집기도 이 그룹에서 온 이벤트는 버린다. 계정 전체 구독을 만드는 작업이 아니다. 그룹당 기존 구독 한도도 확인한다.
 
 ## 팀원에게 전달할 GCP 설정
 

@@ -86,6 +86,6 @@ sudo docker logs --tail 100 delta-sast
 | `/opt/delta/sast-state` | SAST 점검 상태·SARIF·규칙 캐시 |
 | `/opt/delta/dast-runs` | DAST 점검 증거(스크린샷, report.json·html·pdf) |
 | `/opt/delta/dast-data` | DAST 프로젝트 데이터 |
-| `/opt/delta/sources` | SAST가 점검할 소스(지금은 실습 게시판과 같은 코드인 sample-target) |
+| `/opt/delta/sources` | SAST가 점검할 로컬 소스(비어 있음. 시연 게시판은 delta-sample-app 원격 저장소를 받는다) |
 | `/opt/delta/secrets.env`, `/opt/delta/llm.env` | 내부 토큰, LLM 인증 설정(root 전용) |
 | `/opt/delta/wif/` | AWS 신원 토큰(컨테이너 사용자만 읽기), DAST 에이전트용 페더레이션 프로필 |

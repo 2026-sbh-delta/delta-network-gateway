@@ -55,7 +55,7 @@ async def analyze(finding: Finding, target: ResolvedTarget) -> dict:
             output_format={"type": "json_schema", "schema": HYPOTHESIS_SCHEMA},
         )
         result = None
-        async with asyncio.timeout(60):
+        async with asyncio.timeout(20):  # 실측 5~9초
             async for message in query(prompt=finding_prompt(finding, target).rsplit("\n", 1)[0],
                                        options=options):
                 if isinstance(message, ResultMessage):
@@ -71,14 +71,19 @@ async def analyze(finding: Finding, target: ResolvedTarget) -> dict:
 
 async def orchestrate(finding: Finding, target: ResolvedTarget, payload_id: str,
                       payload_template: str, run_id: str, output, emit, planner: str,
-                      impact: bool, resume: dict | None = None) -> dict:
+                      impact: bool, resume: dict | None = None, direct: bool = False,
+                      hint: dict | None = None) -> dict:
     async def stage(name, status, detail=""):
         await emit({"type": "stage", "stage": name, "status": status, "detail": detail[:160]})
 
-    hypothesis = (resume or {}).get("hypothesis")
+    hypothesis = (resume or {}).get("hypothesis") or hint
     if resume and planner == "agent":
         # 재검증은 원래 에이전트의 맥락을 이어받으므로 가설을 다시 세우지 않는다.
         await stage("analyze", "done", "이전 점검 맥락 이어받음 · " + resume["session_id"][:8])
+    elif hint:
+        # 수정 후 재검증(플랫폼): 1차 점검의 가설을 그대로 쓴다. 앱 구조는 같고 출력 처리만 바뀌었다.
+        resume = None
+        await stage("analyze", "done", "1차 점검 가설 재사용 · " + str(hint.get("page_hint", ""))[:60])
     else:
         resume = None
         await stage("analyze", "running", "SAST 결과로 가설 수립")
@@ -96,7 +101,7 @@ async def orchestrate(finding: Finding, target: ResolvedTarget, payload_id: str,
                                                 output, emit, hypothesis=hypothesis, impact=impact)
     else:
         result = await investigate_sdk(finding, target, payload_id, payload_template, run_id, output,
-                                       emit, hypothesis=hypothesis, impact=impact, resume=resume)
+                                       emit, hypothesis=hypothesis, impact=impact, resume=resume, direct=direct)
     result["evidence"]["hypothesis"] = hypothesis
     await stage("judge", "done", result["status"])
     if result["evidence"].get("impact") is None:

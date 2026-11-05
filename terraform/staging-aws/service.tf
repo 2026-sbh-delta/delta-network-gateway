@@ -75,21 +75,37 @@ resource "aws_ecs_task_definition" "app" {
     operating_system_family = "LINUX"
     cpu_architecture        = var.cpu_architecture
   }
-  container_definitions = jsonencode([{
-    name         = var.container_name
+  container_definitions = jsonencode(concat([merge({
+    name         = local.ingress_container_name
     image        = var.bootstrap_image
     essential    = true
-    portMappings = [{ containerPort = var.container_port, protocol = "tcp" }]
-    environment  = []
-    logConfiguration = {
-      logDriver = "awslogs"
-      options = {
-        awslogs-group         = aws_cloudwatch_log_group.app.name
-        awslogs-region        = var.region
-        awslogs-stream-prefix = var.container_name
-      }
+    portMappings = [{ containerPort = local.ingress_container_port, protocol = "tcp" }]
+    environment = var.dual_container ? concat(local.app_environment, [
+      { name = "API_HOST", value = "127.0.0.1" },
+      { name = "API_PORT", value = "8080" },
+      { name = "PORT", value = "3000" }
+    ]) : []
+    logConfiguration = local.app_logs
+    }, var.dual_container ? {
+    dependsOn = [{ containerName = "backend", condition = "HEALTHY" }]
+    } : {})], var.dual_container ? [{
+    name         = "backend"
+    image        = var.bootstrap_backend_image
+    essential    = true
+    portMappings = [{ containerPort = 8080, protocol = "tcp" }]
+    environment = concat(local.app_environment, local.database_environment, [
+      { name = "PORT", value = "8080" }
+    ])
+    secrets = local.runtime_database_secrets
+    healthCheck = {
+      command     = ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval    = 5
+      timeout     = 3
+      retries     = 3
+      startPeriod = 10
     }
-  }])
+    logConfiguration = local.app_logs
+  }] : []))
 }
 
 resource "aws_lb" "staging" {
@@ -103,7 +119,7 @@ resource "aws_lb" "staging" {
 }
 resource "aws_lb_target_group" "app" {
   name_prefix          = "stg-"
-  port                 = var.container_port
+  port                 = local.ingress_container_port
   protocol             = "HTTP"
   target_type          = "ip"
   vpc_id               = var.vpc_id
@@ -149,8 +165,8 @@ resource "aws_ecs_service" "app" {
   }
   load_balancer {
     target_group_arn = aws_lb_target_group.app.arn
-    container_name   = var.container_name
-    container_port   = var.container_port
+    container_name   = local.ingress_container_name
+    container_port   = local.ingress_container_port
   }
   deployment_circuit_breaker {
     enable   = true

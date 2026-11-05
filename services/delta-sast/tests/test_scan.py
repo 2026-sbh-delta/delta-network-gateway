@@ -113,3 +113,25 @@ def test_custom_filter_uses_cache_on_second_run(fixtures, tmp_path):
 def test_same_input_same_result(fixtures):
     a, b = scan(fixtures / "misc"), scan(fixtures / "misc")
     assert [(f.ident(), j.verdict) for f, j in a.findings] == [(f.ident(), j.verdict) for f, j in b.findings]
+
+
+def test_scope_counts_source_files_by_language_and_skips_excluded(tmp_path):
+    import subprocess
+
+    from delta_sast.locate import EXCLUDES
+    from delta_sast.source import scope_of
+
+    (tmp_path / "app").mkdir()
+    (tmp_path / "app" / "board.py").write_text("x = 1\n")
+    (tmp_path / "app" / "index.html").write_text("<p></p>\n")
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_x.py").write_text("x = 1\n")
+    (tmp_path / "README.md").write_text("doc\n")
+    assert scope_of(tmp_path, tmp_path, "abc1234", EXCLUDES) == {
+        "commit": "abc1234", "files": 2, "languages": {"python": 1, "template": 1}}
+    # 받아 온 저장소면 요청 값이 아니라 실제 HEAD 를 적는다
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "x"],
+                   cwd=tmp_path, check=True)
+    head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=tmp_path, capture_output=True, text=True).stdout.strip()
+    assert scope_of(tmp_path, tmp_path, "0" * 40, EXCLUDES)["commit"] == head

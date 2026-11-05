@@ -25,7 +25,7 @@ def _env_pairs(pairs: list[str]) -> dict[str, str]:
     for pair in pairs:
         key, sep, value = pair.partition("=")
         if not sep:
-            raise SystemExit(f"--env 는 KEY=VALUE 형식이다: {pair}")
+            raise SystemExit("--env 는 KEY=VALUE 형식이어야 한다")
         env[key] = value
     return env
 
@@ -81,8 +81,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     try:
         return asyncio.run(_deploy(args) if args.command == "deploy" else _stop(args))
-    except ValidationError as exc:
-        print(f"입력 오류: {exc}", file=sys.stderr)
+    except ValidationError:
+        print("입력 또는 대상 설정 검증 실패. 원문은 비밀 보호를 위해 생략했다", file=sys.stderr)
     except (ConfigError, Unsupported, RequestRejected, Busy, Conflict, NotFound) as exc:
         print(f"{type(exc).__name__}: {exc}", file=sys.stderr)
     return 2

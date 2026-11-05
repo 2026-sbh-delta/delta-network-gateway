@@ -38,8 +38,8 @@ resource "aws_vpc_security_group_egress_rule" "alb_to_service" {
   security_group_id            = aws_security_group.alb.id
   referenced_security_group_id = aws_security_group.service.id
   ip_protocol                  = "tcp"
-  from_port                    = var.container_port
-  to_port                      = var.container_port
+  from_port                    = local.ingress_container_port
+  to_port                      = local.ingress_container_port
   description                  = "Staging tasks"
 }
 
@@ -53,8 +53,8 @@ resource "aws_vpc_security_group_ingress_rule" "service_from_alb" {
   security_group_id            = aws_security_group.service.id
   referenced_security_group_id = aws_security_group.alb.id
   ip_protocol                  = "tcp"
-  from_port                    = var.container_port
-  to_port                      = var.container_port
+  from_port                    = local.ingress_container_port
+  to_port                      = local.ingress_container_port
   description                  = "Internal ALB"
 }
 resource "aws_vpc_security_group_egress_rule" "service_to_endpoints" {

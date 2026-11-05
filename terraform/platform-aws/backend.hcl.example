@@ -1,0 +1,5 @@
+bucket       = "sbh-delta-workload-tf-616723161368"
+key          = "delta/lab/platform-aws/terraform.tfstate"
+region       = "ap-northeast-2"
+encrypt      = true
+use_lockfile = true

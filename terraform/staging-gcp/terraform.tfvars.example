@@ -1,0 +1,5 @@
+# Mock fixture values. Actual values belong in ignored terraform.tfvars.
+project_id        = "delta-example-01"
+region            = "asia-northeast3"
+container_port    = 8080
+health_check_path = "/"

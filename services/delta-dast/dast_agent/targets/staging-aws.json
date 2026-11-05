@@ -1,12 +1,10 @@
 {
   "id": "staging-aws",
   "label": "AWS 스테이징 게시판",
-  "origin": "http://delta-lab-staging-alb-305408114.ap-northeast-2.elb.amazonaws.com",
-  "entry_path": "/board",
+  "staging": "aws",
+  "entry_path": "/",
   "allowed_path_prefixes": [
-    "/board",
-    "/new",
-    "/posts/"
+    "/"
   ],
   "routes": [
     {
@@ -28,8 +26,7 @@
     }
   ],
   "repo": {
-    "path": "sample-target",
-    "remote": "",
+    "remote": "https://github.com/2026-sbh-delta/delta-sample-app",
     "base_branch": "main"
   }
 }

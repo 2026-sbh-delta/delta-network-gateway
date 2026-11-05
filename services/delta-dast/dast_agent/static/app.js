@@ -3,6 +3,17 @@
   const labels = {PENDING:'',RUNNING:'점검 중',REPRODUCED:'취약',NOT_REPRODUCED:'안전',BLOCKED:'차단',INCONCLUSIVE:'불가'};
   let config, report, sample, stream, timer, started = 0, currentRun, viewing, projectId, projectList=[], latestFrame = {width:960,height:640}, cursorPoint, busy = false;
   const cards = new Map();
+  // 서버를 다시 띄우면 제어 토큰이 바뀐다. 403이면 새 토큰을 받아 한 번만 다시 보낸다.
+  async function post(url, init={}) {
+    const send=()=>fetch(url,{...init,method:'POST',headers:{...(init.headers||{}),'X-DAST-Token':config.csrf_token}});
+    const res=await send();
+    if(res.status===401){location.href='/login';return res;}
+    if(res.status!==403)return res;
+    const fresh=await fetch('/api/config').then(r=>r.ok?r.json():null).catch(()=>null);
+    if(!fresh||!fresh.csrf_token||fresh.csrf_token===config.csrf_token)return res;
+    config.csrf_token=fresh.csrf_token;
+    return send();
+  }
   function modelState(model) {
     if(!model.credential_present) return ['인증 필요','unavailable'];
     if(model.state==='available') return ['사용 가능','available'];
@@ -191,7 +202,7 @@
   }
   function phase(name,message) {
     const order=['planning','control','saving','revisiting','observing','done'];
-    const alias={validate:'planning',plan:'planning',browser:'control',input:'saving',revisit:'revisiting',observe:'observing',opening:'control',typing:'saving',submitting:'saving',persisting:'saving',evidence:'observing',finished:'done',complete:'done'};
+    const alias={validate:'planning',preflight:'planning',plan:'planning',browser:'control',input:'saving',revisit:'revisiting',observe:'observing',opening:'control',typing:'saving',submitting:'saving',persisting:'saving',evidence:'observing',finished:'done',complete:'done'};
     name=alias[name] || name;
     const index=order.indexOf(name);
     if(index>=0) document.querySelectorAll('[data-step]').forEach((el,i)=>{el.classList.toggle('done',i<index || name==='done');el.classList.toggle('active',i===index && name!=='done');});
@@ -216,8 +227,8 @@
     button.onclick=async ev=>{
       ev.stopPropagation();button.disabled=true;
       try{
-        const response=await fetch('/api/runs/'+encodeURIComponent(currentRun)+'/findings/'+encodeURIComponent(id)+'/reverify',
-          {method:'POST',headers:{'Content-Type':'application/json','X-DAST-Token':config.csrf_token},
+        const response=await post('/api/runs/'+encodeURIComponent(currentRun)+'/findings/'+encodeURIComponent(id)+'/reverify',
+          {headers:{'Content-Type':'application/json'},
            body:JSON.stringify({scenario:q('scenario').value,impact:q('impact').checked})});
         const data=await response.json();if(!response.ok) throw new Error(data.detail || '재검증을 시작하지 못했습니다.');
         log('재검증 시작: '+shortId(data.run_id)+' (같은 에이전트 맥락 이어받음)');loadSessions();await view(data.run_id);
@@ -248,7 +259,7 @@
     let state;
     try{state=await (await fetch(url+'/fix')).json();}catch{return;}
     if(start && ['none','failed'].includes(state.status)){
-      const r=await fetch(url+'/fix',{method:'POST',headers:{'X-DAST-Token':config.csrf_token}});
+      const r=await post(url+'/fix');
       if(!r.ok){q('fix-state').textContent=(await r.json()).detail || '수정안을 시작하지 못했습니다.';return;}
       state={status:'generating'};
     }
@@ -273,7 +284,7 @@
     pr.onclick=async()=>{
       if(!confirm('이 수정안으로 브랜치를 커밋하고 PR을 생성할까요?')) return;
       pr.disabled=true;q('fix-result').textContent='PR 생성 중…';
-      const r=await fetch(url+'/pr',{method:'POST',headers:{'Content-Type':'application/json','X-DAST-Token':config.csrf_token},body:JSON.stringify({approve:true})});
+      const r=await post(url+'/pr',{headers:{'Content-Type':'application/json'},body:JSON.stringify({approve:true})});
       const data=await r.json();
       if(!r.ok){q('fix-result').textContent='실패: '+(data.detail || r.status);pr.disabled=false;return;}
       showPr(data);loadVulns();
@@ -465,8 +476,8 @@
     q('chat-log').scrollTop=q('chat-log').scrollHeight;
     chatBusy=true;q('chat-send').disabled=true;let answer='';
     try{
-      const r=await fetch('/api/runs/'+encodeURIComponent(currentRun)+'/findings/'+encodeURIComponent(id)+'/chat',
-        {method:'POST',headers:{'Content-Type':'application/json','X-DAST-Token':config.csrf_token},body:JSON.stringify({message:text})});
+      const r=await post('/api/runs/'+encodeURIComponent(currentRun)+'/findings/'+encodeURIComponent(id)+'/chat',
+        {headers:{'Content-Type':'application/json'},body:JSON.stringify({message:text})});
       if(!r.ok) throw new Error((await r.json()).detail || r.status);
       const reader=r.body.getReader(),dec=new TextDecoder();let buf='';
       for(;;){
@@ -557,6 +568,10 @@
       if(shown) ripple();
     }else if(e.type==='state'){
       if(!fid) phase(e.phase,e.message);if(e.message) log(e.message,fid);
+    }else if(e.type==='priority'){
+      renderPriority(e.priority);
+      // 담당자가 먼저 보도록 점검이 끝나면 우선순위로 올라간다.
+      if(e.priority && !e.priority.error) q('priority').scrollIntoView({behavior:'smooth',block:'start'});
     }else if(e.type==='log'){
       log(e.message,fid);
     }else if(e.type==='probe'){
@@ -579,6 +594,7 @@
       if(rid && rid===selected) showFixFor(rid);
     }else if(e.type==='done'){
       if(e.results?.length) e.results.forEach(renderResult);
+      if(e.priority) renderPriority(e.priority);
       if(!selected && cards.size) select([...cards.keys()][0],false);
       else if(selected) showFixFor(selected);
       if(e.plan){
@@ -587,7 +603,7 @@
       }
       if(e.status==='error'){
         q('result').dataset.tone='error';
-        q('result-title').textContent='검사 일부 판정 불가';
+        q('result-title').textContent={preflight:'검사 시작 전 확인 실패',inconclusive:'일부 항목 판정 불가'}[e.error_kind] || '검사를 완료하지 못했습니다';
         q('result-description').textContent=e.error || '하나 이상의 항목에서 검증을 완료하지 못했습니다.';
       }
       const counts={};cards.forEach(c=>{counts[c.dataset.state]=(counts[c.dataset.state]||0)+1;});
@@ -603,8 +619,26 @@
       log(e.message || '실행 오류');done('검사에 실패했습니다. 실행 로그를 확인하세요.',true);q('session-status').textContent='실행 오류';
     }
   }
+  const LEVEL={urgent:'긴급',high:'높음',medium:'보통',low:'낮음'};
+  function renderPriority(p) {
+    q('priority').hidden=!p;q('priority-list').replaceChildren();
+    if(!p) return;
+    if(p.error){q('priority-summary').textContent='우선순위를 정하지 못했습니다: '+p.error;q('priority-meta').textContent='';return;}
+    q('priority-summary').textContent=p.summary || '';
+    q('priority-meta').textContent=p.duration_ms!=null?(p.duration_ms/1000).toFixed(1)+'초':'';
+    const titles=Object.fromEntries(((report && report.findings) || []).map(f=>[f.id,f.title]));
+    (p.items || []).forEach(item=>{
+      const li=document.createElement('li');li.dataset.level=item.level;
+      const head=document.createElement('strong');
+      const badge=document.createElement('span');badge.className='lv';badge.textContent=item.rank+'순위 · '+(LEVEL[item.level] || item.level);
+      const name=document.createElement('span');name.textContent=titles[item.finding_id] || item.finding_id;
+      head.append(badge,name);
+      const why=document.createElement('p');why.textContent=item.rationale;
+      li.append(head,why);q('priority-list').append(li);
+    });
+  }
   function resetView() {
-      busy=true;currentRun=null;q('run').textContent='새 점검';q('chat-panel').hidden=true;chatKey='';
+      busy=true;renderPriority(null);currentRun=null;q('run').textContent='새 점검';q('chat-panel').hidden=true;chatKey='';
       if(stream) stream.close();
       q('logs').replaceChildren();allLogs=[];document.querySelectorAll('.qi [data-stage]').forEach(s=>{s.dataset.s='pending';s.removeAttribute('title');});document.querySelectorAll('.stage-list span').forEach(s=>s.textContent='');cards.forEach(renderRing);views.forEach(v=>Object.assign(v,{frame:null,cursor:null,alert:false,activity:''}));selected=null;pinned=false;cards.forEach(c=>c.classList.remove('selected'));q('execution-alert').hidden=true;cards.forEach(c=>{c.dataset.state='PENDING';c.querySelector('.qi-badge').textContent='';});updateQueue();q('report-link').hidden=true;clearTimeout(reportTimer);showReport({status:''});q('screen').hidden=true;q('empty').hidden=false;q('cursor').hidden=true;
       q('evidence').textContent='실행 증거를 기다리고 있습니다.';q('checks').replaceChildren();
@@ -853,12 +887,12 @@
       return data;
     }
   }
-  async function sastStart(){
+  async function sastStart(chained=false){
     if(busy)return;
     q('sast-run').disabled=true;q('sast-to-dast').disabled=true;sastReport=null;
     q('sast-state').textContent='점검 중';q('sast-summary').textContent='SAST 점검을 시작합니다.';
     try{
-      const res=await fetch('/api/sast/scans',{method:'POST',headers:{'X-DAST-Token':config.csrf_token}});const scan=await res.json();
+      const res=await post('/api/sast/scans');const scan=await res.json();
       if(!res.ok)throw new Error(typeof scan.detail==='string'?scan.detail:'SAST를 시작하지 못했습니다.');
       sastRunId=scan.run_id;log('SAST 점검: '+sastRunId);
       const data=await sastPoll(sastRunId);
@@ -866,9 +900,22 @@
       const s=data.scan.summary||{}, t=s.timings||{}, n=(data.rows||[]).filter(r=>r.dast).length;
       q('sast-summary').textContent='결과 '+(data.rows||[]).length+'건 · DAST 대상 '+n+'건 · LLM 호출 '+((s.llm||{}).llm_calls||0)+'회 · '+(t.total!=null?t.total+'초':'');
       sastReport=data.dast_report;q('sast-to-dast').disabled=!sastReport;
-      if(sastReport){useReport(structuredClone(sastReport));q('activity').textContent='SAST 결과를 DAST 입력으로 불러왔습니다. "이 결과로 DAST 시작"을 누르세요.';}
-    }catch(err){q('sast-state').textContent='실패';q('sast-summary').textContent=err.message;log(err.message);}
+      if(sastReport){useReport(structuredClone(sastReport));q('activity').textContent=chained?'SAST 결과로 DAST를 시작합니다.':'SAST 결과를 DAST 입력으로 불러왔습니다. "이 결과로 DAST 시작"을 누르세요.';}
+      else if(chained)q('activity').textContent='SAST 결과에 DAST로 검증할 항목이 없습니다.';
+    }catch(err){q('sast-state').textContent='실패';q('sast-summary').textContent=err.message;log(err.message);
+      if(chained)q('activity').textContent='SAST 단계에서 멈췄습니다: '+err.message;}
     finally{q('sast-run').disabled=false;}
+  }
+  // 검사 시작: SAST로 소스를 점검하고, DAST 대상이 있으면 그 결과로 바로 DAST를 이어 돌린다.
+  let sastReady=false, chaining=false;
+  async function chain(){
+    if(busy||chaining)return;
+    if(!sastReady){q('activity').textContent='SAST 서버에 연결되지 않아 검사를 시작할 수 없습니다.';return;}
+    chaining=true;q('run').disabled=true;
+    try{
+      await sastStart(true);
+      if(sastReport)await run(structuredClone(sastReport),{sast_run_id:sastRunId});
+    }finally{chaining=false;if(!busy)q('run').disabled=false;}
   }
   async function run(reportOverride, extra={}) {
     try {
@@ -876,7 +923,7 @@
       useReport(JSON.parse(q('report-input').value));
       resetView();
       phase('planning','SAST 입력과 등록된 검사 경로를 확인합니다.');
-      const response=await fetch('/api/runs',{method:'POST',headers:{'Content-Type':'application/json','X-DAST-Token':config.csrf_token},body:JSON.stringify({scenario:q('scenario').value,planner:q('planner').value,report,concurrency:Number(q('concurrency').value),impact:q('impact').checked,project_id:projectId,...extra})});
+      const response=await post('/api/runs',{headers:{'Content-Type':'application/json'},body:JSON.stringify({scenario:q('scenario').value,planner:q('planner').value,report,concurrency:Number(q('concurrency').value),impact:q('impact').checked,payload_id:q('payload').value,project_id:projectId,...extra})});
       const data=await response.json();
       if(!response.ok) throw new Error(typeof data.detail==='string'?data.detail:JSON.stringify(data.detail || data));
       log('점검 세션: '+data.run_id);loadSessions();
@@ -889,14 +936,15 @@
   }
   try{const saved=localStorage.getItem('dast-concurrency');if(saved)q('concurrency').value=saved;}catch{}
   q('concurrency').addEventListener('change',()=>{try{localStorage.setItem('dast-concurrency',q('concurrency').value);}catch{}});
-  q('run').addEventListener('click',()=>run());
-  q('sast-run').addEventListener('click',sastStart);
+  q('payload').addEventListener('change',()=>{try{localStorage.setItem('dast-payload',q('payload').value);}catch{}});
+  q('run').addEventListener('click',chain);
+  q('sast-run').addEventListener('click',()=>sastStart());
   q('sast-to-dast').addEventListener('click',()=>{if(sastReport&&!busy)run(structuredClone(sastReport),{sast_run_id:sastRunId});});
   fetch('/api/sast/status').then(r=>r.json()).then(s=>{
     q('sast-repo').textContent=s.repo?'· 소스 '+s.repo:'';
     if(!s.configured){q('sast-summary').textContent='SAST 연결이 설정되지 않았습니다(DELTA_SAST_TOKEN).';return;}
     if(!s.reachable){q('sast-summary').textContent='SAST 서버에 연결하지 못했습니다.';return;}
-    q('sast-run').disabled=false;q('sast-summary').textContent='소스를 정적 점검한 뒤 결과를 DAST로 넘깁니다.';
+    sastReady=true;q('sast-run').disabled=false;q('sast-summary').textContent='소스를 정적 점검한 뒤 결과를 DAST로 넘깁니다.';
   }).catch(()=>{q('sast-summary').textContent='SAST 상태를 확인하지 못했습니다.';});
   q('rerun').addEventListener('click',()=>{if(report)run(structuredClone(report));});
   q('project').addEventListener('change',()=>selectProject(q('project').value));
@@ -907,7 +955,7 @@
   q('project-form').addEventListener('submit',async ev=>{
     ev.preventDefault();q('pf-msg').textContent='';
     const body={name:q('pf-name').value.trim(),repo_url:q('pf-repo').value.trim(),prod_url:q('pf-prod').value.trim(),target_id:q('pf-target').value,description:q('pf-desc').value.trim()};
-    const r=await fetch('/api/projects',{method:'POST',headers:{'Content-Type':'application/json','X-DAST-Token':config.csrf_token},body:JSON.stringify(body)});
+    const r=await post('/api/projects',{headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const data=await r.json();
     if(!r.ok){q('pf-msg').textContent=typeof data.detail==='string'?data.detail:'입력을 확인하세요.';return;}
     q('project-form').hidden=true;q('project-form').reset();await loadProjects();selectProject(data.id);
@@ -915,7 +963,7 @@
   q('fix-close').addEventListener('click',()=>{q('fix-panel').hidden=true;});
   q('report-make').addEventListener('click',async()=>{
     if(!currentRun) return;
-    await fetch('/api/runs/'+encodeURIComponent(currentRun)+'/report',{method:'POST',headers:{'X-DAST-Token':config.csrf_token}});
+    await post('/api/runs/'+encodeURIComponent(currentRun)+'/report');
     watchReport(currentRun);
   });
   setInterval(loadSessions,4000);
@@ -932,7 +980,9 @@
   });
   q('planner').addEventListener('change',()=>{if(config)q('plan-mode').textContent=modeLabel(q('planner').value);});
   window.addEventListener('resize',renderCursor);
-  fetch('/api/config').then(r=>{if(!r.ok)throw new Error('서버 설정을 읽지 못했습니다.');return r.json();}).then(c=>{
+  // 공개 주소(HTTPS)로 들어왔으면 로그아웃을 보이고, 서버 안에서만 열리는 실습 게시판 링크는 숨긴다
+  if(location.protocol==='https:'){q('logout').hidden=false;q('board-link').hidden=true;}
+  fetch('/api/config').then(r=>{if(r.status===401){location.href='/login';throw new Error('로그인이 필요합니다.');}if(!r.ok)throw new Error('서버 설정을 읽지 못했습니다.');return r.json();}).then(c=>{
     config=c;sample=c.sample_report;useReport(structuredClone(sample));
     renderModels(c.models);
     // 서버(OIDC)인지 로컬(Claude 로그인)인지 화면에서 바로 구분한다
@@ -946,10 +996,12 @@
       pill.title='LLM 실행 위치와 인증 방식. 서버는 보안 도구 호스트에서 OIDC 단기 토큰, 로컬은 이 컴퓨터의 Claude 로그인을 쓴다';
     }
     q('planner').value=c.default_planner || 'agent';
+    let savedPayload=null;try{savedPayload=localStorage.getItem('dast-payload');}catch{}
+    q('payload').value=[savedPayload,c.default_payload].find(v=>v&&[...q('payload').options].some(o=>o.value===v)) || 'bsod_v1';
     q('plan-mode').textContent=modeLabel(q('planner').value);
     q('target-origin').textContent=c.target_origin || 'http://127.0.0.1:8766';
     q('board-link').href=q('target-origin').textContent+'/vulnerable/board';
-    q('run').disabled=false;q('activity').textContent='SAST 결과를 확인한 뒤 검사를 시작하세요.';
+    q('run').disabled=false;q('activity').textContent='검사 시작을 누르면 SAST → DAST를 차례로 실행합니다.';
     if(c.browser_available===false)q('activity').textContent='브라우저 실행 파일을 찾지 못했습니다. 서버 실행 설정을 확인하세요.';
     loadProjects().then(()=>{if(/^#run=/.test(location.hash)){showView('project');resume();}else showView('dashboard');});
   }).catch(err=>{q('activity').textContent=err.message;q('source-label').textContent='서버 연결 실패';});

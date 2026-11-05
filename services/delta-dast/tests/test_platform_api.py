@@ -36,7 +36,7 @@ def fixture(tmp_path, monkeypatch):
     return registry, live, calls
 
 
-def test_idempotent_requests_are_pinned_and_never_auto_fix(tmp_path, monkeypatch):
+def test_idempotent_requests_are_pinned_and_prepare_a_fix_proposal(tmp_path, monkeypatch):
     registry, live, calls = fixture(tmp_path, monkeypatch)
     body, run_id = payload(), str(uuid4())
 
@@ -44,7 +44,9 @@ def test_idempotent_requests_are_pinned_and_never_auto_fix(tmp_path, monkeypatch
         results = await asyncio.gather(*(registry.submit(run_id, body) for _ in range(4)))
         assert all(r["binding"] == body["binding"] for r in results)
         assert len(calls) == 1
-        assert calls[0][0].auto_fix is False and calls[0][0].impact is False
+        # 재현되면 수정안만 미리 만든다. PR 은 사람이 '수정 적용'을 고른 뒤 오케스트레이터가 요청할 때만 올린다
+        assert calls[0][0].auto_fix is True and calls[0][0].impact is True
+        assert calls[0][1]["commit"] == "a" * 40
         assert calls[0][0].target_id == "local-fixture"
         assert calls[0][0].planner == "agent"
         other = copy.deepcopy(body)
@@ -144,6 +146,14 @@ def test_http_cancel_waits_for_running_inspector_cleanup(tmp_path, monkeypatch):
             cleaned.set()
 
     monkeypatch.setattr(server, "orchestrate", inspector)
+
+    async def ready(*args, **kwargs):
+        return True
+
+    # 사전 확인(LLM 인증·브라우저·대상 응답)은 통과시키고 취소 동작만 본다
+    monkeypatch.setattr(server, "_claude_auth", lambda: {"logged_in": True, "method": "test"})
+    monkeypatch.setattr(server, "browser_available", ready)
+    monkeypatch.setattr(server, "check_target", ready)
     monkeypatch.setenv("DAST_PLATFORM_TOKEN", "test-only-platform-token")
     monkeypatch.setenv("DAST_PLATFORM_TARGET_ID", "local-fixture")
     headers = {"Authorization": "Bearer test-only-platform-token"}
@@ -159,3 +169,157 @@ def test_http_cancel_waits_for_running_inspector_cleanup(tmp_path, monkeypatch):
     with TestClient(server.create_app(runs_dir=tmp_path), base_url="http://127.0.0.1:8765", headers=headers) as client:
         assert client.get(path).json()["status"] == "cancelled"
         assert client.put(path, json=body).status_code == 409
+
+
+def test_gcp_defaults_to_the_persistent_staging_target(tmp_path, monkeypatch):
+    """GCP 는 실행마다 Cloud Run 을 만들지 않고 상시 스테이징(staging-gcp)을 점검한다. 주소는 스테이징 도구에서 받는다."""
+    from dast_agent import staging_link
+
+    registry, live, calls = fixture(tmp_path, monkeypatch)
+    monkeypatch.setattr(staging_link, "origin", lambda cloud, timeout=15: "http://136.0.0.1")
+    body = payload()
+    body["binding"].update(execution_cloud="gcp", target_url="http://136.0.0.1", build_id="r1-build",
+                           sast_run_id="r1-sast", runtime_revision="delta-lab-staging-00002-abc")
+    run_id = str(uuid4())
+    result = asyncio.run(registry.submit(run_id, body))
+    assert result["status"] == "running"
+    assert calls[0][0].target_id == "staging-gcp" and calls[0][0].auto_fix is True
+    # 스테이징 도구가 주는 주소와 다른 곳은 점검하지 않는다
+    other = payload()
+    other["binding"].update(execution_cloud="gcp", target_url="http://203.0.113.9")
+    with pytest.raises(ValueError):
+        asyncio.run(registry.submit(str(uuid4()), other))
+
+
+def test_platform_limit_checks_top_candidates_and_reports_the_rest_as_truncated(tmp_path, monkeypatch):
+    registry, live, calls = fixture(tmp_path, monkeypatch)
+    monkeypatch.setenv("DAST_PLATFORM_MAX_FINDINGS", "1")
+    run_id = str(uuid4())
+    view = asyncio.run(registry.submit(run_id, payload()))
+    # 저장형·확정 후보 1건만 점검하고, 나머지는 점검하지 않았다고 남긴다(통과가 아니다)
+    assert len(calls[0][0].report["findings"]) == 1 and len(view["finding_ids"]) == 1
+    assert view["eligible_count"] == 3 and view["findings_truncated"] is True
+
+
+def test_platform_run_replies_to_the_sast_scan_that_produced_it(tmp_path, monkeypatch):
+    """플랫폼 경로도 점검이 끝나면 binding 의 SAST 점검 ID 로 재현 결과를 회신한다(통합하며 빠졌던 연결)."""
+    import time
+    from fastapi.testclient import TestClient
+    import dast_agent.server as server
+    from dast_agent import sast_link
+
+    async def inspector(finding, *args, **kwargs):
+        return {"finding_id": finding.id, "title": finding.title, "status": "REPRODUCED",
+                "message": "실행 관측", "evidence": {}, "duration_ms": 1}
+
+    async def ready(*args, **kwargs):
+        return True
+
+    replies = []
+
+    def feedback(sast_run_id, results):
+        replies.append((sast_run_id, [r["finding_id"] for r in results]))
+        return [{"fingerprint": "2d3b1d57b297b50cf62704e6cb34a5be", "outcome": "ineffective", "detail": ""}]
+
+    monkeypatch.setattr(server, "orchestrate", inspector)
+    monkeypatch.setattr(server, "_claude_auth", lambda: {"logged_in": True, "method": "test"})
+    monkeypatch.setattr(server, "browser_available", ready)
+    monkeypatch.setattr(server, "check_target", ready)
+    monkeypatch.setattr(sast_link, "feedback", feedback)
+    monkeypatch.setenv("DAST_PLATFORM_TOKEN", "test-only-platform-token")
+    monkeypatch.setenv("DAST_PLATFORM_TARGET_ID", "local-fixture")
+    monkeypatch.setenv("DAST_PLATFORM_MAX_FINDINGS", "1")
+    run_id, body = str(uuid4()), payload()
+    with TestClient(server.create_app(runs_dir=tmp_path), base_url="http://127.0.0.1:8765",
+                    headers={"Authorization": "Bearer test-only-platform-token"}) as client:
+        assert client.put(f"/api/platform/runs/{run_id}", json=body).status_code == 200
+        for _ in range(100):
+            if client.get(f"/api/platform/runs/{run_id}").json()["status"] == "done":
+                break
+            time.sleep(0.05)
+        view = client.get(f"/api/runs/{run_id}/view").json()
+    assert replies == [(body["binding"]["sast_run_id"], ["sast-2d3b1d57b297b50cf62704e6cb34a5be"])]
+    assert view["sast_feedback"][0]["outcome"] == "ineffective"
+
+
+def test_demo_prefers_the_pinned_path_within_the_same_grade(tmp_path, monkeypatch):
+    """시연 대상은 SARIF 순서가 아니라 지문으로 고정한다. 같은 등급(저장형·확정) 안에서만 앞당기고, 등급은 넘지 않는다."""
+    registry, live, calls = fixture(tmp_path, monkeypatch)
+    monkeypatch.setenv("DAST_PLATFORM_MAX_FINDINGS", "1")
+    body = payload()
+    results = body["report"]["runs"][0]["results"]
+    from dast_agent.adapters import sarif_targets
+    stored = [r for r in sarif_targets(body["report"]) if r["ruleId"] == "delta.xss.stored"]
+    results.reverse()  # SARIF 순서가 바뀌어도
+    body["binding"]["sast_evidence_sha256"] = fingerprint(body["report"])
+    for wanted in (stored[0], stored[1]):
+        fp = wanted["partialFingerprints"]["deltaFlow/v1"]
+        monkeypatch.setenv("DAST_PLATFORM_PREFER", fp)
+        calls.clear()
+        asyncio.run(registry.submit(str(uuid4()), body))
+        assert [f["id"] for f in calls[0][0].report["findings"]] == ["sast-" + fp]
+    # 반사형(낮은 등급)을 지정해도 저장형보다 앞서지 않는다
+    reflected = next(r for r in sarif_targets(body["report"]) if r["ruleId"] == "delta.xss.reflected")
+    monkeypatch.setenv("DAST_PLATFORM_PREFER", reflected["partialFingerprints"]["deltaFlow/v1"])
+    calls.clear()
+    asyncio.run(registry.submit(str(uuid4()), body))
+    assert calls[0][0].report["findings"][0]["id"] != "sast-" + reflected["partialFingerprints"]["deltaFlow/v1"]
+
+
+def test_platform_runs_use_direct_check_unless_turned_off(tmp_path, monkeypatch):
+    """파이프라인 경로는 기본으로 바로 검사(반사 확인·새 세션 재방문 생략)를 쓴다. 0 이면 기존 절차."""
+    registry, live, calls = fixture(tmp_path, monkeypatch)
+    asyncio.run(registry.submit(str(uuid4()), payload()))
+    assert calls[0][1]["direct"] is True
+    monkeypatch.setenv("DAST_PLATFORM_DIRECT", "0")
+    asyncio.run(registry.submit(str(uuid4()), payload()))
+    assert calls[1][1]["direct"] is False
+
+
+def test_reverify_carries_the_reproduced_finding_and_its_hypothesis(tmp_path, monkeypatch):
+    """수정 후 재검증: 1차에서 재현된 항목은 이번 SAST 가 더는 보고하지 않아도 다시 점검하고, 가설은 재사용한다."""
+    monkeypatch.setenv("DAST_PLATFORM_MAX_FINDINGS", "1")
+    registry, live, calls = fixture(tmp_path, monkeypatch)
+    first, second = str(uuid4()), str(uuid4())
+    body = payload()
+
+    async def scenario():
+        await registry.submit(first, body)
+        report = calls[0][0].report
+        hit = report["findings"][0]
+        history = {first: {"report": report, "results": [
+            {"finding_id": hit["id"], "status": "REPRODUCED", "evidence": {"hypothesis": {"page_hint": "글쓰기"}}}]}}
+        registry.history = history.get
+        fixed = payload()
+        fixed["report"]["runs"][0]["results"] = []  # 수정 뒤 SAST 가 이 경로를 더 보고하지 않는다
+        fixed["binding"]["sast_evidence_sha256"] = fingerprint(fixed["report"])
+        view = await registry.submit(second, fixed | {"reverify_of": first})
+        args, extra, _ = calls[1]
+        assert [f["id"] for f in args.report["findings"]] == [hit["id"]]
+        assert extra["hypotheses"] == {hit["id"]: {"page_hint": "글쓰기"}}
+        assert extra["reverify_of"] == {"run_id": first}
+        assert view["finding_ids"] == [hit["id"]] and view["eligible_count"] == 1
+
+    asyncio.run(scenario())
+
+
+def test_reverify_without_a_first_record_is_rejected(tmp_path, monkeypatch):
+    registry, _, calls = fixture(tmp_path, monkeypatch)
+
+    async def scenario():
+        with pytest.raises(ValueError):
+            await registry.submit(str(uuid4()), payload() | {"reverify_of": str(uuid4())})
+        assert calls == []
+
+    asyncio.run(scenario())
+
+
+def test_binding_accepts_a_pinned_fe_be_image_bundle_and_rejects_tags():
+    from dast_agent.platform_api import Binding
+
+    base = payload()["binding"]
+    digest = "sha256:" + "c" * 64
+    ok = Binding.model_validate(base | {"images": {"frontend": "registry/fe@" + digest, "backend": base["image"]}})
+    assert ok.images["frontend"].endswith(digest)
+    with pytest.raises(ValueError):
+        Binding.model_validate(base | {"images": {"frontend": "registry/fe:latest"}})
