@@ -4,6 +4,8 @@
 
 ## 승인과 진행 상태
 
+- 현재 상태(2026-11-05): 사용자 요청으로 Compose FE/BE 컨테이너만 내리고 자동 시작을 해제했다. 통합 EC2 running/RDS available, 이미지/데이터 보존과 공개 API502를 확인했다. [후속 중지와 재개 절차](aws-compose-consolidation.md#2026-11-05-후속-operation-compose만-내리고-ec2-보존)를 따른다. 아래 배포 성공 기록은 중지 전 이력이다.
+- 후속 Compose 전환 완료(2026-11-05): 사용자 `가자잇` 승인으로 기존 FE EC2 한 대에 FE/BE 컨테이너를 실제 배포하고 기존 BE EC2/루트 EBS를 제거했다. ALB/RDS/데이터를 유지하고 공개 CRUD/BE 및 호스트 재시작/보안/로그와 최종 Plan No changes를 확인했다. 현재 운영과 상세 결과는 [단일 EC2 Compose 기록](aws-compose-consolidation.md)을 따른다. 아래 두 EC2/native 내용은 최초 배포의 기록이다.
 - 사용자 요청: `terraform/workload/`에서 `2026-sbh-delta/delta-sample-app`을 Frontend EC2, Backend EC2, RDS PostgreSQL로 배포한다.
 - 접속 범위: 사용자가 `인터넷에서 접속하도록 공개`를 선택했다.
 - Ideation: 공개 ALB, 사설 FE/BE EC2 각 1대, 사설 RDS 1개와 앱의 PostgreSQL 연동을 제안했고 사용자 `ㄱㄱ`으로 승인받았다.
@@ -12,7 +14,7 @@
 - 완료: U1~U3 구현/Test/Review와 U4 실제 Apply, DB 초기화, FE/BE 개별 배포, 외부 HTTP/메모 보존, 실제 DB TLS/IAM/로그 및 최종 Plan 검증을 수행했다. 실제 배포 산출물은 e29af544를 기준으로 한 source_dirty=true 스냅샷이다.
 - 실제 Terraform Apply: 종료0, 59개 추가/기존 변경과 삭제0. 최종 Plan은 No changes/종료0이다. 새 FE/BE와 RDS의 실제 동작을 검증했다. Git 게시 및 원격 CI 상태는 Git 이력을 따른다.
 
-## 실제 배포 결과
+## 최초 두 EC2 배포 결과
 
 공개 주소: [Delta Notes](http://delta-lab-notes-alb-1242820262.ap-northeast-2.elb.amazonaws.com). 현재 데모용 HTTP이며 커스텀 도메인/HTTPS는 구성하지 않았다.
 

@@ -10,7 +10,9 @@
 
 ## 현재 상태
 
-- Sample App EC2/RDS 배포 완료(2026-11-05): 사용자 승인 및 x86 지시로 공개 ALB, 사설 t3.small FE/BE 각 1대와 db.t3.micro PostgreSQL 18.3, 단일 NAT와 개별 배포 도구를 적용했다. 추가59개/기존 변경과 삭제0, 기존 네트워크 ID와 GCP 경로를 유지한다. [공개 앱](http://delta-lab-notes-alb-1242820262.ap-northeast-2.elb.amazonaws.com)의 CRUD/BE 재시작 후 보존과 실제 TLS1.3/평문 거부/최소 DB 및 IAM 권한/양쪽 CloudWatch 로그를 검증했다. mock33개/Python9개/앱27개 통과, 최종 Plan No changes/종료0. Git 게시와 원격 CI 상태는 Git 이력을 따른다. [설계와 실제 검증](ai-dlc/aws-sample-app.md)
+- AWS Compose 중지/EC2 보존(2026-11-05): 사용자 요청으로 FE/BE 컨테이너 두 개와 프로젝트 네트워크를 내리고 메인 Compose 서비스 자동 시작을 해제했다. 기존 x86 t3.small EC2 running/RDS available, 두 이미지와 데이터 보존 및 공개 API502를 실제 확인했다. 중지 작업에서는 Terraform 변경/Plan/Apply를 실행하지 않았다. Git 게시 상태는 Git 이력을 따른다. 앞선 단일 EC2 전환/검증 이력과 [중지 결과 및 재개 절차](ai-dlc/aws-compose-consolidation.md)를 구분한다.
+
+- Sample App EC2/RDS 최초 배포(2026-11-05): 사용자 승인 및 x86 지시로 공개 ALB, 사설 t3.small FE/BE 각 1대와 db.t3.micro PostgreSQL 18.3, 단일 NAT와 개별 배포 도구를 적용했다. 추가59개/기존 변경과 삭제0, 기존 네트워크 ID와 GCP 경로를 유지한다. [공개 앱](http://delta-lab-notes-alb-1242820262.ap-northeast-2.elb.amazonaws.com)의 CRUD/BE 재시작 후 보존과 실제 TLS1.3/평문 거부/최소 DB 및 IAM 권한/양쪽 CloudWatch 로그를 검증했다. mock33개/Python9개/앱27개 통과, 최종 Plan No changes/종료0. Git 게시와 원격 CI 상태는 Git 이력을 따른다. [설계와 실제 검증](ai-dlc/aws-sample-app.md) 이후 실제 운영은 [단일 EC2 Compose](ai-dlc/aws-compose-consolidation.md)로 전환했다.
 
 - 관리·이전 시연 도메인 분리와 온프레미스 연결(2026-11-05): `https://delta.mungji.com` 관리 도메인·TLS·Origin 적용과 실제 화면을 확인했다. 제한된 Tailscale 경로로 AWS Worker의 실제 K3s 앱 실행·HTTP·정리를 검증했다. demo 도메인은 고객 앱 운영 LB 준비 전이어서 미연결, 팀 DAST 공격 검사·중앙 로그는 후속이다. 소스 PR 병합/릴리스와 실제 적용을 구분한다. [검증·원복·남은 작업](ai-dlc/domain-onprem-connect.md)
 
@@ -80,6 +82,8 @@
 
 - [Sample App의 EC2/RDS 배포와 승인 상태](ai-dlc/aws-sample-app.md)
 
+- [AWS FE/BE의 단일 x86 EC2 Compose 전환안](ai-dlc/aws-compose-consolidation.md)
+
 - [GCP 중앙 네트워크와 AWS 로그 수집 요구사항/구현 계획](ai-dlc/gcp-central-network.md)
 - [ANF 비용 절감과 검사 경로 원복](ai-dlc/anf-cost-mode.md)
 
@@ -116,7 +120,9 @@
 
 ## 다음 작업
 
-Sample App의 실제 배포와 외부 HTTP/메모 보존/TLS/로그 및 최종 No changes 검증을 완료했다. 이후 개별 릴리스는 [운영 절차](../deploy/workload/README.md)를 따른다. Git 게시와 원격 CI 상태는 Git 이력을 따르며 첫 배포의 실제 이전 버전 rollback은 이전 릴리스가 없어 미실행이다. 기존 네트워크와 state, GCP 경로 및 별도 GCP 작업 변경을 보존한다. [최종 상태](ai-dlc/aws-sample-app.md)
+AWS 앱은 사용자 요청으로 Compose를 내린 상태이며 EC2/RDS/이미지/데이터는 유지한다. 재개가 필요하면 [중지 및 재개 절차](ai-dlc/aws-compose-consolidation.md#2026-11-05-후속-operation-compose만-내리고-ec2-보존)의 `sudo systemctl enable --now delta-compose`를 사용한다. 중지 작업에서는 재개와 추가 Terraform Apply를 실행하지 않았다. Git 게시 상태는 Git 이력을 따른다.
+
+AWS Sample App 최초 두 EC2의 실제 배포/검증은 [기존 기록](ai-dlc/aws-sample-app.md)에 보존한다. 이후 단일 EC2 Compose 전환을 완료했고 현재는 위 사용자 요청으로 앱만 중지했다. 기존 네트워크/state/GCP 경로를 유지한다.
 
 GCP `term2-delta`의 기반, NCC/HA VPN과 AWS 중앙 로그 수집을 실제 적용하고 인터넷 허용/거부, 초기 L7 탐지, 양방향 사설 HTTP와 원본 로그 도착을 검증했다. 사용자 요청으로 현재 GCP Endpoint와 AWS ANF는 disabled를 유지한다. 재개할 때는 [GCP Runbook](../terraform/network-security-gcp/RUNBOOK.md)의 단계별 Plan과 통신 확인을 따른다. AWS/GCP 공통 재개 자동화와 AWS ANF의 GCP 허용 규칙 보완, 물리 터널/Zone 장애 검증은 후속이다.
 
