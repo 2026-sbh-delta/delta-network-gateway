@@ -12,6 +12,24 @@ def render():
 
 
 class OnpremRuntimeTest(unittest.TestCase):
+    def test_registered_tailscale_sources_are_exact_hosts(self):
+        objects = render().resources(["100.80.225.69", "100.111.219.79"])["items"]
+        policy = next(
+            o
+            for o in objects
+            if o["kind"] == "NetworkPolicy" and o["metadata"]["name"] == "sandbox"
+        )
+        self.assertEqual(
+            policy["spec"]["ingress"][0]["from"],
+            [
+                {"ipBlock": {"cidr": "100.80.225.69/32"}},
+                {"ipBlock": {"cidr": "100.111.219.79/32"}},
+            ],
+        )
+        for value in ("100.63.255.255", "100.128.0.1", "100.64.0.0/10"):
+            with self.subTest(source=value), self.assertRaises(ValueError):
+                render().resources([value])
+
     def test_only_scanner_and_worker_may_reach_one_bounded_sandbox(self):
         objects = render().resources(["10.80.1.70", "172.31.25.180"])["items"]
         self.assertFalse(any(o["kind"].startswith("Cluster") for o in objects))

@@ -1,6 +1,10 @@
 output "platform_url" {
-  value       = "https://${aws_cloudfront_distribution.platform.domain_name}"
+  value       = "https://${var.custom_domain == null ? aws_cloudfront_distribution.platform.domain_name : var.custom_domain}"
   description = "팀 접속용 HTTPS 주소"
+}
+output "cloudfront_url" {
+  value       = "https://${aws_cloudfront_distribution.platform.domain_name}"
+  description = "DNS CNAME 대상 확인과 복구용 기존 CloudFront 주소"
 }
 output "instance_id" {
   value       = aws_instance.app.id

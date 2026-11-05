@@ -13,7 +13,7 @@ mountpoint -q /srv/delta-platform
 if [ -f /etc/delta-platform/deploy.env ]; then
   cp /etc/delta-platform/deploy.env /etc/delta-platform/previous-deploy.env
 fi
-aws ssm get-parameter --region "$region" --name "$parameter" --with-decryption --query Parameter.Value --output text | python3 "$release_dir/scripts/write-runtime.py" "$platform_image" "$postgres_image" "$bucket" "$region"
+aws ssm get-parameter --region "$region" --name "$parameter" --with-decryption --query Parameter.Value --output text | python3 "$release_dir/scripts/read-runtime.py" --parameter "$parameter" --region "$region" | python3 "$release_dir/scripts/write-runtime.py" "$platform_image" "$postgres_image" "$bucket" "$region"
 registry="${platform_image%%/*}"
 aws ecr get-login-password --region "$region" | docker login --username AWS --password-stdin "$registry"
 ln -sfn "$release_dir" /opt/delta-platform/current

@@ -13,6 +13,24 @@ variable "region" {
   default     = "ap-northeast-2"
   description = "배포 리전"
 }
+variable "custom_domain" {
+  type        = string
+  default     = null
+  description = "관리 플랫폼의 선택적 HTTPS 호스트명. 인증서 ARN과 함께 지정"
+  validation {
+    condition     = var.custom_domain == null ? true : can(regex("^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$", var.custom_domain))
+    error_message = "와일드카드·URL·대문자가 없는 DNS 호스트명을 사용하세요."
+  }
+}
+variable "custom_domain_certificate_arn" {
+  type        = string
+  default     = null
+  description = "custom_domain을 포함하는 발급 완료된 동일 계정 us-east-1 ACM 인증서 ARN"
+  validation {
+    condition     = var.custom_domain_certificate_arn == null ? true : can(regex("^arn:aws:acm:us-east-1:[0-9]{12}:certificate/[0-9a-f-]+$", var.custom_domain_certificate_arn))
+    error_message = "CloudFront에는 us-east-1 ACM 인증서 ARN이 필요합니다."
+  }
+}
 variable "availability_zone" {
   type        = string
   description = "앱·데이터 디스크·NAT를 배치할 AZ"
