@@ -2,6 +2,8 @@
 
 기준일: 2026-11-05 (Asia/Seoul).
 
+2026-11-06 후속: 사용자 승인으로 중앙 계정의 Finding을 EventBridge와 `/delta/security/guardduty`를 거쳐 플랫폼 `/delta-cp/central/aws`로 전달하는 경로를 실제 적용했다. 샘플1건의 원본/중앙 일치와 기존 탐지 설정 보존 및 중앙 최종 Plan No changes를 확인했다. 기존 활성화 결과는 아래에 보존하고, 추가 경로의 승인/구현/검증 기록은 [GuardDuty 로그 전달](aws-guardduty-logging.md)을 따른다.
+
 ## 승인과 현재 상태
 
 - 사용자 요청: `terraform/workload`와 `terraform/network-security`의 GuardDuty 활성화.

@@ -56,6 +56,8 @@ RAM 조직 공유 활성화는 조직 관리 계정에서 수행하며 `AWSServi
 | guardduty_enabled | bool | `true` | 계정/리전 기본 탐지. false는 detector와 findings를 보존한 일시 중지 |
 | guardduty_finding_publishing_frequency | string | `SIX_HOURS` | 후속 finding 알림 주기. FIFTEEN_MINUTES/ONE_HOUR/SIX_HOURS |
 | guardduty_features | map(object) | 기능별 기본값 표 참고 | 필수 7개 선택 기능과 추가 설정의 명시적 상태 |
+| `guardduty_findings_forwarding_enabled` | `bool` | `true` | 플랫폼 구독만 제어. false여도 원본 Finding 저장과 탐지 유지 |
+| `guardduty_findings_destination_arn` | `string` | `arn:aws:logs:ap-northeast-2:616723161368:destination:delta-platform-logs` | 같은 리전의 플랫폼 계정 논리 Destination |
 | `shared_account_ids` | `set(string)` | `[]` | TGW와 Firewall을 공유할 소비자 계정 |
 | `allow_external_principals` | `bool` | `false` | Organization 밖 RAM 공유 허용 |
 | `spoke_attachments` | `map(object)` | `{}` | 소비자 VPC 연결 및 수락 관리 계약 |
@@ -183,6 +185,7 @@ GCP 네트워크는 interface 0/1의 서로 다른 공인 IP와 동일 Cloud Rou
 | --- | --- |
 | `central_account_id` | 인증된 중앙 계정 ID |
 | guardduty | 계정/리전 detector ID/ARN, 활성 상태, 게시 주기와 관리하는 기능/추가 설정 |
+| `guardduty_findings` | 기업 원본 Finding 로그 그룹, EventBridge 규칙과 플랫폼 구독 구성 |
 | `region` | 중앙 Region |
 | `az_ids` | 지원하는 물리적 AZ IDs |
 | `tgw_id` | 공유 TGW ID |
@@ -202,6 +205,18 @@ GCP 네트워크는 interface 0/1의 서로 다른 공인 IP와 동일 Cloud Rou
 | `cidr_service_map` | 로그 보강용 입력 메타데이터 |
 
 `vpn_handoff`는 network_key, remote_cidrs, aws_cidrs_to_advertise, gcp_interface, Customer Gateway/VPN/Attachment ID, Gateway IP, 고객 ASN, IKE/암호화/무결성/DH 설정과 두 터널의 outside/inside IP 및 AWS ASN을 제공한다. `aws_cidrs_to_advertise`는 AWS에서 원격 측으로 광고할 업무 VPC CIDR 목록이다. PSK와 `customer_gateway_configuration`은 출력하지 않는다.
+
+### `guardduty_findings` 출력 내부 속성
+
+| 속성명 | 역할 |
+| --- | --- |
+| `log_group_name` | 기업 원본 그룹 `/delta/security/guardduty` |
+| `log_group_arn` | 원본 그룹 ARN |
+| `event_rule_name` | 기본 버스의 GuardDuty Finding 규칙 이름 |
+| `event_rule_arn` | 규칙 ARN |
+| `destination_arn` | 기존 플랫폼 논리 Destination ARN |
+| `forwarding_enabled` | 구독 필터 생성 구성. 실제 전송 성공 여부는 별도 검증 |
+| `subscription_filter_name` | `delta-platform-central`. 전달 토글 false이면 null |
 
 ## S3 backend를 준비하고 실행하기
 
@@ -272,6 +287,16 @@ GCP에서 Account B Backend로 가는 실제 요청/응답의 단계별 설명�
 - HOME_NET은 Inspection, 등록된 ALB/Backend/Client VPC, GCP/온프레미스 CIDR의 합집합이다. Rule Group의 EXTERNAL_NET을 전체 IPv4로 명시해 HOME_NET 간 통신이 음수 조건으로 빠지지 않게 한다.
 - SID 범위를 분리하고 중복을 거부한다. 추가 규칙은 한 줄의 drop/alert/reject만 받으며 pass, flowbit 변경과 STRICT_ORDER의 priority keyword는 거부한다. 추가 규칙 내부와 허용 목록 내부는 각각 맵 키의 사전순으로 평가하므로 순서가 필요하면 키에 순서 접두사를 붙인다. reject는 TCP에만 사용한다. 기본 제공 IPS 서명 집합은 없고 포트 허용/차단을 완전한 IPS라고 부르지 않는다.
 - 계정 간 보조 Endpoint 공유 때문에 TLS 복호화를 활성화하지 않는다. 암호화된 HTTPS 본문 검사나 기존 연결의 허용 취소 즉시 적용을 보장하지 않는다. 정책을 바꾼 뒤 새 연결과 기존 연결을 구분해 확인한다.
+
+## GuardDuty Finding의 플랫폼 전달
+
+서울 중앙 계정의 `GuardDuty Finding` 이벤트를 기본 EventBridge 버스에서 선택해 `/delta/security/guardduty`에 전체 JSON으로 저장한다. 규칙은 송신 계정과 리전도 제한한다. GuardDuty가 분석하는 CloudTrail/Flow/DNS 원본 전체가 아니라 탐지 결과의 저장 경로다.
+
+원본 그룹 하나의 빈 구독 필터가 새 로그를 `guardduty_findings_destination_arn`으로 보낸다. 기존 플랫폼 Destination/Kinesis/Lambda를 거쳐 실제 `/delta-cp/central/aws`에 원본 계정/그룹/시각/본문과 수집 정보를 저장한다. 플랫폼의 tracked 코드와 실제 그룹 이름 차이는 [연결 안내](../../platform/deploy/logging/README.md)를 따른다. 이 root는 플랫폼 수신 리소스를 관리하지 않는다.
+
+원본은 기존 `log_retention_days`(기본 30일), `retain_logs_on_destroy`(기본 true)를 재사용하고 플랫폼 중앙은 현재 3일 보관한다. `guardduty_findings_forwarding_enabled=false`는 구독만 제거하며 EventBridge의 원본 저장과 GuardDuty 활성 상태는 유지한다. 재개 이후 새 이벤트부터 전달하므로 중단 구간이나 기존 Findings가 자동 소급 전송되지는 않는다.
+
+로그 쓰기 정책은 EventBridge 전달 서비스 두 개에 원본 그룹의 스트림 생성/쓰기만 허용한다. EventBridge 타깃과 논리 Destination 구독에 송신 역할을 지정하지 않는다. 전송 중복은 가능하며 Finding ID, EventBridge 이벤트 ID와 플랫폼의 안정적인 `event_id`를 구분한다. [설계와 실제 검증 상태](../../docs/ai-dlc/aws-guardduty-logging.md), [조회/샘플/원복 절차](RUNBOOK.md#guardduty-finding-로그-전달)를 따른다.
 
 ## 로그, 로컬 검증과 운영
 

@@ -1,5 +1,7 @@
 # Delta network gateway
 
+2026-11-06: 사용자 승인으로 중앙 계정 `482840608926`의 GuardDuty Finding 전달 경로를 실제 적용했다. 신규5개/기존 변경과 삭제0개이며 `/delta/security/guardduty`에서 기존 플랫폼 Destination을 거쳐 `/delta-cp/central/aws`로 샘플1건의 본문/원본 메타데이터 일치를 확인했다. 로컬 mock63개/Python11개 통과, 기존 ID58개/출력18개와 탐지/ANF/플랫폼 설정 보존 및 중앙 최종 실제 Plan No changes/종료0을 확인했다. 사용자가 커밋과 푸시를 요청했으며 게시 상태는 Git 이력과 원격 ref를 따른다. [설계와 실제 검증](ai-dlc/aws-guardduty-logging.md)
+
 2026-11-05: 사용자 승인으로 Workload와 Network/Security의 서울 GuardDuty를 실제 적용하고 Terraform 등록을 완료했다. 두 계정 모두 ENABLED이며 기존 workload의 ID/보호 설정을 보존하고 중앙은 기본 탐지만 켰다. Terraform mock103개/Python14개 통과, 두 최종 실제 Plan No changes/종료0과 기존 managed127개 ID/기존 출력27개 및 VPC Endpoint 보존을 확인했다. 중앙 초기 S3/EKS API 400은 중지 상태의 일괄 OFF 요청과 새 Plan/Apply로 복구했다. 게시 상태는 Git 이력을 따른다. [실제 결과와 운영 절차](ai-dlc/aws-guardduty.md)
 
 2026-11-05: 사용자 승인으로 공통 워크로드 VPC의 이름을 `delta-lab-client`에서 `delta-board-vpc`로 실제 변경했다. Terraform Apply는 VPC 태그1개 갱신/생성과 삭제0개이며 기존 VPC ID/CIDR과 관리24개 전체 ID 및 출력을 유지했다. mock24개/Python3개 통과, AWS API의 새 이름과 최종 Plan No changes/종료0을 확인했다. 게시 상태는 Git 이력을 따른다. [변경 범위와 검증 기록](ai-dlc/aws-workload-consolidation.md#2026-11-05-후속-vpc-이름-변경)
@@ -86,6 +88,8 @@
 
 ## 문서
 
+- [중앙 GuardDuty Finding의 플랫폼 로그 전달 설계와 승인 상태](ai-dlc/aws-guardduty-logging.md)
+
 - [AWS Workload와 Network/Security의 GuardDuty 활성화 설계 및 승인 상태](ai-dlc/aws-guardduty.md)
 
 - [Sample App의 GCP ALB/x86 VM/Cloud SQL 교체와 승인 상태](ai-dlc/gcp-sample-app.md)
@@ -129,6 +133,8 @@
 - [파이프라인 스테이징 도구 설계/검증 상태](ai-dlc/staging-tool.md)
 
 ## 다음 작업
+
+중앙 GuardDuty 로그 전달의 [U4/U5 구현/적용/실제 수신 검증](ai-dlc/aws-guardduty-logging.md)을 완료했다. 운영 시 [조회와 전달 중지/재개 절차](../terraform/network-security/RUNBOOK.md#guardduty-finding-로그-전달)를 따른다. 현재 실제 플랫폼 그룹은 `/delta-cp/central/*`이지만 플랫폼 Terraform 코드는 이전 이름을 정의하므로 해당 root를 실행하기 전에 별도로 수렴 범위를 검토한다. 대시보드 UI 검증은 미실행이며 게시 상태는 Git 이력과 원격 ref를 따른다.
 
 AWS 앱은 사용자 요청으로 Compose를 내린 상태이며 EC2/RDS/이미지/데이터는 유지한다. 재개가 필요하면 [중지 및 재개 절차](ai-dlc/aws-compose-consolidation.md#2026-11-05-후속-operation-compose만-내리고-ec2-보존)의 `sudo systemctl enable --now delta-compose`를 사용한다. 중지 작업에서는 재개와 추가 Terraform Apply를 실행하지 않았다. Git 게시 상태는 Git 이력을 따른다.
 

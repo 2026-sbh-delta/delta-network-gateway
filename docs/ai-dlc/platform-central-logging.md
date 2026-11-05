@@ -2,6 +2,8 @@
 
 기준일: 2026-11-04. 사용자의 “그러면 띄워”, CloudWatch Logs 전달 선택, “GCP도 고려” 지시로 설계·구현·배포를 승인받았다.
 
+2026-11-06 현재 연결 정보: 실제 중앙 그룹은 `/delta-cp/central/aws`, `/delta-cp/central/gcp`이고 각각 보관 3일이다. AWS 수집기의 실제 저장 그룹과 원본 계정 허용도 재조회했다. 아래 최초 배포 기록과 당시 Plan 결과는 보존하며, 현재 tracked 플랫폼 Terraform의 `/delta-platform/central/*` 정의와 실제 이름의 차이는 아래 후속 기록을 따른다.
+
 ## 목적과 범위
 
 팀원이 연결할 실제 로그 수신 경로를 만든다. AWS/GCP 원본 로그는 유지하고 플랫폼 AWS 계정(616723161368, 서울)에 복사한다. 기존 네트워크 계정(482840608926)의 수집기와 GCP Sink는 변경하지 않는다. 서버 IP·VPN이 필요한 방식이 아니며 OTel 앱 메트릭/트레이스 수신과 구분한다.
@@ -43,8 +45,8 @@
 |---|---|
 | AWS Destination | `arn:aws:logs:ap-northeast-2:616723161368:destination:delta-platform-logs` |
 | 허용 AWS 계정 | `482840608926`, `616723161368` |
-| 중앙 AWS 로그 | `/delta-platform/central/aws` |
-| 중앙 GCP 로그 | `/delta-platform/central/gcp` |
+| 중앙 AWS 로그 | `/delta-cp/central/aws` (2026-11-06 실제 조회) |
+| 중앙 GCP 로그 | `/delta-cp/central/gcp` (2026-11-06 실제 조회) |
 | GCP Sink / Topic | `delta-platform-logs` / `projects/term2-delta/topics/delta-platform-logs` |
 | GCP Subscription | `projects/term2-delta/subscriptions/delta-platform-logs-aws` |
 | GCP WIF Pool | `delta-platform-logs-aws` (수집기 역할만 허용) |
@@ -62,7 +64,7 @@
 - `smoke.py --outputs ... --evidence ...`: 양쪽 원본→중앙 저장 검증. 별도 GCP 새 로그 쓰기도 수행했으므로 첫 시험은 단일 전송만으로 성공했다고 표현하지 않는다.
 - GCP 기존 `delta-lab-network-security` Sink와 새 Sink가 각각 원래/전용 Topic으로 연결돼 있음을 확인했다. 기존 수집기·기본 로그 버킷은 변경하지 않았다.
 
-AWS **다른 계정(482840608926)의 실제 원본 그룹 구독**은 아직 하지 않았다. 해당 그룹 정보가 없고 팀원이 원본에서 추가할 작업이다. 정책 배포와 같은 계정 e2e 검증을 타 계정 실제 수신 완료로 표현하지 않는다. GCP는 실제 프로젝트의 전용 경로를 검증했다. 전체 서비스의 앱 로그 에이전트, 플랫폼 웹 조회, 부하·장기 장애·실제 DLQ 재처리·알림 수신자 구성은 이번 검증에 포함하지 않는다.
+2026-11-04 최초 검증 당시 AWS **다른 계정(482840608926)의 실제 원본 그룹 구독**은 미실행이었다. 당시 정책 배포와 같은 계정 e2e 검증을 타 계정 실제 수신 완료로 표현하지 않는다. 이후 GuardDuty 원본 그룹의 실제 연결/수신은 아래 2026-11-06 후속 기록을 따른다. GCP는 실제 프로젝트의 전용 경로를 검증했다. 전체 서비스의 앱 로그 에이전트, 플랫폼 웹 조회, 부하/장기 장애/실제 DLQ 재처리/알림 수신자 구성은 이 검증에 포함하지 않는다.
 
 운영·중지·실패 보관·전체 입력/출력은 [배포 안내](../../platform/deploy/logging/README.md)를 따른다.
 
@@ -71,3 +73,13 @@ AWS **다른 계정(482840608926)의 실제 원본 그룹 구독**은 아직 하
 별도 승인된 [네트워크 로그 정리](gcp-central-network.md#2026-11-05-gcp-로그-전달-경로-정리-검토)에서 네트워크 계정 전용 전달 경로를 제거했다. 이 플랫폼 root와 공통 `services/gcp-log-collector`는 유지한다. 현재 운영 안내는 위 2026-11-04 초기 배포 때의 기존 수집기 보존 설명과 구분한다.
 
 2026-11-05 `evidence.py receive before/after`로 실제 GCP 방화벽 원본과 플랫폼의 저장 JSON을 삭제 전35건, 삭제 후4건 대조했다. `verify.py final`로 플랫폼 GCP Lambda와 Sink 설정 불변, 실행 규칙 활성, AWS 수신 Lambda와 event source mapping 활성도 확인했다. 이 후속 작업에서 플랫폼 Apply나 AWS 원본 송신 구독 추가는 하지 않았다. 원본 증거와 명령 및 한계는 네트워크 정리 기록을 따른다.
+
+## 2026-11-06 GuardDuty 송신 연결 설계와 현재 로그 이름
+
+사용자는 중앙 계정 `482840608926`의 GuardDuty Finding 전달 Inception과 구현 및 실제 적용/샘플 검증을 승인했다. 중앙 root에 `/delta/security/guardduty`와 EventBridge 규칙/타깃/쓰기 정책 및 그룹 구독을 실제 적용했다. 신규5개/기존 변경과 삭제0개이며 자세한 승인과 실행 명령은 [별도 기록](aws-guardduty-logging.md)을 따른다.
+
+2026-11-06 STS로 계정을 확인한 후 `describe-destinations`, `get-function-configuration`의 필요한 필드, `describe-log-groups --log-group-name-prefix /delta-cp/central/`를 읽기 전용으로 실행했다. Destination ARN과 Kinesis 타깃은 기존과 같고, 정책과 AWS 수집기 모두 `482840608926`, `616723161368`을 허용한다. 수집기는 `Active` / `Successful`이며 `DESTINATION_LOG_GROUP=/delta-cp/central/aws`다. AWS/GCP 중앙 그룹의 현재 이름과 보관 3일도 확인했다.
+
+tracked `platform/deploy/logging/aws.tf`는 여전히 `/delta-platform/central/*`를 정의한다. 이번에는 현재 연결 안내만 실제 값으로 정정하며 플랫폼 코드, state 또는 운영 설정을 바꾸지 않는다. 현재 플랫폼 root의 Plan/Apply와 코드 수렴 검증은 미실행이므로 2026-11-04의 No changes를 현재 root의 결과로 해석하지 않는다. GuardDuty 경로 추가를 위해 이 플랫폼 root를 그대로 Apply하지 않는다.
+
+2026-11-06 00:37 KST에 GuardDuty 샘플 `Backdoor:EC2/DenialOfService.Tcp` 1종/1건의 원본 그룹 저장과 `/delta-cp/central/aws` 도착을 확인했다. 플랫폼 레코드의 `account_id=482840608926`, 원본 그룹/스트림/시각, 전체 message 문자열과 원본 로그 ID 기반 event_id를 대조했다. 최초 같은 계정 smoke와 구분되는 실제 교차 계정 원본 수신 검증이다. 수신 Destination 정책과 AWS Lambda의 CodeSha256/RevisionId 및 조회한 운영 설정은 전후 동일했다. 중앙 송신 root의 최종 실제 Plan은 No changes/종료0이며, 플랫폼 root의 Plan 결과는 아니다. 대시보드 UI와 장기 부하/장애는 검증하지 않았다.
