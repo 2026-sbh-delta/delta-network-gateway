@@ -88,9 +88,10 @@ resource "aws_vpc_security_group_egress_rule" "https_out" {
   cidr_ipv4         = "0.0.0.0/0"
 }
 
-# 스테이징 진입점은 HTTP(80)다. DAST(점검)와 Jenkins(스테이징 도구의 준비 확인)만 연다.
+# 스테이징·서비스 원본 진입점은 HTTP(80)다. DAST(점검), Jenkins(스테이징 도구의 준비 확인),
+# 오케스트레이터(서비스 도메인 전환 전 원본 검증)만 연다.
 resource "aws_vpc_security_group_egress_rule" "http_out" {
-  for_each          = toset(["dast", "jenkins"])
+  for_each          = toset(["dast", "jenkins", "orchestrator"])
   security_group_id = aws_security_group.host[each.key].id
   description       = "HTTP to staging entry points"
   ip_protocol       = "tcp"

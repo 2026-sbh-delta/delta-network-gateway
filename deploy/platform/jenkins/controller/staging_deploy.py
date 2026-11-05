@@ -42,9 +42,10 @@ def main():
     dep, image, commit, cloud = (os.environ[k] for k in ("RUN_ID", "IMAGE", "COMMIT", "CLOUD"))
     holder = os.environ.get("HOLDER") or dep
     ok = re.compile(r"[A-Za-z0-9._-]{1,64}")
-    if not ok.fullmatch(dep) or not ok.fullmatch(holder) or "@sha256:" not in image or cloud not in ("gcp", "aws"):
-        finish({}, "입력이 올바르지 않다")
-    call("POST", "/v1/staging/deployments", {"run_id": dep, "cloud": cloud, "image": image, "commit": commit[:40],
+    if (not ok.fullmatch(dep) or not ok.fullmatch(holder) or "@sha256:" not in image or cloud not in ("gcp", "aws")
+            or not re.fullmatch(r"[0-9a-f]{40}", commit)):
+        finish({"run_id": dep}, "입력이 올바르지 않다")
+    call("POST", "/v1/staging/deployments", {"run_id": dep, "cloud": cloud, "image": image, "commit": commit,
                                              "scanner_ip": "auto", "replace": True, "lease_holder": holder})
     deadline = time.time() + 600
     while True:

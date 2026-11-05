@@ -46,7 +46,7 @@ def test_killed_while_waiting_for_a_person_asks_again_and_never_repeats_dast(tmp
     done = _launch(tmp_path, "never", "REPRODUCED", "approve")
 
     assert json.loads(done.stdout.splitlines()[0]) == {"seen_decision": "dast"}
-    assert _final(done)["outcome"] == "verified"
+    assert _final(done)["outcome"] == "unresolved"  # 재현된 항목을 사람이 넘긴 것은 검증 완료가 아니다
     assert len(_calls(tmp_path, "dast")) == 1
 
 

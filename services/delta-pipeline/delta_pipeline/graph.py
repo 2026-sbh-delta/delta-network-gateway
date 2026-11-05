@@ -1,6 +1,7 @@
 """전이 표. 다음 단계는 여기 적힌 코드만 정한다. LLM 은 전이를 고르지 않는다.
 
 웹 갈래 최소 연결(명세 v1.1 6-2, 작업 계획 1-0): prepare → (build ∥ sast) → join → stage → dast → done.
+cutover 를 켠 실행은 dast 뒤에 서비스 도메인 전환(6-3)을 거친다: ask_cutover → cutover_check → cutover_switch → cutover_verify.
 """
 
 from __future__ import annotations
@@ -34,23 +35,33 @@ def route_prepare(state: PipelineState) -> Any:
     return HALTED if state.get("halt") else list(BRANCHES)
 
 
-def route_dast_start(state: PipelineState) -> str:
-    if state.get("halt"):
-        return HALTED
-    return "dast_wait" if state.get("dast_run_id") else "done"
+def step_routes(cutover: bool) -> dict[str, tuple[Any, tuple[str, ...]]]:
+    after_dast = "ask_cutover" if cutover else "done"
 
+    def route_dast_start(state: PipelineState) -> str:
+        if state.get("halt"):
+            return HALTED
+        return "dast_wait" if state.get("dast_run_id") else after_dast
 
-STEP_ROUTES: dict[str, tuple[Any, tuple[str, ...]]] = {
-    "prepare": (route_prepare, (*BRANCHES, HALTED)),
-    "join": (route_gate("ask_sast", "stage_start"), ("ask_sast", "stage_start", HALTED)),
-    "ask_sast": (after_step("stage_start"), ("stage_start", HALTED)),
-    "stage_start": (after_step("stage_wait"), ("stage_wait", HALTED)),
-    "stage_wait": (after_step("dast_start"), ("dast_start", HALTED)),
-    "dast_start": (route_dast_start, ("dast_wait", "done", HALTED)),
-    "dast_wait": (route_gate("ask_dast", "done"), ("ask_dast", "done", HALTED)),
-    "ask_dast": (after_step("done"), ("done", HALTED)),
-    "done": (after_step(END), (END, HALTED)),
-}
+    routes = {
+        "prepare": (route_prepare, (*BRANCHES, HALTED)),
+        "join": (route_gate("ask_sast", "stage_start"), ("ask_sast", "stage_start", HALTED)),
+        "ask_sast": (after_step("stage_start"), ("stage_start", HALTED)),
+        "stage_start": (after_step("stage_wait"), ("stage_wait", HALTED)),
+        "stage_wait": (after_step("dast_start"), ("dast_start", HALTED)),
+        "dast_start": (route_dast_start, ("dast_wait", after_dast, HALTED)),
+        "dast_wait": (route_gate("ask_dast", after_dast), ("ask_dast", after_dast, HALTED)),
+        "ask_dast": (after_step(after_dast), (after_dast, HALTED)),
+        "done": (after_step(END), (END, HALTED)),
+    }
+    if cutover:
+        routes |= {
+            "ask_cutover": (after_step("cutover_check"), ("cutover_check", HALTED)),
+            "cutover_check": (after_step("cutover_switch"), ("cutover_switch", HALTED)),
+            "cutover_switch": (after_step("cutover_verify"), ("cutover_verify", HALTED)),
+            "cutover_verify": (after_step("done"), ("done", HALTED)),
+        }
+    return routes
 
 
 def build_graph(deps: Deps, checkpointer: Any) -> Any:
@@ -58,10 +69,14 @@ def build_graph(deps: Deps, checkpointer: Any) -> Any:
     bodies = {"prepare": steps.prepare, "join": lambda _: {}, "ask_sast": steps.ask_gate,
               "stage_start": steps.stage_start, "stage_wait": steps.stage_wait, "dast_start": steps.dast_start,
               "dast_wait": steps.dast_wait, "ask_dast": steps.ask_gate, "done": steps.done}
+    if deps.options.cutover:
+        bodies |= {"ask_cutover": steps.ask_cutover, "cutover_check": steps.cutover_check,
+                   "cutover_switch": steps.cutover_switch, "cutover_verify": steps.cutover_verify}
+    routes = step_routes(deps.options.cutover)
     graph = StateGraph(PipelineState)
     for name, body in bodies.items():
         graph.add_node(name, guarded(body))
-        route, targets = STEP_ROUTES[name]
+        route, targets = routes[name]
         graph.add_conditional_edges(name, route, list(targets))
     # 병렬 갈래: 갈래 안에서는 멈춰도 합류(join)까지 간 뒤 한 곳에서 판단한다(동시 전이 충돌을 피한다)
     graph.add_node("build_start", guarded(steps.build_start))

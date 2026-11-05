@@ -108,3 +108,19 @@ def test_evidence_hash_matches_the_dast_platform_fingerprint():
     # DAST platform_api.fingerprint 와 같은 식: sort_keys, 공백 없는 구분자, 기본 ensure_ascii
     expected = hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
     assert evidence_hash(value) == expected
+
+
+def test_resolve_cname_reads_public_doh_answer(monkeypatch):
+    from delta_pipeline import clients
+
+    seen = []
+
+    def fake_json(request, *, timeout, opener=None):
+        seen.append((request.full_url, request.get_header("Accept")))
+        return {"Answer": [{"name": "app.adajosou.site", "type": 5, "data": "GCP.adajosou.site."}]}
+
+    monkeypatch.setattr(clients, "_json", fake_json)
+    assert clients.resolve_cname("app.adajosou.site") == "gcp.adajosou.site"
+    assert seen[0][0].startswith("https://cloudflare-dns.com/dns-query?") and seen[0][1] == "application/dns-json"
+    monkeypatch.setattr(clients, "_json", lambda *a, **k: {"Status": 3})
+    assert clients.resolve_cname("none.adajosou.site") is None

@@ -202,3 +202,52 @@ class Jenkins:
 
     def console_url(self, build: int) -> str:
         return f"{self._url}/job/{self._job}/{build}/"
+
+
+class Cloudflare:
+    """Cloudflare API v4(DNS 레코드만). 토큰은 해당 zone 의 DNS 편집 권한만 가진 것을 쓴다.
+
+    호원님 스크립트(11/5)의 검증을 옮겼다. 외부 CLI 대신 API 를 직접 부른다(오케스트레이터 이미지에 Node 가 없다).
+    """
+
+    API = "https://api.cloudflare.com/client/v4"
+
+    def __init__(self, token: str) -> None:
+        self._headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+
+    def _call(self, method: str, path: str, body: dict[str, Any] | None = None) -> Any:
+        request = urllib.request.Request(self.API + path, None if body is None else json.dumps(body).encode(),
+                                         method=method, headers=self._headers)
+        reply = _json(request, timeout=DEFAULT_TIMEOUT_SECONDS)
+        if not reply.get("success"):
+            raise ServiceUnavailable(f"Cloudflare 오류: {[e.get('message') for e in reply.get('errors', [])][:3]}")
+        return reply["result"]
+
+    def find_record(self, zone_id: str, name: str) -> dict[str, Any]:
+        records = self._call("GET", f"/zones/{zone_id}/dns_records?" + urllib.parse.urlencode({"name": name}))
+        if len(records) != 1:
+            raise ServiceUnavailable(f"{name} 레코드가 하나가 아니다({len(records)}개)")
+        return records[0]
+
+    def set_content(self, zone_id: str, record_id: str, content: str) -> dict[str, Any]:
+        return self._call("PATCH", f"/zones/{zone_id}/dns_records/{record_id}", {"content": content})
+
+
+def probe(url: str, *, host: str | None = None, timeout: float = 10) -> tuple[int, str]:
+    """HTTP 상태와 X-Served-By 를 돌려준다. host 를 주면 원본에 서비스 도메인 Host 로 직접 묻는다."""
+    request = urllib.request.Request(url, headers={"Host": host} if host else {})
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310 설정한 주소만
+            return response.status, response.headers.get("X-Served-By", "")
+    except urllib.error.HTTPError as exc:
+        return exc.code, exc.headers.get("X-Served-By", "") if exc.headers else ""
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        raise ServiceUnavailable(f"{type(exc).__name__}: {url}") from exc
+
+
+def resolve_cname(name: str, *, timeout: float = 10) -> str | None:
+    """공개 리졸버(DoH)가 실제로 돌려주는 CNAME 대상. 설정(API)만이 아니라 밖에서 보이는 값을 확인한다."""
+    url = "https://cloudflare-dns.com/dns-query?" + urllib.parse.urlencode({"name": name, "type": "CNAME"})
+    reply = _json(urllib.request.Request(url, headers={"Accept": "application/dns-json"}), timeout=timeout)
+    answers = [a.get("data", "") for a in reply.get("Answer", ()) if a.get("type") == 5]
+    return answers[0].rstrip(".").lower() if answers else None

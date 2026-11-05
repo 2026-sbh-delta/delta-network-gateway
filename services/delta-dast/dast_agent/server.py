@@ -115,6 +115,11 @@ def create_app(port: int = 8765, target_port: int = 8766,
     platform_token = os.environ.get("DAST_PLATFORM_TOKEN", "")
     fix_path = re.compile(r"/api/runs/[A-Za-z0-9-]{1,64}/findings/[A-Za-z0-9._-]{1,128}/fix")
 
+    def loopback(request: Request) -> bool:
+        """로컬 예외는 Host 헤더가 아니라 실제 접속 주소로 판단한다(Host 는 호출자가 바꿀 수 있다).
+        testclient 는 시험 도구의 가상 주소로, 실제 연결의 주소로는 나올 수 없다."""
+        return bool(request.client) and request.client.host in {"127.0.0.1", "::1", "testclient"}
+
     def platform_allowed(request: Request) -> bool:
         return len(platform_token) >= 16 and secrets.compare_digest(
             request.headers.get("authorization", ""), "Bearer " + platform_token)
@@ -220,7 +225,8 @@ def create_app(port: int = 8765, target_port: int = 8766,
         public = access.is_public(host)
         if path.startswith("/api/platform/"):
             # 플랫폼(오케스트레이터) 전용 API: 공개 주소로는 받지 않는다. 내부·로컬 주소 + 플랫폼 토큰만.
-            if public or not (host in internal_hosts or host in {f"127.0.0.1:{port}", f"localhost:{port}"}):
+            if public or not (host in internal_hosts
+                              or (host in {f"127.0.0.1:{port}", f"localhost:{port}"} and loopback(request))):
                 return JSONResponse({"detail": "허용되지 않은 요청 출처입니다."}, status_code=403)
             if origin is not None or request.headers.get("sec-fetch-site") == "cross-site":
                 return JSONResponse({"detail": "허용되지 않은 요청 출처입니다."}, status_code=403)
@@ -229,7 +235,7 @@ def create_app(port: int = 8765, target_port: int = 8766,
             return secured(await call_next(request))
         if public:
             expected_origin = access.public_origin
-        elif host in {f"127.0.0.1:{port}", f"localhost:{port}"}:
+        elif host in {f"127.0.0.1:{port}", f"localhost:{port}"} and loopback(request):
             expected_origin = f"http://{host}"
         elif host in internal_hosts and request.method in {"GET", "HEAD"}:
             # 플랫폼 내부망(보안 그룹으로 오케스트레이터만 닿음)의 상태 조회. 읽기만 허용한다.
@@ -241,7 +247,9 @@ def create_app(port: int = 8765, target_port: int = 8766,
         else:
             return JSONResponse({"detail": "허용되지 않은 요청 출처입니다."}, status_code=403)
         if ((origin is not None and origin != expected_origin)
-                or request.headers.get("sec-fetch-site") == "cross-site"):
+                or (request.headers.get("sec-fetch-site") == "cross-site"
+                    # 링크로 들어오는 화면 이동(GET navigate)은 허용, 그 밖의 다른 사이트 요청은 막는다
+                    and not (request.method in {"GET", "HEAD"} and request.headers.get("sec-fetch-mode") == "navigate"))):
             return JSONResponse({"detail": "허용되지 않은 요청 출처입니다."}, status_code=403)
         if public:
             if path == "/login":
@@ -346,7 +354,9 @@ def create_app(port: int = 8765, target_port: int = 8766,
                                                 await origin_for(run, target_id))
             except (ValueError, staging_link.StagingUnavailable) as exc:
                 raise PreflightError(str(exc)) from None
-            await check_target(target.origin, target.entry_path)
+            # 배포 직후 접근 규칙 전파 지연을 견딘다(기본 60초). 시험은 0으로 바로 판정한다.
+            await check_target(target.origin, target.entry_path,
+                               settle=float(os.environ.get("DAST_PREFLIGHT_SETTLE_SECONDS", "60")))
 
     async def run_agent(run, report, output, publish):
         limit = asyncio.Semaphore(run.get("concurrency", 1))

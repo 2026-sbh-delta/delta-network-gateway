@@ -120,13 +120,34 @@ def test_pipeline_api_needs_login_runs_and_takes_a_human_answer(monkeypatch, tmp
                 time.sleep(0.02)
             raise AssertionError(run)
 
-        # DAST 재현 → 사람 확인 대기. 잘못된 답은 거부, 승인하면 끝까지 간다
+        # DAST 재현 → 사람 확인 대기. 잘못된 답은 거부, 승인하면 끝까지 가되 '보안 미해결'로 끝난다
         wait(lambda run: any(n["decision"] for n in run["nodes"]))
         assert client.post(f"/api/pipeline/runs/{run_id}/answer", json={"value": "maybe"},
                            headers={"Origin": PUBLIC}).status_code == 409
         assert client.post(f"/api/pipeline/runs/{run_id}/answer", json={"value": "approve"},
                            headers={"Origin": PUBLIC}).status_code == 200
-        assert wait(lambda run: run["outcome"])["outcome"] == "verified"
+        assert wait(lambda run: run["outcome"])["outcome"] == "unresolved"
         assert client.get("/api/pipeline/runs").json()["runs"][0]["run_id"] == run_id
         assert client.get("/api/pipeline/runs/nope").status_code == 404
         assert client.get("/api/pipeline/runs/..%2Fx").status_code == 404
+
+
+def test_localhost_host_header_from_a_remote_peer_is_refused(monkeypatch):
+    app = make(monkeypatch)
+    with TestClient(app, base_url="http://localhost:8080", client=("10.90.10.7", 40000)) as client:
+        assert client.get("/api/status").status_code == 403
+        assert client.post("/api/pipeline/runs", json={}).status_code == 403
+    with TestClient(app, base_url="http://localhost:8080", client=("127.0.0.1", 40000)) as client:
+        assert client.get("/api/status").status_code == 200
+
+
+def test_cross_site_link_navigation_opens_but_cross_site_posts_and_fetches_do_not(monkeypatch):
+    """11/5 실제: Slack·다른 탭 링크로 들어오면 브라우저가 Sec-Fetch-Site: cross-site 를 붙여 화면이 403 이었다."""
+    app = make(monkeypatch)
+    nav = {"Sec-Fetch-Site": "cross-site", "Sec-Fetch-Mode": "navigate"}
+    with TestClient(app, base_url=PUBLIC, follow_redirects=False) as client:
+        assert client.get("/login", headers=nav).status_code == 200
+        assert client.get("/", headers=nav).headers["location"] == "/login"
+        assert client.post("/login", data={"password": "x"},
+                           headers={"Sec-Fetch-Site": "cross-site", "Sec-Fetch-Mode": "navigate"}).status_code == 403
+        assert client.get("/api/status", headers={"Sec-Fetch-Site": "cross-site", "Sec-Fetch-Mode": "cors"}).status_code == 403

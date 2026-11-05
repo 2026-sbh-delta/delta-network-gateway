@@ -3,56 +3,68 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Delta 플랫폼</title>
+  <title>Delta 파이프라인</title>
   <link rel="stylesheet" href="/static/app.css">
   <script src="/static/app.js" defer></script>
 </head>
 <body>
-  <header class="top">
-    <span class="brand">◈ Delta 플랫폼</span>
-    <span class="sub">제어 영역 상태 · 임시 메인</span>
-    <span id="checked" class="checked">확인 중…</span>
-    <form id="logout" method="post" action="/logout" hidden><button type="submit">로그아웃</button></form>
-  </header>
-  <main>
-    <section class="summary" id="summary" aria-live="polite"></section>
-
-    <section>
-      <h2>파이프라인 <span class="sub">빌드 → SAST → 스테이징 → DAST</span></h2>
-      <form id="run-form" class="panel runform">
-        <input id="run-repo" value="https://github.com/2026-sbh-delta/delta-sample-app" aria-label="저장소" size="48">
-        <input id="run-commit" placeholder="커밋 SHA(40자리)" aria-label="커밋" size="44" pattern="[0-9a-f]{40}" required>
-        <button type="submit">실행</button>
-        <span id="run-msg" class="meta"></span>
-      </form>
-      <div id="pipeline" class="panel"></div>
-    </section>
-
-    <section>
-      <h2>서비스</h2>
-      <div class="grid" id="services"></div>
-    </section>
-
-    <div class="two">
-      <section>
-        <h2>스테이징</h2>
-        <div id="staging" class="panel"></div>
-      </section>
-      <section>
-        <h2>Jenkins</h2>
-        <div id="jenkins" class="panel"></div>
-      </section>
+  <header>
+    <div class="run">
+      <h1 id="title">◈ Delta 파이프라인</h1>
+      <div class="meta" id="meta">실행 기록을 읽는 중…</div>
     </div>
+    <div class="branches" id="branches" aria-live="polite"></div>
+    <div class="controls">
+      <select id="runs" aria-label="실행 기록"></select>
+      <button class="btn primary" type="button" id="open-start">새 실행</button>
+      <button class="btn" type="button" id="open-health">플랫폼 <span id="health-chip">…</span></button>
+      <form id="logout" method="post" action="/logout" hidden><button class="btn" type="submit">로그아웃</button></form>
+    </div>
+  </header>
 
-    <section>
-      <h2>DAST 최근 점검 <a id="dast-link" target="_blank" rel="noopener noreferrer">작업실 열기 ↗</a></h2>
-      <div id="dast" class="panel"></div>
-    </section>
+  <form id="start" class="startbar" hidden>
+    <label>저장소 <input id="run-repo" value="https://github.com/2026-sbh-delta/delta-sample-app" size="46" required></label>
+    <label>커밋 <input id="run-commit" placeholder="40자리 SHA" size="44" pattern="[0-9a-f]{40}" required></label>
+    <label id="run-cutover-label" hidden class="toggle"><input type="checkbox" id="run-cutover"> 검증 뒤 서비스 도메인 전환</label>
+    <button class="btn primary" type="submit">실행</button>
+    <span id="run-msg" class="hint"></span>
+  </form>
 
-    <section>
-      <h2>공개 주소</h2>
-      <div id="urls" class="panel urls"></div>
-    </section>
+  <main>
+    <div class="stage" id="stage">
+      <svg id="svg" aria-label="파이프라인 그래프">
+        <defs>
+          <pattern id="dots" width="26" height="26" patternUnits="userSpaceOnUse"><circle class="grid-dot" cx="1.5" cy="1.5" r="1.2"/></pattern>
+          <filter id="hglow" x="-300%" y="-300%" width="700%" height="700%"><feDropShadow dx="0" dy="0" stdDeviation="4" flood-color="#8b5cf6" flood-opacity=".95"/></filter>
+          <filter id="hglowp" x="-300%" y="-300%" width="700%" height="700%"><feDropShadow dx="0" dy="0" stdDeviation="4" flood-color="#ff2e6e" flood-opacity=".95"/></filter>
+        </defs>
+        <g id="world">
+          <rect x="-3000" y="-3000" width="9000" height="8000" fill="url(#dots)"/>
+          <g id="groups"></g><g id="edges"></g><g id="nodes"></g>
+        </g>
+      </svg>
+      <div class="overlay ov-bl legend" aria-label="범례">
+        <span><i></i>대기</span><span><i class="l-run"></i>실행 중</span><span><i class="l-ok"></i>완료</span>
+        <span><i class="l-wait"></i>승인 대기</span><span><i class="l-bad"></i>실패</span><span><i class="l-mock"></i>추후(아직 없음)</span>
+      </div>
+      <div class="overlay ov-br zoom">
+        <button type="button" id="zin" aria-label="확대">＋</button>
+        <button type="button" id="zout" aria-label="축소">－</button>
+        <button type="button" id="fit">전체</button>
+        <button type="button" id="follow" aria-pressed="true">따라가기</button>
+      </div>
+    </div>
+    <aside class="panel" id="panel"><div id="p-head" aria-live="polite"></div><div id="p-live"></div><div id="p-rest"></div></aside>
   </main>
+
+  <dialog id="viewer" class="viewer">
+    <div class="dlg-head"><h2>DAST 브라우저 화면</h2><button class="btn" type="button" id="close-viewer">닫기</button></div>
+    <img id="viewer-img" alt="DAST 화면 크게 보기">
+  </dialog>
+
+  <dialog id="health">
+    <div class="dlg-head"><h2>플랫폼 상태</h2><button class="btn" type="button" id="close-health">닫기</button></div>
+    <div id="health-body" class="health"></div>
+  </dialog>
 </body>
 </html>

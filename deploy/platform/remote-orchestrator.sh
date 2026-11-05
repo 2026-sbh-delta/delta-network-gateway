@@ -8,6 +8,12 @@ pull_image
   printf 'DELTA_STAGING_TOKEN=%s\n' "$(secret jenkins/staging_read_token)"
   printf 'DELTA_SAST_TOKEN=%s\n' "$(secret shared/sast_token)"
   printf 'DAST_PLATFORM_TOKEN=%s\n' "$(secret dast/platform_token)"
+  # 서비스 도메인 전환(선택). 토큰은 해당 zone 의 DNS 편집 권한만. 없으면 전환을 켠 실행이 시작 단계에서 멈춘다.
+  cf_token="$(secret orchestrator/cloudflare_token 2>/dev/null || true)"
+  [ -n "$cf_token" ] && printf 'CLOUDFLARE_API_TOKEN=%s\n' "$cf_token"
+  # 전환 설정은 JSON 일 때만 쓴다("disabled: …" 등은 꺼진 상태). 운영 진입점이 정해지기 전에는 끈다.
+  cutover="$(param orchestrator/cutover_config)"
+  case "$cutover" in "{"*) printf 'DELTA_CUTOVER=%s\n' "$cutover" ;; esac
   printf 'DELTA_PUBLIC_URLS=%s\n' "$(echo "$PUBLIC_URLS_B64" | base64 -d)"
 } > "$base/secrets.env"
 # 체크포인트·승인·점유 기록은 호스트 디렉터리에 둔다(컨테이너를 재배포해도 남는다, 명세 v1.1 11장).

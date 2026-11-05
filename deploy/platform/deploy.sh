@@ -128,7 +128,8 @@ for svc in "$@"; do
       env_args="$env_args STAGING_URL=http://$(name_of jenkins):8091" ;;
     jenkins)
       # 스테이징 도구도 Jenkins 컨트롤러에서 돈다(배포 권한을 가진 곳). 이미지는 같은 저장소에 staging- 태그로 둔다.
-      staging_tag="${TAG:+staging-$TAG}"; staging_tag="${staging_tag:-staging-$(tag_for services/delta-staging)}"
+      # 롤백(TAG=…) 때 처음 배포한 스테이징 도구 태그가 달랐으면 STAGING_TAG 로 그 태그를 준다
+      staging_tag="${STAGING_TAG:-${TAG:+staging-$TAG}}"; staging_tag="${staging_tag:-staging-$(tag_for services/delta-staging)}"
       staging_image="$(build_push linux/amd64 services/delta-staging Dockerfile "$image_repo:$staging_tag")" || exit 1
       env_args="$env_args STAGING_IMAGE=$staging_image" ;;
     jenkins-agent)

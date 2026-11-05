@@ -79,7 +79,8 @@ def _probe(url: str) -> bool:
 class GcpCloudRunStaging:
     def __init__(self, target: GcpTarget, *, http: Http | None = None, poll_seconds: float = 3,
                  rollout_timeout: float = 600, health_timeout: float = 180, reset_timeout: float = 240,
-                 public_ip: Callable[[], str] = current_public_ip, probe: Callable[[str], bool] = _probe) -> None:
+                 public_ip: Callable[[], str] = current_public_ip, probe: Callable[[str], bool] = _probe,
+                 stable_probes: int = 3) -> None:
         self.target = target
         self._http = http
         self.poll_seconds = poll_seconds
@@ -88,6 +89,7 @@ class GcpCloudRunStaging:
         self.reset_timeout = reset_timeout
         self.public_ip = public_ip
         self.probe = probe
+        self.stable_probes = stable_probes  # 준비로 보려면 연속으로 성공해야 하는 응답 수
 
     @property
     def service_name(self) -> str:
@@ -253,11 +255,17 @@ class GcpCloudRunStaging:
             raise StagingError("개정판의 이미지가 요청과 다르다")
 
     async def _wait_reachable(self, base: str) -> None:
+        """LB 를 거친 응답을 연속으로 확인한다. Cloud Armor 규칙은 에지마다 다른 시점에 반영돼, 한 번 열린 뒤
+        다음 요청이 403 일 수 있다(11/5 실제 실행: 준비 확인 직후 DAST 사전 확인이 403). 연속 성공을 봐야 준비로 본다."""
         url = base + self.target.health_check_path
         deadline = time.monotonic() + self.health_timeout
-        while not await asyncio.to_thread(self.probe, url):
+        streak = 0
+        while streak < self.stable_probes:
+            streak = streak + 1 if await asyncio.to_thread(self.probe, url) else 0
+            if streak >= self.stable_probes:
+                return
             if time.monotonic() >= deadline:
-                raise StagingError(f"LB 주소가 {int(self.health_timeout)}초 안에 응답하지 않았다(Cloud Armor 반영 지연 포함)")
+                raise StagingError(f"LB 주소가 {int(self.health_timeout)}초 안에 안정적으로 응답하지 않았다(Cloud Armor 반영 지연 포함)")
             await asyncio.sleep(self.poll_seconds)
 
     async def _scanner_rule(self) -> dict[str, Any] | None:

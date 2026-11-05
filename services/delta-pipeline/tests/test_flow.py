@@ -63,8 +63,18 @@ def test_reproduced_finding_asks_a_person_and_stop_never_verifies(tmp_path):
 def test_inconclusive_is_not_auto_pass_but_person_can_approve(tmp_path):
     snapshot = _execute(_run(tmp_path, dast=FakeDast(["INCONCLUSIVE"])), answers=["approve"])
 
-    assert snapshot["outcome"] == "verified"
+    # 사람이 넘겨도 보안 검증 통과가 아니다: 끝까지 연결은 됐지만 '미해결'로 끝난다
+    assert snapshot["outcome"] == "unresolved"
     assert "사람 승인" in next(n for n in snapshot["nodes"] if n["id"] == "dast")["summary"]
+    result = next(n for n in snapshot["nodes"] if n["id"] == "result")
+    assert result["state"] == "warn" and "보안 미해결(DAST" in result["summary"]
+
+
+def test_reproduced_finding_approved_by_a_person_is_unresolved_not_verified(tmp_path):
+    snapshot = _execute(_run(tmp_path, dast=FakeDast(["REPRODUCED", "BLOCKED"])), answers=["approve"])
+
+    assert snapshot["outcome"] == "unresolved"
+    assert _states(snapshot)["result"] == "warn"
 
 
 def test_no_dast_targets_skips_dast_without_failing(tmp_path):
@@ -183,3 +193,21 @@ def test_dast_binds_the_build_digest_staging_url_and_sarif_hash(tmp_path):
     assert binding["image_digest"] == DIGEST and binding["commit_sha"] == COMMIT
     assert binding["target_url"] == "http://136.82.112.37" and binding["runtime_revision"] == "r1"
     assert binding["build_id"] == f"{snapshot['run_id']}-build"
+
+
+@pytest.mark.parametrize("sast, reason", [
+    (FakeSast(no_summary=True), "결과 요약 없음"),
+    (FakeSast(scope_commit="0" * 40), "실제 점검 커밋 다름"),
+    (FakeSast(files=0, targets=0), "점검한 소스 파일 0개"),
+])
+def test_unproven_sast_scope_is_not_a_clean_zero(tmp_path, sast, reason):
+    deploy = deploy_jenkins()
+    snapshot = _execute(_run(tmp_path, sast=sast, deploy=deploy), answers=["stop"])
+    assert snapshot["outcome"] == "stopped" and deploy.keys == []
+    assert reason in next(n for n in snapshot["nodes"] if n["id"] == "sast")["summary"]
+
+
+def test_truncated_dast_candidates_are_not_a_pass(tmp_path):
+    snapshot = _execute(_run(tmp_path, dast=FakeDast(["NOT_REPRODUCED"] * 10, eligible=11)), answers=["stop"])
+    assert snapshot["outcome"] == "stopped"
+    assert "미점검 1" in next(n for n in snapshot["nodes"] if n["id"] == "dast")["summary"]

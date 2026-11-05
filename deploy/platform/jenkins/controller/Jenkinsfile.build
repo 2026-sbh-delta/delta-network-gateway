@@ -8,7 +8,9 @@ pipeline {
       steps {
         sh '''
           set -eu
-          echo "$RUN_ID" | grep -Eq '^[A-Za-z0-9._-]{1,100}$'
+          rm -f result.json meta.json
+          # Docker 태그 규칙(첫 글자 영숫자·_)과 스테이징 배포 ID 한도(64자)를 함께 지킨다
+          echo "$RUN_ID" | grep -Eq '^[A-Za-z0-9_][A-Za-z0-9._-]{0,63}$'
           echo "$REPO" | grep -Eq '^https://github\\.com/2026-sbh-delta/[A-Za-z0-9._-]+$'
           echo "$COMMIT" | grep -Eq '^[0-9a-f]{40}$'
           echo "$IMAGE_REPO" | grep -Eq '^asia-northeast3-docker\\.pkg\\.dev/term2-delta/delta-lab-staging/[a-z0-9._/-]+$'

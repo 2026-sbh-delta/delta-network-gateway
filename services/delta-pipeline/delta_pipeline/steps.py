@@ -17,10 +17,12 @@ from uuid import NAMESPACE_URL, uuid5
 
 from langgraph.types import interrupt
 
-from delta_pipeline.clients import ServiceUnavailable, evidence_hash
+from delta_pipeline.clients import ServiceUnavailable, evidence_hash, probe, resolve_cname
 from delta_pipeline.model import REPO_PREFIX, Board, Options
 
 POLL_SECONDS = 3
+CUTOVER_GRACE_SECONDS = 120  # TTL 이 지난 뒤에도 blue 가 확인되지 않으면 이 시간 뒤 되돌린다
+CUTOVER_STREAK = 3  # 연속 성공 횟수(에지 캐시·전파 흔들림 배제)
 JENKINS_POLL_SECONDS = 2
 BUILD_DEADLINE_SECONDS = 1200
 STAGE_DEADLINE_SECONDS = 900
@@ -62,6 +64,10 @@ class PipelineState(TypedDict, total=False):
     staging_url: str
     staging_revision: str | None
     dast_run_id: str | None
+    cutover_record_id: str
+    cutover_previous: str
+    cutover_switched_at: float
+    cutover_wait_seconds: int
 
 
 class Stopped(Exception):
@@ -81,6 +87,48 @@ class DastClient(Protocol):
 
 class StagingClient(Protocol):
     def release(self, cloud: str, holder: str) -> bool: ...
+
+
+class CloudflareClient(Protocol):
+    def find_record(self, zone_id: str, name: str) -> dict[str, Any]: ...
+    def set_content(self, zone_id: str, record_id: str, content: str) -> dict[str, Any]: ...
+
+
+def hostname(value: Any) -> str:
+    """CNAME 대상 비교용 정규화(대소문자·마지막 점). IP·URL 은 받지 않는다. 호원님 스크립트(11/5)와 같은 규칙."""
+    if not isinstance(value, str):
+        raise ValueError("도메인 주소가 아니다")
+    name = value.rstrip(".").encode("idna").decode("ascii").lower()
+    label = r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?"
+    if len(name) > 253 or not re.fullmatch(rf"(?:{label}\.)+{label}", name) or name.rsplit(".", 1)[-1].isdigit():
+        raise ValueError(f"도메인 주소가 아니다: {value}")
+    return name
+
+
+@dataclass(frozen=True)
+class CutoverConfig:
+    """서비스 도메인 전환 설정(명세 v1.1 6-3). 오케스트레이터 환경 DELTA_CUTOVER(JSON)로 받는다."""
+    zone_id: str
+    record: str  # 서비스 도메인(프록시 CNAME)
+    green: str  # 지금 가리키는 대상(기존 AWS)
+    blue: str  # 옮길 대상(GCP)
+    blue_origin: str  # 전환 전 검증에 직접 부를 blue 원본 주소(http(s)://…)
+    verify_path: str = "/healthz"
+    expect_served_by: str = "gcp"
+    scheme: str = "https"  # 서비스 도메인으로 확인할 때 쓰는 방식(원본 인증서가 있으면 https)
+    keep_green_seconds: int = 60  # 전환 뒤 green 을 최소한 유지할 시간(호원님 스크립트 기본 60초)
+
+    def __post_init__(self) -> None:
+        if not re.fullmatch(r"[0-9a-fA-F]{32}", self.zone_id):
+            raise ValueError("zone_id 는 32자리 16진수다")
+        for field in ("record", "green", "blue"):
+            object.__setattr__(self, field, hostname(getattr(self, field)))
+        if self.green == self.blue or self.record in (self.green, self.blue):
+            raise ValueError("record·green·blue 는 서로 다른 도메인이어야 한다")
+        if not re.fullmatch(r"https?://[A-Za-z0-9.\-:\[\]]+", self.blue_origin) or not self.verify_path.startswith("/"):
+            raise ValueError("blue_origin 은 http(s)://호스트, verify_path 는 / 로 시작해야 한다")
+        if self.scheme not in ("http", "https") or type(self.keep_green_seconds) is not int or self.keep_green_seconds < 60:
+            raise ValueError("scheme 은 http/https, keep_green_seconds 는 60 이상 정수여야 한다")
 
 
 class JenkinsClient(Protocol):
@@ -103,6 +151,11 @@ class Deps:
     staging: StagingClient
     image_repo: str
     sleep: Callable[[float], None]
+    cloudflare: CloudflareClient | None = None
+    cutover: CutoverConfig | None = None
+    probe: Callable[..., tuple[int, str]] = probe
+    resolve: Callable[[str], str | None] = resolve_cname
+    now: Callable[[], float] = time.time
 
 
 def guarded(step: Step) -> Step:
@@ -124,6 +177,9 @@ def branch(step: Step) -> Step:
     def wrapper(state: PipelineState) -> dict[str, Any]:
         return {} if state.get("halt") else step(state)
     return wrapper
+
+
+GATE_LABEL = {"sast": "SAST", "dast": "DAST", "cutover": "도메인 전환"}
 
 
 def assert_gates_passed(gates: Mapping[str, str], required: tuple[str, ...]) -> None:
@@ -236,20 +292,33 @@ class Steps:
         raise ServiceUnavailable("SAST 점검이 제한 시간 안에 끝나지 않았다")
 
     def _sast_gate(self, scan: Mapping[str, Any]) -> dict[str, Any]:
-        """명세 v1.1 7-1 의 최소판. 점검 실패·커밋 불일치는 멈춤, 비밀값은 사람 확인, 그 밖은 통과."""
+        """명세 v1.1 7-1 의 최소판.
+
+        점검 실패·요청 커밋 불일치는 멈춤. 결과 요약이나 점검 범위 증거(실제 커밋·파일 수)가 없거나 다르면
+        정상적인 0건으로 보지 않고 사람 확인. 비밀값도 사람 확인. 그 밖은 통과.
+        """
         if scan.get("state") != "done":
             self._board.update("sast", state="fail", summary=f"점검 실패: {scan.get('error')}")
             raise Stopped(f"SAST 점검 실패: {scan.get('error')}")
-        if scan.get("commit") and scan["commit"] != self._deps.options.commit:
+        commit = self._deps.options.commit
+        if scan.get("commit") and scan["commit"] != commit:
             self._board.update("sast", state="fail", summary="점검한 커밋이 요청과 다르다")
             raise Stopped("SAST 가 점검한 커밋이 요청과 다르다")
-        summary = scan.get("summary") or {}
+        summary = scan.get("summary")
+        scope = (summary or {}).get("scope") or {}
+        self._board.add_detail("sast", scope=scope, counts=(summary or {}).get("counts") or {})
+        problem = ("결과 요약 없음" if not summary else "점검 범위 증거 없음" if not scope
+                   else "실제 점검 커밋 다름" if scope.get("commit") != commit
+                   else "점검한 소스 파일 0개" if not scope.get("files") else None)
+        if problem:
+            # 0건이 정상인지 확인할 수 없다. 자동 통과하지 않는다.
+            return {"dast_targets": 0} | self._ask("sast", "sast", f"SAST 범위 확인({problem})", 1)
         targets, secrets = int(summary.get("dast_targets") or 0), int((summary.get("counts") or {}).get("secrets") or 0)
-        self._board.add_detail("sast", dast_targets=targets, counts=summary.get("counts") or {})
+        self._board.add_detail("sast", dast_targets=targets)
         update = {"dast_targets": targets}
         if secrets:
             return update | self._ask("sast", "sast", "SAST 비밀값", secrets)
-        return update | self._pass("sast", "sast", f"DAST 대상 {targets}건 · 비밀값 0")
+        return update | self._pass("sast", "sast", f"DAST 대상 {targets}건 · 비밀값 0 · 파일 {scope['files']}")
 
     # ── 스테이징 ────────────────────────────────────────
     def stage_start(self, state: PipelineState) -> dict[str, Any]:
@@ -322,14 +391,20 @@ class Steps:
             # interrupted(점검 서버 재시작)·cancelled·error 는 통과가 아니다
             self._board.update("dast", state="fail", summary=f"점검이 끝나지 않았다: {status}")
             raise Stopped(f"DAST 점검이 끝나지 않았다: {status}")
-        missing = len(view.get("finding_ids") or ()) - len(results)
+        # 요청한 후보 ID 와 결과 ID 를 대조한다. 누락·중복·예상 밖 항목, 후보가 10개를 넘어 잘린 경우는 통과가 아니다.
+        expected = list(view.get("finding_ids") or ())
+        got = [r["finding_id"] for r in results]
+        missing = len(set(expected) - set(got))
+        extra = len(set(got) - set(expected)) + (len(got) - len(set(got)))
+        truncated = int(view.get("eligible_count") or len(expected)) - len(expected)
         labels = ", ".join(f"{s} {sum(r['status'] == s for r in results)}" for s in sorted({str(r["status"]) for r in results}))
-        if results and missing <= 0 and all(r["status"] in DAST_PASS for r in results):
+        notes = [n for n in (f"누락 {missing}" if missing else "", f"예상 밖 {extra}" if extra else "",
+                             f"미점검 {truncated}(후보 10개 초과)" if truncated > 0 else "") if n]
+        if results and not notes and all(r["status"] in DAST_PASS for r in results):
             return self._pass("dast", "dast", f"재현 없음 ({labels})")
-        # 재현·판정 불가·결과 누락은 사람이 본다
-        unresolved = sum(r["status"] not in DAST_PASS for r in results) + max(missing, 0)
-        return self._ask("dast", "dast", f"DAST ({labels or '결과 없음'}{f', 누락 {missing}' if missing > 0 else ''})",
-                         unresolved)
+        # 재현·판정 불가·결과 누락·미점검은 사람이 본다
+        unresolved = sum(r["status"] not in DAST_PASS for r in results) + missing + extra + max(truncated, 0)
+        return self._ask("dast", "dast", f"DAST ({', '.join([labels or '결과 없음', *notes])})", unresolved)
 
     def _release(self) -> None:
         """스테이징 점유를 푼다. 실패해도 만료(기본 1시간)로 풀리므로 실행 결과를 바꾸지 않는다."""
@@ -340,11 +415,125 @@ class Steps:
             LOG.warning("스테이징 점유를 풀지 못했다(만료로 풀린다): %s", exc)
             self._board.add_detail("stage", lease="release_failed")
 
+    # ── 서비스 도메인 전환(명세 v1.1 6-3) ─────────────────
+    def _cutover(self) -> tuple[CutoverConfig, CloudflareClient]:
+        if self._deps.cutover is None or self._deps.cloudflare is None:
+            raise Stopped("서비스 도메인 전환 설정(DELTA_CUTOVER·Cloudflare 토큰)이 없다")
+        return self._deps.cutover, self._deps.cloudflare
+
+    def ask_cutover(self, state: PipelineState) -> dict[str, Any]:
+        cfg = self._deps.cutover
+        target = f"{cfg.record}: {cfg.green} → {cfg.blue}" if cfg else "설정 없음"
+        answer = interrupt({"node_id": "cutover", "prompt": f"서비스 도메인을 옮깁니다({target}). 기존 대상은 내리지 않습니다.",
+                            "options": [PROCEED, ("stop", "중단")]})
+        if answer != "approve":
+            self._board.update("cutover", state="fail", summary="사람이 중단")
+            raise Stopped("서비스 도메인 전환을 사람이 중단했다")
+        self._board.update("cutover", state="running", summary="전환 전 검증 중")
+        return {"gates": {"cutover_approval": "approved"}}
+
+    def cutover_check(self, state: PipelineState) -> dict[str, Any]:
+        """DNS 를 바꾸기 전에 blue 원본이 서비스 도메인 요청에 정상 응답하는지 본다. 실패하면 DNS 를 건드리지 않는다."""
+        assert_gates_passed(state.get("gates") or {}, ("sast", "dast", "cutover_approval"))
+        cfg, _ = self._cutover()
+        status, served = self._deps.probe(cfg.blue_origin + cfg.verify_path, host=cfg.record)
+        self._board.add_detail("cutover", precheck={"status": status, "served_by": served})
+        if status != 200 or not served.startswith(cfg.expect_served_by):
+            self._board.update("cutover", state="fail", summary=f"전환 전 검증 실패(HTTP {status}, {served or '식별값 없음'})")
+            raise Stopped(f"blue 원본 검증 실패(HTTP {status}, X-Served-By={served!r}). DNS 를 바꾸지 않았다")
+        return {}
+
+    def cutover_switch(self, state: PipelineState) -> dict[str, Any]:
+        """DNS 전용 CNAME 의 대상을 green 에서 blue 로 바꾼다(호원님 스크립트 11/5 와 같은 규칙).
+
+        레코드는 미리 만든 DNS 전용 CNAME 이어야 한다. 현재 값이 green 일 때만 바꾸고, 바꾼 뒤 다시 읽어 확인한다.
+        green 은 기존 TTL(자동이면 300초)과 최소 유지 시간 중 긴 쪽만큼 그대로 둔다.
+        """
+        cfg, cf = self._cutover()
+        record = self._read(lambda: cf.find_record(cfg.zone_id, cfg.record))
+        if record.get("type") != "CNAME" or record.get("proxied") is not False:
+            raise Stopped(f"{cfg.record} 는 DNS 전용 CNAME 이어야 한다(type={record.get('type')}, proxied={record.get('proxied')})")
+        ttl = record.get("ttl")
+        if type(ttl) is not int or not (ttl == 1 or 30 <= ttl <= 86400):
+            raise Stopped(f"{cfg.record} 의 TTL 을 확인할 수 없다({ttl!r})")
+        wait_seconds = max(300 if ttl == 1 else ttl, cfg.keep_green_seconds)
+        current = hostname(record.get("content"))
+        if current == cfg.blue:
+            # 재개: 앞 실행에서 이미 바꿨다. 되돌릴 값은 green, 전환 시각은 처음 기록을 쓴다.
+            self._board.add_detail("cutover", switch="already_blue")
+            return {"cutover_record_id": record["id"], "cutover_previous": state.get("cutover_previous") or cfg.green,
+                    "cutover_switched_at": state.get("cutover_switched_at") or self._deps.now(),
+                    "cutover_wait_seconds": state.get("cutover_wait_seconds") or wait_seconds}
+        if current != cfg.green:
+            raise Stopped(f"현재 대상({current})이 green({cfg.green})이 아니다. 사람이 확인해야 한다")
+        self._board.add_detail("cutover", previous=current, ttl=ttl, wait_seconds=wait_seconds)
+        cf.set_content(cfg.zone_id, record["id"], cfg.blue)
+        switched_at = self._deps.now()
+        changed = self._read(lambda: cf.find_record(cfg.zone_id, cfg.record))
+        if (hostname(changed.get("content")) != cfg.blue or changed.get("proxied") is not False
+                or changed.get("ttl") != ttl):
+            raise Stopped("변경 뒤 레코드가 blue·DNS 전용·기존 TTL 이 아니다")
+        self._board.update("cutover", summary=f"{cfg.record} → {cfg.blue}(설정 반영), 실제 DNS·응답 확인 중")
+        return {"cutover_record_id": record["id"], "cutover_previous": current,
+                "cutover_switched_at": switched_at, "cutover_wait_seconds": wait_seconds}
+
+    def cutover_verify(self, state: PipelineState) -> dict[str, Any]:
+        """설정 반영만으로 끝내지 않는다. 공개 리졸버가 blue 를 돌려주고, 서비스 도메인 응답이 blue 에서 오는지
+        연속으로 확인한다. 그 뒤 green 을 TTL 만큼 유지하고, 그동안 레코드가 바뀌지 않았는지 다시 본다.
+        확인하지 못하면 green 으로 되돌린다."""
+        cfg, cf = self._cutover()
+        url = f"{cfg.scheme}://{cfg.record}{cfg.verify_path}"
+        keep_until = state["cutover_switched_at"] + state["cutover_wait_seconds"]
+        deadline = keep_until + CUTOVER_GRACE_SECONDS
+        streak, last, answer = 0, (0, ""), None
+        while self._deps.now() < deadline:
+            try:
+                answer = self._deps.resolve(cfg.record)
+                last = self._deps.probe(url) if answer == cfg.blue else (0, "")
+            except ServiceUnavailable:
+                last = (0, "")
+            streak = streak + 1 if answer == cfg.blue and last[0] == 200 and last[1].startswith(cfg.expect_served_by) else 0
+            if streak >= CUTOVER_STREAK:
+                break
+            self._deps.sleep(POLL_SECONDS)
+        else:
+            return self._rollback(state, cf, cfg, f"DNS 응답 {answer or '없음'}, HTTP {last[0]}, {last[1] or '식별값 없음'}")
+        self._board.add_detail("cutover", verified={"url": url, "dns": answer, "served_by": last[1]})
+        remaining = keep_until - self._deps.now()
+        if remaining > 0:
+            # green 을 남은 TTL 동안 유지한다(이전 응답을 캐시한 클라이언트가 아직 green 으로 온다)
+            self._board.update("cutover", summary=f"blue 응답 확인. green 유지 {int(remaining)}초 대기")
+            self._deps.sleep(remaining)
+        final = self._read(lambda: cf.find_record(cfg.zone_id, cfg.record))
+        if hostname(final.get("content")) != cfg.blue or final.get("proxied") is not False:
+            raise Stopped("대기 중 DNS 설정이 달라졌다. green 을 유지한 채 사람이 확인해야 한다")
+        self._board.update("cutover", state="pass",
+                           summary=f"{cfg.record} → {cfg.blue}, 응답 {last[1]}. green 은 내리지 않음(TTL {state['cutover_wait_seconds']}초 경과)")
+        return {"gates": {"cutover": "pass"}}
+
+    def _rollback(self, state: PipelineState, cf: CloudflareClient, cfg: CutoverConfig, why: str) -> dict[str, Any]:
+        try:
+            cf.set_content(cfg.zone_id, state["cutover_record_id"], state["cutover_previous"])
+            rolled = f"{state['cutover_previous']} 으로 되돌렸다"
+        except ServiceUnavailable as exc:
+            rolled = f"되돌리지 못했다({exc}). 사람이 바로 확인해야 한다"
+        self._board.update("cutover", state="fail", summary=f"전환 후 검증 실패({why}). {rolled}")
+        raise Stopped(f"전환 후 검증 실패: {rolled}")
+
     # ── 끝 ──────────────────────────────────────────────
     def done(self, state: PipelineState) -> dict[str, Any]:
-        assert_gates_passed(state.get("gates") or {}, ("sast", "dast"))
+        required = ("sast", "dast", "cutover") if self._deps.options.cutover else ("sast", "dast")
+        gates = state.get("gates") or {}
+        assert_gates_passed(gates, required)
         self._release()
-        self._board.finish("verified", f"스테이징 검증 완료 · {state['image_digest'][:19]}", passed=True)
+        digest = state["image_digest"][:19]
+        # 사람이 승인해 넘긴 게이트는 '보안 통과'가 아니다. 끝까지 연결은 됐지만 검증 완료로 표시하지 않는다
+        approved = [GATE_LABEL.get(g, g) for g in required if gates.get(g) == "approved"]
+        if approved:
+            self._board.finish("unresolved", f"연결 확인 완료 · 보안 미해결({'·'.join(approved)} 사람 승인으로 진행) · {digest}",
+                               result="warn")
+        else:
+            self._board.finish("verified", f"스테이징 검증 완료 · {digest}", passed=True)
         return {"halt": None}
 
     def halted(self, state: PipelineState) -> dict[str, Any]:

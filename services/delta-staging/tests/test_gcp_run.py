@@ -290,3 +290,33 @@ async def test_failed_reset_stops_the_deploy(gcp_target):
     done = await registry.wait("Run.1")
     assert done.state == "failed" and "초기화" in (done.error or "")
     assert "service" not in gcp.order
+
+
+async def test_flapping_armor_needs_consecutive_successes_before_ready(gcp_target):
+    """Cloud Armor 반영이 에지마다 달라 한 번 열리고 다시 막히는 경우(11/5 실제 발생): 연속 3번 열려야 ready."""
+    gcp = FakeGcp()
+    calls = []
+    answers = [True, False, True, True, True]
+
+    def probe(url):
+        calls.append(url)
+        return answers.pop(0) if len(answers) > 1 else answers[0]
+
+    provider = GcpCloudRunStaging(gcp_target, http=gcp, poll_seconds=0, public_ip=lambda: "15.165.5.176", probe=probe)
+    registry = StagingRegistry({"gcp": provider})
+    await registry.start(_req(scanner_ip="auto"))
+    done = await registry.wait("Run.1")
+
+    assert done.state == "ready" and len(calls) == 5
+
+
+async def test_lb_that_never_stabilizes_fails(gcp_target):
+    import itertools
+
+    flips = itertools.cycle([True, False])  # 끝없이 열렸다 닫혔다 한다
+    provider = GcpCloudRunStaging(gcp_target, http=FakeGcp(), poll_seconds=0, public_ip=lambda: "15.165.5.176",
+                                  probe=lambda url: next(flips), health_timeout=0.05)
+    registry = StagingRegistry({"gcp": provider})
+    await registry.start(_req(scanner_ip="auto"))
+    done = await registry.wait("Run.1")
+    assert done.state == "failed" and "안정적으로" in done.error

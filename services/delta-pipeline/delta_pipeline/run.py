@@ -18,7 +18,7 @@ from langgraph.types import Command
 from delta_pipeline.clients import ServiceUnavailable
 from delta_pipeline.graph import build_graph
 from delta_pipeline.model import Board, Options
-from delta_pipeline.steps import DastClient, Deps, JenkinsClient, SastClient, StagingClient
+from delta_pipeline.steps import CloudflareClient, CutoverConfig, DastClient, Deps, JenkinsClient, SastClient, StagingClient
 
 DECISION_DEADLINE_SECONDS = 1800
 DECISION_POLL_SECONDS = 0.5
@@ -40,7 +40,10 @@ def latest_unfinished(store_dir: Path) -> tuple[str, Options] | None:
 class Run:
     def __init__(self, options: Options, *, sast: SastClient, dast: DastClient, build_jenkins: JenkinsClient,
                  deploy_jenkins: JenkinsClient, staging: StagingClient, image_repo: str, store_dir: Path,
-                 sleep: Callable[[float], None] = time.sleep, run_id: str | None = None) -> None:
+                 sleep: Callable[[float], None] = time.sleep, run_id: str | None = None,
+                 cloudflare: CloudflareClient | None = None, cutover: CutoverConfig | None = None,
+                 probe: Callable[..., tuple[int, str]] | None = None,
+                 resolve: Callable[[str], str | None] | None = None, now: Callable[[], float] | None = None) -> None:
         self.run_id = run_id or uuid.uuid4().hex
         self.options = options
         (store_dir / BOARD_DIR).mkdir(parents=True, exist_ok=True)
@@ -48,7 +51,8 @@ class Run:
         self._store_dir = store_dir
         self._deps = Deps(run_id=self.run_id, options=options, board=self._board, sast=sast, dast=dast,
                           build_jenkins=build_jenkins, deploy_jenkins=deploy_jenkins, staging=staging,
-                          image_repo=image_repo, sleep=sleep)
+                          image_repo=image_repo, sleep=sleep, cloudflare=cloudflare, cutover=cutover,
+                          **{k: v for k, v in (("probe", probe), ("resolve", resolve), ("now", now)) if v})
         self._answer: str | None = None
         self._answered = threading.Event()
 

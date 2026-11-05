@@ -125,5 +125,7 @@ resource "google_cloud_run_v2_job" "db_reset" {
     # 배포할 때마다 스테이징 도구가 이미지를 배포 이미지로 바꾼다.
     ignore_changes = [template[0].template[0].containers[0].image, client, client_version]
   }
-  depends_on = [google_secret_manager_secret_iam_member.app_database_url, google_project_iam_member.app_sql_client]
+  # 비밀값 버전(DATABASE_URL)이 먼저 있어야 Job 을 만들 수 있다(없으면 "secret ... not found"로 실패, 11/5 apply).
+  depends_on = [google_secret_manager_secret_version.database_url, google_secret_manager_secret_iam_member.app_database_url,
+  google_project_iam_member.app_sql_client]
 }

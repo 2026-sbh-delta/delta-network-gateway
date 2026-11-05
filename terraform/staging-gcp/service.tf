@@ -122,5 +122,7 @@ resource "google_cloud_run_v2_service" "app" {
     ignore_changes = [template[0].containers[0].image, template[0].labels, client, client_version]
   }
   # 런타임 계정의 DB·비밀값 권한이 먼저 있어야 새 개정판이 뜬다.
-  depends_on = [google_project_service.enabled, google_project_iam_member.app_sql_client, google_secret_manager_secret_iam_member.app_database_url]
+  # 비밀값 버전(DATABASE_URL)까지 있어야 새 개정판이 뜬다(없으면 "secret ... not found"로 실패, 11/5 apply).
+  depends_on = [google_project_service.enabled, google_project_iam_member.app_sql_client,
+  google_secret_manager_secret_iam_member.app_database_url, google_secret_manager_secret_version.database_url]
 }

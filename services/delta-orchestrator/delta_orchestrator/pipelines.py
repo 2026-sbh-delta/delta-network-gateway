@@ -1,7 +1,8 @@
 """delta-pipeline 실행을 이 서버 안에서 돌린다. 한 번에 하나(스테이징은 하나뿐), 재시작하면 끝나지 못한 실행을 이어 간다.
 
 환경 변수: ORCH_STATE_DIR, JENKINS_PLATFORM_PASSWORD, DELTA_SAST_TOKEN, DAST_PLATFORM_TOKEN, DELTA_STAGING_TOKEN(조회),
-DELTA_IMAGE_REPO(선택), DELTA_INTERNAL_ZONE(선택)
+DELTA_IMAGE_REPO(선택), DELTA_INTERNAL_ZONE(선택),
+DELTA_CUTOVER(선택, JSON: 서비스 도메인 전환 설정), CLOUDFLARE_API_TOKEN(선택: 해당 zone DNS 편집만)
 """
 
 from __future__ import annotations
@@ -13,16 +14,23 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from delta_pipeline.clients import Dast, Jenkins, Sast, Staging
+from delta_pipeline.clients import Cloudflare, Dast, Jenkins, Sast, Staging
 from delta_pipeline.model import Options
 from delta_pipeline.run import BOARD_DIR, Run, latest_unfinished
+from delta_pipeline.steps import CutoverConfig
 
 IMAGE_REPO = "asia-northeast3-docker.pkg.dev/term2-delta/delta-lab-staging/delta-sample-app"
 RunFactory = Callable[[Options, Path, "str | None"], Run]
 
 
+def cutover_config() -> CutoverConfig | None:
+    raw = os.environ.get("DELTA_CUTOVER")
+    return CutoverConfig(**json.loads(raw)) if raw else None
+
+
 def platform_run(options: Options, store_dir: Path, run_id: str | None) -> Run:
     zone = os.environ.get("DELTA_INTERNAL_ZONE", "cp.internal")
+    token = os.environ.get("CLOUDFLARE_API_TOKEN")
     jenkins = f"http://jenkins.{zone}:8080"
     password = os.environ.get("JENKINS_PLATFORM_PASSWORD", "")
     return Run(options,
@@ -33,7 +41,8 @@ def platform_run(options: Options, store_dir: Path, run_id: str | None) -> Run:
                deploy_jenkins=Jenkins(jenkins, "platform", password, job="delta-deploy"),
                # 조회 토큰: 점검을 끝낸 뒤 자기 스테이징 점유를 푸는 데만 쓴다(배포·초기화는 못 한다)
                staging=Staging(f"http://jenkins.{zone}:8091", os.environ.get("DELTA_STAGING_TOKEN", "")),
-               image_repo=os.environ.get("DELTA_IMAGE_REPO", IMAGE_REPO), store_dir=store_dir, run_id=run_id)
+               image_repo=os.environ.get("DELTA_IMAGE_REPO", IMAGE_REPO), store_dir=store_dir, run_id=run_id,
+               cloudflare=Cloudflare(token) if token else None, cutover=cutover_config() if options.cutover else None)
 
 
 class Pipelines:
@@ -57,11 +66,11 @@ class Pipelines:
     def running(self) -> bool:
         return self._thread is not None and self._thread.is_alive()
 
-    def start(self, repo: str, commit: str) -> str:
+    def start(self, repo: str, commit: str, *, cutover: bool = False) -> str:
         with self._lock:
             if self.running():
                 raise RuntimeError("이미 실행 중인 파이프라인이 있습니다(스테이징은 하나뿐)")
-            return self._launch(Options(repo, commit))
+            return self._launch(Options(repo, commit, cutover=cutover))
 
     def answer(self, run_id: str, value: str) -> bool:
         return bool(self.run and self.run.run_id == run_id and self.run.answer(value))

@@ -68,9 +68,11 @@ variable "jenkins_instance_type" {
 }
 
 variable "spot_services" {
+  # 오케스트레이터(t4g.small)는 11/5 서울 2a Spot 용량 부족(InsufficientInstanceCapacity)으로 온디맨드로 둔다.
+  # 실행 상태·승인 대기를 들고 있어 회수되면 안 되는 호스트이기도 하다.
   description = "Spot으로 띄울 서비스. 온디맨드 vCPU 한도 증설(2026-11-05 요청)이 승인되면 빈 목록으로 바꾼다."
   type        = list(string)
-  default     = ["orchestrator", "jenkins", "jenkins-agent"]
+  default     = ["jenkins", "jenkins-agent"]
 }
 
 variable "target_aws_account_id" {

@@ -19,6 +19,7 @@ class Options:
     repo: str
     commit: str
     planner: str = "agent"
+    cutover: bool = False  # 검증이 끝나면 서비스 도메인을 blue 로 옮긴다(사람 승인 후)
 
 
 @dataclass
@@ -26,7 +27,7 @@ class Node:
     id: str
     label: str
     owner: str
-    state: str = "pending"  # pending·running·pass·waiting·fail·skipped
+    state: str = "pending"  # pending·running·pass·waiting·fail·skipped·warn(결과: 연결은 됐지만 보안 미해결)
     summary: str = ""
     started_at: float | None = None
     ended_at: float | None = None
@@ -34,7 +35,7 @@ class Node:
     decision: dict[str, Any] | None = None
 
 
-def initial_nodes() -> list[Node]:
+def initial_nodes(cutover: bool = False) -> list[Node]:
     """웹 갈래(명세 v1.1 6-2)의 최소 연결 노드. 판정은 그래프 분기(코드)가 한다."""
     return [
         Node("prepare", "입력 확인", "오케스트레이터"),
@@ -42,6 +43,7 @@ def initial_nodes() -> list[Node]:
         Node("sast", "SAST", "delta-sast"),
         Node("stage", "스테이징 배포", "Jenkins · 스테이징 도구"),
         Node("dast", "DAST", "delta-dast · Chrome"),
+        *([Node("cutover", "서비스 도메인 전환", "Cloudflare · 사람 승인")] if cutover else []),
         Node("result", "결과", "오케스트레이터"),
     ]
 
@@ -55,7 +57,7 @@ class Board:
     def __init__(self, path: Path, options: Options, run_id: str) -> None:
         self._path, self._options, self._run_id = path, options, run_id
         self._lock = threading.Lock()
-        self._nodes = {node.id: node for node in initial_nodes()}
+        self._nodes = {node.id: node for node in initial_nodes(options.cutover)}
         self._outcome: str | None = None
         self._started_at = time.time()
         if path.is_file():
@@ -85,7 +87,7 @@ class Board:
                 setattr(node, key, value)
             if fields.get("state") == "running" and node.started_at is None:
                 node.started_at = time.time()
-            if fields.get("state") in ("pass", "fail", "skipped"):
+            if fields.get("state") in ("pass", "fail", "skipped", "warn"):
                 node.ended_at = time.time()
             self._save()
 
@@ -103,7 +105,7 @@ class Board:
             waiting = next((n for n in self._nodes.values() if n.decision), None)
             return {o["value"] for o in waiting.decision["options"]} if waiting else set()
 
-    def finish(self, outcome: str, summary: str, *, passed: bool = False) -> None:
+    def finish(self, outcome: str, summary: str, *, passed: bool = False, result: str | None = None) -> None:
         with self._lock:
             for node in self._nodes.values():
                 if node.state == "pending" and node.id != "result":
@@ -112,4 +114,4 @@ class Board:
                     node.state, node.ended_at, node.decision = "fail", time.time(), None
             self._outcome = outcome
             self._save()
-        self.update("result", state="pass" if passed else "fail", summary=summary)
+        self.update("result", state=result or ("pass" if passed else "fail"), summary=summary)

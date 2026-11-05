@@ -5,7 +5,8 @@ pipeline {
   stages {
     stage('스테이징 배포') {
       steps {
-        sh 'python3 /opt/delta/staging_deploy.py'
+        // 이전 실행의 결과가 이번 결과로 올라가지 않게 먼저 지운다
+        sh 'rm -f result.json && python3 /opt/delta/staging_deploy.py'
       }
     }
   }

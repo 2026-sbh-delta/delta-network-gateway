@@ -35,6 +35,19 @@ prepare → (build_start → build_wait ∥ sast_start → sast_wait) → join �
 - **스테이징:** Jenkins 실패, 다른 실행의 점유(409), 준비 안 됨, digest 불일치, 데이터 초기화 기록 없음이나 남은 행이 0이 아니면 멈춘다.
 - **DAST:** 모든 항목이 `NOT_REPRODUCED`이고 누락이 없을 때만 자동 통과다. 그 밖(재현, 판정 불가, 결과 누락)은 사람 확인이다(D3, 자동 통과 금지). `interrupted`·`cancelled`·`error`는 멈춘다. `skipped`(후보 없음)는 통과다.
 
+## 서비스 도메인 전환(선택, 명세 v1.1 6-3)
+
+실행을 `cutover: true`로 시작하면 DAST 판정 뒤에 다음을 거친다. 호원님 Cloudflare 스크립트(11/5)의 검증을 옮겼고, 외부 CLI 대신 Cloudflare API를 직접 부른다. 레코드는 프록시 CNAME이다.
+
+```text
+ask_cutover(사람 승인) → cutover_check(blue 원본에 서비스 도메인 Host로 요청: 200 + X-Served-By)
+  → cutover_switch(레코드가 green일 때만 blue로, 다시 읽어 확인. 이미 blue면 재개로 보고 넘어감)
+  → cutover_verify(서비스 도메인으로 실제 요청을 3번 연속 blue 응답 확인. 실패하면 green으로 되돌리고 멈춤) → done
+```
+
+- 설정: `DELTA_CUTOVER`(JSON: `zone_id`, `record`, `green`, `blue`, `blue_origin`, `verify_path`, `expect_served_by`)와 `CLOUDFLARE_API_TOKEN`(해당 zone DNS 편집만). 오케스트레이터는 SSM `orchestrator/cutover_config`·`orchestrator/cloudflare_token`에서 읽는다.
+- green은 전환 뒤에도 내리지 않는다.
+
 ## 재개 규칙
 
 - 체크포인트는 `durability="sync"` 로 저장한다. 기본값으로 두면 강제 종료 때 끝난 노드가 다시 돌아 배포가 두 번 시작될 수 있다.

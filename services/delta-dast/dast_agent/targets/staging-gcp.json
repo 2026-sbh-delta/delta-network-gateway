@@ -6,7 +6,8 @@
   "allowed_path_prefixes": [
     "/board",
     "/new",
-    "/posts/"
+    "/posts/",
+    "/static/"
   ],
   "routes": [
     {

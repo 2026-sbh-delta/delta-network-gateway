@@ -20,9 +20,11 @@ from urllib.parse import parse_qs
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
+from fastapi.responses import (FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response,
+                               StreamingResponse)
 from fastapi.staticfiles import StaticFiles
 
+from . import live
 from .access import COOKIE, Access, login_page
 from .pipelines import Pipelines
 
@@ -144,6 +146,8 @@ async def collect() -> dict:
         "dast": dast,
         "public_urls": json.loads(os.environ.get("DELTA_PUBLIC_URLS", "{}") or "{}"),
         "nat_ip": os.environ.get("DELTA_NAT_IP"),
+        # 도메인 전환 설정·토큰이 모두 있을 때만 화면에 전환 선택을 보인다
+        "cutover_configured": bool(os.environ.get("DELTA_CUTOVER") and os.environ.get("CLOUDFLARE_API_TOKEN")),
     }
 
 
@@ -170,10 +174,17 @@ def create_app(pipelines: Pipelines | None = None) -> FastAPI:
             return PlainTextResponse("ok", headers={"Cache-Control": "no-store"})
         host = request.headers.get("host", "")
         origin = request.headers.get("origin")
-        if not access.is_public(host) and host not in {"127.0.0.1:8080", "localhost:8080"}:
+        # 로컬 예외는 실제 접속 주소로 판단한다(Host 헤더는 호출자가 바꿀 수 있다). testclient 는 시험 도구의 가상 주소.
+        local = host in {"127.0.0.1:8080", "localhost:8080"} and bool(request.client) and \
+            request.client.host in {"127.0.0.1", "::1", "testclient"}
+        if not access.is_public(host) and not local:
             return JSONResponse({"detail": "허용되지 않은 요청 출처입니다."}, status_code=403)
         expected = access.public_origin if access.is_public(host) else f"http://{host}"
-        if (origin is not None and origin != expected) or request.headers.get("sec-fetch-site") == "cross-site":
+        # 다른 사이트에서 넘어온 요청은 막되, 링크로 들어오는 페이지 이동(GET 화면 열기)은 허용한다.
+        # 상태를 바꾸는 요청(POST 등)과 화면 안의 fetch 는 여전히 같은 출처만 받는다.
+        cross_site = request.headers.get("sec-fetch-site") == "cross-site" and not (
+            request.method in {"GET", "HEAD"} and request.headers.get("sec-fetch-mode") == "navigate")
+        if (origin is not None and origin != expected) or cross_site:
             return JSONResponse({"detail": "허용되지 않은 요청 출처입니다."}, status_code=403)
         if access.is_public(host):
             if path == "/login":
@@ -218,11 +229,13 @@ def create_app(pipelines: Pipelines | None = None) -> FastAPI:
     @app.post("/api/pipeline/runs", status_code=202)
     async def start_run(request: Request):
         body = await json_body(request)
-        repo, commit = body.get("repo"), body.get("commit")
-        if not isinstance(repo, str) or not isinstance(commit, str):
-            raise HTTPException(400, "repo와 commit(40자리 SHA)이 필요합니다")
+        repo, commit, cutover = body.get("repo"), body.get("commit"), body.get("cutover", False)
+        if not isinstance(repo, str) or not isinstance(commit, str) or not isinstance(cutover, bool):
+            raise HTTPException(400, "repo와 commit(40자리 SHA)이 필요합니다(cutover는 true/false)")
+        if cutover and not (os.environ.get("DELTA_CUTOVER") and os.environ.get("CLOUDFLARE_API_TOKEN")):
+            raise HTTPException(400, "서비스 도메인 전환 설정(대상 레코드·운영 진입점)이 아직 없습니다")
         try:
-            return {"run_id": need_pipelines().start(repo, commit)}
+            return {"run_id": need_pipelines().start(repo, commit, cutover=cutover)}
         except RuntimeError as exc:
             raise HTTPException(409, str(exc))
 
@@ -244,6 +257,51 @@ def create_app(pipelines: Pipelines | None = None) -> FastAPI:
         if not isinstance(value, str) or not need_pipelines().answer(run_id, value):
             raise HTTPException(409, "지금 받을 수 없는 답입니다")
         return {"ok": True}
+
+    # ── 진행 보기: 실행 기록에 남은 빌드 번호·점검 ID 로만 각 도구의 진행 정보를 받아 넘긴다(live.py)
+    def board_of(run_id: str) -> dict:
+        board = need_pipelines().get(run_id)
+        if board is None:
+            raise HTTPException(404, "없는 실행입니다")
+        return board
+
+    async def relay(call):
+        try:
+            async with httpx.AsyncClient() as client:
+                return await call(client)
+        except live.LiveError as exc:
+            raise HTTPException(exc.status, exc.detail) from None
+
+    @app.get("/api/pipeline/runs/{run_id}/live/log/{node_id}")
+    async def live_log(run_id: str, node_id: str, start: int = 0):
+        board = board_of(run_id)
+        return await relay(lambda c: live.jenkins_log(c, board, node_id, start))
+
+    @app.get("/api/pipeline/runs/{run_id}/live/sast")
+    async def live_sast(run_id: str):
+        board = board_of(run_id)
+        return await relay(lambda c: live.sast_findings(c, board))
+
+    @app.get("/api/pipeline/runs/{run_id}/live/dast")
+    async def live_dast(run_id: str):
+        board = board_of(run_id)
+        return await relay(lambda c: live.dast_view(c, board, f"/api/pipeline/runs/{run_id}/live/dast"))
+
+    @app.get("/api/pipeline/runs/{run_id}/live/dast/artifacts/{name}")
+    async def live_dast_artifact(run_id: str, name: str):
+        board = board_of(run_id)
+        content = await relay(lambda c: live.dast_artifact(c, board, name))
+        return Response(content, media_type="image/png", headers={"Cache-Control": "private, max-age=3600"})
+
+    @app.get("/api/pipeline/runs/{run_id}/live/dast/events")
+    async def live_dast_events(run_id: str, request: Request):
+        board = board_of(run_id)
+        try:
+            live.dast_run(board)
+        except live.LiveError as exc:
+            raise HTTPException(exc.status, exc.detail) from None
+        return StreamingResponse(live.dast_events(board, request.headers.get("last-event-id")),
+                                 media_type="text/event-stream", headers={"X-Accel-Buffering": "no"})
 
     @app.get("/", response_class=HTMLResponse)
     async def index():

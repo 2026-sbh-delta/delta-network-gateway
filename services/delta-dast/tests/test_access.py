@@ -111,3 +111,24 @@ def test_platform_token_only_on_internal_hosts_and_platform_or_fix_paths(monkeyp
         assert client.post("/api/projects", json={}, headers=good).status_code == 403
     with TestClient(app, base_url="http://evil.example") as client:
         assert client.get(f"/api/platform/runs/{run}", headers=good).status_code == 403
+
+
+def test_localhost_host_header_from_a_remote_peer_gets_nothing(tmp_path):
+    """로컬 예외는 Host 헤더가 아니라 실제 접속 주소로 판단한다(Host: localhost 위조로 제어 토큰을 받지 못한다)."""
+    app = server.create_app(port=18765, target_port=18766, runs_dir=tmp_path)
+    with TestClient(app, base_url="http://localhost:18765", client=("10.90.10.7", 40000)) as client:
+        assert client.get("/api/config").status_code == 403
+        assert client.post("/api/projects", json={}).status_code == 403
+    with TestClient(app, base_url="http://localhost:18765", client=("127.0.0.1", 40000)) as client:
+        assert client.get("/api/config").status_code == 200
+
+
+def test_cross_site_link_navigation_reaches_login_but_cross_site_post_is_refused(monkeypatch, tmp_path):
+    monkeypatch.setenv("DAST_PUBLIC_ORIGIN", "https://dast.example")
+    monkeypatch.setenv("DAST_ADMIN_PASSWORD", "admin-password-123456")
+    monkeypatch.setenv("DAST_SESSION_SECRET", "s" * 40)
+    app = server.create_app(port=18765, target_port=18766, runs_dir=tmp_path)
+    with TestClient(app, base_url="https://dast.example", follow_redirects=False) as client:
+        nav = {"Sec-Fetch-Site": "cross-site", "Sec-Fetch-Mode": "navigate"}
+        assert client.get("/login", headers=nav).status_code == 200
+        assert client.post("/login", data={"password": "x"}, headers=nav).status_code == 403
