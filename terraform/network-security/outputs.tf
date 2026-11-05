@@ -19,6 +19,19 @@ output "guardduty" {
   }
 }
 
+output "guardduty_findings" {
+  description = "Enterprise finding log storage and platform forwarding configuration; no finding contents."
+  value = {
+    log_group_name           = aws_cloudwatch_log_group.guardduty_findings.name
+    log_group_arn            = aws_cloudwatch_log_group.guardduty_findings.arn
+    event_rule_name          = aws_cloudwatch_event_rule.guardduty_findings.name
+    event_rule_arn           = aws_cloudwatch_event_rule.guardduty_findings.arn
+    destination_arn          = var.guardduty_findings_destination_arn
+    forwarding_enabled       = var.guardduty_findings_forwarding_enabled
+    subscription_filter_name = try(aws_cloudwatch_log_subscription_filter.guardduty_platform[0].name, null)
+  }
+}
+
 output "region" {
   description = "Region of the central deployment."
   value       = var.region

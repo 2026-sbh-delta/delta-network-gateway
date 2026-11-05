@@ -298,6 +298,24 @@ variable "guardduty_enabled" {
   nullable    = false
 }
 
+variable "guardduty_findings_forwarding_enabled" {
+  description = "Forward the enterprise GuardDuty log group to the platform; false retains local finding storage and detection."
+  type        = bool
+  default     = true
+  nullable    = false
+}
+
+variable "guardduty_findings_destination_arn" {
+  description = "Same-Region CloudWatch Logs logical Destination in the existing platform account."
+  type        = string
+  default     = "arn:aws:logs:ap-northeast-2:616723161368:destination:delta-platform-logs"
+  nullable    = false
+  validation {
+    condition     = can(regex("^arn:aws:logs:${var.region}:616723161368:destination:[A-Za-z0-9_.#/-]+$", var.guardduty_findings_destination_arn))
+    error_message = "Use a same-Region CloudWatch Logs logical Destination in platform account 616723161368."
+  }
+}
+
 variable "guardduty_finding_publishing_frequency" {
   description = "Notification frequency for subsequent occurrences of existing GuardDuty findings."
   type        = string
