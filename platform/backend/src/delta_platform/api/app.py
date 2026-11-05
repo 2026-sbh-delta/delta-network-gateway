@@ -32,6 +32,7 @@ from delta_platform.core.inputs import (
     EmptyInput,
     ImageCheckInput,
     LoginInput,
+    RemoveRuntimeInput,
     SandboxCheckInput,
     ServiceInput,
     request_key,
@@ -198,6 +199,35 @@ def create_app(settings=None, engine=None, *, dashboard=None):
     @protected.get("/services/{service_id}/environments")
     def service_environments(service_id: UUID):
         return environments.list(service_id)
+
+    @protected.get("/services/{service_id}/environments/{environment_id}/removal")
+    def removal_preview(service_id: UUID, environment_id: UUID):
+        from delta_platform.adapters.onprem_removal import configured_target
+        from delta_platform.core.removals import RemovalStore
+
+        env = environments.get(service_id, environment_id)
+        try:
+            target = configured_target(settings)
+        except Problem:
+            target = None
+        return RemovalStore(engine).preview(env, target)
+
+    @protected.post("/services/{service_id}/environments/{environment_id}/removal")
+    def remove_runtime(
+        service_id: UUID, environment_id: UUID, body: RemoveRuntimeInput, request: Request
+    ):
+        from delta_platform.adapters.onprem_removal import configured_target
+        from delta_platform.core.removals import RemovalStore
+
+        result, created = RemovalStore(engine).enqueue(
+            service_id,
+            environment_id,
+            body.confirmation_name,
+            body.binding_hash,
+            request_key(request.headers.get("Idempotency-Key")),
+            configured_target(settings),
+        )
+        return JSONResponse(jsonable_encoder(result), status_code=202 if created else 200)
 
     @protected.get("/services/{service_id}/observability")
     def service_observability(

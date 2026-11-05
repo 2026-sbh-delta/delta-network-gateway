@@ -1,5 +1,7 @@
 # 온프레미스 실행 공간 준비
 
+운영 앱의 플랫폼 삭제 기능은 [앱 삭제 연결·운영 안내](REMOVAL.md)를 따른다. 샌드박스 자동 정리와 별도이며 DB·볼륨·서버를 보존한다.
+
 기존 k3s에 임시 `delta-platform-sandbox`와 운영 후보 `delta-notes`를 분리한다. Jenkins가 같은 커밋으로 빌드한 FE·BE digest를 실행하고 통신·실제 이미지를 확인한 뒤 임시 자원만 정리한다. 기존 `demo` 앱·DB, 홈 라우터와 VPN은 변경하지 않는다. 운영 서비스·DB 이전 완료를 의미하지 않는다.
 
 2026-11-05 원본 샘플의 FE·BE 실행과 플랫폼의 Node.js 자동 계측을 온프레미스에서 확인했다. 현재 후보는 원본 앱으로 실행하며 중앙 연결 준비 전까지 계측은 꺼 두었다. DB는 중지하고 데이터 PVC는 보존했다. DAST는 사용자 지시에 따라 API 준비 전까지 제외한다. **AWS↔온프레미스 VPN/TGW는 팀에서 연결 중**이므로 AWS 플랫폼의 온프레미스 선택은 아직 활성화하지 않았다. [FE·BE 검증](../../../docs/ai-dlc/platform-onprem-release.md) · [자동 계측 검증](../../../docs/ai-dlc/platform-auto-instrumentation.md)

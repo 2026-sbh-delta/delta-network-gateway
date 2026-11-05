@@ -16,16 +16,20 @@ import {
   type Observability,
 } from "./observability-api";
 import type { View } from "./AppShell";
+import { RemoveRuntime } from "./RemoveRuntime";
 
 function EnvironmentCard({
   serviceId,
+  serviceName,
   environment,
 }: {
   serviceId: string;
+  serviceName: string;
   environment: Environment;
 }) {
   const [snapshot, setSnapshot] = useState<Observability | null>(null);
   const [error, setError] = useState("");
+  const [runtimeState, setRuntimeState] = useState("");
   useEffect(() => {
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout>;
@@ -61,27 +65,32 @@ function EnvironmentCard({
     };
   }, [serviceId, environment.id]);
   const metric = snapshot?.metrics.app_up;
-  const state = error
-    ? "수집 실패"
-    : !metric
-      ? "상태 조회 중"
-      : metric.status === "ok" && metric.value !== null
-        ? metric.value === 1
-          ? "앱 응답 확인"
-          : "앱 응답 없음"
-        : {
-            ok: "데이터 없음",
-            no_data: "데이터 없음",
-            stale: "수집 지연",
-            error: "수집 실패",
-            unsupported: "미지원",
-          }[metric.status];
+  const state =
+    runtimeState === "removed"
+      ? "앱 삭제 완료"
+      : runtimeState === "removing"
+        ? "앱 삭제·정리 필요"
+        : error
+          ? "수집 실패"
+          : !metric
+            ? "상태 조회 중"
+            : metric.status === "ok" && metric.value !== null
+              ? metric.value === 1
+                ? "앱 응답 확인"
+                : "앱 응답 없음"
+              : {
+                  ok: "데이터 없음",
+                  no_data: "데이터 없음",
+                  stale: "수집 지연",
+                  error: "수집 실패",
+                  unsupported: "미지원",
+                }[metric.status];
   return (
     <div className="release-env-instance">
       <div className="release-line">
         <strong>{environment.name}</strong>
         <span
-          className={`release-state ${metric?.status === "ok" && metric.value === 1 ? "good" : ""}`}
+          className={`release-state ${!["removing", "removed"].includes(runtimeState) && metric?.status === "ok" && metric.value === 1 ? "good" : ""}`}
         >
           {state}
         </span>
@@ -100,6 +109,14 @@ function EnvironmentCard({
       <p className="release-caption">
         등록 버전과 실제 응답 버전의 대조는 별도 확인이 필요합니다.
       </p>
+      {environment.cloud === "onprem" && (
+        <RemoveRuntime
+          serviceId={serviceId}
+          serviceName={serviceName}
+          environment={environment}
+          onState={setRuntimeState}
+        />
+      )}
     </div>
   );
 }
@@ -333,6 +350,7 @@ export function ApplicationPanel({
                       <EnvironmentCard
                         key={env.id}
                         serviceId={service.id}
+                        serviceName={service.name}
                         environment={env}
                       />
                     ))

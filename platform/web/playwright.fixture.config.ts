@@ -10,6 +10,7 @@ export default defineConfig({
     "presentation.spec.ts",
     "release.spec.ts",
     "project-delete.spec.ts",
+    "runtime-removal.spec.ts",
   ],
   fullyParallel: false,
   workers: 1,

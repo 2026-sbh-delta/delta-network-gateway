@@ -1,6 +1,10 @@
 # Delta network gateway
 
-2026-11-05: [플랫폼 자동 계측](ai-dlc/platform-auto-instrumentation.md)을 구현하고 온프레미스의 원본 FE·BE 이미지에서 trace·HTTP 지표 수신을 확인했다. 계측 ON/OFF와 Collector 장애 시 앱 응답도 검증했다. 원본 앱 후보는 실행 중이고 중앙 연결 준비 전까지 계측은 OFF다. 사용자가 플랫폼 브랜치의 커밋·PR 게시를 승인했으며 중앙 릴리스는 미실행이다. [FE·BE 실행기](ai-dlc/platform-onprem-release.md)는 기존 PR #47에서 관리한다.
+2026-11-05: 온프레미스 환경 카드의 ‘실행 앱 삭제’를 구현했다. 이름·자원 소유권 확인, Worker의 실제 종료 확인, 실패 재시도와 이력 보존을 지원한다. 별도 임시 앱의 실제 삭제와 기존 앱/PVC 보존을 검증했으며 운영 플랫폼 릴리스·활성화는 아직이다. 플랫폼 VPC의 TGW 연결과 AWS→온프레미스 왕복 경로가 필요하다. 사용자에게 변경 내용을 보고했고 커밋·PR·병합 승인을 받았다. [설계·검증](ai-dlc/platform-onprem-removal.md) · [연결 안내](../platform/deploy/onprem/REMOVAL.md)
+
+게시 상태: 사용자 승인으로 [#28](https://github.com/2026-sbh-delta/delta-network-gateway/pull/28) → [#47](https://github.com/2026-sbh-delta/delta-network-gateway/pull/47) → [#49](https://github.com/2026-sbh-delta/delta-network-gateway/pull/49)를 순서대로 main에 병합했다. #49는 #47 병합 후 main 대상으로 변경했다. 각 PR의 CI 통과를 확인했고 초안 #39는 유지한다. 앱 삭제 브랜치도 재시도에서 업로드됐으며 새 main과 통합한다. 운영 릴리스는 별도다.
+
+2026-11-05: [플랫폼 자동 계측](ai-dlc/platform-auto-instrumentation.md)을 구현하고 온프레미스의 원본 FE·BE 이미지에서 trace·HTTP 지표 수신을 확인했다. 계측 ON/OFF와 Collector 장애 시 앱 응답도 검증했다. 원본 앱 후보는 실행 중이고 중앙 연결 준비 전까지 계측은 OFF다. [FE·BE 실행기](ai-dlc/platform-onprem-release.md)와 자동 계측 코드는 PR #47·#49로 main에 병합했으며 중앙 릴리스는 미실행이다.
 
 ## 현재 상태
 
