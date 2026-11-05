@@ -1,4 +1,4 @@
-"""Merge the dedicated onprem parameter without growing the main SSM value."""
+"""Merge bounded component settings without growing the main SSM value."""
 
 import argparse
 import json
@@ -6,14 +6,25 @@ import subprocess
 import sys
 
 ONPREM_KEYS = {"PLATFORM_ONPREM_SANDBOX_TARGET", "PLATFORM_ONPREM_SANDBOX_TOKEN"}
+DEPLOYMENT_KEYS = {
+    "PLATFORM_DEPLOYMENT_JENKINS_JOB",
+    "PLATFORM_DEPLOYMENT_JENKINS_USER",
+    "PLATFORM_DEPLOYMENT_JENKINS_TOKEN",
+    "PLATFORM_DEPLOYMENT_CONNECTIONS",
+    "PLATFORM_APPLICATION_DATABASES",
+}
 
 
 def merge_onprem(runtime, extra):
+    return merge_component(runtime, extra, ONPREM_KEYS)
+
+
+def merge_component(runtime, extra, keys):
     if extra is None:
         return runtime
     if (
         not isinstance(extra, dict)
-        or set(extra) != ONPREM_KEYS
+        or set(extra) != keys
         or any(
             not isinstance(v, str) or not v or "\n" in v or "\r" in v
             for v in extra.values()
@@ -23,7 +34,7 @@ def merge_onprem(runtime, extra):
             for k, v in extra.items()
         )
     ):
-        raise ValueError("Invalid or conflicting onprem runtime parameter")
+        raise ValueError("Invalid or conflicting component runtime parameter")
     return {**runtime, "app_env": {**runtime["app_env"], **extra}}
 
 
@@ -34,17 +45,20 @@ def main():
     a = p.parse_args()
     if not a.parameter.startswith("/") or not a.parameter.endswith("/runtime"):
         raise ValueError("Expected runtime parameter path")
-    name = a.parameter.removesuffix("/runtime") + "/onprem/runtime"
+    prefix = a.parameter.removesuffix("/runtime")
+    names = {
+        prefix + "/onprem/runtime": ONPREM_KEYS,
+        prefix + "/deployment/runtime": DEPLOYMENT_KEYS,
+    }
     runtime = json.load(sys.stdin)
-    # The VM's existing SSM agent policy supports GetParameters. Request one exact
-    # sibling name and never list other parameters or print their values in logs.
+    # Read only exact sibling names. Never enumerate parameters or log values.
     result = subprocess.run(
         [
             "aws",
             "ssm",
             "get-parameters",
             "--names",
-            name,
+            *names,
             "--with-decryption",
             "--region",
             a.region,
@@ -56,20 +70,19 @@ def main():
         check=False,
     )
     if result.returncode:
-        raise RuntimeError("Failed to read optional onprem runtime")
+        raise RuntimeError("Failed to read optional component runtime")
     response = json.loads(result.stdout)
     params = response.get("Parameters", [])
-    if not params and response.get("InvalidParameters") == [name]:
-        extra = None
-    elif (
-        len(params) == 1
-        and params[0].get("Name") == name
-        and params[0].get("Type") == "SecureString"
-    ):
-        extra = json.loads(params[0]["Value"])
-    else:
-        raise ValueError("Unexpected onprem parameter response")
-    json.dump(merge_onprem(runtime, extra), sys.stdout)
+    seen = list(response.get("InvalidParameters", []))
+    for param in params:
+        name = param.get("Name")
+        if name not in names or name in seen or param.get("Type") != "SecureString":
+            raise ValueError("Unexpected component parameter response")
+        seen.append(name)
+        runtime = merge_component(runtime, json.loads(param["Value"]), names[name])
+    if len(seen) != len(names) or set(seen) != set(names):
+        raise ValueError("Incomplete component parameter response")
+    json.dump(runtime, sys.stdout)
 
 
 if __name__ == "__main__":

@@ -7,6 +7,7 @@ type Database = {
   engine: string;
   modes: string[];
   clouds: string[];
+  server_mode?: "create" | "prepared";
 };
 export function ApplicationRegistration({
   onCreated,
@@ -167,7 +168,8 @@ export function ApplicationRegistration({
               )}
               {available.map((db) => (
                 <option key={db.id} value={db.id}>
-                  {db.label}
+                  {db.label} ·{" "}
+                  {db.server_mode === "create" ? "새 서버 생성" : "준비된 서버"}
                 </option>
               ))}
             </select>
@@ -188,6 +190,13 @@ export function ApplicationRegistration({
             </select>
           </label>
         </div>
+        {selectedDb && (
+          <p className="muted">
+            {selectedDb.server_mode === "create"
+              ? "이 앱 전용 PostgreSQL 서버를 새로 만듭니다. 서버 준비에 시간이 걸릴 수 있습니다."
+              : "이미 준비된 PostgreSQL 서버를 사용합니다. 서버 준비 시간만 생략하며, 앱 데이터 생성·이전은 별도로 진행합니다."}
+          </p>
+        )}
         <details>
           <summary>소스 경로</summary>
           <div className="form-grid">

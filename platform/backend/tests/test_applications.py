@@ -37,6 +37,19 @@ def config():
     return configured().model_copy(update={"application_databases": json.dumps([PROFILE])})
 
 
+def test_database_catalog_distinguishes_server_creation_from_prepared_database():
+    prepared = database_catalog(config())["items"][0]
+    assert prepared["server_mode"] == "prepared"
+    server = {**PROFILE, "server_mode": "create", "clouds": ["aws"], "modes": ["new"]}
+    settings = config().model_copy(update={"application_databases": json.dumps([server])})
+    assert database_catalog(settings)["items"][0]["server_mode"] == "create"
+    for invalid in ({**server, "modes": ["existing"]}, {**server, "clouds": ["onprem"]}):
+        with pytest.raises(Problem):
+            database_catalog(
+                settings.model_copy(update={"application_databases": json.dumps([invalid])})
+            )
+
+
 def body(**changes):
     return ApplicationInput(
         name="Delta Notes",

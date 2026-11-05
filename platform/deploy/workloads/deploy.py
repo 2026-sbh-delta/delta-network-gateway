@@ -23,7 +23,7 @@ from google.auth.transport.requests import AuthorizedSession
 ROOT = Path(__file__).resolve().parent
 
 
-def run(args, *, body=None, cwd=None, timeout=600):
+def run(args, *, body=None, cwd=None, timeout=600, env=None):
     result = subprocess.run(
         args,
         check=False,
@@ -32,6 +32,7 @@ def run(args, *, body=None, cwd=None, timeout=600):
         capture_output=True,
         text=True,
         timeout=timeout,
+        env=env,
     )
     if result.returncode:
         # Upstream Terraform/SSM/kubectl output can contain customer secrets.
@@ -158,7 +159,12 @@ def vm(data, selected, config):
     if data.get("database"):
         from database import deliver, prepare, profile_for
 
-        secret_id, value = prepare(data, profile_for(data, config))
+        database_profile = profile_for(data, config)
+        if database_profile.get("server_mode", "prepared") == "create":
+            from database_server import provision as provision_database
+
+            database_profile = provision_database(data, database_profile, config, run)
+        secret_id, value = prepare(data, database_profile)
         payload["database_secret"] = deliver(data, selected, secret_id, value)
     # Only secret references enter SSM command text. The VM resolves them with its identity.
     runtime = base64.b64encode((ROOT / "vm_runtime.py").read_bytes()).decode()
