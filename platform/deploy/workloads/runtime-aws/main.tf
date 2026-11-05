@@ -82,6 +82,22 @@ resource "aws_vpc_security_group_egress_rule" "database" {
   to_port                      = 5432
   ip_protocol                  = "tcp"
 }
+resource "aws_vpc_security_group_egress_rule" "gcp_database" {
+  security_group_id = aws_security_group.role["deployer"].id
+  from_port         = 5432
+  to_port           = 5432
+  ip_protocol       = "tcp"
+  cidr_ipv4         = "10.31.0.2/32"
+  description       = "Prepared GCP database through the private VPN endpoint"
+}
+resource "aws_vpc_security_group_egress_rule" "gcp_app" {
+  security_group_id = aws_security_group.role["deployer"].id
+  from_port         = 8088
+  to_port           = 8088
+  ip_protocol       = "tcp"
+  cidr_ipv4         = "10.32.2.0/24"
+  description       = "Verify platform-created GCP application VMs"
+}
 resource "aws_vpc_security_group_ingress_rule" "app" {
   security_group_id            = aws_security_group.role["customer"].id
   referenced_security_group_id = aws_security_group.role["deployer"].id
