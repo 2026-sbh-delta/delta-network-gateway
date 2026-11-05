@@ -12,7 +12,8 @@
 | Terraform Plan | 최초 5개 추가만 검토했고 적용 후 최종 실제 Plan은 No changes/종료0. 기존 ID58개/출력18개 보존 |
 | Apply 및 배포 | 검토한 저장 Plan 적용 완료. 5 added/0 changed/0 destroyed, 종료0 |
 | 실제 중앙 수신 | 샘플 Finding 1종/1건의 원본 및 교차 계정 중앙 저장 확인. 본문/출처/시각/ID 대조 통과 |
-| 커밋 및 푸시 | 사용자 후속 요청으로 진행. 게시 상태는 Git 이력과 원격 ref를 따름 |
+| 커밋 및 푸시 | 구현 `c543892d`와 운영 기록 `01ff0708`을 main에 푸시. 이후 게시 확인 문서는 Git 이력과 원격 ref를 따름 |
+| 원격 CI | `01ff0708`의 Platform checks 17개 통과. 중앙 네트워크 root는 이 workflow에 포함되지 않으며 로컬 mock63개/Python11개 결과를 별도로 기록 |
 
 2026-11-06 사용자가 아래 Inception과 U4/U5 설계/구현 계획, 실제 Plan/Apply와 샘플 Finding 1종의 원본 및 중앙 수신 검증을 함께 승인했다. 단계별 실제 실행 결과는 각각 기록한다.
 
@@ -182,4 +183,10 @@
 - Deployment: 검토한 저장 Plan의 송신 자원5개만 실제 적용했다. 플랫폼 root의 코드/state/설정/Apply는 변경 또는 실행하지 않았다.
 - Observability: 실제 샘플의 전체 메시지와 원본 메타데이터, 안정적인 플랫폼 event_id를 대조했다. 이 한 건의 전달 검증을 실제 위협 탐지 성능이나 부하/장기 장애 검증으로 해석하지 않는다. 대시보드 UI는 이번 검증 범위가 아니다.
 - Rollback/Runbook: [중앙 Runbook](../../terraform/network-security/RUNBOOK.md#guardduty-finding-로그-전달)에 조회, 샘플 생성, 실패 진단과 구독만 중지/재개하는 절차를 기록했다. 전달 토글의 실제 중지/재개는 실행하지 않았고 mock에서 원본 저장/탐지 보존을 확인했다.
-- Git 게시: 사용자의 후속 요청으로 커밋과 푸시를 진행하며 게시 및 원격 CI 상태는 Git 이력과 원격 ref를 따른다.
+- Git 게시: 구현 `c543892d`와 운영 기록 `01ff0708`을 main에 푸시했다. 두 커밋의 GitHub 서명 검증은 valid다. 게시 확인 문서의 최신 상태는 Git 이력과 원격 ref를 따른다.
+
+## 게시 확인
+
+2026-11-06 사용자 요청으로 구현/테스트와 운영 문서를 두 커밋으로 나눴다. 각 커밋 전에 `git diff --cached --check`를 실행했고 `git push origin main`은 종료0이었다. 게시 확인 기록을 작성하기 전 `git ls-remote --heads origin main`은 `01ff07085f90ce415cf2f43472a81ace02134c89`와 일치했고 `git status --short --branch`에서 작업 트리가 깨끗했다. GitHub API에서 두 커밋의 서명 검증 결과는 모두 valid였다.
+
+`gh run view 42058840223 --json status,conclusion,headSha,url,jobs`에서 `01ff07085f90ce415cf2f43472a81ace02134c89`의 [Platform checks](https://github.com/2026-sbh-delta/delta-network-gateway/actions/runs/42058840223)가 17개 작업 모두 통과했음을 확인했다. 이 workflow는 중앙 `terraform/network-security` root를 실행하지 않는다. 중앙 root의 실제 검증은 위 로컬 mock63개/Python11개와 실제 Plan/Apply/수신 기록을 따른다. 이후 이 게시 확인 기록은 `docs/`만 변경하며 해당 workflow의 push 경로 필터에 포함되지 않는다.
