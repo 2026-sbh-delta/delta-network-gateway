@@ -107,7 +107,7 @@ resource "google_secret_manager_secret" "admin" {
 resource "google_secret_manager_secret_version" "admin" {
   secret                 = google_secret_manager_secret.admin.id
   secret_data_wo_version = 2
-  deletion_policy       = "ABANDON"
+  deletion_policy        = "ABANDON"
   secret_data_wo = jsonencode({
     host     = google_sql_database_instance.app.dns_name
     hostaddr = google_compute_address.database.address
