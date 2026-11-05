@@ -6,6 +6,7 @@ export default defineConfig({
   testDir: "./tests",
   testMatch: [
     "workflow-planning.spec.ts",
+    "deployment.spec.ts",
     "observability.spec.ts",
     "presentation.spec.ts",
     "release.spec.ts",

@@ -19,7 +19,9 @@ from delta_platform.core.store import Store
 logger = logging.getLogger("delta_platform.worker")
 
 
-def process_one(store, reader, builder=None, sandbox=None, security=None, dast=None, remover=None):
+def process_one(
+    store, reader, builder=None, sandbox=None, security=None, dast=None, remover=None, deployer=None
+):
     claim = store.claim()
     if claim is None:
         return False
@@ -51,6 +53,14 @@ def process_one(store, reader, builder=None, sandbox=None, security=None, dast=N
             except Problem as exc:
                 raise SandboxError(exc.code, exc.message) from None
             result = remover.execute(claim, store, progress)
+        elif claim["kind"] == "service_deploy":
+            from delta_platform.adapters.deployment import DeploymentRunner
+
+            try:
+                deployer = deployer or DeploymentRunner(Settings())
+            except Problem as exc:
+                raise BuildError(exc.code, exc.message) from None
+            result = deployer.execute(claim, store, progress)
         elif claim["kind"] == "image_build":
             builder = builder or build_runner(Settings(), claim)
             result = builder.execute(claim, store, progress)

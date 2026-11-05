@@ -88,6 +88,8 @@ async function register(page: Page, name: string, dockerfile = "Dockerfile") {
     .getByLabel("공개 GitHub 저장소", { exact: true })
     .fill("https://github.com/example/orders");
   await page.getByLabel("Dockerfile 경로").fill(dockerfile);
+  await page.getByLabel("최초 배포 환경").selectOption("aws");
+  await page.getByLabel("최초 배포 사양").selectOption({ index: 1 });
   await page
     .getByRole("button", { name: "등록하고 상세 보기", exact: true })
     .click();

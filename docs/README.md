@@ -8,6 +8,8 @@
 
 ## 현재 상태
 
+- 사용자 선택 배포(2026-11-05): `feat/platform-deployment-targets`에서 최초 환경·사양 선택, GCP/온프레미스 동시 대상 계획, 대상별 Worker 실행·환경 등록과 전용 Jenkins 실행기를 로컬 구현했다. 백엔드 226개·브라우저 35개·새 Terraform 모의 계획 2개 통과. 사용자가 커밋·PR 진행을 승인했으며 게시·CI 상태는 해당 브랜치의 PR 기록을 따른다. 실제 신규 VM 생성·Release는 미실행이며 전용 Agent와 환경별 연결이 필요하다. 기존 운영·공유 네트워크·S3 state는 변경하지 않았다. [설계·검증 기록](ai-dlc/platform-self-service-deployment.md) · [실행기 연결](../platform/deploy/workloads/README.md)
+
 - AWS 워크로드 통합 완료(2026-11-05): 사용자 승인으로 CloudFront 시연37개, 기존 Server 기반29개, Client EC2와 폐기 경로5개를 실제 삭제했다. 두 EC2 terminated와 두 루트 EBS 삭제, `10.20` VPC 부재를 API로 확인했다. 기존 `10.10` VPC/서브넷/TGW/EIC ID와 backend key를 유지하는 공통 `terraform/workload` root로 정리했다. 중앙6개 삭제/정책2개 갱신과 GCP 범위3개 갱신으로 폐기 CIDR을 철회했고 BGP4개 UP을 확인했다. 최종 세 root No changes, Terraform mock82개/Python24개와 AI/Jenkins125개 통과. GCP Plan은 별도 로그 정리의 로컬 코드가 포함된 상태에서 확인했다. EC2가 없어 삭제 후 HTTP 검증은 미실행이다. [설계와 실제 검증](ai-dlc/aws-workload-consolidation.md)
 
 - GCP state S3 통합(2026-11-05): 사용자 승인으로 `network-security-gcp`의 state를 기존 중앙 S3 버킷의 전용 key `delta/lab/network-security-gcp/terraform.tfstate`로 이전했다. 관리 리소스67개와 출력/검사 결과, GCS 원본과 다른 root state 보존 및 실제 Plan No changes/종료0을 확인했다. mock14개와 Python10개 통과. 리소스 Apply는 미실행이며 커밋과 원격 반영은 Git 이력을 따른다. [이전과 검증 기록](ai-dlc/gcp-central-network.md#2026-11-05-gcp-state의-중앙-s3-이전)

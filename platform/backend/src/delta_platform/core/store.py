@@ -9,7 +9,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import insert
 
 from .errors import LeaseLost, Problem
-from .schema import environments, events, runs, services, workflows
+from .schema import deployment_plans, environments, events, runs, services, workflows
 
 SERVICE_FIELDS = (
     "id",
@@ -21,6 +21,7 @@ SERVICE_FIELDS = (
     "dockerfile_path",
     "container_port",
     "healthcheck_path",
+    "deployment_target",
     "created_at",
 )
 RUN_FIELDS = (
@@ -110,7 +111,7 @@ class Store:
         self.engine = engine
 
     def register(self, data, key):
-        payload = data.model_dump()
+        payload = data.model_dump(exclude_none=True)
         request_hash = digest(payload)
         owner, repo = payload["repository_url"].split("/")[-2:]
         with self.engine.begin() as conn:
@@ -206,7 +207,12 @@ class Store:
             linked_workflow = conn.scalar(
                 sa.select(workflows.c.id).where(workflows.c.service_id == service_id).limit(1)
             )
-            if linked_environment or linked_workflow:
+            linked_deployment = conn.scalar(
+                sa.select(deployment_plans.c.id)
+                .where(deployment_plans.c.service_id == service_id)
+                .limit(1)
+            )
+            if linked_environment or linked_workflow or linked_deployment:
                 raise Problem(
                     "service_has_dependencies",
                     "연결된 환경 또는 이전·배포 계획이 있어 삭제할 수 없습니다. 운영자가 연결 상태를 먼저 정리해야 합니다.",
@@ -240,7 +246,9 @@ class Store:
                 raise Problem("service_not_found", "서비스를 찾을 수 없습니다.", 404)
             self._assert_no_removal(conn, service_id)
             snapshot = {
-                k: service[k] for k in SERVICE_FIELDS if k not in ("id", "project_id", "created_at")
+                k: service[k]
+                for k in SERVICE_FIELDS
+                if k not in ("id", "project_id", "created_at", "deployment_target")
             }
             snapshot.update(
                 repo_owner=service["repo_owner"], repo_name=service["repo_name"], version=1
@@ -390,9 +398,11 @@ class Store:
                 append_event(
                     conn,
                     run_id,
-                    "build_submitted",
-                    "빌드 실행기가 요청을 접수했습니다.",
-                    "build_queued",
+                    "deploy_submitted" if row["kind"] == "service_deploy" else "build_submitted",
+                    "배포 실행기가 요청을 접수했습니다."
+                    if row["kind"] == "service_deploy"
+                    else "빌드 실행기가 요청을 접수했습니다.",
+                    "deploy_queued" if row["kind"] == "service_deploy" else "build_queued",
                 )
 
     def resolve_jenkins_queue(self, run_id, token, queue_id, build_id):
@@ -517,7 +527,11 @@ class Store:
                                 else (
                                     "runtime_remove_check"
                                     if row["kind"] == "runtime_remove"
-                                    else "repository"
+                                    else (
+                                        "deploy_queued"
+                                        if row["kind"] == "service_deploy"
+                                        else "repository"
+                                    )
                                 )
                             )
                         ),
@@ -542,7 +556,11 @@ class Store:
                         else (
                             "온프레미스 앱 삭제를 시작했습니다."
                             if row["kind"] == "runtime_remove"
-                            else "소스 확인을 시작했습니다."
+                            else (
+                                "대상 앱 배포를 시작했습니다."
+                                if row["kind"] == "service_deploy"
+                                else "소스 확인을 시작했습니다."
+                            )
                         )
                     )
                 ),
@@ -564,7 +582,14 @@ class Store:
             or row["started_at"]
             + timedelta(
                 seconds=1800
-                if row["kind"] in ("image_build", "sandbox_check", "dast_check", "runtime_remove")
+                if row["kind"]
+                in (
+                    "image_build",
+                    "sandbox_check",
+                    "dast_check",
+                    "runtime_remove",
+                    "service_deploy",
+                )
                 else 120
             )
             <= instant
@@ -581,7 +606,13 @@ class Store:
                 + timedelta(
                     seconds=1800
                     if row["kind"]
-                    in ("image_build", "sandbox_check", "dast_check", "runtime_remove")
+                    in (
+                        "image_build",
+                        "sandbox_check",
+                        "dast_check",
+                        "runtime_remove",
+                        "service_deploy",
+                    )
                     else 120
                 ),
             )
@@ -618,6 +649,10 @@ class Store:
                 from .removals import RemovalStore
 
                 RemovalStore(self.engine).complete(conn, row)
+            if row["kind"] == "service_deploy" and not error:
+                from .deployments import complete_deployment
+
+                complete_deployment(conn, row, result)
             retry = bool(error and retry and row["attempt"] < 3)
             state = "queued" if retry else ("failed" if error else "succeeded")
             values = dict(
@@ -655,7 +690,11 @@ class Store:
                                     else (
                                         "온프레미스 앱 삭제를 완료했습니다. DB·볼륨·서버는 보존했습니다."
                                         if row["kind"] == "runtime_remove"
-                                        else "소스 확인을 완료했습니다."
+                                        else (
+                                            "대상 앱 배포를 완료했습니다. DB·트래픽 전환은 별도입니다."
+                                            if row["kind"] == "service_deploy"
+                                            else "소스 확인을 완료했습니다."
+                                        )
                                     )
                                 )
                             )

@@ -55,6 +55,7 @@ services = sa.Table(
     col("dockerfile_path", sa.String(256), nullable=False),
     col("container_port", sa.Integer, nullable=False),
     col("healthcheck_path", sa.String(256), nullable=False),
+    col("deployment_target", JSONB(none_as_null=True)),
     col("request_key", sa.String(128), nullable=False, unique=True),
     col("request_hash", sa.String(64), nullable=False),
     timestamp("created_at", nullable=False, server_default=sa.func.now()),
@@ -153,7 +154,7 @@ runs = sa.Table(
     timestamp("finished_at"),
     sa.UniqueConstraint("service_id", "kind", "request_key", name="run_request_unique"),
     sa.CheckConstraint(
-        "kind IN ('source_preflight', 'image_build', 'sandbox_check', 'security_check', 'dast_check', 'runtime_remove')",
+        "kind IN ('source_preflight', 'image_build', 'sandbox_check', 'security_check', 'dast_check', 'runtime_remove', 'service_deploy')",
         name="run_kind",
     ),
     sa.CheckConstraint("attempt >= 0", name="run_attempt"),
@@ -171,7 +172,9 @@ sa.Index(
     "one_active_run_per_service",
     runs.c.service_id,
     unique=True,
-    postgresql_where=runs.c.status.in_(["queued", "running"]),
+    postgresql_where=sa.and_(
+        runs.c.status.in_(["queued", "running"]), runs.c.kind != "service_deploy"
+    ),
 )
 sa.Index("run_queue", runs.c.status, runs.c.available_at)
 sa.Index("run_history", runs.c.service_id, runs.c.created_at, runs.c.id)
@@ -193,5 +196,31 @@ sa.Index(
     unique=True,
     postgresql_where=sa.and_(
         runs.c.kind.in_(("sandbox_check", "dast_check")), runs.c.status.in_(["queued", "running"])
+    ),
+)
+
+
+deployment_plans = sa.Table(
+    "deployment_plans",
+    metadata,
+    col("id", UUID(as_uuid=True), primary_key=True),
+    sa.Column("service_id", UUID(as_uuid=True), sa.ForeignKey("services.id"), nullable=False),
+    col("kind", sa.String(24), nullable=False),
+    col("request_key", sa.String(128), nullable=False),
+    col("request_hash", sa.String(64), nullable=False),
+    col("input_snapshot", JSONB, nullable=False),
+    col("input_hash", sa.String(64), nullable=False),
+    col("approved_by", sa.String(128)),
+    timestamp("approved_at"),
+    timestamp("created_at", nullable=False, server_default=sa.func.now()),
+    sa.UniqueConstraint("service_id", "request_key", name="deployment_request_unique"),
+    sa.CheckConstraint("kind IN ('deployment','migration')", name="deployment_kind"),
+)
+sa.Index(
+    "one_active_deployment_target",
+    runs.c.input_snapshot["environment_id"].astext,
+    unique=True,
+    postgresql_where=sa.and_(
+        runs.c.kind == "service_deploy", runs.c.status.in_(["queued", "running"])
     ),
 )
