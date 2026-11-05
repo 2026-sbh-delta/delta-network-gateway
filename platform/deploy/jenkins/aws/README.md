@@ -4,8 +4,8 @@
 
 | 구성 | 주소·규모 | 접근 |
 | --- | --- | --- |
-| 컨트롤러 | `10.80.1.20`, t3.small, executor 0 | 플랫폼·에이전트 SG의 443만 허용 |
-| 에이전트 | `10.80.1.21`, t3.medium, executor 1 | 수신 없음. 컨트롤러에 WebSocket 연결 |
+| 컨트롤러 | `10.80.10.20`, t3.small, executor 0 | 플랫폼·에이전트 SG의 443만 허용 |
+| 에이전트 | `10.80.11.21`, t3.medium, executor 1 | 수신 없음. 컨트롤러에 WebSocket 연결 |
 | 이력 디스크 | 암호화 gp3 20 GiB | 컨트롤러 VM과 수명 분리, 삭제 보호 |
 
 공인 IP나 공개 관리자 화면은 없다. 기존 플랫폼 NAT의 HTTPS 송신 경로를 재사용한다. 에이전트는 전용 VM에서 privileged Docker-in-Docker를 사용하며 호스트/컨트롤러 Docker socket을 공유하지 않는다. Docker 빌드 네트워크에서 사설망·IMDS 신규 연결을 차단한다. 관리자 코드를 실행하는 에이전트 컨테이너만 IMDSv2로 제한된 역할을 사용한다.
@@ -47,3 +47,22 @@ Jenkins 자체 HTTPS 포트를 사용한다([공식 설정](https://www.jenkins.
 - 비용 중단 시 두 Jenkins VM을 중지할 수 있다. 이력 EBS와 이미지 저장 비용은 남는다. 기존 앱/NAT나 팀 ECS 서비스를 함께 내리지 않는다.
 
 실제 Plan/Apply/Release와 기능 검증 상태는 [진행 기록](../../../../docs/ai-dlc/platform-jenkins-aws.md)을 따른다.
+
+## 전용 서브넷으로 이전
+
+컨트롤러는 `10.80.10.20`, 에이전트는 `10.80.11.21`로 옮긴다. EC2의 기본 네트워크 인터페이스는 다른 subnet으로 이동할 수 없어 VM을 재생성한다. [진행 기록](../../../../docs/ai-dlc/platform-subnets.md)에 실제 적용 결과를 구분한다.
+
+1. 플랫폼의 새 작업 실행을 잠시 멈추고 Jenkins queue/실행 중 build가 없는지 확인한다. 플랫폼 화면·DB는 유지한다.
+2. 현재 Jenkins 이미지 digest와 SSM 설정 버전을 기록한다. 컨트롤러를 정상 종료하고 `sync` 후 이력 EBS 스냅샷의 `completed`를 확인한다. 기존 EBS의 `prevent_destroy`는 유지한다.
+3. 새 subnet을 만든 뒤 `prepare-identity.py`로 플랫폼 root 소유 subnet ID를 IAM 입력에 반영한다. IAM Plan은 해당 subnet 실행 범위만 확장되는지 확인한다.
+4. 아래 명령으로 주소·인증서를 갱신한다. 관리자 비밀번호·플랫폼 API 토큰·에이전트 토큰·다른 플랫폼 설정은 보존한다. 출력되는 이전 SSM 버전은 복구용으로 기록한다. 중간 실패 시 재실행하면 같은 주소의 인증서를 재사용하며 누락된 설정을 맞춘다.
+
+```bash
+uv run --project platform/deploy python platform/deploy/jenkins/aws/relocate.py --profile delta-platform --account-id 616723161368
+```
+
+5. GitHub에서 Jenkins 두 VM과 volume attachment만 교체되는 저장 Plan을 검토·Apply한다. 기존 플랫폼·NAT·데이터 EBS 교체가 있으면 진행하지 않는다.
+6. 컨트롤러/에이전트에 검증된 이미지를 배포한다. 컨트롤러의 기존 build 이력과 agent online을 확인하고 플랫폼 환경을 다시 로드한다. 신규 초기화용 `connect`는 필요하지 않다.
+7. 실제 빌드·digest와 기존 로그인·서비스 목록을 확인한 뒤 Worker를 재개한다.
+
+롤백은 기존 private subnet/IP로 VM을 재생성하고 같은 이력 EBS를 연결한다. `relocate.py --url https://10.80.1.20`로 주소·신뢰를 함께 복원하고 검증된 이미지로 재배포한다. 데이터 EBS 삭제·DB downgrade는 사용하지 않는다. 스냅샷은 확인한 기간 동안 보존한다.

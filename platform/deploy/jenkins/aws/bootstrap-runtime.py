@@ -119,7 +119,7 @@ def main():
             pass
         address = urlsplit(outputs["jenkins_url"])
         ip = ipaddress.ip_address(address.hostname)
-        if address.scheme != "https" or ip not in ipaddress.ip_network("10.80.1.0/24"):
+        if address.scheme != "https" or str(ip) not in {"10.80.1.20", "10.80.10.20"}:
             raise ValueError("Expected a private controller HTTPS address")
         password = secrets.token_urlsafe(24)
         ca, keystore = certificate(str(ip), password)
