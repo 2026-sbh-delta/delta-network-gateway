@@ -150,3 +150,63 @@
 - CloudFront/Server의 empty remote state와 원본 state/config/Plan/로그는 ignored 경로에 남긴다. 기존 S3 state bucket이나 감사 이력을 삭제하지 않는다.
 - 현재 운영용 설정/예제/handoff와 AI/이전 계획에는 폐기 대역을 사용하지 않는다. 과거 AI-DLC와 일반 mock의 주소는 검증 증거로 남기며 현재 실행 안내와 구분했다.
 - 실행하지 않은 검증: 삭제 후 EC2 HTTP 왕복 시험, 새 앱 배포, 부하/가용성 시험. Git 게시 상태는 원격 이력을 따른다.
+
+## 2026-11-05 후속: VPC 이름 변경
+
+### Ideation
+
+- 문제: 공통 워크로드 VPC의 표시 이름이 기존 Client 용도의 `delta-lab-client`로 남아 있다.
+- 사용자: Delta 팀의 AWS 네트워크 운영자.
+- 성공 기준: 기존 VPC ID를 유지하며 AWS 조회와 Terraform 설정의 VPC 이름이 `delta-board-vpc`로 일치한다.
+- Scope: `terraform/workload`의 VPC Name 태그, 해당 입력과 README, 실제 VPC의 태그 적용 및 관련 검증 기록.
+- Non-goals: 다른 리소스의 이름, CIDR, 서브넷, 경로, SG, TGW, resource address와 backend key 변경.
+- 승인: 사용자 지시 `VPC 이름 변경 delta-lab-client -> delta-board-vpc`를 이름과 범위의 승인으로 기록한다. 2026-11-05 사용자 `ㄱㄱ`로 아래 Inception 및 U5 Design/Implementation Plan의 구현과 실제 Apply를 승인받았다.
+
+### Inception
+
+- Functional Requirements: VPC 전용 `vpc_name` 입력을 추가하고 기본값을 `delta-board-vpc`로 설정한다. `aws_vpc.client`의 Name 태그만 이 값을 사용한다.
+- Non-Functional Requirements: 업무 계정 `616723161368`, 리전 `ap-northeast-2`, VPC `vpc-056871f49eecfeef4`와 CIDR `10.10.0.0/16`을 유지한다. 다른 자원의 이름에 쓰이는 `local.prefix`는 유지한다. 실제 입력, state와 저장 Plan은 Git에서 제외한다.
+- Architecture: 기존 공통 워크로드 root와 원격 state를 유지하는 VPC 태그의 제자리 갱신이다.
+- Unit of Work: U5 하나로 입력과 VPC 태그 및 문서 수정, 정적 검증, 실제 Plan 검토, 승인 범위의 Apply와 API readback을 수행한다.
+- Acceptance Criteria: 실제 Plan이 `aws_vpc.client`의 Name 및 그에 따른 tags_all만 변경하고 생성/삭제/교체와 다른 자원 변경은 0개다. Apply 후 기존 VPC ID/CIDR과 새 Name을 API로 확인하고 최종 실제 Plan이 No changes다.
+
+### U5 Design과 Implementation Plan
+
+1. `variables.tf`에 VPC 전용 이름 입력을 추가하고 `network.tf`의 VPC 태그만 연결한다. README의 전체 입력 표와 현재 이름 안내를 갱신한다.
+2. 기존 검증 스크립트 `bash terraform/workload/scripts/validate.sh`를 실행한다. 실행 결과와 실제 Plan/Apply는 구분한다.
+3. 실제 계정, backend와 최신 state를 재확인하고 저장 Plan을 생성한다. VPC 이름 외 변경이 있으면 해당 Plan을 적용하지 않는다.
+4. 검토한 저장 Plan을 Apply하고 `describe-vpcs`로 이름, ID, CIDR을 재조회한다. 최종 Plan과 문서의 실행 상태를 갱신한다.
+5. Review에서 변경 범위와 검증 결과를 대조한다. 커밋과 푸시는 이 작업의 실행 결과와 별도로 기록한다.
+
+### Operation
+
+- Deployment: 승인 후 검토한 Terraform 저장 Plan을 적용했다. `0 added, 1 changed, 0 destroyed`, 종료0이다.
+- Observability: AWS VPC API에서 새 이름과 기존 ID/CIDR 및 available 상태를 확인했다. 최종 실제 Terraform Plan은 No changes/종료0이다.
+- Rollback: VPC 전용 이름 입력을 `delta-lab-client`로 지정해 이름만 되돌리는 Plan을 검토하고 적용한다.
+- Runbook: `terraform/workload`의 기존 프로필과 backend를 사용한다. VPC 이름과 함께 공유 접두사를 바꾸지 않는다.
+
+### 사전 확인 기록
+
+| 날짜 | 실행한 명령 또는 조회 | 실제 결과 |
+| --- | --- | --- |
+| 2026-11-05 | `git status --short --branch`, 관련 문서와 `terraform/workload` 코드 조회 | 작업 트리 clean. VPC Name은 `local.prefix`로 정해지며 같은 prefix를 다른 리소스도 사용함을 확인 |
+| 2026-11-05 | `aws sts get-caller-identity --profile sbh-delta-workload --region ap-northeast-2` | 업무 계정 `616723161368` 확인. 최초 샌드박스의 endpoint 연결 실패 후 네트워크 접근이 허용된 읽기 전용 재조회 성공 |
+| 2026-11-05 | 같은 프로필의 `aws ec2 describe-vpcs`에서 기존/새 Name 필터 조회 | 기존 이름 `delta-lab-client`, VPC `vpc-056871f49eecfeef4`, CIDR `10.10.0.0/16`, 상태 available 1개. 새 이름의 VPC 없음 |
+
+### 승인 후 구현과 검증 기록
+
+| 날짜 | 실행한 명령 또는 조회 | 실제 결과 |
+| --- | --- | --- |
+| 2026-11-05 | `bash terraform/workload/scripts/validate.sh` | 최초 샌드박스 실행은 Provider 시작에 실패했다. 격리된 mock 검증을 샌드박스 밖에서 재실행해 init/validate/fmt, mock24개와 Python3개 통과 |
+| 2026-11-05 | backend metadata 확인, `aws sts get-caller-identity`, `aws ec2 describe-vpcs`, `terraform -chdir=terraform/workload state pull` | 기존 S3 bucket/key와 lockfile 사용 확인. 업무 계정/VPC/기존 이름 일치, state serial7/관리24개를 제한된 ignored 경로에 백업 |
+| 2026-11-05 | `AWS_PROFILE=sbh-delta-workload terraform -chdir=terraform/workload plan -input=false -no-color -lock-timeout=30s -detailed-exitcode -out=<ignored rename.tfplan>`, `terraform show -json` | 종료2, `0 add, 1 change, 0 destroy`. `aws_vpc.client`의 tags/tags_all에서 Name만 `delta-lab-client`에서 `delta-board-vpc`로 제자리 변경. 다른 속성과 자원, 출력 변경0 |
+| 2026-11-05 | 같은 프로필의 `terraform -chdir=terraform/workload apply -input=false -no-color -lock-timeout=30s <검토한 rename.tfplan>` | 종료0, `0 added, 1 changed, 0 destroyed`. VPC 이름 변경 적용 완료 |
+| 2026-11-05 | `aws ec2 describe-vpcs --vpc-ids vpc-056871f49eecfeef4`, `terraform state pull`과 적용 전후 대조 | 새 이름 `delta-board-vpc`, 기존 VPC ID/CIDR과 available 확인. state serial8, 관리24개 전체 ID/lineage/출력 동일 |
+| 2026-11-05 | 같은 프로필의 최종 `terraform plan -input=false -no-color -lock-timeout=30s -detailed-exitcode -out=<ignored final.tfplan>`, `terraform show -json` | 종료0/No changes. 자원과 출력 변경0 |
+| 2026-11-05 | README 표와 `variables.tf`/`outputs.tf` 대조, `git diff --check`, 추가 행의 금지 문자 검사 | 전체 입력15개/출력9개 표 일치. 공백과 금지 문자 검사 통과 |
+
+### U5 Review와 현재 상태
+
+- 승인한 이름 변경의 구현/Test/Review와 실제 Apply 및 최종 API/Plan 검증을 완료했다. 기존 VPC와 다른 관리 자원24개의 ID, backend 및 출력은 유지한다.
+- state/Plan/적용 로그와 API 조회 결과는 `.validation/vpc-rename-20261105-bep7t4gh/`에 Git 제외 및 제한된 권한으로 보존한다.
+- 커밋과 푸시 상태는 Git 이력을 따른다.
