@@ -387,6 +387,22 @@ Review: 현재 목적은 완료했다. GCP Endpoint 시간 과금 대상은 제�
 | 2026-11-04 | `python3 .validation/gcp-diagram/build_diagram.py`, Chrome headless 렌더링과 이미지 확인 | 편집 가능한 mxGraph 요소 149개를 구성하고 글자/연결선 겹침을 조정했다. 시트 1/2의 원본 diagram 바이트 동일 확인 |
 | 2026-11-04 | Drive `get_file_metadata` → `update_file` → `fetch`, Python XML/해시 대조 | 저장 직전 modifiedTime 불변 확인 후 같은 file ID에 저장. 15:49:11 KST 갱신본 251060바이트가 업로드 원본과 완전히 일치하고, 첫 두 시트 보존/세 번째 page ID와 이름/내장 아이콘 14개를 재확인. Terraform Plan/Apply와 Git 커밋/푸시는 이번 그림 갱신에서 실행하지 않음 |
 
+### 아이콘 중심 최종 정리 (2026-11-04)
+
+- 사용자 후속 요청 `설명을 왜 넣는거임? 아이콘만 넣어 그냥`에 따라 설명 카드, 운영 상태 배너, CIDR과 검증 설명, 범례와 출처 각주를 그림에서 제거했다. 최신 저장본에는 아이콘과 리소스 이름, 영역 경계와 연결선만 남겼다.
+- 저장 전 원본을 다시 받아 세 번째 시트의 기존 AWS/온프레미스 셀 71개를 유지하고 GCP를 연결했다. GCP 공식 아이콘 13개를 내장하고 AWS와 같은 글꼴, 계정/VPC/Subnet 경계 형식과 직각 연결선으로 정리했다. 첫 두 시트는 원본 diagram 바이트 그대로 보존했다.
+- 현재 Endpoint와 association이 제거된 운영 상태는 이 문서의 U6 기록을 따른다. 그림의 회색 점선 검사 구성은 보존한 구성 표현이며 클라우드 설정을 변경한 결과가 아니다. 이번 실제 GCP 재조회 시도는 로컬 Python CA 검증 오류로 완료하지 못했고, 기존 실계정 검증 기록과 Terraform 코드를 참조했다.
+
+| 날짜 | 명령 또는 확인 | 실제 결과 |
+| --- | --- | --- |
+| 2026-11-04 | `python3 .validation/gcp-diagram/build_integrated.py`, Chrome headless 렌더링과 이미지 확인 | 셀 109개, GCP 공식 아이콘 13개. 설명 문구 제거와 아이콘 이름/연결선 배치 확인. XML ID/연결 참조, 첫 두 시트 보존 검사 통과 |
+| 2026-11-04 16:06:13 KST | Drive `get_file_metadata` → `update_file` → `fetch`, `curl`, Python XML/해시 대조 | 저장 직전 modifiedTime 불변 확인. 같은 file ID의 304937바이트 저장본이 업로드 파일과 완전히 일치. 첫 두 시트, 세 번째 page ID/이름, 설명 문구 제거를 재확인. SHA-256 `5a2be83927ca4c2d04699575a8ec078d47bc64d7d6fdda9dd18c6787ec179ef3` |
+| 2026-11-04 16:13:14 KST | `python3 .validation/gcp-diagram/compact/build_compact.py`, Chrome headless 렌더링, Drive 저장/재다운로드와 XML/해시 대조 | 사용자 후속 요청으로 GCP 간격을 축소. NLB/VM 중심 간격 290→160, Router/VPN 300→150, NGFW 430→220. 아이콘 크기/셀109개/이름/논리 연결 유지, AWS 내부 배치는 그대로 평행 이동. 첫 두 시트 바이트 동일, 실제 저장본 305269바이트가 업로드와 일치. SHA-256 `f610a83abdfc917a0b2ac33ee4376141325c87060c10c08f6625e962b01d491b` |
+| 2026-11-04 16:19:49 KST | `python3 .validation/gcp-diagram/restore-aws-colors/restore.py`, Chrome headless 렌더링, Drive 저장/재다운로드와 XML/해시 대조 | 요청 범위를 넘어 바꿨던 AWS VPC/Subnet 5개 영역의 색상과 테두리 형식을 작업 전 원본으로 복구. 저장 직전 최신 원본을 기준으로 GCP 전체와 다른 셀, 첫 두 시트 바이트 동일 확인. 사용자 후속 편집도 보존. 실제 저장본 307382바이트가 업로드와 일치. SHA-256 `cebcd6174d7ebd98b4f485c177e383a43db7955de16ad3b632c267fbdaa3bbcf` |
+| 2026-11-04 16:44:13 KST | `python3 .validation/gcp-diagram/vpc-connection/fix_connection.py`, Chrome headless 렌더링, Drive 저장/재다운로드와 XML/해시 대조 | 사용자 승인으로 VM/VPN 직결 표현을 제거. Workload VPC 경계와 VPC spoke를 연결하고, Hybrid spoke와 Central VPC의 Cloud VPN 사이 연결을 표현. 기존 선 1개 변경과 선 1개 추가 외 모든 셀 및 AWS 전체/첫 두 시트 동일 확인. 실제 저장본 307946바이트, 셀110개가 업로드와 일치. SHA-256 `8293b9502fafcb24a19102ea8b8eb0e5399704685c3042479c98264a9038b3ab` |
+
+Terraform Plan/Apply, 클라우드 설정 변경, Git 커밋과 푸시는 이 그림 정리 작업에서 실행하지 않았다.
+
 ## Git 게시와 PR 검증 (2026-11-04)
 
 사용자가 분할 커밋/푸시, `main` 대상 PR과 squash merge를 승인했다. 구현 `571e827c`, AWS 로그 수집 `26da4961`, 회귀 검증 `4228f083`을 각각 SSH 서명하고 원격 작업 브랜치에 게시했다. 운영 문서는 네 번째 단위로 같은 [PR #27](https://github.com/2026-sbh-delta/delta-network-gateway/pull/27)에 포함한다. 이 절은 PR 병합 직전 검증 기록이며 최종 merged 상태와 squash SHA는 PR의 GitHub 기록을 따른다.
@@ -401,3 +417,12 @@ Review: 현재 목적은 완료했다. GCP Endpoint 시간 과금 대상은 제�
 | 2026-11-04 | `git push -u origin feat/gcp-central-network`, `gh pr create --base main --head feat/gcp-central-network --draft` | 앞의 세 서명 커밋을 푸시하고 PR #27 생성. 연결 앱의 저장소404 이후 인증된 gh CLI 사용. 기존 Actions paths는 이번 변경 경로를 포함하지 않으며 해당 CI 성공을 주장하지 않음 |
 
 이번 게시 작업에서 실계정 Plan/Apply는 재실행하지 않았고 실제 비용 모드도 변경하지 않았다. 위 로컬 검증과 앞선 실계정 배포/중단 검증, GitHub 검사/병합 상태를 구분한다. 실제 실행 입력과 원본 증거는 계속 ignored 경로에 보존한다.
+
+### 후속 아키텍처 기록 게시 (2026-11-05)
+
+사용자 `일단 커밋 푸시 ㄱㄱ` 지시로 위 그림 정리 기록을 `main`의 문서 커밋으로 게시한다. 최종 커밋과 푸시 결과는 Git 이력을 기준으로 확인한다.
+
+| 날짜 | 실행한 명령 또는 확인 | 결과 |
+| --- | --- | --- |
+| 2026-11-05 | `git diff --check`, `python3 -B` 인라인 문서 검사 | 추가 문자의 제한, 코드 블록 짝, 로컬 링크와 공백 검사 통과. 변경 범위는 이 문서 1개이며 애플리케이션 테스트와 실계정 Plan/Apply는 재실행하지 않음 |
+| 2026-11-05 | `git ls-remote --exit-code origin refs/heads/main`, `git rev-parse HEAD` | 게시 전 원격 main과 로컬 HEAD가 `5749e6780e1316ff1a9c2ccfee06824ae960ab57`로 일치 |
