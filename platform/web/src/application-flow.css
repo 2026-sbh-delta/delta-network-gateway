@@ -1,0 +1,35 @@
+.application-progress-line {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  list-style: none;
+  padding: 0;
+  gap: 0.7rem;
+  margin: 1.5rem 0;
+}
+.application-progress-line li {
+  border-top: 4px solid #667788;
+  padding: 0.8rem 0.4rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.application-progress-line li[data-status="succeeded"] {
+  border-color: #13946c;
+}
+.application-progress-line li[data-status="running"] {
+  border-color: #3d81ee;
+}
+.application-progress-line li[data-status="failed"] {
+  border-color: #d34343;
+}
+.application-progress-line li[data-status="skipped"] {
+  border-color: #c18b21;
+}
+.application-progress-line span {
+  font-size: 0.85rem;
+}
+@media (max-width: 800px) {
+  .application-progress-line {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

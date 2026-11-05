@@ -18,6 +18,10 @@ from delta_platform.core.store import RUN_FIELDS, append_event, digest, select_f
 
 
 def delete_records(conn, service_id):
+    for child in conn.scalars(
+        sa.select(services.c.id).where(services.c.parent_service_id == service_id)
+    ).all():
+        delete_records(conn, child)
     owned_runs = sa.select(runs.c.id).where(runs.c.service_id == service_id)
     owned_workflows = sa.select(workflows.c.id).where(workflows.c.service_id == service_id)
     conn.execute(
@@ -68,6 +72,20 @@ class ProjectRemovalStore:
             )
             if not service:
                 return None
+            if service["parent_service_id"]:
+                raise Problem(
+                    "application_component", "구성 요소는 애플리케이션에서 함께 삭제하세요.", 409
+                )
+            members = [
+                service_id,
+                *conn.scalars(
+                    sa.select(services.c.id)
+                    .where(services.c.parent_service_id == service_id)
+                    .with_for_update()
+                ).all(),
+            ]
+            if service["application"] and service["application"]["status"] in ("queued", "running"):
+                raise Problem("service_busy", "자동 배포 작업이 끝난 뒤 삭제하세요.", 409)
             if service["name"] != name:
                 raise Problem("delete_name_mismatch", "프로젝트 이름이 일치하지 않습니다.", 409)
             latest = self.latest(conn, service_id)
@@ -75,7 +93,7 @@ class ProjectRemovalStore:
                 return {"status": latest["status"], "run": select_fields(latest, RUN_FIELDS)}
             if conn.scalar(
                 sa.select(runs.c.id)
-                .where(runs.c.service_id == service_id, runs.c.status.in_(("queued", "running")))
+                .where(runs.c.service_id.in_(members), runs.c.status.in_(("queued", "running")))
                 .limit(1)
             ):
                 raise Problem(
@@ -84,7 +102,7 @@ class ProjectRemovalStore:
             plans = list(
                 conn.execute(
                     sa.select(workflows)
-                    .where(workflows.c.service_id == service_id)
+                    .where(workflows.c.service_id.in_(members))
                     .order_by(workflows.c.id)
                     .with_for_update()
                 ).mappings()
@@ -104,12 +122,12 @@ class ProjectRemovalStore:
             others = list(
                 conn.execute(
                     sa.select(runs.c.input_snapshot).where(
-                        runs.c.service_id != service_id, runs.c.kind == "service_deploy"
+                        runs.c.service_id.not_in(members), runs.c.kind == "service_deploy"
                     )
                 ).scalars()
             )
             if any(
-                c.get("service_id") == str(service_id)
+                c.get("service_id") in {str(m) for m in members}
                 for item in others
                 for c in item.get("components", [])
             ):
@@ -122,6 +140,13 @@ class ProjectRemovalStore:
                 snapshot = latest["input_snapshot"]
             else:
                 snapshot = self.snapshot(conn, service, settings)
+                snapshot["member_service_ids"] = [str(m) for m in members]
+                for child in conn.execute(
+                    sa.select(services).where(services.c.parent_service_id == service_id)
+                ).mappings():
+                    child_snapshot = self.snapshot(conn, child, settings)
+                    for field in ("images", "deployments", "runtimes"):
+                        snapshot[field].extend(child_snapshot[field])
             if not any(snapshot[k] for k in ("runtimes", "deployments", "images")):
                 delete_records(conn, service_id)
                 return None
@@ -144,7 +169,7 @@ class ProjectRemovalStore:
                 .one()
             )
             conn.execute(
-                services.update().where(services.c.id == service_id).values(deletion_requested=True)
+                services.update().where(services.c.id.in_(members)).values(deletion_requested=True)
             )
             append_event(
                 conn,

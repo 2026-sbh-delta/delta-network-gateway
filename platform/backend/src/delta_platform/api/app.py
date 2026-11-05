@@ -21,6 +21,7 @@ from delta_platform.adapters.observability import DashboardReader
 from delta_platform.adapters.sandbox import sandbox_target
 from delta_platform.adapters.security import security_target
 from delta_platform.config import Settings
+from delta_platform.core.applications import ApplicationInput, ApplicationStore, database_catalog
 from delta_platform.core.auth import COOKIE, Auth
 from delta_platform.core.database import engine_for, ready
 from delta_platform.core.deployment_targets import catalog
@@ -180,6 +181,27 @@ def create_app(settings=None, engine=None, *, dashboard=None):
         return response
 
     protected = APIRouter(dependencies=[Depends(authenticated)])
+
+    @protected.get("/application-databases")
+    def application_databases():
+        return database_catalog(settings)
+
+    @protected.post("/applications")
+    def register_application(
+        body: ApplicationInput, request: Request, summary=Depends(authenticated)
+    ):
+        result, created = ApplicationStore(engine, settings).register(
+            body, request_key(request.headers.get("idempotency-key")), summary["login_id"]
+        )
+        return JSONResponse(jsonable_encoder(result), status_code=201 if created else 200)
+
+    @protected.post("/applications/{service_id}/resume")
+    def resume_application(service_id: UUID, body: EmptyInput):
+        return ApplicationStore(engine, settings).resume(service_id)
+
+    @protected.post("/applications/{service_id}/approve-review")
+    def approve_application_review(service_id: UUID, body: EmptyInput):
+        return ApplicationStore(engine, settings).resume(service_id, approve=True)
 
     @protected.post("/services")
     def register(body: ServiceInput, request: Request):

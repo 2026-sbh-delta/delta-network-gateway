@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     jenkins_user: str = ""
     jenkins_token: SecretStr = SecretStr("")
     jenkins_ca_base64: str = ""
+    application_databases: str = ""
     deployment_connections: str = ""
     deployment_jenkins_job: str = "delta-platform-deploy"
     deployment_jenkins_user: str = ""

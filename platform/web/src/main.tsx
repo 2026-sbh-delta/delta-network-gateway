@@ -1,3 +1,5 @@
+import { ApplicationRegistration } from "./ApplicationRegistration";
+import { ApplicationProgress } from "./ApplicationProgress";
 import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
@@ -140,7 +142,19 @@ function Login({ onLogin }: { onLogin: (s: Session) => void }) {
   );
 }
 
-function Register({
+function Register(props: {
+  onCreated: (s: Service) => void;
+  onCancel: () => void;
+}) {
+  const [single, setSingle] = useState(false);
+  return single ? (
+    <SingleRegister {...props} />
+  ) : (
+    <ApplicationRegistration {...props} onSingle={() => setSingle(true)} />
+  );
+}
+
+function SingleRegister({
   onCreated,
   onCancel,
 }: {
@@ -580,7 +594,7 @@ function Detail({
                 {service.repository_url.replace("https://", "")} ↗
               </a>
             </div>
-            {view === "build" && (
+            {view === "build" && !service.application && (
               <button
                 className="primary"
                 onClick={check}
@@ -594,10 +608,15 @@ function Detail({
               </button>
             )}
           </div>
+          {service.application && (view === "overview" || view === "build") && (
+            <ApplicationProgress service={service} />
+          )}
           {view === "overview" && (
             <>
               <ApplicationPanel service={service} onNavigate={onNavigate} />
-              <DeploymentPanel key={`${id}-deployment`} serviceId={id} />
+              {!service.application && (
+                <DeploymentPanel key={`${id}-deployment`} serviceId={id} />
+              )}
             </>
           )}
           {view === "migration" && (
@@ -609,7 +628,7 @@ function Detail({
               </details>
             </>
           )}
-          {view === "build" && (
+          {view === "build" && !service.application && (
             <>
               <ApplicationPanel
                 service={service}

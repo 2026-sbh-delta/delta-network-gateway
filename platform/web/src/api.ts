@@ -132,7 +132,22 @@ export type DeploymentPlan = {
   };
   targets: DeploymentTargetResult[];
 };
+export type ApplicationState = {
+  status: string;
+  target: { cloud: string };
+  steps: {
+    key: string;
+    label: string;
+    status: string;
+    detail?: string;
+    run_id?: string;
+    report?: Record<string, unknown>;
+  }[];
+  error: string | null;
+  service_url?: string;
+};
 export type Service = {
+  application?: ApplicationState | null;
   deletion_requested?: boolean;
   project_id?: string;
   application_bundle?: ApplicationBundle;
@@ -154,6 +169,7 @@ export type ServiceInput = Omit<
   | "created_at"
   | "latest_source_check"
   | "application_bundle"
+  | "application"
   | "project_id"
 >;
 export type ServiceRegistrationInput = ServiceInput & {

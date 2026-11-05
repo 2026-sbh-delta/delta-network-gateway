@@ -1,0 +1,166 @@
+import { useEffect, useState } from "react";
+import { api, message, type Service } from "./api";
+import "./application-flow.css";
+const labels: Record<string, string> = {
+  queued: "대기",
+  running: "진행 중",
+  succeeded: "완료",
+  failed: "실패",
+  blocked: "설정 대기",
+  review: "검토 필요",
+  skipped: "미실행",
+};
+const stages = [
+  ["source", "소스 확인"],
+  ["build", "Jenkins 빌드"],
+  ["security", "SAST"],
+  ["sandbox", "샌드박스"],
+  ["dast", "DAST"],
+  ["deploy", "VM·DB 준비 및 배포"],
+];
+export function ApplicationProgress({ service }: { service: Service }) {
+  const [current, setCurrent] = useState(service);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const controller = new AbortController();
+    async function refresh() {
+      try {
+        const result = await api<Service>(
+          `/services/${service.id}`,
+          undefined,
+          undefined,
+          controller.signal,
+        );
+        if (!stopped) {
+          setCurrent(result);
+          setError("");
+        }
+      } catch (e) {
+        if (!stopped) setError(message(e));
+      }
+      if (!stopped) timer = setTimeout(refresh, 3000);
+    }
+    refresh();
+    return () => {
+      stopped = true;
+      controller.abort();
+      clearTimeout(timer);
+    };
+  }, [service.id]);
+  const app = current.application;
+  if (!app) return null;
+  async function resume(approve = false) {
+    setBusy(true);
+    try {
+      setCurrent(
+        await api<Service>(
+          `/applications/${service.id}/${approve ? "approve-review" : "resume"}`,
+          {},
+        ),
+      );
+    } catch (e) {
+      setError(message(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <section className="panel application-progress" aria-label="자동 배포 진행">
+      <div className="panel-top">
+        <h2>자동 배포 진행</h2>
+        <strong role="status">{labels[app.status]}</strong>
+      </div>
+      <p>프론트엔드 + 백엔드 · PostgreSQL · {app.target.cloud.toUpperCase()}</p>
+      <ol className="application-progress-line">
+        {stages.map(([key, label]) => {
+          const steps = app.steps.filter(
+            (s) => s.key === key || s.key.startsWith(key + "_"),
+          );
+          const total = key === "deploy" ? 1 : 2;
+          const paused =
+            ["blocked", "review"].includes(app.status) &&
+            app.steps.at(-1)?.key.startsWith(key);
+          const status = paused
+            ? app.status
+            : steps.some((s) => s.status === "failed")
+              ? "failed"
+              : steps.some((s) => s.status === "skipped")
+                ? "skipped"
+                : steps.length === total &&
+                    steps.every((s) => s.status === "succeeded")
+                  ? "succeeded"
+                  : steps.length
+                    ? "running"
+                    : "queued";
+          return (
+            <li key={key} data-status={status}>
+              <strong>{label}</strong>
+              <span>{labels[status]}</span>
+            </li>
+          );
+        })}
+      </ol>
+      <p className="muted">
+        샌드박스는 구성 요소별 실행 검사입니다. 마지막 배포 단계에서 FE → BE →
+        PostgreSQL 연결을 확인합니다.
+      </p>
+      {app.error && <p role="alert">{app.error}</p>}
+      {error && (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      )}
+      <details open={app.status === "failed" || app.status === "review"}>
+        <summary>단계별 진행 보기</summary>
+        <ul>
+          {app.steps.map((s) => (
+            <li key={s.key}>
+              {s.label}: {labels[s.status]}{" "}
+              {s.detail && <small>({s.detail})</small>}
+              {s.report && (
+                <details>
+                  <summary>검사 결과</summary>
+                  <pre>{JSON.stringify(s.report, null, 2)}</pre>
+                </details>
+              )}
+            </li>
+          ))}
+        </ul>
+        {app.status === "review" && (
+          <p>
+            빌드·검사의 상세 결과에서 발견 사항을 확인하세요. DAST 미실행은 보안
+            통과를 뜻하지 않습니다.
+          </p>
+        )}
+      </details>
+      {app.status === "blocked" && (
+        <button disabled={busy} onClick={() => resume()}>
+          설정 확인 후 계속
+        </button>
+      )}
+      {app.status === "review" && (
+        <button disabled={busy} onClick={() => resume(true)}>
+          검사 결과를 검토했습니다 · 배포 계속
+        </button>
+      )}
+      {app.status === "succeeded" && (
+        <p>
+          FE·BE 및 PostgreSQL 연결 확인 완료. DB 데이터는 앱 삭제 시에도
+          보존합니다.
+        </p>
+      )}
+      {app.service_url && (
+        <p>
+          서비스 주소:{" "}
+          <a href={app.service_url} target="_blank" rel="noreferrer">
+            {app.service_url}
+          </a>{" "}
+          · 사설 주소는 연결된 네트워크에서 접근합니다.
+        </p>
+      )}
+    </section>
+  );
+}

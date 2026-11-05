@@ -1,29 +1,69 @@
 {
   "state_root": "/var/lib/delta-deploy/state",
-  "allowed_image_prefixes": ["616723161368.dkr.ecr.ap-northeast-2.amazonaws.com/REPLACE_REPOSITORY@"],
+  "allowed_image_prefixes": [
+    "616723161368.dkr.ecr.ap-northeast-2.amazonaws.com/REPLACE_REPOSITORY@"
+  ],
   "connections": {
     "aws": {
-      "identity": {"revision": "v1", "account_id": "616723161368"},
+      "identity": {
+        "revision": "v1",
+        "account_id": "616723161368"
+      },
       "terraform": {
-        "account_id": "616723161368", "ami_id": "REPLACE_AL2023_AMD64_AMI",
-        "subnet_id": "REPLACE_CUSTOMER_SUBNET", "security_group_ids": ["REPLACE_CUSTOMER_APP_SG"],
+        "account_id": "616723161368",
+        "ami_id": "REPLACE_AL2023_AMD64_AMI",
+        "subnet_id": "REPLACE_CUSTOMER_SUBNET",
+        "security_group_ids": [
+          "REPLACE_CUSTOMER_APP_SG"
+        ],
         "instance_profile": "REPLACE_SSM_ECR_READ_PROFILE"
       }
     },
     "gcp": {
-      "identity": {"revision": "v1", "gcp_project": "term2-delta"},
+      "identity": {
+        "revision": "v1",
+        "gcp_project": "term2-delta"
+      },
       "artifact_repository": "asia-northeast3-docker.pkg.dev/term2-delta/REPLACE_REPOSITORY/app",
       "terraform": {
-        "project_id": "term2-delta", "zone": "asia-northeast3-a", "subnetwork": "REPLACE_SUBNETWORK_SELF_LINK",
-        "service_account": "REPLACE_ARTIFACT_READER_SA", "image": "REPLACE_FIXED_DEBIAN12_AMD64_IMAGE", "network_tag": "delta-customer-app"
+        "project_id": "term2-delta",
+        "zone": "asia-northeast3-a",
+        "subnetwork": "REPLACE_SUBNETWORK_SELF_LINK",
+        "service_account": "REPLACE_ARTIFACT_READER_SA",
+        "image": "REPLACE_FIXED_DEBIAN12_AMD64_IMAGE",
+        "network_tag": "delta-customer-app"
       }
     },
     "onprem": {
-      "identity": {"revision": "v1", "host_id": "delta-onprem"},
-      "kubeconfig": "/etc/delta/onprem-kubeconfig", "namespace": "delta-apps",
-      "namespace_uid": "REPLACE_NAMESPACE_UID", "cluster_id": "REPLACE_KUBE_SYSTEM_UID",
-      "private_ip": "10.40.0.10", "image_pull_secret": "ecr-pull",
-      "ingress_cidrs": ["REPLACE_DEPLOY_AGENT_PRIVATE_IP/32"]
+      "identity": {
+        "revision": "v1",
+        "host_id": "delta-onprem"
+      },
+      "kubeconfig": "/etc/delta/onprem-kubeconfig",
+      "namespace": "delta-apps",
+      "namespace_uid": "REPLACE_NAMESPACE_UID",
+      "cluster_id": "REPLACE_KUBE_SYSTEM_UID",
+      "private_ip": "10.40.0.10",
+      "image_pull_secret": "ecr-pull",
+      "ingress_cidrs": [
+        "REPLACE_DEPLOY_AGENT_PRIVATE_IP/32"
+      ]
+    }
+  },
+  "databases": {
+    "sample-postgres": {
+      "revision": "v1",
+      "modes": [
+        "new"
+      ],
+      "clouds": [
+        "aws"
+      ],
+      "admin_secret_id": "REPLACE_POSTGRES_ADMIN_SECRET_ARN",
+      "egress_cidrs": [
+        "REPLACE_DATABASE_PRIVATE_IP/32"
+      ],
+      "port": 5432
     }
   }
 }

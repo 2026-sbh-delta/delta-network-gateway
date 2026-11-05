@@ -337,6 +337,7 @@ async function fixture(
 test("서비스 등록에 최초 환경 사양이 포함된다", async ({ page }) => {
   const fixtureState = await fixture(page);
   await page.getByRole("button", { name: "+ 서비스 등록" }).click();
+  await page.getByRole("button", { name: "단일 컨테이너 등록" }).click();
   await page.getByLabel("서비스 이름").fill("신규 주문 앱");
   await page
     .getByLabel("공개 GitHub 저장소")
@@ -358,6 +359,7 @@ test("카탈로그 조회가 실패하면 등록을 보류하고 다시 불러�
 }) => {
   const fixtureState = await fixture(page, false, false);
   await page.getByRole("button", { name: "+ 서비스 등록" }).click();
+  await page.getByRole("button", { name: "단일 컨테이너 등록" }).click();
   await page.getByLabel("서비스 이름").fill("카탈로그 없는 서비스");
   await page
     .getByLabel("공개 GitHub 저장소")

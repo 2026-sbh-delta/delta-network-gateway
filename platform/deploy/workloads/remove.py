@@ -163,6 +163,21 @@ def onprem(data, selected):
         if item["metadata"]["uid"] != uid:
             raise ValueError("Cluster/namespace identity mismatch")
     objects = k3s_objects(data, selected)
+    if data.get("database"):
+        objects.append(
+            {
+                "kind": "Secret",
+                "metadata": {
+                    "name": "db-" + UUID(data["environment_id"]).hex,
+                    "labels": {
+                        "app.kubernetes.io/managed-by": "delta-platform",
+                        "delta-platform/environment-id": data["environment_id"],
+                        "delta-platform/service-id": data["service_id"],
+                    },
+                    "annotations": {"delta-platform/plan-hash": data["plan_hash"]},
+                },
+            }
+        )
     registered = []
     for obj in objects:
         kind, name = obj["kind"], obj["metadata"]["name"]
@@ -196,11 +211,13 @@ def onprem(data, selected):
         group = {
             "Deployment": "/apis/apps/v1",
             "Service": "/api/v1",
+            "Secret": "/api/v1",
             "NetworkPolicy": "/apis/networking.k8s.io/v1",
         }[obj["kind"]]
         plural = {
             "Deployment": "deployments",
             "Service": "services",
+            "Secret": "secrets",
             "NetworkPolicy": "networkpolicies",
         }[obj["kind"]]
         path = f"{group}/namespaces/{namespace}/{plural}/{meta['name']}"

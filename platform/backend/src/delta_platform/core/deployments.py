@@ -16,9 +16,18 @@ from .store import RUN_FIELDS, Store, append_event, digest, select_fields
 from .workflows import WorkflowStore, identity
 
 
+class DatabaseBinding(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    profile_id: str = Field(pattern=r"^[a-z][a-z0-9-]{0,63}$")
+    mode: Literal["new", "existing"]
+    engine: Literal["postgres"] = "postgres"
+    revision: str = Field(min_length=1, max_length=64)
+
+
 class DeploymentInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     kind: Literal["deployment", "migration"]
+    database: DatabaseBinding | None = None
     build_id: UUID
     backend_build_id: UUID | None = None
     source_environment_id: UUID | None = None
@@ -170,6 +179,22 @@ class DeploymentStore:
                     raise Problem("idempotency_conflict", "같은 요청 키의 내용이 다릅니다.", 409)
                 return self._view(conn, old), False
             Store._assert_no_removal(conn, service_id)
+            if service["parent_service_id"]:
+                raise Problem(
+                    "application_component", "구성 요소는 애플리케이션에서 함께 배포하세요.", 409
+                )
+            if service["application"] and body.kind == "migration":
+                raise Problem(
+                    "application_migration_requires_database_plan",
+                    "이 앱은 FE·BE와 DB 이전 계획을 함께 연결해야 합니다. 앱만 이전하지 않았습니다.",
+                    409,
+                )
+            if service["application"] and (not body.backend_build_id or not body.database):
+                raise Problem(
+                    "application_components_required",
+                    "애플리케이션은 FE·BE·DB를 함께 배포해야 합니다.",
+                    409,
+                )
             source = None
             if body.source_environment_id:
                 env = WorkflowStore(self.engine)._environment(
@@ -202,6 +227,38 @@ class DeploymentStore:
                         "backend_port_invalid",
                         "현재 FE·BE 배포 계약은 BE 8080 포트를 사용합니다.",
                         422,
+                    )
+            if service["application"]:
+                application = service["application"]
+                if (
+                    components[1]["service_id"] != application["components"]["backend"]
+                    or body.database.model_dump() != application["database"]
+                ):
+                    raise Problem(
+                        "application_definition_changed",
+                        "등록한 백엔드와 데이터베이스로 배포해야 합니다.",
+                        409,
+                    )
+            if body.database:
+                from .applications import database_catalog
+
+                profile = next(
+                    (
+                        p
+                        for p in database_catalog(self.settings)["items"]
+                        if p["id"] == body.database.profile_id
+                    ),
+                    None,
+                )
+                if (
+                    len(components) != 2
+                    or not profile
+                    or profile["revision"] != body.database.revision
+                    or body.database.mode not in profile["modes"]
+                    or any(t.cloud not in profile["clouds"] for t in body.targets)
+                ):
+                    raise Problem(
+                        "database_unavailable", "앱 구성과 PostgreSQL 연결을 다시 확인하세요.", 409
                     )
             options = {o["cloud"]: o for o in catalog(self.settings)["items"]}
             execution = []
@@ -236,6 +293,7 @@ class DeploymentStore:
                 "targets": [e["target"] for e in execution],
                 "components": components,
                 "execution": execution,
+                "database": body.database.model_dump() if body.database else None,
             }
             row = (
                 conn.execute(
@@ -399,6 +457,7 @@ class DeploymentStore:
                     "connection": target["connection"],
                     "runner": runner,
                     "components": snapshot["components"],
+                    "database": snapshot.get("database"),
                     "commit_sha": snapshot["commit_sha"],
                 }
                 conn.execute(
@@ -451,6 +510,13 @@ def validate_report(claim, report):
         or report.get("health_passed") is not True
     ):
         raise ValueError("Deployment identity/health mismatch")
+    database = request.get("database")
+    if database and report.get("database") != {
+        **database,
+        "connected": True,
+        "retention": "retain",
+    }:
+        raise ValueError("Database connection evidence missing")
     env = EnvironmentInput.model_validate(report["environment"])
     if (
         env.cloud != request["target"]["cloud"]
@@ -481,6 +547,7 @@ def validate_report(claim, report):
     return {
         **expected,
         "health_passed": True,
+        "database": report.get("database") if database else None,
         "environment": env.model_dump(mode="json"),
         "service_url": url,
     }
@@ -505,6 +572,7 @@ def complete_deployment(conn, claim, report):
                 **env,
                 "deployment_run_id": str(claim["id"]),
                 "service_url": result["service_url"],
+                "database": result.get("database"),
             },
         )
     )

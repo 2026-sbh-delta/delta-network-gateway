@@ -1,14 +1,14 @@
 import { api, type Page, type Run, type Service } from "./api";
 import type { Environment } from "./observability-api";
 
-// Optional read contract. The current API omits it: never infer a bundle from names.
+// Explicit application identity; legacy single-container services omit this contract.
 export type ApplicationBundle = {
   version: string;
   database: "none" | "memory" | "external" | "unknown";
   components: {
     role: "frontend" | "backend";
     service_id: string;
-    build_id: string;
+    build_id: string | null;
   }[];
 };
 export type ComponentState = {

@@ -3,6 +3,7 @@
 import base64
 import json
 import re
+from uuid import UUID
 
 import boto3
 import sqlalchemy as sa
@@ -136,7 +137,14 @@ class ProjectRemover:
                 shared = conn.scalar(
                     sa.select(runs.c.id)
                     .where(
-                        runs.c.service_id != claim["service_id"],
+                        runs.c.service_id.not_in(
+                            [
+                                UUID(v)
+                                for v in claim.get("input_snapshot", {}).get(
+                                    "member_service_ids", [str(claim["service_id"])]
+                                )
+                            ]
+                        ),
                         sa.or_(
                             runs.c.input_snapshot.cast(sa.Text).contains(image_digest),
                             runs.c.result.cast(sa.Text).contains(image_digest),

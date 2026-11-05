@@ -56,7 +56,7 @@ rules:
     resources: [deployments]
     verbs: [get, list, watch, create, delete]
   - apiGroups: ['']
-    resources: [services]
+    resources: [services, secrets]
     verbs: [get, create, delete]
   - apiGroups: [networking.k8s.io]
     resources: [networkpolicies]
