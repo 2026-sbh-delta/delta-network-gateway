@@ -12,6 +12,8 @@
 
 - GCP state S3 통합(2026-11-05): 사용자 승인으로 `network-security-gcp`의 state를 기존 중앙 S3 버킷의 전용 key `delta/lab/network-security-gcp/terraform.tfstate`로 이전했다. 관리 리소스67개와 출력/검사 결과, GCS 원본과 다른 root state 보존 및 실제 Plan No changes/종료0을 확인했다. mock14개와 Python10개 통과. 리소스 Apply는 미실행이며 커밋과 원격 반영은 Git 이력을 따른다. [이전과 검증 기록](ai-dlc/gcp-central-network.md#2026-11-05-gcp-state의-중앙-s3-이전)
 
+- GCP 로그 전달 정리(2026-11-05): U7~U9 구현 승인 후 네트워크 계정의 전용 수집 리소스8개와 GCP 전달 리소스12개를 실제 제거하고 `terraform/gcp-log-ingest-aws`를 정리했다. 기존 로그 그룹2개와 30일 보관 정책, 공통 코드와 플랫폼 수집을 보존했다. 플랫폼의 새 네트워크 로그 원본 일치를 삭제 전35건/후4건 확인했고 관련 테스트51개가 통과했다. 기존 정의로 실행하면 삭제한 수집기를 재생성할 수 있어 현재 코드를 기준으로 Plan을 검토한다. 최종 Plan과 사설 HTTP 검증의 한계는 [실제 결과](ai-dlc/gcp-central-network.md#2026-11-05-gcp-로그-전달-경로-정리-검토)를 따른다. 게시 상태는 Git 이력을 따른다.
+
 - 프로젝트 삭제(2026-11-05): 사용자 승인으로 목록의 삭제 버튼·이름 확인창과 최소 백엔드 API를 추가했다. 실행/정리 중인 작업 및 연결된 환경·계획은 차단하며 다른 서비스·실제 클라우드 자원은 삭제하지 않는다. 로컬 API 40개·전체 브라우저 37개·빌드 검사를 통과했으며 운영 배포·데이터 삭제는 하지 않았다. [설계·검증 기록](ai-dlc/platform-project-delete.md)
 
 - 서랍 드롭다운(2026-11-05): 사용자 요청으로 펼친 서비스 목록을 서랍의 남색/파란 테마에 맞췄다. 빌드·fixture 검사 11개와 밝은/어두운 모드·키보드·모바일 표시를 확인했다. PR #43 검사 11개 통과·병합 후 [Release 41859205247](https://github.com/2026-sbh-delta/delta-network-gateway/actions/runs/41859205247)를 완료했다. 운영의 펼친 목록 색상·서비스 선택·기존 데이터 보존을 확인했다. [검증·미리보기](ai-dlc/platform-presentation.md)
@@ -98,7 +100,7 @@
 - [공통 Workload 운영 Runbook](../terraform/workload/RUNBOOK.md)
 - [GCP 중앙 네트워크 실행과 전체 입력/출력](../terraform/network-security-gcp/README.md)
 - [GCP 검사 중단/재개와 관제 Runbook](../terraform/network-security-gcp/RUNBOOK.md)
-- [AWS 중앙 GCP 로그 수집기 입력/출력과 운영](../terraform/gcp-log-ingest-aws/README.md)
+- [플랫폼 AWS/GCP 중앙 로그 수집과 운영](../platform/deploy/logging/README.md)
 - [이전 GCP와 AWS VPN 준비/검증 기록](ai-dlc/gcp-server-vpn.md)
 - [파이프라인 스테이징 도구 설계/검증 상태](ai-dlc/staging-tool.md)
 
