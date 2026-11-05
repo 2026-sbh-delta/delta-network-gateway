@@ -1,5 +1,7 @@
 # Delta network gateway
 
+2026-11-05: 사용자 승인으로 Workload와 Network/Security의 서울 GuardDuty를 실제 적용하고 Terraform 등록을 완료했다. 두 계정 모두 ENABLED이며 기존 workload의 ID/보호 설정을 보존하고 중앙은 기본 탐지만 켰다. Terraform mock103개/Python14개 통과, 두 최종 실제 Plan No changes/종료0과 기존 managed127개 ID/기존 출력27개 및 VPC Endpoint 보존을 확인했다. 중앙 초기 S3/EKS API 400은 중지 상태의 일괄 OFF 요청과 새 Plan/Apply로 복구했다. 게시 상태는 Git 이력을 따른다. [실제 결과와 운영 절차](ai-dlc/aws-guardduty.md)
+
 2026-11-05: 사용자 승인으로 공통 워크로드 VPC의 이름을 `delta-lab-client`에서 `delta-board-vpc`로 실제 변경했다. Terraform Apply는 VPC 태그1개 갱신/생성과 삭제0개이며 기존 VPC ID/CIDR과 관리24개 전체 ID 및 출력을 유지했다. mock24개/Python3개 통과, AWS API의 새 이름과 최종 Plan No changes/종료0을 확인했다. 게시 상태는 Git 이력을 따른다. [변경 범위와 검증 기록](ai-dlc/aws-workload-consolidation.md#2026-11-05-후속-vpc-이름-변경)
 
 2026-11-05: 온프레미스 환경 카드의 ‘실행 앱 삭제’를 구현했다. 이름·자원 소유권 확인, Worker의 실제 종료 확인, 실패 재시도와 이력 보존을 지원한다. 별도 임시 앱의 실제 삭제와 기존 앱/PVC 보존을 검증했으며 운영 플랫폼 릴리스·활성화는 아직이다. 플랫폼 VPC의 TGW 연결과 AWS→온프레미스 왕복 경로가 필요하다. 사용자에게 변경 내용을 보고했고 커밋·PR·병합 승인을 받았다. [설계·검증](ai-dlc/platform-onprem-removal.md) · [연결 안내](../platform/deploy/onprem/REMOVAL.md)
@@ -83,6 +85,8 @@
 - 스테이징 도구: 관리 에이전트가 호출하는 파이프라인 스테이징 도구를 `services/delta-staging/`, AWS 기반을 `terraform/staging-aws/`에 추가했다. 2026-11-03 도구 단위 테스트 34개 통과, Apply 후 실제 ECS 배포 확인(첫 배포 56초, 이미지 교체 57초). GCP 구현은 미실행이다. [AI-DLC](ai-dlc/staging-tool.md)를 따른다.
 
 ## 문서
+
+- [AWS Workload와 Network/Security의 GuardDuty 활성화 설계 및 승인 상태](ai-dlc/aws-guardduty.md)
 
 - [Sample App의 GCP ALB/x86 VM/Cloud SQL 교체와 승인 상태](ai-dlc/gcp-sample-app.md)
 

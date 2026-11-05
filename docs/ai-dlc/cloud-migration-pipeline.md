@@ -1,5 +1,7 @@
 # Jenkins 클라우드 이전 파이프라인과 서비스별 가중치 화면
 
+2026-11-05 보안 기반 후속: Workload와 Network/Security의 서울 GuardDuty를 실제 활성화하고 각 Terraform root에서 관리한다. 아래 초기 이전 계획의 GuardDuty 미구성 안내와 구분하며 [현재 보호 설정과 검증](aws-guardduty.md)을 따른다. 이전 실행기의 새 인벤토리 재수집/판정 연동은 이번 활성화 작업에서 검증하지 않았다.
+
 - 기준일: 2026-11-04 (Asia/Seoul)
 - 상태: 설계·로컬 구현. **클라우드 자원은 만들지 않는다.** AWS·GCP 는 로컬 컨테이너와 HAProxy 대역으로 시험한다. 운영 앞단은 HAProxy 가 아니라 ALB 가중치 대상 그룹 권고(ADR-AI-37)이고, 그 구현은 아직 없다.
 - 실행 방법: [deploy/jenkins-local](../../deploy/jenkins-local/README.md) 의 "클라우드 이전" 절
