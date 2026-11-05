@@ -15,7 +15,7 @@ from typing import Literal
 from fastapi import HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
-from .adapters import from_sarif, sarif_targets
+from .adapters import MAX_FINDINGS, from_sarif, sarif_targets
 from . import staging_link
 from .contracts import Report, RunRequest
 
@@ -131,7 +131,7 @@ class PlatformRuns:
         if args.report.get("version") != "2.1.0" or len(args.report.get("runs", [])) != 1:
             raise ValueError("Single SARIF run required")
         targets = sarif_targets(args.report)
-        report = Report.model_validate(from_sarif(args.report)) if targets else None
+        report = Report.model_validate(from_sarif(args.report, platform_limit())) if targets else None
         request_hash = fingerprint(submission)
         async with self.lock:
             record = self.read(run_id)
@@ -198,6 +198,15 @@ class PlatformRuns:
 
                 forget(self.catalog, run_id)
             return {"run_id": run_id, "stopped": True}
+
+
+def platform_limit() -> int:
+    """플랫폼 점검 상한(DAST_PLATFORM_MAX_FINDINGS, 기본 MAX_FINDINGS). 상한을 넘는 후보는 점검하지 않은 것으로 남고
+    (findings_truncated), 파이프라인은 이를 통과로 보지 않는다."""
+    try:
+        return max(1, min(int(os.environ.get("DAST_PLATFORM_MAX_FINDINGS", MAX_FINDINGS)), MAX_FINDINGS))
+    except ValueError:
+        return MAX_FINDINGS
 
 
 def install(app, registry):

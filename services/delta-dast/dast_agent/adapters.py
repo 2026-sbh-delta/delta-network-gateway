@@ -126,14 +126,16 @@ def sarif_targets(raw: dict) -> list[dict]:
     return out
 
 
-def from_sarif(raw: dict) -> dict:
-    """Delta SAST SARIF → 내부 형식. finding id는 sast-<경로 ID>라서 결과를 SAST로 되돌릴 수 있다."""
+def from_sarif(raw: dict, limit: int = MAX_FINDINGS) -> dict:
+    """Delta SAST SARIF → 내부 형식. finding id는 sast-<경로 ID>라서 결과를 SAST로 되돌릴 수 있다.
+
+    limit: 앞에서부터 몇 건을 점검할지(1~MAX_FINDINGS). 나머지는 점검하지 않은 것으로 남는다."""
     run = raw["runs"][0]
     targets = sarif_targets(raw)
     if not targets:
         raise ValueError("SARIF에 DAST로 확인할 XSS 결과가 없다")
     converted = []
-    for result in targets[:MAX_FINDINGS]:
+    for result in targets[:max(1, min(limit, MAX_FINDINGS))]:
         props = result["properties"]
         dast, judgment = props["dast"], props.get("judgment") or {}
         sink = result["locations"][0]["physicalLocation"]

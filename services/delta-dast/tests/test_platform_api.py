@@ -187,3 +187,13 @@ def test_gcp_defaults_to_the_persistent_staging_target(tmp_path, monkeypatch):
     other["binding"].update(execution_cloud="gcp", target_url="http://203.0.113.9")
     with pytest.raises(ValueError):
         asyncio.run(registry.submit(str(uuid4()), other))
+
+
+def test_platform_limit_checks_top_candidates_and_reports_the_rest_as_truncated(tmp_path, monkeypatch):
+    registry, live, calls = fixture(tmp_path, monkeypatch)
+    monkeypatch.setenv("DAST_PLATFORM_MAX_FINDINGS", "1")
+    run_id = str(uuid4())
+    view = asyncio.run(registry.submit(run_id, payload()))
+    # 저장형·확정 후보 1건만 점검하고, 나머지는 점검하지 않았다고 남긴다(통과가 아니다)
+    assert len(calls[0][0].report["findings"]) == 1 and len(view["finding_ids"]) == 1
+    assert view["eligible_count"] == 3 and view["findings_truncated"] is True

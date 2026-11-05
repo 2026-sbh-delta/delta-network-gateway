@@ -399,7 +399,7 @@ class Steps:
         truncated = int(view.get("eligible_count") or len(expected)) - len(expected)
         labels = ", ".join(f"{s} {sum(r['status'] == s for r in results)}" for s in sorted({str(r["status"]) for r in results}))
         notes = [n for n in (f"누락 {missing}" if missing else "", f"예상 밖 {extra}" if extra else "",
-                             f"미점검 {truncated}(후보 10개 초과)" if truncated > 0 else "") if n]
+                             f"미점검 {truncated}(점검 상한 초과)" if truncated > 0 else "") if n]
         if results and not notes and all(r["status"] in DAST_PASS for r in results):
             return self._pass("dast", "dast", f"재현 없음 ({labels})")
         # 재현·판정 불가·결과 누락·미점검은 사람이 본다
