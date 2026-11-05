@@ -426,6 +426,114 @@
       "title": "Evidence",
       "type": "object"
     },
+    "ExecutionContext": {
+      "additionalProperties": false,
+      "properties": {
+        "project_id": {
+          "format": "uuid",
+          "title": "Project Id",
+          "type": "string"
+        },
+        "service_id": {
+          "format": "uuid",
+          "title": "Service Id",
+          "type": "string"
+        },
+        "workflow_id": {
+          "format": "uuid",
+          "title": "Workflow Id",
+          "type": "string"
+        },
+        "run_id": {
+          "format": "uuid",
+          "title": "Run Id",
+          "type": "string"
+        },
+        "environment_id": {
+          "format": "uuid",
+          "title": "Environment Id",
+          "type": "string"
+        },
+        "source_environment_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Environment Id"
+        },
+        "source_provider": {
+          "anyOf": [
+            {
+              "enum": [
+                "aws",
+                "gcp",
+                "onprem"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Provider"
+        },
+        "target_provider": {
+          "enum": [
+            "aws",
+            "gcp",
+            "onprem"
+          ],
+          "title": "Target Provider",
+          "type": "string"
+        },
+        "repository_url": {
+          "title": "Repository Url",
+          "type": "string"
+        },
+        "commit_sha": {
+          "pattern": "^[a-f0-9]{40}$",
+          "title": "Commit Sha",
+          "type": "string"
+        },
+        "image_digest": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Image Digest",
+          "type": "string"
+        },
+        "plan_hash": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Plan Hash",
+          "type": "string"
+        },
+        "payload_hash": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Payload Hash",
+          "type": "string"
+        }
+      },
+      "required": [
+        "project_id",
+        "service_id",
+        "workflow_id",
+        "run_id",
+        "environment_id",
+        "target_provider",
+        "repository_url",
+        "commit_sha",
+        "image_digest",
+        "plan_hash",
+        "payload_hash"
+      ],
+      "title": "ExecutionContext",
+      "type": "object"
+    },
     "ExistingSubnet": {
       "additionalProperties": false,
       "properties": {
@@ -522,7 +630,9 @@
               "enum": [
                 "irsa",
                 "pod_identity",
+                "instance_profile",
                 "workload_identity",
+                "service_account",
                 "static_key",
                 "none"
               ],
@@ -667,8 +777,28 @@
     },
     "MappingInput": {
       "additionalProperties": false,
-      "description": "이전 전에 무엇을 만들지 정하는 입력. 지금은 AWS → GCP 만 다룬다.",
+      "description": "이전 전에 무엇을 만들지 정하는 입력. AWS → GCP 와 GCP → AWS 를 다룬다.\n\n방향마다 대응표가 따로 있어서, 출발과 맞지 않는 값(다른 CSP 의 리전·타입·보안 도구)을 받으면 거부한다.\n잘못된 방향의 결과를 그럴듯하게 내지 않으려는 것이다.",
       "properties": {
+        "source_provider": {
+          "default": "aws",
+          "enum": [
+            "aws",
+            "gcp",
+            "onprem"
+          ],
+          "title": "Source Provider",
+          "type": "string"
+        },
+        "target_provider": {
+          "default": "gcp",
+          "enum": [
+            "aws",
+            "gcp",
+            "onprem"
+          ],
+          "title": "Target Provider",
+          "type": "string"
+        },
         "network_mode": {
           "default": "create",
           "enum": [
@@ -1311,6 +1441,21 @@
           "title": "Guardduty Plans",
           "type": "array"
         },
+        "scc_services": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Scc Services"
+        },
         "other_tools": {
           "default": [],
           "items": {
@@ -1388,6 +1533,18 @@
           ],
           "default": null,
           "title": "Instance Profile"
+        },
+        "service_account": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Service Account"
         },
         "permissions": {
           "anyOf": [
@@ -1626,6 +1783,17 @@
         "network_posture": null,
         "mapping": null
       }
+    },
+    "execution_context": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ExecutionContext"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
     }
   },
   "required": [

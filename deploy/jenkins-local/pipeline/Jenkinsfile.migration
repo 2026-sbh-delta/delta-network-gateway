@@ -1,0 +1,351 @@
+// 클라우드 이전: 판단 → 갭 메우기 → 대상 배포 → 동등성 확인 → 서비스별 단계 전환.
+// 판단 서비스는 판정과 수정안만 낸다. 수정안 적용과 실행은 이 파이프라인이 하고, 적용 뒤에는 반드시 다시 판단받는다.
+// 설계: docs/ai-dlc/cloud-migration-pipeline.md. AWS·GCP 는 로컬 컨테이너와 HAProxy 대역이다.
+
+def scripts() { return '/pipelines/pipeline/scripts' }
+
+def maxJudgeRounds() { return 4 }
+
+def py(String args) {
+    return sh(returnStatus: true, script: "python3 ${scripts()}/${args}")
+}
+
+def out(String args) {
+    return sh(returnStdout: true, script: "python3 ${scripts()}/${args}").trim()
+}
+
+def plan(String args) {
+    if (py("migration_plan.py ${args}") != 0) {
+        error("이전 계획 단계 실패: ${args.tokenize(' ')[0]}")
+    }
+}
+
+def judge(String id, String stage, String request, String result) {
+    int code = py("gate.py assess --id ${id} --stage ${stage} --request ${request} --out ${result}")
+    if (code == 30) {
+        error("${stage}: 판단을 받지 못했다. 통과로 보지 않는다")
+    }
+    return code
+}
+
+def services() {
+    return out('migration_plan.py get services --inventory inventory.json').readLines().collect { line ->
+        List parts = line.tokenize(' ')
+        [id: parts[0], sourcePlatform: parts[1], failRate: parts[2]]
+    }
+}
+
+def image(String id, String platform) {
+    return "delta-mig-${id}:${platform.replace('/', '-')}"
+}
+
+// 대상 구조 이미지를 빌드하고 그 구조로 띄워 응답을 확인한다. 통과해야 multi_arch_image 를 true 로 보낸다
+def buildTargetImages() {
+    if (env.TARGET_IMAGES_BUILT == 'true') {
+        return
+    }
+    List targets = out('migration_plan.py get target-platforms --inventory inventory.json --result mapping-result.json').readLines()
+    for (String line in targets) {
+        List parts = line.tokenize(' ')
+        String tag = image(parts[0], parts[1])
+        sh "docker build -q --load --platform ${parts[1]} -t ${tag} app"
+        String arch = sh(returnStdout: true, script: "docker image inspect --format '{{.Architecture}}' ${tag}").trim()
+        echo "${parts[0]}: ${tag} (${arch})"
+        sh """#!/bin/bash
+            set -euo pipefail
+            docker rm -f mig-smoke >/dev/null 2>&1 || true
+            docker run -d --name mig-smoke --platform ${parts[1]} --network ${env.DELTA_NETWORK} ${tag} >/dev/null
+            trap 'docker rm -f mig-smoke >/dev/null 2>&1' EXIT
+            for i in \$(seq 1 30); do
+              if python3 -c "import urllib.request; urllib.request.urlopen('http://mig-smoke:8080/health', timeout=2)" 2>/dev/null; then
+                echo "스모크 통과: ${parts[0]} ${parts[1]}"; exit 0
+              fi
+              sleep 1
+            done
+            echo "스모크 실패: ${parts[0]} ${parts[1]}" >&2; exit 1
+        """
+    }
+    env.TARGET_IMAGES_BUILT = 'true'
+}
+
+def runService(String id, String cloud, String platform, String version, String failRate) {
+    sh """#!/bin/bash
+        set -euo pipefail
+        docker rm -f mig-${id}-${cloud} >/dev/null 2>&1 || true
+        docker run -d --name mig-${id}-${cloud} --platform ${platform} --network ${env.DELTA_NETWORK} \
+          --label delta.migration=${cloud} -e APP_VERSION=${version} -e SERVICE=${id} -e FAIL_RATE=${failRate} \
+          ${image(id, platform)} >/dev/null
+    """
+    if (py("haproxy_ctl.py wait-up --backend edge_${cloud}_${id} --slot app --timeout 60") != 0
+            || py("haproxy_ctl.py wait-up --backend mig_${id} --slot ${cloud} --timeout 30") != 0) {
+        error("${id} ${cloud} 입구가 UP 이 되지 않았다")
+    }
+}
+
+def jsonString(String value) {
+    return '"' + value.replace('\\', '\\\\').replace('"', '\\"') + '"'
+}
+
+def answersJson(Map answer) {
+    return '{' + answer.collect { k, v -> "${jsonString(k)}: ${v instanceof Boolean ? v : jsonString(v.toString())}" }.join(', ') + '}'
+}
+
+// 사람이 정할 것만 묻는다. 승인하지 않으면 decide 가 실패해 진행하지 않는다
+def askMappingDecision() {
+    List spec = out('migration_plan.py get input-spec --questions mapping-questions.json').readLines()
+    List params = []
+    List names = []
+    Map keys = [:]  // 입력 이름 → decide 가 읽는 답 이름. 능력 이름에 공백이 있어도 입력 이름은 안전하게 둔다
+    if (spec.contains('TIER')) {
+        params << choice(name: 'SCC_TIER', choices: ['premium', 'standard'], description: 'standard 면 위협 탐지 일부를 잃는다')
+        names << 'SCC_TIER'
+    }
+    List gaps = spec.findAll { it.startsWith('GAP ') }
+    for (int i = 0; i < gaps.size(); i++) {
+        String capability = gaps[i].substring(4)
+        String name = "ACCEPT_${i}".toString()  // GString 키는 String 키와 같은 값으로 찾히지 않는다
+        params << booleanParam(name: name, defaultValue: false, description: "${capability} 능력을 잃어도 된다")
+        names << name
+        keys[name] = "ACCEPT_${capability}".toString()
+    }
+    if (spec.contains('OTHERS')) {
+        params << booleanParam(name: 'APPROVE_REMAINING', defaultValue: false, description: '자동으로 옮기지 않는 차이를 확인했고 진행한다')
+        names << 'APPROVE_REMAINING'
+    }
+    if (params.isEmpty()) {
+        error('사람에게 물을 것이 없는데 판단이 끝나지 않았다')
+    }
+    def answer
+    timeout(time: 15, unit: 'MINUTES') {
+        String text = out('migration_plan.py get question-text --questions mapping-questions.json')
+        answer = input(id: 'MappingDecision', message: "이전 판단이 사람 결정을 기다린다\n${text}", parameters: params)
+    }
+    Map given = answer instanceof Map ? answer : [(names[0]): answer]
+    Map answers = given.collectEntries { k, v -> [(keys.get(k.toString(), k.toString())): v] }
+    writeFile file: 'mapping-answers.json', text: answersJson(answers)
+    plan('decide --state migration-state.json --questions mapping-questions.json --answers mapping-answers.json')
+}
+
+def humanGate(String message) {
+    timeout(time: 15, unit: 'MINUTES') {
+        input id: 'HumanGate', message: message
+    }
+}
+
+pipeline {
+    agent any
+    options {
+        disableConcurrentBuilds()
+        timestamps()
+        timeout(time: 60, unit: 'MINUTES')
+        buildDiscarder(logRotator(numToKeepStr: '20'))
+    }
+    parameters {
+        choice(name: 'DIRECTION', choices: ['aws-to-gcp', 'gcp-to-aws'], description: '이전 방향')
+        choice(name: 'SCENARIO', choices: ['good', 'scc-standard', 'iam-gap', 'security-gap', 'bad-target', 'gate-down'], description: '시험할 상황')
+        choice(name: 'SCC_TIER', choices: ['ask', 'premium', 'standard'], description: 'GCP 대상의 SCC 등급. ask 면 판단 뒤 묻는다. AWS 대상에는 쓰지 않는다')
+        string(name: 'ACCEPT_GAPS', defaultValue: '', description: '미리 승인할 능력(쉼표). 예: vm_threats')
+        choice(name: 'CUTOVER_MODE', choices: ['auto', 'manual'], description: 'manual 은 traffic-control 화면에서 비율을 바꾼다')
+        string(name: 'CUTOVER_STEPS', defaultValue: 'web=10,50,100;api=10,50,100', description: 'auto 의 서비스별 단계')
+    }
+    environment {
+        DELTA_API_TOKEN = credentials('delta-api-token')
+        TRAFFIC_CONTROL_TOKEN = credentials('traffic-control-token')
+        DELTA_URL = "${params.SCENARIO == 'gate-down' ? 'http://delta-ai:1' : 'http://delta-ai:8090'}"
+        TRAFFIC_CONTROL_URL = 'http://traffic-control:8080'
+        GATEWAY_URL = 'http://haproxy:81'
+        SERVICES_FILE = '/pipelines/pipeline/migration/services.json'
+        MAX_P95_MS = '2000'  // amd64 에뮬레이션과 노트북 부하를 감안한 시험대 값이다
+        DOCKER_BUILDKIT = '1'  // 다른 CPU 구조 빌드는 BuildKit(buildx)만 된다
+    }
+    stages {
+        stage('준비') {
+            steps {
+                deleteDir()
+                sh 'cp -r /pipelines/demo-app app && rm -rf app/scenarios'
+                script {
+                    List direction = params.DIRECTION.tokenize('-')
+                    env.SOURCE = direction[0]
+                    env.TARGET = direction[2]
+                    env.TARGET_VERSION = "${env.TARGET}-b${BUILD_NUMBER}"
+                    env.RUN_ID = "build-${BUILD_NUMBER}"
+                    plan("init --inventory /pipelines/pipeline/migration/inventory-${env.SOURCE}.json --scenario ${params.SCENARIO} "
+                         + "--scc-tier ${params.SCC_TIER} --accept '${params.ACCEPT_GAPS}' --out-inventory inventory.json --out-state migration-state.json")
+                }
+            }
+        }
+        stage('판단 서비스 확인') {
+            steps {
+                script {
+                    if (py('gate_ready.py') != 0) {
+                        error('판단 서비스에 닿지 못했다: 이전을 시작하지 않는다')
+                    }
+                }
+            }
+        }
+        stage('출발 환경 확인') {
+            steps {
+                script {
+                    // 시험대 초기화: 출발 환경을 띄우고 트래픽을 전부 출발 쪽으로 둔다. 실제 이전에서는 이미 운영 중이다
+                    for (Map svc in services()) {
+                        String tag = image(svc.id, svc.sourcePlatform)
+                        sh "docker image inspect ${tag} >/dev/null 2>&1 || docker build -q --load --platform ${svc.sourcePlatform} -t ${tag} app"
+                        // 반대 방향 빌드가 대상으로 띄운 컨테이너(실패율 포함)를 출발로 쓰지 않는다. 출발 버전이 아니면 다시 띄운다
+                        String version = sh(returnStdout: true, script: "docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' mig-${svc.id}-${env.SOURCE} 2>/dev/null | sed -n 's/^APP_VERSION=//p' || true").trim()
+                        if (version != "${env.SOURCE}-src") {
+                            runService(svc.id, env.SOURCE, svc.sourcePlatform, "${env.SOURCE}-src", '0')
+                        }
+                    }
+                    String caps = out('migration_plan.py get source-capabilities --inventory inventory.json')
+                    if (py("edge_waf.py --edge ${env.SOURCE} --capabilities ${caps}") != 0) {
+                        error('출발 입구 WAF 대역을 적용하지 못했다')
+                    }
+                    // 앞 빌드가 정리 없이 죽었으면 화면에 진행 중 전환이 남는다
+                    py("cutover.py end --services ${env.SERVICES_FILE} --source ${env.SOURCE} --target ${env.TARGET} --run-id '*'")
+                    sh "python3 ${scripts()}/cutover.py rollback --services ${env.SERVICES_FILE} --source ${env.SOURCE} --target ${env.TARGET} --state none.json"
+                }
+            }
+        }
+        stage('이전 판단') {
+            steps {
+                script {
+                    boolean settled = false
+                    for (int round = 1; round <= maxJudgeRounds() && !settled; round++) {
+                        String id = "${env.RUN_ID}-mapping-${round}"
+                        plan("mapping-request --inventory inventory.json --state migration-state.json --id ${id} --out mapping-request.json")
+                        int code = judge(id, 'migration-mapping', 'mapping-request.json', 'mapping-result.json')
+                        sh "cp mapping-result.json mapping-result-${round}.json"
+                        if (code == 0) {
+                            settled = true
+                            break
+                        }
+                        plan('fixes --result mapping-result.json --inventory inventory.json --out mapping-fixes.json')
+                        if (py('migration_plan.py get autofixable --fixes mapping-fixes.json') == 0) {
+                            buildTargetImages()
+                            plan('record --state migration-state.json --fixes mapping-fixes.json --kinds build_arch,set')
+                            continue
+                        }
+                        plan('questions --result mapping-result.json --inventory inventory.json --state migration-state.json --out mapping-questions.json')
+                        if (py('migration_plan.py get resolved --questions mapping-questions.json') == 0) {
+                            echo '남은 차이는 사람이 승인했다. 승인 기록은 migration-state.json 에 있다'
+                            settled = true
+                            break
+                        }
+                        askMappingDecision()
+                    }
+                    if (!settled) {
+                        error("이전 판단이 ${maxJudgeRounds()}번 안에 끝나지 않았다")
+                    }
+                }
+            }
+        }
+        stage('대상 계획') {
+            steps {
+                script {
+                    plan('plan --inventory inventory.json --result mapping-result.json --state migration-state.json --out target-plan.json --tfvars target.auto.tfvars.json')
+                    plan('get terraform-gaps --plan target-plan.json --out terraform-gaps.json')
+                    echo "로컬 실행기: Terraform 대신 컨테이너로 대상 환경을 만든다. terraform-gaps.json 은 대상(${env.TARGET}) root 에 없는 변수다"
+                    sh 'cat terraform-gaps.json'
+                }
+            }
+        }
+        stage('대상 이미지 빌드') {
+            steps {
+                script { buildTargetImages() }
+            }
+        }
+        stage('대상 배포') {
+            steps {
+                script {
+                    List platforms = out('migration_plan.py get target-platforms --inventory inventory.json --result mapping-result.json').readLines()
+                    Map byId = services().collectEntries { [(it.id): it] }
+                    for (String line in platforms) {
+                        List parts = line.tokenize(' ')
+                        runService(parts[0], env.TARGET, parts[1], env.TARGET_VERSION, byId[parts[0]].failRate)
+                    }
+                }
+            }
+        }
+        stage('동등성 확인') {
+            steps {
+                script {
+                    String sourceCaps = out('migration_plan.py get source-capabilities --inventory inventory.json')
+                    boolean settled = false
+                    for (int round = 1; round <= maxJudgeRounds() && !settled; round++) {
+                        String targetCaps = out('migration_plan.py get edge-capabilities --plan target-plan.json')
+                        if (py("edge_waf.py --edge ${env.TARGET} --capabilities '${targetCaps}'") != 0) {
+                            error('대상 입구 WAF 대역에 수정안을 적용하지 못했다')
+                        }
+                        // 양쪽에 같은 시험을 보낸다. 출발 쪽이 막지 못한 시험은 대상 결과를 믿지 않는다
+                        py("attack_probe.py --url http://haproxy:820${env.SOURCE == 'aws' ? 1 : 2}/api/hello --environment ${env.SOURCE} --capabilities ${sourceCaps} --out attacks-source.json")
+                        py("attack_probe.py --url http://haproxy:820${env.TARGET == 'aws' ? 1 : 2}/api/hello --environment ${env.TARGET} --capabilities ${sourceCaps} --out attacks-target.json")
+                        String id = "${env.RUN_ID}-parity-${round}"
+                        plan("parity-request --inventory inventory.json --plan target-plan.json --attacks-source attacks-source.json --attacks-target attacks-target.json --id ${id} --out parity-request.json")
+                        int code = judge(id, 'migration-parity', 'parity-request.json', 'parity-result.json')
+                        sh "cp parity-result.json parity-result-${round}.json"
+                        if (code == 0) {
+                            settled = true
+                            break
+                        }
+                        int fixes = py('migration_plan.py parity-fixes --plan target-plan.json --result parity-result.json --out parity-fixes.json')
+                        if (fixes == 20) {
+                            humanGate('동등성 판단에 파이프라인이 고칠 수 없는 차이가 있다. parity-result.json 과 parity-fixes.json 을 보고 진행 여부를 정한다')
+                            settled = true
+                        } else if (fixes != 0) {
+                            error('동등성 수정안을 대상 계획에 넣지 못했다')
+                        }
+                    }
+                    if (!settled) {
+                        error("동등성 판단이 ${maxJudgeRounds()}번 안에 끝나지 않았다")
+                    }
+                }
+            }
+        }
+        stage('DB 이전') {
+            steps {
+                script {
+                    if (out('migration_plan.py get databases --inventory inventory.json') != '0') {
+                        humanGate('DB 이전 단계는 platform-db-move 와 아직 연결하지 않았다. 사람이 이전을 마친 뒤 진행한다')
+                    } else {
+                        echo '출발 인벤토리에 DB 가 없다: 건너뛴다'
+                    }
+                }
+            }
+        }
+        stage('서비스별 단계 전환') {
+            steps {
+                script {
+                    String common = "--services ${env.SERVICES_FILE} --source ${env.SOURCE} --target ${env.TARGET} --run-id ${env.RUN_ID} --version ${env.TARGET_VERSION} --max-p95-ms ${env.MAX_P95_MS}"
+                    int code = params.CUTOVER_MODE == 'manual'
+                        ? py("cutover.py manual ${common} --timeout 1800")
+                        : py("cutover.py auto ${common} --steps '${params.CUTOVER_STEPS}'")
+                    if (code == 2) {
+                        unstable('일부 서비스만 옮겼다. cutover-state.json 을 본다')
+                    } else if (code != 0) {
+                        error("단계 전환 실패(code=${code}): 완료하지 않은 서비스는 출발 환경으로 되돌린다")
+                    }
+                }
+            }
+        }
+        stage('마무리') {
+            steps {
+                sh 'cat cutover-state.json'
+                echo "출발 환경(${env.SOURCE})은 되돌릴 수 있게 남겨 둔다. 정리는 사람이 정한다"
+            }
+        }
+    }
+    post {
+        always {
+            script {
+                if (currentBuild.currentResult != 'SUCCESS' && currentBuild.currentResult != 'UNSTABLE' && env.SOURCE) {
+                    // 화면 없이도 되돌린다. 100% 판단을 통과한 서비스는 그대로 둔다
+                    py("cutover.py rollback --services ${env.SERVICES_FILE} --source ${env.SOURCE} --target ${env.TARGET} --state cutover-state.json")
+                    py("cutover.py end --services ${env.SERVICES_FILE} --source ${env.SOURCE} --target ${env.TARGET} --run-id ${env.RUN_ID}")
+                }
+            }
+        }
+        cleanup {
+            archiveArtifacts artifacts: '*.json, events.jsonl', allowEmptyArchive: true
+        }
+    }
+}

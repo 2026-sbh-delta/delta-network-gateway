@@ -1,0 +1,8 @@
+{
+  "_note": "traffic-control 과 cutover.py 가 함께 읽는다. backend 는 haproxy.cfg 의 이름이다",
+  "servers": ["aws", "gcp"],
+  "services": [
+    {"id": "web", "backend": "mig_web", "path": "/"},
+    {"id": "api", "backend": "mig_api", "path": "/api/hello"}
+  ]
+}

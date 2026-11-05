@@ -108,7 +108,9 @@ def append_event(path: Path, *, run_id: str, step: str, state: str, verdict: str
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("kind", choices=("deployment_gate",))
+    parser.add_argument("kind", choices=("deployment_gate", "assess"),
+                        help="assess 는 --request 의 본문을 그대로 보낸다(migration_mapping·migration_parity)")
+    parser.add_argument("--request", type=Path)
     parser.add_argument("--id", required=True)
     parser.add_argument("--service", default="demo-app")
     parser.add_argument("--commit", default=os.environ.get("RELEASE_ID", "local"))
@@ -125,6 +127,10 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def _request_from_args(args: argparse.Namespace) -> dict[str, Any]:
+    if args.kind == "assess":
+        if args.request is None:
+            raise SystemExit("assess 는 --request 가 필요하다")
+        return json.loads(args.request.read_text(encoding="utf-8"))
     metrics = json.loads(args.metrics.read_text(encoding="utf-8"))["metrics"] if args.metrics else []
     return deployment_request(assessment_id=args.id, service_id=args.service, commit=args.commit,
                               stage=args.stage or "unknown", status=args.status, target=args.target,

@@ -136,8 +136,19 @@ def test_slow_new_version_is_exceeded():
                                               max_p95_ms=500))
 
 
-def test_split_raises_canary_before_lowering_stable():
-    assert haproxy_ctl.split_commands("blue", "green", 10) == ("set weight demo/green 10", "set weight demo/blue 90")
+def test_split_sets_the_larger_new_weight_first():
+    assert haproxy_ctl.split_commands("blue", "green", 10) == ("set weight demo/blue 90", "set weight demo/green 10")
+    assert haproxy_ctl.split_commands("blue", "green", 100) == ("set weight demo/green 100", "set weight demo/blue 0")
+
+
+def test_rollback_from_full_canary_never_leaves_both_servers_at_zero():
+    # 예전 순서(카나리 먼저)는 green 0 → blue 100 이라 그 사이 두 서버가 모두 0 이었다
+    assert haproxy_ctl.split_commands("blue", "green", 0) == ("set weight demo/blue 100", "set weight demo/green 0")
+
+
+def test_weight_commands_reject_a_split_that_does_not_sum_to_100():
+    with pytest.raises(ValueError):
+        haproxy_ctl.weight_commands("mig_web", {"aws": 50, "gcp": 60})
 
 
 @pytest.mark.parametrize("percent", [-1, 101])

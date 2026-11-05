@@ -41,13 +41,16 @@ def _with_doc_flags(findings: Sequence[Finding], docs: Sequence[Chunk]) -> tuple
 
 
 def _remediation(findings: Sequence[Finding]) -> Remediation:
-    """막는 finding 의 수정안만 모은다. 여러 finding 이 같은 WAF 수정안을 가리키면 한 번만 넣는다."""
+    """막는 finding 의 수정안만 모은다. 여러 finding 이 같은 WAF 수정안을 가리키면 한 번만 넣는다.
+
+    AWS 관리형 그룹은 한 그룹이 여러 범주를 덮어 식이 같으므로 범주까지 같아야 같은 수정안이다.
+    """
     active = [f for f in findings if f.status == "fail" and f.severity != "low"]
     ops: dict[str, SpecOp] = {}
-    rules: dict[str, WafRule] = {}
+    rules: dict[tuple[str, str], WafRule] = {}
     for finding in active:
         ops.update({op.path: op for op in finding.ops})
-        rules.update({rule.expression: rule for rule in finding.waf_rules})
+        rules.update({(rule.expression, rule.capability): rule for rule in finding.waf_rules})
     return Remediation(spec_ops=tuple(ops.values()), waf_rules=tuple(rules.values()))
 
 

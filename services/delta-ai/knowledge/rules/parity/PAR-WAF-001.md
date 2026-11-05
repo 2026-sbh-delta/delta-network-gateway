@@ -14,6 +14,7 @@ L3·L4 방화벽이나 HTTPS 를 복호화하지 않는 게이트웨이는 이 �
 
 ## 고치는 법
 AWS → GCP 는 범주별로 Cloud Armor 사전 구성 규칙을 deny(403) 로 추가한다. 예: evaluatePreconfiguredWaf('sqli-v422-stable', {'sensitivity': 1}).
+GCP → AWS 는 범주를 덮는 AWS 관리형 규칙 그룹을 WebACL 에 넣는다. 예: sqli 는 AWSManagedRulesSQLiRuleSet, xss·lfi·rfi 는 AWSManagedRulesCommonRuleSet, java·cve 는 AWSManagedRulesKnownBadInputsRuleSet. 한 그룹이 여러 범주를 덮어도 범주마다 한 줄로 내서 범주별로 확인한다. methodenforcement 처럼 대응 그룹이 없는 Cloud Armor 규칙은 사람이 정한다.
 온프레미스는 클라우드 WAF 를 쓸 수 없으므로 인그레스 앞단에 Coraza 나 ModSecurity 같은 WAF 를 두고 OWASP CRS 를 차단 모드로 켠다.
 두 제품의 규칙은 1:1 이 아니므로 추가만으로 동등하다고 말하지 않고 PAR-WAF-002 의 공격 시험으로 확인한다.
 

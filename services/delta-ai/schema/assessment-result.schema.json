@@ -200,6 +200,114 @@
       "title": "CostLine",
       "type": "object"
     },
+    "ExecutionContext": {
+      "additionalProperties": false,
+      "properties": {
+        "project_id": {
+          "format": "uuid",
+          "title": "Project Id",
+          "type": "string"
+        },
+        "service_id": {
+          "format": "uuid",
+          "title": "Service Id",
+          "type": "string"
+        },
+        "workflow_id": {
+          "format": "uuid",
+          "title": "Workflow Id",
+          "type": "string"
+        },
+        "run_id": {
+          "format": "uuid",
+          "title": "Run Id",
+          "type": "string"
+        },
+        "environment_id": {
+          "format": "uuid",
+          "title": "Environment Id",
+          "type": "string"
+        },
+        "source_environment_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Environment Id"
+        },
+        "source_provider": {
+          "anyOf": [
+            {
+              "enum": [
+                "aws",
+                "gcp",
+                "onprem"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Provider"
+        },
+        "target_provider": {
+          "enum": [
+            "aws",
+            "gcp",
+            "onprem"
+          ],
+          "title": "Target Provider",
+          "type": "string"
+        },
+        "repository_url": {
+          "title": "Repository Url",
+          "type": "string"
+        },
+        "commit_sha": {
+          "pattern": "^[a-f0-9]{40}$",
+          "title": "Commit Sha",
+          "type": "string"
+        },
+        "image_digest": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Image Digest",
+          "type": "string"
+        },
+        "plan_hash": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Plan Hash",
+          "type": "string"
+        },
+        "payload_hash": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Payload Hash",
+          "type": "string"
+        }
+      },
+      "required": [
+        "project_id",
+        "service_id",
+        "workflow_id",
+        "run_id",
+        "environment_id",
+        "target_provider",
+        "repository_url",
+        "commit_sha",
+        "image_digest",
+        "plan_hash",
+        "payload_hash"
+      ],
+      "title": "ExecutionContext",
+      "type": "object"
+    },
     "Finding": {
       "additionalProperties": false,
       "properties": {
@@ -956,6 +1064,17 @@
         "usage": {},
         "duration_ms": 0
       }
+    },
+    "execution_context": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ExecutionContext"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
     }
   },
   "required": [
