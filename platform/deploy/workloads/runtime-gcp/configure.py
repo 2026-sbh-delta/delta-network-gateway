@@ -13,7 +13,8 @@ import boto3
 
 def merge_agent(agent, outputs):
     result = json.loads(json.dumps(agent))
-    connection = outputs["connection"]
+    connection = json.loads(json.dumps(outputs["connection"]))
+    connection["management_transport"] = "iap"
     if (
         connection["identity"]["gcp_project"] != "term2-delta"
         or not connection["terraform"]["subnetwork"].endswith(
@@ -31,9 +32,9 @@ def merge_agent(agent, outputs):
         "server_mode": "prepared",
         "secret_provider": "gcp",
         "admin_secret_id": "projects/term2-delta/secrets/delta-platform-demo-target-admin",
-        "connection": {"hostaddr": outputs["worker_database_address"]},
-        "preflight_endpoint": {
-            "address": outputs["worker_database_address"],
+        "connection": {"hostaddr": outputs["database_address"]},
+        "iap_endpoint": {
+            "address": outputs["database_address"],
             "port": 5432,
         },
     }

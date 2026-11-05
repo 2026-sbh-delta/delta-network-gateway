@@ -31,3 +31,5 @@ output "credentials" {
     }
   }
 }
+
+output "database_address" { value = var.database_address }
