@@ -22,6 +22,8 @@ SERVICE_FIELDS = (
     "container_port",
     "healthcheck_path",
     "deployment_target",
+    "application",
+    "parent_service_id",
     "deletion_requested",
     "created_at",
 )
@@ -175,6 +177,25 @@ class Store:
                 "latest_source_check": self._latest(conn, service_id),
                 "latest_build": self._latest(conn, service_id, "image_build"),
                 "latest_sandbox": self._latest(conn, service_id, "sandbox_check"),
+                **(
+                    {
+                        "application_bundle": {
+                            "version": digest(
+                                {
+                                    "components": row["application"]["components"],
+                                    "database": row["application"]["database"],
+                                }
+                            ),
+                            "database": "external",
+                            "components": [
+                                {"role": role, "service_id": sid, "build_id": None}
+                                for role, sid in row["application"]["components"].items()
+                            ],
+                        }
+                    }
+                    if row["application"]
+                    else {}
+                ),
             }
 
     def delete_service(self, service_id, confirmation_name, settings=None):
@@ -184,7 +205,14 @@ class Store:
 
     def list_services(self, limit, cursor):
         with self.engine.connect() as conn:
-            return page_query(conn, services, SERVICE_FIELDS, [], limit, cursor)
+            return page_query(
+                conn,
+                services,
+                SERVICE_FIELDS,
+                [services.c.parent_service_id.is_(None)],
+                limit,
+                cursor,
+            )
 
     @staticmethod
     def _assert_no_removal(conn, service_id):
@@ -192,7 +220,7 @@ class Store:
 
         assert_no_removal(conn, service_id)
 
-    def enqueue(self, service_id, key):
+    def enqueue(self, service_id, key, *, source_sha=None):
         with self.engine.begin() as conn:
             service = (
                 conn.execute(
@@ -207,8 +235,18 @@ class Store:
             snapshot = {
                 k: service[k]
                 for k in SERVICE_FIELDS
-                if k not in ("id", "project_id", "created_at", "deployment_target")
+                if k
+                not in (
+                    "id",
+                    "project_id",
+                    "created_at",
+                    "deployment_target",
+                    "application",
+                    "parent_service_id",
+                )
             }
+            if source_sha:
+                snapshot["source_ref"] = source_sha
             snapshot.update(
                 repo_owner=service["repo_owner"], repo_name=service["repo_name"], version=1
             )

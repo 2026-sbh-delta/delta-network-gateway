@@ -83,6 +83,7 @@ async function register(page: Page, name: string, dockerfile = "Dockerfile") {
   await page
     .getByRole("button", { name: "+ 서비스 등록", exact: true })
     .click();
+  await page.getByRole("button", { name: "단일 컨테이너 등록" }).click();
   await page.getByLabel("서비스 이름", { exact: true }).fill(name);
   await page
     .getByLabel("공개 GitHub 저장소", { exact: true })

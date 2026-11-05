@@ -162,6 +162,9 @@ def main():
     stop = threading.Event()
     signal.signal(signal.SIGTERM, lambda *_: stop.set())
     signal.signal(signal.SIGINT, lambda *_: stop.set())
+    from delta_platform.core.applications import ApplicationStore
+
+    applications = ApplicationStore(engine, settings)
     next_cleanup = 0
     try:
         while not stop.is_set():
@@ -169,6 +172,7 @@ def main():
                 if time.monotonic() >= next_cleanup:
                     auth.cleanup()
                     next_cleanup = time.monotonic() + 60
+                applications.tick()
                 worked = process_one(store, reader)
             except Exception:
                 logger.error("worker_store_unavailable")

@@ -56,6 +56,8 @@ services = sa.Table(
     col("container_port", sa.Integer, nullable=False),
     col("healthcheck_path", sa.String(256), nullable=False),
     col("deployment_target", JSONB(none_as_null=True)),
+    col("application", JSONB(none_as_null=True)),
+    col("parent_service_id", UUID(as_uuid=True)),
     col("deletion_requested", sa.Boolean, nullable=False, server_default=sa.false()),
     col("request_key", sa.String(128), nullable=False, unique=True),
     col("request_hash", sa.String(64), nullable=False),

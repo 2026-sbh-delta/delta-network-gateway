@@ -78,6 +78,10 @@ def request(encoded, config):
             or not re.fullmatch(r"/[A-Za-z0-9/_\-.]*", component["healthcheck_path"])
         ):
             raise ValueError("Invalid app port/health path")
+    if data.get("database"):
+        from database import profile_for
+
+        profile_for(data, config)
     return data, selected
 
 
@@ -146,10 +150,17 @@ def vm(data, selected, config):
         "images": images,
         "components": data["components"],
         "memory_mb": profile["memory_mb"] - 384,
+        "runtime_env": {
+            c["name"]: {"APP_ENV": cloud, "APP_VERSION": data["commit_sha"]}
+            for c in data["components"]
+        },
     }
-    # Customer secrets must not enter Terraform state or SSM command text. This initial
-    # executor supports images requiring no additional runtime secrets; a secret mount
-    # contract is needed before deploying an app that requires a database/password.
+    if data.get("database"):
+        from database import deliver, prepare, profile_for
+
+        secret_id, value = prepare(data, profile_for(data, config))
+        payload["database_secret"] = deliver(data, selected, secret_id, value)
+    # Only secret references enter SSM command text. The VM resolves them with its identity.
     runtime = base64.b64encode((ROOT / "vm_runtime.py").read_bytes()).decode()
     payload64 = base64.b64encode(json.dumps(payload).encode()).decode()
     script = (
@@ -238,7 +249,21 @@ def vm(data, selected, config):
             if k in data["connection"]
         }
     )
+    if data.get("database"):
+        database_health(url)
     return environment, url
+
+
+def database_health(url):
+    class NoRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, *args):
+            return None
+
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
+    with opener.open(url + "/api/health", timeout=10) as response:
+        result = json.loads(response.read(65536))
+    if result.get("storage") != "postgres":
+        raise RuntimeError("Application is not connected to PostgreSQL")
 
 
 def health(url):
@@ -312,6 +337,12 @@ def k3s_objects(data, selected):
                     "API_PROTOCOL": "http",
                 }.items()
             ]
+        container.setdefault("env", []).extend(
+            [
+                {"name": "APP_ENV", "value": "onprem"},
+                {"name": "APP_VERSION", "value": data["commit_sha"]},
+            ]
+        )
         metadata = {
             "name": component_name,
             "namespace": selected["namespace"],
@@ -415,7 +446,7 @@ def k3s_objects(data, selected):
     return [policy, *objects]
 
 
-def onprem(data, selected):
+def onprem(data, selected, config=None):
     namespace = selected["namespace"]
     if not re.fullmatch(r"delta-[a-z0-9-]{1,50}", namespace):
         raise ValueError("Owned namespace required")
@@ -438,7 +469,49 @@ def onprem(data, selected):
     if kube_system["metadata"]["uid"] != selected["cluster_id"]:
         raise ValueError("Cluster identity mismatch")
     resources = []
-    for item in k3s_objects(data, selected):
+    objects = k3s_objects(data, selected)
+    if data.get("database"):
+        from database import egress, kubernetes_secret, prepare, profile_for
+
+        profile = profile_for(data, config)
+        _, value = prepare(data, profile)
+        secret = kubernetes_secret(data, selected, value)
+        for item in objects:
+            if item["kind"] == "NetworkPolicy":
+                item["spec"]["egress"].append(egress(profile))
+            if (
+                item["kind"] == "Deployment"
+                and item["metadata"]["labels"]["delta-platform/component"] == "backend"
+            ):
+                spec = item["spec"]["template"]["spec"]
+                container = spec["containers"][0]
+                container["env"] += [
+                    {
+                        "name": key,
+                        "valueFrom": {
+                            "secretKeyRef": {
+                                "name": secret["metadata"]["name"],
+                                "key": key,
+                            }
+                        },
+                    }
+                    for key in secret["stringData"]
+                    if key != "ca.pem"
+                ]
+                container["volumeMounts"] = [
+                    {"name": "db-ca", "mountPath": "/run/delta-db", "readOnly": True}
+                ]
+                spec["volumes"] = [
+                    {
+                        "name": "db-ca",
+                        "secret": {
+                            "secretName": secret["metadata"]["name"],
+                            "items": [{"key": "ca.pem", "path": "ca.pem"}],
+                        },
+                    }
+                ]
+        objects.insert(0, secret)
+    for item in objects:
         kind, name = item["kind"], item["metadata"]["name"]
         existing = run(
             prefix
@@ -515,6 +588,8 @@ def onprem(data, selected):
             "resources": resources,
         },
     }
+    if data.get("database"):
+        database_health(url)
     return environment, url
 
 
@@ -539,7 +614,7 @@ def main():
         return
     data, selected = request(encoded, config)
     if data["target"]["cloud"] == "onprem":
-        environment, url = onprem(data, selected)
+        environment, url = onprem(data, selected, config)
     else:
         environment, url = vm(data, selected, config)
     result = {
@@ -551,6 +626,9 @@ def main():
         "images": [c["image"] for c in data["components"]],
         "commit_sha": data["commit_sha"],
         "health_passed": True,
+        "database": {**data["database"], "connected": True, "retention": "retain"}
+        if data.get("database")
+        else None,
         "environment": environment,
         "service_url": url,
     }

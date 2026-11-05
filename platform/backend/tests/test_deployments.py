@@ -323,6 +323,7 @@ def test_onprem_renderer_preserves_removal_contract():
         "service_id": str(uuid4()),
         "plan_hash": "a" * 64,
         "target": TARGETS[1],
+        "commit_sha": "c" * 40,
         "components": [
             {
                 "name": name,
