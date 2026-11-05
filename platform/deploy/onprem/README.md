@@ -1,8 +1,8 @@
 # 온프레미스 실행 공간 준비
 
-기존 k3s에 `delta-platform-sandbox`만 추가한다. 빌드된 ECR 이미지 digest를 그대로 실행 → HTTP 확인 → 팀 DAST 연결 → 실행 자원 삭제하는 구성이다. 기존 `demo` 앱·DB, 홈 라우터와 VPN은 변경하지 않는다. 운영 서비스·DB 이전 완료를 의미하지 않는다.
+기존 k3s에 임시 `delta-platform-sandbox`와 운영 후보 `delta-notes`를 분리한다. Jenkins가 같은 커밋으로 빌드한 FE·BE digest를 실행하고 통신·실제 이미지를 확인한 뒤 임시 자원만 정리한다. 기존 `demo` 앱·DB, 홈 라우터와 VPN은 변경하지 않는다. 운영 서비스·DB 이전 완료를 의미하지 않는다.
 
-서버 내부 실행·정리와 호스트 지표 수집을 검증했다. **AWS↔온프레미스 VPN/TGW는 팀에서 연결 중**이므로 AWS 플랫폼의 온프레미스 선택은 아직 활성화하지 않았다. [검증 기록](../../../docs/ai-dlc/platform-onprem.md)
+2026-11-05 FE·BE 실행·정리, RBAC, 통신 허용·차단을 확인했다. 샘플 앱 원복에 따라 수정 버전 후보는 중지했고 데이터 PVC는 보존했다. DAST는 사용자 지시에 따라 API 준비 전까지 제외한다. **AWS↔온프레미스 VPN/TGW는 팀에서 연결 중**이므로 AWS 플랫폼의 온프레미스 선택은 아직 활성화하지 않았다. [이번 검증 기록](../../../docs/ai-dlc/platform-onprem-release.md)
 
 ## 서버 확인과 준비
 
@@ -13,7 +13,7 @@ python3 platform/deploy/onprem/preflight.py \
   --host '<user>@<host>' --key ~/.ssh/teammate_vm \
   --output platform/.runtime/onprem/preflight.json
 
-python3 platform/deploy/onprem/prepare.py \
+uv run --project platform/deploy python platform/deploy/onprem/prepare.py \
   --host '<user>@<host>' --key ~/.ssh/teammate_vm \
   --source '<Worker 사설 IP>' --source '<DAST 사설 IP>' \
   --node-name '<k3s 노드 이름>' --node-ip '<온프레미스 사설 IP>' \
@@ -24,9 +24,9 @@ python3 platform/deploy/onprem/prepare.py \
 - `preflight.py`는 OS·자원·경로·기존 Pod/서비스/PVC/정책만 읽는다. Secret·kubeconfig·앱 환경변수는 읽지 않는다.
 - `prepare.py`는 amd64 노드·주소, namespace 소유권, 포트 충돌 확인 후 서버 dry-run/apply한다. 기존 VM 내부 Kubernetes 자원을 선언형 manifest로 관리하며 신규 VM·VPN·TGW Terraform은 추가하지 않는다.
 - 출력은 `target.json`, `controller.token`, `scanner.token`, manifest·적용 결과다. 토큰 파일은0600이며 출력 디렉터리가 이미 있으면 중단한다.
-- namespace에는 제한된 Role, 서비스 계정3개, Pod1개/500m CPU/256MiB 메모리/256MiB 임시 저장소 제한, PVC 금지, NodePort32080, NetworkPolicy를 둔다.
+- namespace에는 제한된 Role, 서비스 계정3개, Pod2개/CPU 1코어/메모리 512MiB/임시 저장소 512MiB 제한, PVC 금지, NodePort32080, NetworkPolicy를 둔다.
 - Pod는 UID10001·읽기 전용 루트로 실행하고 `/tmp`64MiB만 쓴다. API 토큰·호스트 경로·운영 DB 인증 정보는 전달하지 않는다. 최대 실행 시간은15분이다.
-- Worker·DAST의 등록된 출발지만 앱에 접근할 수 있고 Pod 외부 연결은 차단한다. 이미지 다운로드는 노드가 수행하므로 ECR/S3 HTTPS 접근은 별도로 필요하다.
+- Worker·DAST의 등록된 출발지만 앱에 접근할 수 있고 나머지 연결은 기본 차단하며 FE→BE:8080과 FE→클러스터 DNS만 허용한다. 이미지 다운로드는 노드가 수행하므로 ECR/S3 HTTPS 접근은 별도로 필요하다.
 
 한 호스트의 namespace는 전용 VM 수준의 격리가 아니다. 이번 구성은 팀의 승인된 해커톤 앱용이며, 불특정 고객의 임의 코드를 받는 운영 환경은 별도 실행 노드/VM이 필요하다. 이미지 레이어·노드 캐시는 Pod 저장소 제한으로 제한되지 않으므로 작은 이미지를 쓰고 호스트 디스크를 확인한다. 기존 이미지·공유 볼륨을 일괄 삭제하지 않는다.
 
@@ -78,3 +78,7 @@ Worker VPC와 공용 DAST VPC 양쪽의 왕복 경로·방화벽을 확인한다
 ## 되돌리기
 
 새 실행을 막고 진행 중인 실행을 정리한 뒤 플랫폼의 온프레미스 설정만 제거한다. 전용 namespace에 다른 사용자의 자원이 없는지 확인하고 삭제한다. 기존 `demo`나 공유 스토리지는 삭제하지 않는다. Collector만 중지하려면 `systemctl disable --now delta-otel-host delta-otel-app`을 사용한다. 서버 전체 k3s·Tailscale·VPN은 중지하지 않는다.
+
+## FE·BE 발표 구성
+
+새 배포 묶음 API, YAML 관리, 정책 승인, 운영 후보, DB 복원과 접속 방법은 [실행 안내](RELEASE.md)를 따른다. 기존 단일 이미지 API도 유지한다.

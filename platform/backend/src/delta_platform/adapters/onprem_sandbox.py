@@ -77,9 +77,24 @@ def configured_target(settings):
 
 
 class K3s:
-    def __init__(self, target, token, *, transport=None, ecr=None, poll_seconds=3, timeout=300):
+    app_label = "delta-platform-sandbox"
+    service_name = "sandbox"
+    check_http = True
+
+    def __init__(
+        self,
+        target,
+        token,
+        *,
+        transport=None,
+        ecr=None,
+        poll_seconds=3,
+        timeout=300,
+        health_transport=None,
+    ):
         self.target, self.token, self.transport, self.ecr = target, token, transport, ecr
         self.poll_seconds, self.timeout = poll_seconds, timeout
+        self.health_transport = health_transport
         self.tls = ssl.create_default_context(cadata=base64.b64decode(target.ca_base64).decode())
 
     def call(self, method, collection, name=None, body=None, *, missing=False):
@@ -121,7 +136,7 @@ class K3s:
             or meta.get("name") != self.target.name(run_id)
             or labels.get("delta-run-id") != str(run_id)
             or labels.get("delta-commit") != commit
-            or labels.get("app") != "delta-platform-sandbox"
+            or labels.get("app") != self.app_label
         ):
             raise SandboxError(
                 "sandbox_owner_changed", "온프레미스 자원 소유권이 달라 변경하지 않았습니다."
@@ -162,13 +177,13 @@ class K3s:
                     "sandbox_identity_mismatch", "온프레미스 이미지·격리 설정이 다릅니다."
                 )
 
-    def create(self, run_id, commit, image, port, guard):
+    def create(self, run_id, commit, image, port, guard, *, env=None):
         name = self.target.name(run_id)
         metadata = {
             "name": name,
             "namespace": self.target.namespace,
             "labels": {
-                "app": "delta-platform-sandbox",
+                "app": self.app_label,
                 "delta-run-id": str(run_id),
                 "delta-commit": commit,
             },
@@ -232,6 +247,7 @@ class K3s:
                             "env": [
                                 {"name": "DELTA_RUN_ID", "value": str(run_id)},
                                 {"name": "DELTA_COMMIT", "value": commit},
+                                *[{"name": k, "value": v} for k, v in (env or {}).items()],
                             ],
                             "securityContext": {
                                 "allowPrivilegeEscalation": False,
@@ -279,20 +295,27 @@ class K3s:
             if time.monotonic() > deadline:
                 raise SandboxError("sandbox_timeout", "온프레미스 앱 시작 시간이 초과됐습니다.")
             time.sleep(self.poll_seconds)
-        svc = self.call("GET", "services", "sandbox")
+        svc = self.call("GET", "services", self.service_name)
         if (
-            svc["spec"].get("selector") != {"app": "delta-platform-sandbox"}
+            svc["spec"].get("selector") != {"app": self.app_label}
             or len(svc["spec"].get("ports", [])) != 1
-            or svc["spec"]["ports"][0].get("nodePort") != self.target.node_port
+            or (
+                self.check_http and svc["spec"]["ports"][0].get("nodePort") != self.target.node_port
+            )
             or svc["spec"]["ports"][0].get("targetPort") != "http"
         ):
             raise SandboxError(
                 "sandbox_identity_mismatch", "온프레미스 검사 서비스 연결이 다릅니다."
             )
-        while True:
+        while self.check_http:
             guard()
             try:
-                with httpx.Client(timeout=5, trust_env=False, follow_redirects=False) as client:
+                with httpx.Client(
+                    timeout=5,
+                    trust_env=False,
+                    follow_redirects=False,
+                    transport=self.health_transport,
+                ) as client:
                     with client.stream("GET", self.target.url + path) as response:
                         if 200 <= response.status_code < 400:
                             break
@@ -362,6 +385,11 @@ class OnpremSandboxRunner:
             )
             raise LeaseLost()
         image, commit = source["image"], claim["resolved_commit_sha"]
+        provider = self.provider
+        if source.get("backend"):
+            from .onprem_bundle import BundleRuntime
+
+            provider = BundleRuntime(provider, source["backend"])
         cleaning = False
 
         def guard():
@@ -391,16 +419,14 @@ class OnpremSandboxRunner:
                     raise SandboxError("sandbox_identity_mismatch", "저장된 실행 자원이 다릅니다.")
                 if not claim["external_id"]:
                     store.attach_sandbox(run_id, token, resource)
-                pod = self.provider.call("GET", "pods", self.config.name(run_id), missing=True)
+                pod = provider.call("GET", "pods", self.config.name(run_id), missing=True)
                 if pod is None:
                     progress(
                         "sandbox_deploy", "온프레미스의 격리된 공간에서 동일 이미지를 실행합니다."
                     )
-                    self.provider.create(run_id, commit, image, source["container_port"], guard)
+                    provider.create(run_id, commit, image, source["container_port"], guard)
                 progress("sandbox_verify", "온프레미스 실행 이미지와 HTTP 응답을 확인합니다.")
-                checked = self.provider.verify(
-                    run_id, commit, image, source["healthcheck_path"], guard
-                )
+                checked = provider.verify(run_id, commit, image, source["healthcheck_path"], guard)
                 result = {
                     **checked,
                     "build_id": source["build_id"],
@@ -418,7 +444,27 @@ class OnpremSandboxRunner:
                 }
                 if self.inspector:
                     result.update(self.inspector.execute(claim, store, progress, guard, result))
-                    self.provider.verify(run_id, commit, image, source["healthcheck_path"], guard)
+                    after = provider.verify(
+                        run_id, commit, image, source["healthcheck_path"], guard
+                    )
+                    if after != checked:
+                        raise SandboxError(
+                            "sandbox_identity_mismatch", "검사 중 실행 자원이 바뀌었습니다."
+                        )
+                if source.get("backend"):
+                    result["project_id"] = source["project_id"]
+                    result["service_id"] = str(claim["service_id"])
+                    result["components"] = {
+                        "frontend": {
+                            **result["components"]["frontend"],
+                            "build_id": source["build_id"],
+                            "service_id": str(claim["service_id"]),
+                        },
+                        "backend": {
+                            **result["components"]["backend"],
+                            "service_id": source["backend"]["service_id"],
+                        },
+                    }
                 outcome = store.sandbox_checkpoint(run_id, token, {"result": result})
         except LeaseLost:
             raise
@@ -436,7 +482,7 @@ class OnpremSandboxRunner:
         try:
             stopped = self.inspector.stop(claim) if self.inspector else True
             progress("sandbox_cleanup", "이 실행의 온프레미스 앱과 이미지 인증 정보를 정리합니다.")
-            self.provider.cleanup(run_id, commit, image, guard)
+            provider.cleanup(run_id, commit, image, guard)
             if not stopped:
                 raise ValueError("DAST still running")
         except LeaseLost:

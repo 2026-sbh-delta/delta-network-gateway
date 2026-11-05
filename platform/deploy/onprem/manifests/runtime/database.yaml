@@ -1,0 +1,105 @@
+# 앱 후보와 별도로 준비하며 기존 demo DB를 사용하지 않습니다.
+apiVersion: v1
+kind: Service
+metadata:
+  namespace: delta-notes
+  labels:
+    app.kubernetes.io/managed-by: delta-platform
+  name: database
+spec:
+  selector:
+    app: delta-notes
+    component: database
+  ports:
+  - port: 5432
+    targetPort: 5432
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  namespace: delta-notes
+  labels:
+    app.kubernetes.io/managed-by: delta-platform
+  name: database
+spec:
+  serviceName: database
+  replicas: 1
+  selector:
+    matchLabels: &id001
+      app: delta-notes
+      component: database
+  template:
+    metadata:
+      labels: *id001
+    spec:
+      serviceAccountName: runtime
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 70
+        runAsGroup: 70
+        fsGroup: 70
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: postgres
+        image: POSTGRES_IMAGE_DIGEST
+        env:
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: database-admin
+              key: password
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
+        args:
+        - -c
+        - max_connections=20
+        - -c
+        - shared_buffers=64MB
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        ports:
+        - containerPort: 5432
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 256Mi
+        readinessProbe:
+          exec:
+            command:
+            - pg_isready
+            - -U
+            - postgres
+          periodSeconds: 5
+        volumeMounts:
+        - name: data
+          mountPath: /var/lib/postgresql/data
+        - name: socket
+          mountPath: /var/run/postgresql
+        - name: tmp
+          mountPath: /tmp
+      volumes:
+      - name: socket
+        emptyDir:
+          sizeLimit: 16Mi
+      - name: tmp
+        emptyDir:
+          sizeLimit: 64Mi
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes:
+      - ReadWriteOnce
+      storageClassName: local-path
+      resources:
+        requests:
+          storage: 2Gi

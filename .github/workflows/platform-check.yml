@@ -93,7 +93,7 @@ jobs:
         run: uv run --with-editable ../../services/delta-ai pytest -q tests/integration_assessments.py
       - name: Deployment boundaries
         run: |
-          python3 -m unittest discover -s platform/deploy/tests -v
+          uv run --project platform/deploy --frozen python -m unittest discover -s platform/deploy/tests -v
           uv run --project platform/backend ruff check platform/deploy/scripts platform/deploy/tests platform/deploy/builds platform/deploy/sandbox platform/deploy/sandbox-gcp platform/deploy/jenkins platform/deploy/sast/aws platform/deploy/dast platform/deploy/onprem
           uv run --project platform/backend ruff format --check platform/deploy/scripts platform/deploy/tests platform/deploy/builds platform/deploy/sandbox platform/deploy/sandbox-gcp platform/deploy/jenkins platform/deploy/sast/aws platform/deploy/dast platform/deploy/onprem
       - name: Browser
