@@ -690,3 +690,15 @@ Review: 승인한 로그 전달 리소스 제거와 코드 정리, 기존 로그
 | 2026-11-05 | `git diff --check`, `python3` 인라인 문서/backend/권한 검사 | 공백, 추가 문자 제한, 로컬 링크, 코드 블록, 입력/출력 표와 민감 산출물0600 검사 통과. 로컬 backend의 S3 key와 credential 미포함, Plan 요약/최종 원격 대조 보고서 확인. 애플리케이션 테스트나 리소스 Apply를 추가 실행한 결과가 아님 |
 
 실행 도구와 원본/이전 state, backend 백업, preflight/비교 보고서와 Plan은 이 root의 ignored `.validation/s3-state-migration-20261105/`에 보관한다. 민감 산출물은 0600이다. GCS 원본 SHA-256은 `ee213ffe26aa0442d342e6b56043c42397361041d22a32019065baae80c114e9`, S3 snapshot SHA-256은 `8dc9d737ad1beb29df5a0e608236d06d3b718d47cfc05f5c771f9d5fb96917d9`다. 최초 migration이 생성한 식별 metadata와 검사 결과 배열 순서 차이를 기록한 값이며 리소스/출력 변경을 뜻하지 않는다.
+
+## 2026-11-05: 시험 환경의 Sample App 교체 설계
+
+사용자가 기존 NLB와 시험 VM을 내리고 ALB, x86 FE/BE VM 각 1대와 Cloud SQL PostgreSQL을 다른 subnet으로 배포하는 Ideation을 승인했다. 자세한 Inception과 U1~U4 Design/Implementation Plan은 [GCP Sample App 문서](gcp-sample-app.md)에서 검토 대기다. 설계 시점에는 기존 demo를 유지했으며, 이후 U1~U4 구현 승인 후 기존 VM/NLB 제거 Apply와 API404를 확인했다. 새 네트워크/앱의 실제 적용 진행과 최종 검증은 새 문서의 Construction 실행 기록을 따른다.
+
+이 작업에서는 기존 central/workload VPC, 기존 workload subnet, NCC/VPN/Router/state를 유지하면서 신규 subnet과 새 BE prefix의 양쪽 경로 계약을 준비한다. Cloud SQL은 새 인스턴스와 DB 전용 subnet의 PSC 접속점을 사용하는 제안이며 기존 staging DB와 별도다. ADC로 실제 VM/NLB, BGP4개 UP, x86 OS와 e2-small 제공을 확인한 결과는 새 문서의 날짜별 기록을 따른다. 이 조회를 사설 HTTP 재검증이나 배포 완료로 해석하지 않는다.
+
+2026-11-05 후속 교체/배포 검증 완료: FE10.32.1.20, BE10.32.2.20과 DB PSC10.32.3.10, ALB proxy10.32.4/23을 분리했다. 기존 VM/NLB 부재, x86 실행, 공개 ALB의 실제 PostgreSQL CRUD/재시작 보존과 FE DB 거부 로그, BGP4개 및 임시 probe를 이용한 양방향 TGW HTTP200을 확인했다. 임시 /32 SG 규칙과 probe는 제거했으며 GCP network/workload와 AWS central 최종 Plan은 No changes/종료0이다. 정확한 명령/한계/배포 snapshot과 운영 절차는 [GCP Sample App 최종 기록](gcp-sample-app.md)을 따른다.
+
+## 2026-11-05 단일 VM Compose 후속 완료
+
+사용자 승인으로 기존 FE VM의 Compose에 FE/BE를 통합하고 기존 BE VM/디스크를 제거했다. 이 network root는 DB3307 egress의 통합 호스트 대상 추가1개만 실제 변경했다. subnet/NCC/VPN/BGP 범위는 보존했으며 BGP4개 UP/최종 network와 workload No changes를 확인했다. 앱 CRUD/VM 재부팅 자동 복구와 데이터 보존, 실패 수정 이력은 [단일 VM 검증](gcp-compose-consolidation.md), 운영 명령은 [Runbook](../../deploy/workload-gcp/README.md#단일-vm-compose)을 따른다.

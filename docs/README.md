@@ -12,6 +12,10 @@
 
 - AWS Compose 중지/EC2 보존(2026-11-05): 사용자 요청으로 FE/BE 컨테이너 두 개와 프로젝트 네트워크를 내리고 메인 Compose 서비스 자동 시작을 해제했다. 기존 x86 t3.small EC2 running/RDS available, 두 이미지와 데이터 보존 및 공개 API502를 실제 확인했다. 중지 작업에서는 Terraform 변경/Plan/Apply를 실행하지 않았다. Git 게시 상태는 Git 이력을 따른다. 앞선 단일 EC2 전환/검증 이력과 [중지 결과 및 재개 절차](ai-dlc/aws-compose-consolidation.md)를 구분한다.
 
+- GCP Compose 중지/VM 보존(2026-11-05): 사용자 요청으로 FE/BE/DB Proxy 컨테이너3개와 전용 Compose network를 내리고 앱 서비스 자동 시작을 해제했다. 기존 x86 e2-small VM RUNNING, boot disk/Cloud SQL RUNNABLE/ALB/이미지/설정 보존과 공개 API503을 확인했다. 중지 작업에서 Terraform 변경/Plan/Apply는 실행하지 않았다. Git 게시 상태는 Git 이력을 따른다. 앞선 통신/재부팅 검증은 중지 전 이력이며 [최신 중지 상태와 재개 절차](ai-dlc/gcp-compose-consolidation.md#후속-operation-compose만-내리고-vm-보존)를 따른다.
+
+- Sample App GCP 초기 교체 기록(2026-11-05): 위 Compose 통합 전의 VM2대 배포 기록이다. 기존 NLB/시험 VM 제거와 API404 확인 후 공개 리전 ALB, 사설 x86 e2-small FE/BE 각1대와 새 Cloud SQL PostgreSQL16/PSC를 실제 배포했다. ALB/FE/BE/DB 접속점 subnet을 분리했고 VM/SQL 공인 IP 없음, ALB HEALTHY/PSC ACCEPTED, 공개 CRUD와 BE 재시작 후 보존, FE DB 차단 로그와 양방향 TGW 사설 HTTP200/임시 시험 규칙 정리를 확인했다. GCP 두 root와 AWS central 최종 Plan No changes/종료0. 앱은 미커밋 PostgreSQL 변경 snapshot이며 게시/별도 AWS 앱 상태와 구분한다. [공개 앱](http://34.64.134.28) / [실제 검증과 실행 상태](ai-dlc/gcp-sample-app.md)
+
 - Sample App EC2/RDS 최초 배포(2026-11-05): 사용자 승인 및 x86 지시로 공개 ALB, 사설 t3.small FE/BE 각 1대와 db.t3.micro PostgreSQL 18.3, 단일 NAT와 개별 배포 도구를 적용했다. 추가59개/기존 변경과 삭제0, 기존 네트워크 ID와 GCP 경로를 유지한다. [공개 앱](http://delta-lab-notes-alb-1242820262.ap-northeast-2.elb.amazonaws.com)의 CRUD/BE 재시작 후 보존과 실제 TLS1.3/평문 거부/최소 DB 및 IAM 권한/양쪽 CloudWatch 로그를 검증했다. mock33개/Python9개/앱27개 통과, 최종 Plan No changes/종료0. Git 게시와 원격 CI 상태는 Git 이력을 따른다. [설계와 실제 검증](ai-dlc/aws-sample-app.md) 이후 실제 운영은 [단일 EC2 Compose](ai-dlc/aws-compose-consolidation.md)로 전환했다.
 
 - 관리·이전 시연 도메인 분리와 온프레미스 연결(2026-11-05): `https://delta.mungji.com` 관리 도메인·TLS·Origin 적용과 실제 화면을 확인했다. 제한된 Tailscale 경로로 AWS Worker의 실제 K3s 앱 실행·HTTP·정리를 검증했다. demo 도메인은 고객 앱 운영 LB 준비 전이어서 미연결, 팀 DAST 공격 검사·중앙 로그는 후속이다. 소스 PR 병합/릴리스와 실제 적용을 구분한다. [검증·원복·남은 작업](ai-dlc/domain-onprem-connect.md)
@@ -80,6 +84,8 @@
 
 ## 문서
 
+- [Sample App의 GCP ALB/x86 VM/Cloud SQL 교체와 승인 상태](ai-dlc/gcp-sample-app.md)
+
 - [Sample App의 EC2/RDS 배포와 승인 상태](ai-dlc/aws-sample-app.md)
 
 - [AWS FE/BE의 단일 x86 EC2 Compose 전환안](ai-dlc/aws-compose-consolidation.md)
@@ -121,6 +127,10 @@
 ## 다음 작업
 
 AWS 앱은 사용자 요청으로 Compose를 내린 상태이며 EC2/RDS/이미지/데이터는 유지한다. 재개가 필요하면 [중지 및 재개 절차](ai-dlc/aws-compose-consolidation.md#2026-11-05-후속-operation-compose만-내리고-ec2-보존)의 `sudo systemctl enable --now delta-compose`를 사용한다. 중지 작업에서는 재개와 추가 Terraform Apply를 실행하지 않았다. Git 게시 상태는 Git 이력을 따른다.
+
+GCP 앱은 사용자 요청으로 Compose를 내린 상태이며 기존 FE VM 한 대와 Cloud SQL/ALB/이미지/설정은 유지한다. 재개가 필요하면 [중지 및 재개 절차](ai-dlc/gcp-compose-consolidation.md#후속-operation-compose만-내리고-vm-보존)의 `sudo systemctl enable --now delta-compose`를 사용한다. 중지 작업에서는 재개와 추가 Terraform Apply를 실행하지 않았다. Git 게시 상태는 Git 이력을 따른다.
+
+GCP Sample App의 승인된 교체와 실제 배포/검증을 완료했다. [운영 Runbook](../deploy/workload-gcp/README.md)으로 개별 재배포/복귀하고, 최초 배포 당시 미커밋 PostgreSQL snapshot의 게시 상태는 앱 저장소 Git 이력을 따른다. 실제 상태/해시와 테스트 결과는 [교체 기록](ai-dlc/gcp-sample-app.md)을 따른다.
 
 AWS Sample App 최초 두 EC2의 실제 배포/검증은 [기존 기록](ai-dlc/aws-sample-app.md)에 보존한다. 이후 단일 EC2 Compose 전환을 완료했고 현재는 위 사용자 요청으로 앱만 중지했다. 기존 네트워크/state/GCP 경로를 유지한다.
 
