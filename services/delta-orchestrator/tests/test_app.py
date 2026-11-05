@@ -107,6 +107,10 @@ def test_pipeline_api_needs_login_runs_and_takes_a_human_answer(monkeypatch, tmp
         # 다른 출처에서 온 실행 요청은 로그인돼 있어도 거부
         assert client.post("/api/pipeline/runs", json=start, headers={"Origin": "https://evil.example"}).status_code == 403
         assert client.post("/api/pipeline/runs", json={"repo": REPO}, headers={"Origin": PUBLIC}).status_code == 400
+        # 커밋을 고르기 전(빈 값)이나 브랜치 이름은 실행 기록을 만들기 전에 거른다
+        for bad in ("", "main"):
+            assert client.post("/api/pipeline/runs", json={"repo": REPO, "commit": bad}, headers={"Origin": PUBLIC}).status_code == 400
+        assert client.get("/api/pipeline/runs").json()["runs"] == []
         r = client.post("/api/pipeline/runs", json=start, headers={"Origin": PUBLIC})
         assert r.status_code == 202
         run_id = r.json()["run_id"]
@@ -127,7 +131,8 @@ def test_pipeline_api_needs_login_runs_and_takes_a_human_answer(monkeypatch, tmp
         assert client.post(f"/api/pipeline/runs/{run_id}/answer", json={"value": "approve"},
                            headers={"Origin": PUBLIC}).status_code == 200
         assert wait(lambda run: run["outcome"])["outcome"] == "unresolved"
-        assert client.get("/api/pipeline/runs").json()["runs"][0]["run_id"] == run_id
+        listed = client.get("/api/pipeline/runs").json()["runs"][0]
+        assert listed["run_id"] == run_id and listed["built"] is True
         assert client.get("/api/pipeline/runs/nope").status_code == 404
         assert client.get("/api/pipeline/runs/..%2Fx").status_code == 404
 

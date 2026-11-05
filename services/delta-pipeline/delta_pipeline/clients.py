@@ -176,7 +176,8 @@ class Jenkins:
     def trigger(self, params: Mapping[str, str], run_key: str) -> int:
         """빌드를 시작하고 빌드 번호를 돌려준다. RUN_ID 는 재개 때 같은 빌드를 찾는 키다."""
         body = urllib.parse.urlencode({**params, "RUN_ID": run_key}).encode()
-        return self._wait_started(self._post(f"/job/{self._job}/buildWithParameters", body))
+        # delay=0sec: Jenkins 기본 대기(quiet period 5초) 없이 바로 큐에 넣는다
+        return self._wait_started(self._post(f"/job/{self._job}/buildWithParameters?delay=0sec", body))
 
     def status(self, build: int) -> str:
         """진행 중이면 IN_PROGRESS, 끝났으면 Jenkins 결과(SUCCESS·FAILURE·ABORTED…). 플러그인 없이 기본 API만 쓴다."""

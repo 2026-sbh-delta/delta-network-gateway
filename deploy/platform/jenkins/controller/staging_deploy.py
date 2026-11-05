@@ -54,7 +54,7 @@ def main():
             break
         if time.time() > deadline:
             finish({}, "스테이징 배포가 600초 안에 끝나지 않았다")
-        time.sleep(5)
+        time.sleep(1)  # 스테이징 도구 조회는 같은 호스트(127.0.0.1)다. 끝난 뒤 최대 1초 안에 알아챈다
     # 단계 이름과 내용(예: data_reset "…: 남은 행 0")을 그대로 남겨 오케스트레이터가 확인한다
     result = {k: d.get(k) for k in ("run_id", "state", "url", "image_digest", "revision", "scanner_ip", "error")}
     result["steps"] = [{"name": s["name"], "detail": s.get("detail", "")} for s in d.get("steps", [])]

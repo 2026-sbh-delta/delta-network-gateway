@@ -289,3 +289,7 @@ dialog.viewer { width: min(1280px, calc(100vw - 32px)); }
 /* 시작 폼: 저장소 주소로 불러온 브랜치·커밋 선택 */
 .startbar select { background: var(--field); font-family: var(--f-mono); font-size: 12px; max-width: min(460px, 100%); }
 .startbar select:disabled { opacity: .6; }
+.startbar .btn:disabled { opacity: .45; cursor: not-allowed; }
+/* 실시간 화면의 점검 ID(실행·회차별로 화면을 나눈다) */
+.pip-head em { font-style: normal; font-weight: 400; color: var(--muted); font-size: 11px; margin-left: 6px; }
+.thumb .tid { fill: var(--muted); font-size: 9.5px; font-weight: 500; font-family: var(--f-mono); }

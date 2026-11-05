@@ -32,8 +32,8 @@ PROBE_TYPE_DELAY_MS = int(os.environ.get("DAST_PROBE_TYPE_DELAY_MS", "6"))
 IMPACT_TYPE_SECONDS = float(os.environ.get("DAST_IMPACT_TYPE_SECONDS", "1.5"))
 # 취약점이 트리거된 순간에는 실제 효과를 보여주도록 조금 더 머문다.
 EXECUTION_HOLD = float(os.environ.get("DAST_TRIGGER_DELAY", "2"))
-# 바로 검사는 탐지 직후 바로 끝나므로 블루스크린(4초)이 실시간 화면에 끝까지 보이게 그만큼 머문다.
-DIRECT_HOLD = float(os.environ.get("DAST_DIRECT_HOLD", "3.5"))
+# 바로 검사는 탐지 직후 바로 끝난다. 블루스크린이 100%(약 3.75초)까지 차서 그대로 멈춘 화면이 마지막 프레임·증거로 남게 머문다.
+DIRECT_HOLD = float(os.environ.get("DAST_DIRECT_HOLD", "4"))
 CANARY_DIR = Path(__file__).with_name("canaries")
 # 반사 위치별로 시도할 카나리. 이스케이프된 출력은 음성 확인용으로 하나만 시도한다.
 CANARIES_BY_CONTEXT = {

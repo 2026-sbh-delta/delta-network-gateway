@@ -172,6 +172,10 @@
       e.out.setAttribute("class", `hd out${real && ["pass", "skipped"].includes(sa) ? " on" : ""}`);
       e.in.setAttribute("class", `hd in${real && sb !== "pending" ? " on" : ""}`);
     }
+    const dn = nodeOf("dast"), dround = (dn && dn.round) || 1;
+    if (board) Theater.reset(`${board.run_id}:${dround}`);
+    const did = dn && dn.detail && dn.detail.run_id;
+    Theater.label(did ? `점검 ${String(did).slice(0, 8)}${dround > 1 ? ` · ${dround}차` : ""}` : "");
     renderHeader();
     renderPanel();
   }
@@ -293,9 +297,12 @@
     const tag = mk("g", { transform: "translate(10,10)" }, g);
     const tagBox = mk("rect", { width: 44, height: 16, rx: 5, class: "tlive" }, tag);
     const tagText = mk("text", { x: 22, y: 11.5, "text-anchor": "middle" }, tag);
+    const idText = mk("text", { class: "tid", x: n.w - 10, y: 21.5, "text-anchor": "end" }, g);
     g.style.display = "none";
     g.addEventListener("click", (e) => { e.stopPropagation(); sel = "dast"; paint(); });
-    return { set(src, on) {
+    return { label(text) { idText.textContent = text; },
+      clear() { img.removeAttribute("href"); g.style.display = "none"; g.classList.remove("on"); },
+      set(src, on) {
       if (src) img.setAttribute("href", src);
       g.style.display = src || on ? "" : "none"; g.classList.toggle("on", !!on);
       tagText.textContent = on ? "● LIVE" : "마지막 화면"; tagBox.setAttribute("width", on ? 44 : 62); tagText.setAttribute("x", on ? 22 : 31);
@@ -331,19 +338,24 @@
       all((el) => { const s = el.querySelector(".tv-sub"); s.hidden = false; s.className = "tv-sub " + tone; s.textContent = text; });
       subTimer = setTimeout(() => all((el) => { el.querySelector(".tv-sub").hidden = true; }), 6000);
     }
-    function alert(text, tone = "bad", delay = 0) {
+    // keep: 알림을 지우지 않고 남긴다(재현 판정은 멈춘 블루스크린 위에 계속 보인다). 실행·회차가 바뀌면 reset 이 지운다
+    function alert(text, tone = "bad", delay = 0, keep = false) {
       setTimeout(() => {
         clearTimeout(alertTimer);
         all((el) => { const a = el.querySelector(".tv-alert"); a.hidden = false; a.className = "tv-alert " + tone; a.textContent = text; el.classList.add("flash-" + tone); });
-        alertTimer = setTimeout(() => all((el) => { el.querySelector(".tv-alert").hidden = true; el.classList.remove("flash-bad", "flash-ok", "flash-warn"); }), 3500);
+        if (!keep) alertTimer = setTimeout(() => all((el) => { el.querySelector(".tv-alert").hidden = true; el.classList.remove("flash-bad", "flash-ok", "flash-warn"); }), 3500);
       }, delay);
     }
+    // 실행·회차(= DAST 점검)가 바뀌면 이전 점검의 화면을 모두 지운다. 화면마다 점검 ID 를 붙인다
     function reset(runId) {
       if (runId === run) return;
-      run = runId; last = ""; on = false; $("#pip").hidden = true;
-      all((el) => { el.classList.remove("has", "on"); el.querySelector(".tv-img").removeAttribute("src"); el.querySelector(".tv-cursor").hidden = true; });
+      run = runId; last = ""; on = false; $("#pip").hidden = true; thumb.clear();
+      clearTimeout(subTimer); clearTimeout(alertTimer);
+      all((el) => { el.classList.remove("has", "on", "flash-bad", "flash-ok", "flash-warn"); el.querySelector(".tv-img").removeAttribute("src");
+        el.querySelector(".tv-cursor").hidden = true; el.querySelector(".tv-sub").hidden = true; el.querySelector(".tv-alert").hidden = true; });
     }
-    return { tv, add, frame, idle, cursor, click, sub, alert, reset, closePip() { pipClosed = run; $("#pip").hidden = true; } };
+    function label(text) { $("#pip-id").textContent = text; thumb.label(text); }
+    return { tv, add, frame, idle, cursor, click, sub, alert, reset, label, key: () => run, closePip() { pipClosed = run; $("#pip").hidden = true; } };
   })();
   Theater.add($("#pip .tv"));
   Theater.add($("#viewer-live .tv"));
@@ -479,7 +491,7 @@
           if (!ok) { $("#lv-results").textContent = j.detail || "DAST 결과를 읽지 못했습니다"; return false; }
           titles = Object.fromEntries((j.findings || []).map((f) => [f.id, f.title]));
           results = j.results || [];
-          meta.textContent = `${j.status === "running" ? "점검 중" : j.status === "done" ? "점검 끝" : j.status || ""} · ${(j.findings || []).length}건`;
+          meta.textContent = `점검 ${String(j.run_id || "").slice(0, 8)}${c.round > 1 ? ` · ${c.round}차` : ""} · ${j.status === "running" ? "점검 중" : j.status === "done" ? "점검 끝" : j.status || ""} · ${(j.findings || []).length}건`;
           const rows = (j.results || []).map((r) => {
             const shots = ((r.evidence || {}).screenshots || []).map((s) =>
               `<button type="button" class="shot" data-src="${esc(s)}"><img src="${esc(s)}" alt="${esc(s.split("/").pop())}" loading="lazy"><span>${esc(s.split("/").pop().replace(/\.png$/, "").replace(r.finding_id + "-", ""))}</span></button>`).join("");
@@ -522,8 +534,8 @@
         if (ev.type === "log") return add(ev.message, "", "브라우저", fid);
         if (ev.type === "finding") return add(ev.message || ev.status, "", "항목", fid);
         if (ev.type === "result") { const r = ev.result || {};
-          fx.alert({ REPRODUCED: "재현됨 · 취약점 확인", BLOCKED: "차단됨 · CSP 가 실행을 막음", NOT_REPRODUCED: "재현 안 됨" }[r.status] || `판정 불가`,
-            r.status === "REPRODUCED" ? "bad" : r.status === "NOT_REPRODUCED" ? "ok" : "warn");
+          fx.alert({ REPRODUCED: "XSS 재현됨 · 취약점 확인", BLOCKED: "차단됨 · CSP 가 실행을 막음", NOT_REPRODUCED: "재현 안 됨" }[r.status] || `판정 불가`,
+            r.status === "REPRODUCED" ? "bad" : r.status === "NOT_REPRODUCED" ? "ok" : "warn", 0, true);
           add(`${r.status}: ${r.message || ""}`, r.status === "REPRODUCED" ? "bad" : r.status === "NOT_REPRODUCED" ? "ok" : "warn", "판정", r.finding_id); return view(); }
         if (ev.type === "done" || ev.type === "error") { finished = true; add(ev.message || (ev.type === "done" ? "점검을 마쳤습니다" : "점검 오류"), ev.type === "done" ? "ok" : "bad", "끝"); idle(); if (es) { es.close(); es = null; } return view(); }
       }
@@ -679,36 +691,65 @@
   }
   $("#runs").addEventListener("change", async (e) => { current = e.target.value; sel = null; lastKey = ""; await loadRun(); });
   // 시작 폼: 저장소 주소만 넣으면 브랜치·최근 커밋을 불러와 고르게 한다(커밋 SHA 를 직접 넣지 않는다)
+  // 기본 브랜치는 이 저장소에서 마지막으로 빌드까지 된 실행의 브랜치다(저장소 기본 브랜치가 빌드 대상이 아닐 수 있다)
+  const lastBuiltBranch = () => {
+    const repo = $("#run-repo").value.trim().replace(/\.git$|\/$/g, "");
+    const prev = runs.find((r) => r.built && r.options && r.options.branch && r.options.repo === repo);
+    return prev ? prev.options.branch : undefined;
+  };
   let refsSeq = 0;
+  // 저장소 주소를 바꾸면 이전 목록을 비운다. [확인]을 눌러야 그 주소의 브랜치·커밋을 불러온다
+  function clearRefs(text = "저장소 확인 후 선택") {
+    refsSeq++;
+    $("#run-branch").innerHTML = `<option value="">${esc(text)}</option>`;
+    $("#run-commit").innerHTML = `<option value="">${esc(text)}</option>`;
+    $("#run-branch").disabled = $("#run-commit").disabled = $("#run-submit").disabled = true;
+  }
   async function loadRefs(branch) {
     const repo = $("#run-repo").value.trim(), seq = ++refsSeq;
-    const bsel = $("#run-branch"), csel = $("#run-commit");
-    bsel.disabled = csel.disabled = true;
+    const bsel = $("#run-branch"), csel = $("#run-commit"), btn = $("#run-load");
+    bsel.disabled = csel.disabled = $("#run-submit").disabled = btn.disabled = true;
     csel.innerHTML = '<option value="">불러오는 중…</option>';
-    $("#run-msg").textContent = "";
+    $("#run-msg").textContent = "GitHub 에서 브랜치·커밋을 불러오는 중…";
     try {
       const q = new URLSearchParams({ repo, ...(branch ? { branch } : {}) });
       const r = await fetch(`/api/git/refs?${q}`);
       const j = await r.json().catch(() => ({}));
       if (seq !== refsSeq) return;
-      if (!r.ok) { csel.innerHTML = '<option value="">—</option>'; bsel.innerHTML = ""; $("#run-msg").textContent = j.detail || "저장소를 읽지 못했습니다"; return; }
+      btn.disabled = false;
+      if (!r.ok) {
+        clearRefs("불러오지 못함");
+        const detail = typeof j.detail === "string" ? j.detail : `HTTP ${r.status}`;
+        $("#run-msg").textContent = `불러오지 못했습니다: ${detail}. 주소를 확인하고 [확인]을 다시 누르세요`;
+        return;
+      }
       bsel.innerHTML = j.branches.map((b) => `<option value="${esc(b)}">${esc(b)}${b === j.default_branch ? " (기본)" : ""}</option>`).join("");
       bsel.value = j.branch;
       csel.innerHTML = j.commits.map((c, i) => `<option value="${esc(c.sha)}">${esc(c.sha.slice(0, 7))} · ${esc(c.message.slice(0, 48))}${i === 0 ? " (최신)" : ""} · ${esc(c.author)}${c.date ? " · " + esc(new Date(c.date).toLocaleString("ko-KR", { hour12: false, month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })) : ""}</option>`).join("")
         || '<option value="">커밋 없음</option>';
       bsel.disabled = csel.disabled = false;
-    } catch (e) { if (seq === refsSeq) $("#run-msg").textContent = "저장소를 읽지 못했습니다"; }
+      $("#run-submit").disabled = !j.commits.length;
+      $("#run-msg").textContent = `${j.branches.length}개 브랜치 · ${j.branch} 최근 커밋 ${j.commits.length}개`;
+    } catch (e) {
+      if (seq !== refsSeq) return;
+      btn.disabled = false; clearRefs("불러오지 못함");
+      $("#run-msg").textContent = "불러오지 못했습니다(연결 오류). [확인]을 다시 누르세요";
+    }
   }
-  $("#run-repo").addEventListener("change", () => loadRefs());
+  $("#run-load").addEventListener("click", () => loadRefs(lastBuiltBranch()));
+  $("#run-repo").addEventListener("input", () => { clearRefs(); $("#run-msg").textContent = ""; });
+  // 주소 칸에서 Enter 는 실행이 아니라 [확인]
+  $("#run-repo").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); loadRefs(lastBuiltBranch()); } });
   $("#run-branch").addEventListener("change", (e) => loadRefs(e.target.value));
   $("#open-start").onclick = () => {
     $("#start").hidden = !$("#start").hidden;
-    if (!$("#start").hidden) { loadRefs($("#run-branch").value || undefined); $("#run-commit").focus(); }
+    if (!$("#start").hidden) $("#run-load").focus();
   };
   $("#open-health").onclick = () => $("#health").showModal();
   $("#close-health").onclick = () => $("#health").close();
   $("#start").addEventListener("submit", async (ev) => {
     ev.preventDefault();
+    if (!/^[0-9a-f]{40}$/.test($("#run-commit").value)) { $("#run-msg").textContent = "커밋 목록을 불러온 뒤 커밋을 고르세요"; return; }
     const r = await fetch("/api/pipeline/runs", { method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ repo: $("#run-repo").value.trim().replace(/\.git$|\/$/g, ""), commit: $("#run-commit").value, branch: $("#run-branch").value || "", cutover: $("#run-cutover").checked }) });
     const body = await r.json().catch(() => ({}));

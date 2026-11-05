@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import re
 import time
@@ -154,6 +155,7 @@ async def collect() -> dict:
     }
 
 
+LOG = logging.getLogger(__name__)
 GITHUB_API = "https://api.github.com"
 REPO_RE = re.compile(re.escape(REPO_PREFIX) + r"([A-Za-z0-9._-]+?)(?:\.git)?/?")
 BRANCH_RE = re.compile(r"[A-Za-z0-9._/-]{1,100}")
@@ -187,8 +189,10 @@ async def git_refs(client: httpx.AsyncClient, repo: str, branch: str | None) -> 
         commits = await client.get(base + "/commits", params={"sha": chosen, "per_page": 15}, headers=headers, timeout=8)
         commits.raise_for_status()
     except httpx.HTTPStatusError as exc:
+        LOG.warning("GitHub 조회 실패 %s: HTTP %s", name, exc.response.status_code)
         raise HTTPException(502, f"GitHub 조회 실패(HTTP {exc.response.status_code})") from None
     except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
+        LOG.warning("GitHub 조회 실패 %s: %s", name, type(exc).__name__)
         raise HTTPException(502, f"GitHub 조회 실패({type(exc).__name__})") from None
     result = {"repo": f"{REPO_PREFIX}{name}", "default_branch": default, "branch": chosen,
               # 최근 커밋이 있는 브랜치부터 보이게 기본 브랜치를 맨 앞에 둔다
@@ -289,6 +293,9 @@ def create_app(pipelines: Pipelines | None = None) -> FastAPI:
             raise HTTPException(400, "repo와 commit(40자리 SHA)이 필요합니다(cutover는 true/false)")
         if not isinstance(branch, str) or (branch and (not BRANCH_RE.fullmatch(branch) or ".." in branch)):
             raise HTTPException(400, "브랜치 이름 형식이 아닙니다")
+        if not re.fullmatch(r"[0-9a-f]{40}", commit):
+            # 실행 기록을 만들기 전에 거른다(커밋 목록을 불러오기 전에 누른 경우 등)
+            raise HTTPException(400, "커밋을 고르세요(40자리 SHA)")
         if cutover and not (os.environ.get("DELTA_CUTOVER") and os.environ.get("CLOUDFLARE_API_TOKEN")):
             raise HTTPException(400, "서비스 도메인 전환 설정(대상 레코드·운영 진입점)이 아직 없습니다")
         try:

@@ -179,7 +179,7 @@ class PlatformRuns:
             self.write(run_id, record)
             if report:
                 try:
-                    # 재현이 확인된 뒤에만 영향 시연(기본: 4초짜리 블루스크린 화면 효과)을 한다. 스테이징 DB 는 배포마다 초기화된다.
+                    # 재현이 확인된 뒤에만 영향 시연(기본: 100%까지 찬 뒤 그대로 남는 블루스크린 화면 효과)을 한다. 스테이징 DB 는 배포마다 초기화된다.
                     impact_payload = os.environ.get("DAST_PLATFORM_IMPACT_PAYLOAD", "bsod_v1")
                     self.launch(RunRequest(scenario="vulnerable", planner="agent",
                                            report=report.model_dump(), target_id=target_id,

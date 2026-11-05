@@ -20,10 +20,10 @@ from langgraph.types import interrupt
 from delta_pipeline.clients import ServiceUnavailable, evidence_hash, probe, resolve_cname
 from delta_pipeline.model import REPO_PREFIX, Board, Options
 
-POLL_SECONDS = 3
+POLL_SECONDS = 1  # 내부 서비스 조회(SAST·DAST·도메인 확인). 끝난 뒤 최대 1초 안에 다음 단계로 간다
 CUTOVER_GRACE_SECONDS = 120  # TTL 이 지난 뒤에도 blue 가 확인되지 않으면 이 시간 뒤 되돌린다
 CUTOVER_STREAK = 3  # 연속 성공 횟수(에지 캐시·전파 흔들림 배제)
-JENKINS_POLL_SECONDS = 2
+JENKINS_POLL_SECONDS = 1
 BUILD_DEADLINE_SECONDS = 1200
 STAGE_DEADLINE_SECONDS = 900
 SAST_DEADLINE_SECONDS = 1200

@@ -77,7 +77,7 @@ def _probe(url: str) -> bool:
 
 
 class GcpCloudRunStaging:
-    def __init__(self, target: GcpTarget, *, http: Http | None = None, poll_seconds: float = 3,
+    def __init__(self, target: GcpTarget, *, http: Http | None = None, poll_seconds: float = 1,
                  rollout_timeout: float = 600, health_timeout: float = 180, reset_timeout: float = 240,
                  public_ip: Callable[[], str] = current_public_ip, probe: Callable[[str], bool] = _probe,
                  stable_probes: int = 3) -> None:
@@ -129,25 +129,35 @@ class GcpCloudRunStaging:
     async def deploy(self, req: DeployRequest, report: Report) -> Outcome:
         self.check_image(req.image)
         url = await self.endpoint()
-        scanner_ip = None
+        scanner_ip, rule_changed = None, False
         if req.scanner_ip:
             scanner_ip = await asyncio.to_thread(self.public_ip) if req.scanner_ip == "auto" else req.scanner_ip
-            await self._allow_scanner(scanner_ip, req.run_id)
+            rule_changed = await self._allow_scanner(scanner_ip, req.run_id)
             report("scanner_allowed", f"{scanner_ip}/32")
         image = await self._pinned(req.image)
         digest = image.rsplit("@", 1)[1]
         report("image_digest", digest)
-        if self.target.reset_job:
-            await self._reset_data(image)
+        # 데이터 초기화(Job)와 새 개정판 배포를 동시에 돌린다. 앱은 기동할 때 스키마·데이터를 건드리지 않고(스키마는 초기화 Job 이
+        # 적용), 점검은 둘 다 끝난 뒤에 시작하므로 결과는 순차와 같다. 초기화가 실패하면 배포 전체를 실패로 끝낸다(점검하지 않는다).
+        reset = asyncio.create_task(self._reset_data(image)) if self.target.reset_job else None
+        try:
+            operation = await self._update_service(req, image)
+            report("service_updated", self.target.service)
+            await self._wait_run_operation(operation)
+            revision = await self._serving_revision(req.run_id)
+            report("traffic_switched", _short(revision))
+            await self._check_revision_image(revision, image)
+        except BaseException:
+            if reset is not None:
+                reset.cancel()
+                await asyncio.gather(reset, return_exceptions=True)
+            raise
+        if reset is not None:
+            await reset
             report("data_reset", f"{self.target.reset_job}: 남은 행 0")
-        operation = await self._update_service(req, image)
-        report("service_updated", self.target.service)
-        await self._wait_run_operation(operation)
-        revision = await self._serving_revision(req.run_id)
-        report("traffic_switched", _short(revision))
-        await self._check_revision_image(revision, image)
         if req.scanner_ip == "auto":  # 도구가 곧 스캐너일 때만 LB·Cloud Armor 를 거친 실제 응답을 확인할 수 있다
-            await self._wait_reachable(url)
+            # Cloud Armor 규칙을 이번에 바꿨을 때만 에지 반영 흔들림을 연속 응답으로 확인한다. 그대로면 한 번이면 된다
+            await self._wait_reachable(url, self.stable_probes if rule_changed else 1)
             report("healthy", url)
         else:
             report("healthy", "Cloud Run 개정판 준비 완료")
@@ -254,15 +264,15 @@ class GcpCloudRunStaging:
         if images != [image]:
             raise StagingError("개정판의 이미지가 요청과 다르다")
 
-    async def _wait_reachable(self, base: str) -> None:
+    async def _wait_reachable(self, base: str, needed: int) -> None:
         """LB 를 거친 응답을 연속으로 확인한다. Cloud Armor 규칙은 에지마다 다른 시점에 반영돼, 한 번 열린 뒤
         다음 요청이 403 일 수 있다(11/5 실제 실행: 준비 확인 직후 DAST 사전 확인이 403). 연속 성공을 봐야 준비로 본다."""
         url = base + self.target.health_check_path
         deadline = time.monotonic() + self.health_timeout
         streak = 0
-        while streak < self.stable_probes:
+        while streak < needed:
             streak = streak + 1 if await asyncio.to_thread(self.probe, url) else 0
-            if streak >= self.stable_probes:
+            if streak >= needed:
                 return
             if time.monotonic() >= deadline:
                 raise StagingError(f"LB 주소가 {int(self.health_timeout)}초 안에 안정적으로 응답하지 않았다(Cloud Armor 반영 지연 포함)")
@@ -272,12 +282,12 @@ class GcpCloudRunStaging:
         policy = await self._call("GET", self.policy_url)
         return next((r for r in policy.get("rules", []) if r.get("priority") == self.target.scanner_rule_priority), None)
 
-    async def _allow_scanner(self, ip: str, run_id: str) -> None:
-        """Cloud Armor 에는 지금 실행기 IP 하나만 열어 둔다. 이전 실행의 IP 는 같은 규칙을 덮어써서 지운다."""
+    async def _allow_scanner(self, ip: str, run_id: str) -> bool:
+        """Cloud Armor 에는 지금 실행기 IP 하나만 열어 둔다. 이전 실행의 IP 는 같은 규칙을 덮어써서 지운다. 바꿨으면 True."""
         cidr = f"{ip}/32"
         current = await self._scanner_rule()
         if current is not None and current.get("match", {}).get("config", {}).get("srcIpRanges") == [cidr]:
-            return
+            return False
         rule = {"priority": self.target.scanner_rule_priority, "action": "allow", "description": f"delta-staging {run_id}",
                 "match": {"versionedExpr": "SRC_IPS_V1", "config": {"srcIpRanges": [cidr]}}}
         if current is None:
@@ -286,6 +296,7 @@ class GcpCloudRunStaging:
             operation = await self._call("POST", f"{self.policy_url}/patchRule",
                                          params={"priority": self.target.scanner_rule_priority}, body=rule)
         await self._wait_compute_operation(operation)
+        return True
 
     async def _wait_compute_operation(self, operation: dict[str, Any]) -> None:
         deadline = time.monotonic() + self.rollout_timeout

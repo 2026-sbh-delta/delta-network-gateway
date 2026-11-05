@@ -271,15 +271,17 @@ class FakeGcpWithReset(FakeGcp):
         return super().request(method, url, params=params, body=body)
 
 
-async def test_staging_data_is_reset_with_the_same_image_before_the_new_revision(gcp_target):
+async def test_staging_data_is_reset_with_the_same_image_alongside_the_new_revision(gcp_target):
+    """초기화와 새 개정판 배포는 동시에 돈다(시간 단축). ready 는 둘 다 끝난 뒤에만 나온다."""
     target = gcp_target.model_copy(update={"reset_job": "delta-lab-staging-db-reset"})
     gcp = FakeGcpWithReset()
     registry = StagingRegistry({"gcp": _provider(target, gcp)})
     await registry.start(_req())
     done = await registry.wait("Run.1")
     assert done.state == "ready"
-    assert gcp.job_image == IMAGE and gcp.order == ["reset", "service"]
-    assert "data_reset" in [s.name for s in done.steps]
+    assert gcp.job_image == IMAGE and sorted(gcp.order) == ["reset", "service"]
+    names = [s.name for s in done.steps]
+    assert names.index("data_reset") < names.index("healthy")  # 초기화 확인 뒤에만 준비 완료
 
 
 async def test_failed_reset_stops_the_deploy(gcp_target):
@@ -288,8 +290,9 @@ async def test_failed_reset_stops_the_deploy(gcp_target):
     registry = StagingRegistry({"gcp": _provider(target, gcp)})
     await registry.start(_req())
     done = await registry.wait("Run.1")
+    # 초기화가 실패하면 새 개정판이 이미 떴더라도 배포 전체가 실패다(ready 가 아니므로 점검하지 않는다)
     assert done.state == "failed" and "초기화" in (done.error or "")
-    assert "service" not in gcp.order
+    assert not any(s.name == "healthy" for s in done.steps)
 
 
 async def test_flapping_armor_needs_consecutive_successes_before_ready(gcp_target):
@@ -320,3 +323,22 @@ async def test_lb_that_never_stabilizes_fails(gcp_target):
     await registry.start(_req(scanner_ip="auto"))
     done = await registry.wait("Run.1")
     assert done.state == "failed" and "안정적으로" in done.error
+
+
+async def test_unchanged_armor_rule_needs_one_response(gcp_target):
+    """스캐너 IP 규칙이 이미 같으면(대부분의 회차) 에지 반영을 기다릴 일이 없어 응답 한 번으로 ready."""
+    gcp = FakeGcp()
+    gcp.rules.append({"priority": gcp_target.scanner_rule_priority, "action": "allow",
+                      "match": {"versionedExpr": "SRC_IPS_V1", "config": {"srcIpRanges": ["15.165.5.176/32"]}}})
+    calls = []
+
+    def probe(url):
+        calls.append(url)
+        return True
+
+    provider = GcpCloudRunStaging(gcp_target, http=gcp, poll_seconds=0, public_ip=lambda: "15.165.5.176", probe=probe)
+    registry = StagingRegistry({"gcp": provider})
+    await registry.start(_req(scanner_ip="auto"))
+    done = await registry.wait("Run.1")
+
+    assert done.state == "ready" and len(calls) == 1

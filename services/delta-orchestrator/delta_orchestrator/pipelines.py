@@ -88,5 +88,7 @@ class Pipelines:
         out = []
         for path in boards[:limit]:
             saved = json.loads(path.read_text(encoding="utf-8"))
-            out.append({k: saved.get(k) for k in ("run_id", "options", "outcome", "started_at")})
+            # built: 이 커밋이 빌드까지 됐는지. 시작 화면이 마지막으로 빌드된 브랜치를 기본으로 고르는 데 쓴다
+            built = any(n["id"] == "build" and n["state"] == "pass" for n in saved.get("nodes", ()))
+            out.append({k: saved.get(k) for k in ("run_id", "options", "outcome", "started_at")} | {"built": built})
         return out

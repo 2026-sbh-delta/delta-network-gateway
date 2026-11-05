@@ -64,8 +64,10 @@ def test_trigger_sends_params_with_run_id_and_follows_queue_by_path_only():
     jenkins._opener = opener
 
     assert jenkins.trigger({"COMMIT": "c" * 40}, "run-1-build") == 3
-    post = next(r for r in opener.requests if r.full_url.endswith("buildWithParameters"))
+    post = next(r for r in opener.requests if "buildWithParameters" in r.full_url)
     assert urllib.parse.parse_qs(post.data.decode()) == {"COMMIT": ["c" * 40], "RUN_ID": ["run-1-build"]}
+    # Jenkins 기본 대기(quiet period 5초) 없이 바로 큐에 넣는다
+    assert urllib.parse.urlparse(post.full_url).query == "delay=0sec"
     assert post.headers["Jenkins-crumb"] == "c"
     # 공개 주소 Location 이 와도 내부 주소로만 따라간다
     assert all(r.full_url.startswith("http://jenkins/") for r in opener.requests)
