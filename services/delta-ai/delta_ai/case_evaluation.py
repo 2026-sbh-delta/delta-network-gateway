@@ -8,7 +8,6 @@ from pydantic import Field, model_validator
 
 from delta_ai.cases import CaseReview, IncidentCase, digest, observation_signature, select_cases
 from delta_ai.diagnostic_contract import SafeModel
-from delta_ai.diagnostics import diagnose
 
 
 class EvaluationCandidate(SafeModel):
@@ -48,6 +47,9 @@ def export_candidate(store, case_id: str, *, revision: str | None = None):
 
 
 async def evaluate(dataset, *, llm, store):
+    # Console export only needs the dataset contract, not model/knowledge resources.
+    from delta_ai.diagnostics import diagnose
+
     held_out_ids = {c.case.request.case_id for c in dataset.candidates}
     held_out_signatures = {observation_signature(c.case.request) for c in dataset.candidates}
     # Materialize before the first LLM call; concurrent reviews cannot change this evaluation.

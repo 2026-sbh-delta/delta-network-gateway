@@ -104,7 +104,7 @@ def main(image):
         proxy_set_header X-Forwarded-For $remote_addr;
     }
 '''
-            newconfig=config.replace('    location / { return 404; }',block+'    location / { return 404; }')
+            newconfig=newconfig.replace('    location / { return 404; }',block+'    location / { return 404; }')
         if 'location = /v1/incident-cases {' not in newconfig:
             block='    location = /v1/incident-cases {\n        proxy_pass http://127.0.0.1:8090;\n        proxy_http_version 1.1;\n        proxy_read_timeout 10s;\n        proxy_set_header Host $host;\n        proxy_set_header X-Forwarded-For $remote_addr;\n    }\n'
             newconfig=newconfig.replace('    location / { return 404; }',block+'    location / { return 404; }')

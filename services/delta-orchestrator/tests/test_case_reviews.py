@@ -237,3 +237,38 @@ def test_transport_bounds_errors_and_safe_url():
     )
     with pytest.raises(ValueError):
         CaseReviewClient("http://public.example", "review-only")
+
+
+def test_installed_console_starts_without_ai_knowledge_files(tmp_path):
+    """The console needs case contracts; model resources stay in the AI service."""
+    import os
+    import shutil
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    services = Path(__file__).resolve().parents[2]
+    for service, package in (
+        ("delta-ai", "delta_ai"),
+        ("delta-pipeline", "delta_pipeline"),
+        ("delta-orchestrator", "delta_orchestrator"),
+    ):
+        shutil.copytree(
+            services / service / package,
+            tmp_path / package,
+            ignore=shutil.ignore_patterns("__pycache__"),
+        )
+    env = {
+        k: v
+        for k, v in os.environ.items()
+        if not k.startswith(("ORCH_", "DELTA_", "PYTHONPATH"))
+    }
+    code = "import sys;sys.path.insert(0,sys.argv[1]);from delta_orchestrator.app import create_app;from fastapi.testclient import TestClient;client=TestClient(create_app(),base_url='http://127.0.0.1:8080');assert client.get('/api/case-reviews').status_code==401"
+    result = subprocess.run(
+        [sys.executable, "-I", "-c", code, str(tmp_path)],
+        env=env,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
