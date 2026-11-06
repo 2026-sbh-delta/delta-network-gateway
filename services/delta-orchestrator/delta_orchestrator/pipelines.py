@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import base64
 import json
+import hashlib
+from dataclasses import asdict
 import os
 import threading
 import uuid
@@ -123,14 +125,26 @@ class Pipelines:
     def running(self) -> bool:
         return self._thread is not None and self._thread.is_alive()
 
-    def start(self, repo: str, commit: str, *, cutover: bool = False, branch: str = "", execution_cloud='gcp', onprem_build_id=None, assistance=False, release_target=None) -> str:
+    def start(self, repo: str, commit: str, *, cutover: bool = False, branch: str = "", execution_cloud='gcp', onprem_build_id=None, assistance=False, release_target=None, request_key=None) -> str:
         with self._lock:
+            options = Options(repo, commit, cutover=cutover, branch=branch, execution_cloud=execution_cloud,
+                              onprem_build_id=onprem_build_id, assistance=assistance, release_target=release_target)
+            run_id = hashlib.sha256(("platform:" + request_key).encode()).hexdigest() if request_key else None
+            if run_id and (old := self.get(run_id)):
+                expected = asdict(options)
+                actual = dict(old["options"])
+                expected.pop("diagnostics", None)
+                actual.pop("diagnostics", None)
+                if actual != expected:
+                    raise RuntimeError("같은 요청 키에 다른 실행 입력을 사용할 수 없습니다")
+                return run_id
             if self.running():
                 raise RuntimeError("이미 실행 중인 파이프라인이 있습니다(스테이징은 하나뿐)")
-            return self._launch(Options(repo, commit, cutover=cutover, branch=branch,
-                execution_cloud=execution_cloud,onprem_build_id=onprem_build_id,assistance=assistance,release_target=release_target))
+            return self._launch(options, run_id)
 
-    def answer(self, run_id: str, value: str, case_id: str | None = None) -> bool:
+    def answer(self, run_id: str, value: str, case_id: str | None = None, *, decision_id: str | None = None) -> bool:
+        if decision_id is not None:
+            return bool(self.run and self.run.run_id == run_id and self.run.answer(value, case_id, decision_id=decision_id))
         return bool(self.run and self.run.run_id == run_id and self.run.answer(value, case_id))
 
     def get(self, run_id: str) -> dict[str, Any] | None:

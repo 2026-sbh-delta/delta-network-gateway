@@ -95,11 +95,14 @@ class Run:
     def snapshot(self) -> dict[str, Any]:
         return self._board.snapshot()
 
-    def answer(self, value: str, case_id: str | None = None) -> bool:
+    def answer(self, value: str, case_id: str | None = None, *, decision_id: str | None = None) -> bool:
         with self._answer_lock:
             if not self._waiting or self._answered.is_set() or value not in self._board.waiting_options():
                 return False
             if self._waiting_case is not None and case_id != self._waiting_case:
+                return False
+            decisions = [n["decision"] for n in self.snapshot()["nodes"] if n.get("decision")]
+            if decision_id is not None and not any(d.get("id") == decision_id for d in decisions):
                 return False
             self._answer = value
             self._answered.set()
@@ -167,6 +170,7 @@ class Run:
         self._waiting_case = request.get("case_id")
         self._waiting = True
         self._board.update(node_id, state="waiting", decision={
+            "id": uuid.uuid4().hex,
             "prompt": request["prompt"], "case_id": request.get("case_id"), "options": [{"value": value, "label": label} for value, label in request["options"]]})
         deadline = time.time() + DECISION_DEADLINE_SECONDS
         try:

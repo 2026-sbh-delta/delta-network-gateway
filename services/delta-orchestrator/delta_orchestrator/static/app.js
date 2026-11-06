@@ -299,7 +299,7 @@
     const st = real ? stateOf(id) : "pending";
     const dur = data && data.started_at ? fmtDur(((data.ended_at || Date.now() / 1000) - data.started_at)) + (data.ended_at ? "" : " 경과") : "—";
     const ask = data && data.decision ? `<div class="ask"><b>${esc(data.decision.prompt)}</b><div class="actions">${data.decision.options.map((o) =>
-      `<button type="button" class="btn ${o.value === "approve" ? "approve" : o.value === "fix" ? "primary" : ""}" data-answer="${esc(o.value)}">${esc(o.label)}</button>`).join("")}</div></div>` : "";
+      `<button type="button" class="btn ${o.value === "approve" ? "approve" : o.value === "fix" ? "primary" : ""}" data-answer="${esc(o.value)}" data-decision="${esc(data.decision.id || "")}">${esc(o.label)}</button>`).join("")}</div></div>` : "";
     Live.show(board && real ? board.run_id : "", id, st, (data && data.round) || 1);
     // 2차로 다시 돈 노드는 1차 결과를 접어서 함께 보여 준다
     const past = (data && data.history || []).map((h) => `<details class="past"><summary>${esc(h.round)}차 · ${esc(STATE[h.state] || h.state)} · ${esc(h.summary || "")}</summary>
@@ -328,7 +328,7 @@
     if (!b || !board) return;
     b.disabled = true;
     const r = await fetch(`/api/pipeline/runs/${encodeURIComponent(board.run_id)}/answer`, { method: "POST",
-      headers: { "Content-Type": "application/json" }, body: JSON.stringify({ value: b.dataset.answer, case_id: board.nodes.find(n => n.decision)?.decision?.case_id || undefined }) });
+      headers: { "Content-Type": "application/json" }, body: JSON.stringify({ value: b.dataset.answer, decision_id: b.dataset.decision || undefined, case_id: board.nodes.find(n => n.decision)?.decision?.case_id || undefined }) });
     if (!r.ok) { const j = await r.json().catch(() => ({})); alert(j.detail || "답을 보내지 못했습니다"); }
     await loadRun();
   });

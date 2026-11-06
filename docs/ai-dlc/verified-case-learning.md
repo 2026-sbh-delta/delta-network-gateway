@@ -109,3 +109,12 @@ PYTHONPATH=services/delta-ai ../delta-network-gateway-diagnostics-handoff/.venv/
 - JS 구문/CLI 도움말/공백 검사 통과. 보안 검토는 인증·생산자/검토 분리·서비스 범위·SQL 매개변수·영속 파일 권한·비밀값·출력 HTML escaping을 확인했다. 변경 범위에서 미해결 critical/high 발견 없음. 실제 클라우드·실제 Claude·브라우저 시각 검증·공용 최신본 재통합은 실행하지 않았다.
 
 증거는 작업 루트 `notes/verified-case-learning-20261106/{ai-tests.xml,pipeline-tests.xml,summary.json}`에 있다. Git 소스는 미커밋/미푸시, PR/main 반영·원격 CI·AWS 변경·팀 Slack/Notion 쓰기 없음.
+
+
+## 2026-11-06 최신 공용·실행 중 소스 통합 및 AWS 배포 승인
+
+사용자가 최신 공용 코드와 충돌 없이 통합하고 실제 AWS 배포/Claude 피드백 검증을 요청했다. main `ad48e2e`와 공유 PR #60 `03a29a3`를 merge commit으로 보존했다. 기존 AWS 실행 이미지77ea8010의 미반영6개 파일은 사용자 명시 승인으로 코드만 읽어3방향 통합했다. 요청 멱등성/승인ID/정리 API/운영 자원 표시/온프레미스 ECR 선택을 보존하고, diagnostics 옵션 보강으로 멱등 요청 비교가 깨지는 경우를 회귀로 고정했다.
+
+배포는 기존 AI/오케스트레이터2개만 변경하며 기존43실행/80영속파일·인증/설정/로그/볼륨을 보존한다. 기대 이전 이미지/동시변경·idle 재확인, 후보 인증 검사, 중지 후 state 백업 확인, 실패 시 기존 컨테이너 복구를 사용한다. Terraform/SG/IAM/DNS/팀 Worker/스캐너 변경은 하지 않는다. 검증은 독립 service_id의 로컬HTTP 장애를 AWS호스트 안에 만들고 실제Claude/API/사례게시/승인/다음진단/평가를 검사한다. 합성장애임을 기록하며 고객 앱 장애·전체 이전으로 설명하지 않는다.
+
+통합 회귀: AI337통과, pipeline/orchestrator210통과(이후 요청멱등성 회귀1건 추가). 최종 실행·배포 결과는 완료 후 갱신한다.

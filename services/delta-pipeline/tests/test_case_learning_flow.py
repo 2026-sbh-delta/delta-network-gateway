@@ -191,3 +191,24 @@ def test_native_revalidation_survives_process_death_and_records_one_completed_at
     resolved = [c for c in cases if c.resolution.outcome == "success"]
     assert len(resolved) == 1 and resolved[0].resolution.action == "redeploy_sandbox"
     assert len(json.loads((tmp_path / "jobs.json").read_text())) == 4
+
+
+def test_shared_request_identity_survives_diagnostics_and_restart(tmp_path):
+    from delta_orchestrator.pipelines import Pipelines
+    from delta_pipeline.run import Run
+    from fakes import COMMIT, IMAGE_REPO, REPO, FakeDast, FakeSast, FakeStaging, build_jenkins, deploy_jenkins
+    build = build_jenkins()
+    def factory(options, store, run_id):
+        return Run(replace(options, diagnostics=True), sast=FakeSast(), dast=FakeDast(),
+            build_jenkins=build, deploy_jenkins=deploy_jenkins(), staging=FakeStaging(),
+            image_repo=IMAGE_REPO, store_dir=store, run_id=run_id, sleep=lambda _: None)
+    manager = Pipelines(tmp_path, factory)
+    run_id = manager.start(REPO, COMMIT, request_key="platform:verification")
+    assert manager.start(REPO, COMMIT, request_key="platform:verification") == run_id
+    manager._thread.join(timeout=5)
+    assert not manager.running()
+    restarted = Pipelines(tmp_path, factory)
+    assert restarted.start(REPO, COMMIT, request_key="platform:verification") == run_id
+    assert len(build.keys) == 1
+    with pytest.raises(RuntimeError):
+        restarted.start(REPO, "a" * 40, request_key="platform:verification")

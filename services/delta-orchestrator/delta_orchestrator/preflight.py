@@ -15,15 +15,16 @@ def check():
     with client._opener.open(urllib.request.Request(client._url + '/healthz'), timeout=8) as response:
         if response.status != 200 or json.loads(response.read(4096)).get('status') != 'ok':
             raise ValueError('Diagnostic health failed')
-    request = urllib.request.Request(client._url + '/v1/diagnoses', b'{}', method='POST',
-        headers={'Authorization': 'Bearer ' + client._token, 'Content-Type': 'application/json'})
-    try:
-        with client._opener.open(request, timeout=8):
-            raise ValueError('Empty diagnosis must not execute')
-    except urllib.error.HTTPError as error:
-        if error.code != 422:
-            raise ValueError('Diagnostic authentication failed') from None
-        error.close()
+    for path in ('/v1/diagnoses', '/v1/recovery-proposals', '/v1/incident-cases'):
+        request = urllib.request.Request(client._url + path, b'{}', method='POST',
+            headers={'Authorization': 'Bearer ' + client._token, 'Content-Type': 'application/json'})
+        try:
+            with client._opener.open(request, timeout=8):
+                raise ValueError('Empty diagnostic request must not execute')
+        except urllib.error.HTTPError as error:
+            if error.code != 422:
+                raise ValueError('Diagnostic authentication or case route failed') from None
+            error.close()
     result = {'diagnostics': 'ready', 'state_reads': 0, 'llm_calls': 0}
     if os.environ.get('DELTA_LOG_EVIDENCE_ENABLED') == '1':
         import boto3

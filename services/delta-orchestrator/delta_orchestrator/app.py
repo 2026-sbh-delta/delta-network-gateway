@@ -292,6 +292,9 @@ def create_app(pipelines: Pipelines | None = None) -> FastAPI:
     @app.post("/api/pipeline/runs", status_code=202)
     async def start_run(request: Request):
         body = await json_body(request)
+        request_key = request.headers.get("idempotency-key")
+        if request_key is not None and not re.fullmatch(r"[A-Za-z0-9:_.-]{1,200}", request_key):
+            raise HTTPException(400, "요청 키 형식이 올바르지 않습니다")
         repo, commit, cutover = body.get("repo"), body.get("commit"), body.get("cutover", False)
         branch = body.get("branch") or ""
         execution_cloud=body.get('execution_cloud','gcp')
@@ -311,6 +314,13 @@ def create_app(pipelines: Pipelines | None = None) -> FastAPI:
             raise HTTPException(400, "등록되지 않은 운영 배포 대상입니다")
         if execution_cloud=="onprem" and release_target:
             raise HTTPException(400,"온프레미스 실행 검사는 운영 배포와 별도입니다")
+        if body.get("config_sha256") is not None:
+            from delta_pipeline.delivery import canonical_json
+            import hashlib
+
+            current = pipelines_mod.release_targets().get(release_target)
+            if not current or hashlib.sha256(canonical_json(current).encode()).hexdigest() != body["config_sha256"]:
+                raise HTTPException(409, "등록된 운영 대상 설정이 변경됐습니다")
         if not isinstance(repo, str) or not isinstance(commit, str) or not isinstance(cutover, bool):
             raise HTTPException(400, "repo와 commit(40자리 SHA)이 필요합니다(cutover는 true/false)")
         if not isinstance(branch, str) or (branch and (not BRANCH_RE.fullmatch(branch) or ".." in branch)):
@@ -323,6 +333,7 @@ def create_app(pipelines: Pipelines | None = None) -> FastAPI:
         try:
             extra={'execution_cloud':execution_cloud,'onprem_build_id':onprem_build_id,'assistance':assistance} if execution_cloud=='onprem' else {}
             if release_target is not None:extra["release_target"]=release_target
+            if request_key is not None:extra["request_key"]=request_key
             return {"run_id": need_pipelines().start(repo, commit, cutover=cutover, branch=branch,**extra)}
         except RuntimeError as exc:
             raise HTTPException(409, str(exc))
@@ -378,9 +389,13 @@ def create_app(pipelines: Pipelines | None = None) -> FastAPI:
     async def answer(run_id: str, request: Request):
         body = await json_body(request)
         value, case_id = body.get("value"), body.get("case_id")
+        decision_id = body.get("decision_id")
+        if decision_id is not None and not isinstance(decision_id, str):
+            raise HTTPException(400, "승인 식별자가 올바르지 않습니다")
         accepted = False
         if isinstance(value, str) and (case_id is None or isinstance(case_id, str)):
-            accepted = (need_pipelines().answer(run_id, value, case_id=case_id)
+            accepted = (need_pipelines().answer(run_id, value, case_id=case_id, decision_id=decision_id)
+                        if decision_id is not None else need_pipelines().answer(run_id, value, case_id=case_id)
                         if case_id is not None else need_pipelines().answer(run_id, value))
         if not accepted:
             raise HTTPException(409, "지금 받을 수 없는 답입니다")
@@ -411,6 +426,29 @@ def create_app(pipelines: Pipelines | None = None) -> FastAPI:
             raise HTTPException(404, "검증된 보고서가 없습니다") from None
         return FileResponse(directory / f"report.{format}", media_type="application/json" if format == "json" else "text/markdown",
                             filename=f"{case_id}.{format}")
+
+    @app.get("/api/pipeline/capabilities")
+    async def pipeline_capabilities():
+        return {"submission_idempotency": True, "decision_identity": True, "release_resources": True, "release_cleanup": True}
+
+    @app.api_route("/api/pipeline/runs/{run_id}/cleanup", methods=["GET", "POST"])
+    async def cleanup_run(run_id: str, request: Request):
+        from . import cleanup
+
+        p = need_pipelines()
+        submit = request.method == "POST"
+        if submit and (await json_body(request)).get("confirm") is not True:
+            raise HTTPException(409, "프로젝트 삭제를 확인하세요")
+        def work():
+            with p._lock:
+                if submit and p.running():
+                    raise HTTPException(409, "파이프라인 실행 종료 후 삭제하세요")
+                return cleanup.execute(p.get(run_id), submit=submit)
+        try:
+            from starlette.concurrency import run_in_threadpool
+            return await run_in_threadpool(work)
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from None
 
     # ── 진행 보기: 실행 기록에 남은 빌드 번호·점검 ID 로만 각 도구의 진행 정보를 받아 넘긴다(live.py)
     def board_of(run_id: str) -> dict:
