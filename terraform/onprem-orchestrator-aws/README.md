@@ -27,3 +27,5 @@ backend.hcl.example을 사용해 init→validate/test→plan을 확인한 뒤 �
 | scanner_document_hash | Worker가 고정할 검사 문서 SHA256 |
 
 DAST의 전용 `/delta-cp/dast/onprem_connection` SecureString은 `prepare_dast_connection.py`가 24시간 scanner TokenRequest를 직접 발급해 저장한다. 토큰은 Terraform/state/Git/출력에 넣지 않는다. 기존 DAST 역할의 `/delta-cp/dast/` 권한을 사용한다. 만료 전에 동일 절차로 명시적으로 회전하고 서버를 idle 상태에서 갱신해야 한다. 기존 parameter 덮어쓰기는 기본 거부한다.
+
+승인 대기 및 원복 호환: 기존 배포가 사용 중인 `delta-cp-onprem-bridge-a209f55948f0`도 별도 legacy_bridge 자원으로 보존한다. 브리지 역할은 두 검토된 불변 문서와 동일 Worker 한 대만 호출할 수 있다. 공용 Worker 교체는 사용자 명시 승인 전 실행하지 않는다.

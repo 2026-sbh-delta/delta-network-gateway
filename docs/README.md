@@ -1,5 +1,7 @@
 # Delta network gateway
 
+2026-11-06 온프레미스 실제 DAST·로그 보존 후속: 소스c2f8139/회귀169/Terraform mock2와 후보 이미지 빌드 완료. CP DAST의 온프레미스 연결·namespace 로그 조회 최소 권한은 적용했고 기존 DAST36기록/4792파일 보존을 확인했다. 공용 Worker 교체는 자동 승인 검토에서 팀 영역 사전 합의 근거 부족으로 거부돼 미실행이며, 사용자의 영향 설명 요청을 승인으로 처리하지 않았다. 기존 오케스트레이터와 Worker 런타임은 유지하고 이전 고정문서 호환 경로를 보존한다. 새 실제 DAST→로그→보고서 전체 검증은 아직이다. [범위·부작용·승인 상태](ai-dlc/onprem-dast-evidence.md)
+
 2026-11-06 온프레미스 실행·복구 AWS 연결 완료: 기존 Worker를 고정 SSM 문서/최소 IAM으로 연결하고 실제 새 SAST13파일→온프레미스 실행→제한 자동 복구→사람 재검사→실제 Claude/보고서·화면을 검증했다. 실제2실행은 각 native배포1회·Pod/Secret정리, 기존34/35개board 보존, 시험OFF·정상재시작·보고서인증·최종Terraform No changes 확인. 회귀155+native fixture28+Terraform mock1 통과. DAST 미실행·단일 이미지 sandbox 범위이며 전체 FE/BE/DB/DNS 이전은 별도다. 소스6b8c405 로컬/런타임613c3c64 배포완료, main미병합. [설계·실제 결과·남은 범위](ai-dlc/onprem-runtime.md)
 
 2026-11-06 사용자 AWS 진단·중앙 로그 근거 릴리스 완료: 실제 새 SAST15파일→GCP FE/BE staging→DAST XSS재현1→자동 로그(실행8/GCP40·미해석19)→실제Claude→보고서·화면을 검증했다. AI319+pipeline/orchestrator144개 통과, 고정3그룹 조회 정책1건 추가/최종No changes, 기존28실행 보존·이번실행stop/lease해제. 전체 DB/DNS 이전·현재runtime의onprem복구 연결은 남아 있다. [설계·실제 검증·남은 범위](ai-dlc/ai-aws-readiness.md)

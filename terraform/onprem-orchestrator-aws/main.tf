@@ -23,7 +23,7 @@ resource "aws_iam_role_policy" "bridge" {
   name = "delta-cp-onprem-bridge"
   role = "delta-cp-orchestrator"
   policy = jsonencode({Version="2012-10-17", Statement=[
-    {Effect="Allow", Action=["ssm:SendCommand"], Resource=[aws_ssm_document.bridge.arn,"arn:aws:ec2:ap-northeast-2:616723161368:instance/i-0e5df7881a7de8fbd"]},
+    {Effect="Allow", Action=["ssm:SendCommand"], Resource=[aws_ssm_document.bridge.arn,"arn:aws:ec2:ap-northeast-2:616723161368:instance/i-0e5df7881a7de8fbd",aws_ssm_document.legacy_bridge.arn]},
     {Effect="Allow", Action=["ssm:GetCommandInvocation"], Resource="*"}
   ]})
 }
@@ -49,3 +49,11 @@ resource "aws_iam_role_policy" "native_scanner" {
 }
 output "scanner_document_name" { value=aws_ssm_document.scanner.name }
 output "scanner_document_hash" { value=aws_ssm_document.scanner.hash }
+
+# Preserve the already deployed/rollback client while the optional shared Worker release awaits approval.
+resource "aws_ssm_document" "legacy_bridge" {
+  name="delta-cp-onprem-bridge-a209f55948f0"
+  document_type="Command"
+  document_format="JSON"
+  content=file("${path.module}/../../deploy/onprem-runtime/legacy-document.json")
+}
