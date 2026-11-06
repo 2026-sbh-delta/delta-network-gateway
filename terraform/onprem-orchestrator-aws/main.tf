@@ -29,3 +29,23 @@ resource "aws_iam_role_policy" "bridge" {
 }
 output "document_name" { value = aws_ssm_document.bridge.name }
 output "document_hash" { value = aws_ssm_document.bridge.hash }
+
+resource "aws_ssm_document" "scanner" {
+  name = "delta-cp-native-scanners-${substr(sha256(file("${path.module}/../../deploy/onprem-runtime/scanner-document.json")),0,12)}"
+  document_type = "Command"
+  document_format = "JSON"
+  content = file("${path.module}/../../deploy/onprem-runtime/scanner-document.json")
+  lifecycle { create_before_destroy = true }
+}
+resource "aws_iam_role_policy" "native_scanner" {
+  name = "delta-native-scanners"
+  role = "delta-platform-app"
+  policy = jsonencode({Version="2012-10-17",Statement=[
+    {Effect="Allow",Action=["ssm:SendCommand"],Resource=[aws_ssm_document.scanner.arn,
+      "arn:aws:ec2:ap-northeast-2:616723161368:instance/i-01e002ddcf92c7b82",
+      "arn:aws:ec2:ap-northeast-2:616723161368:instance/i-0f7ce2c84581c4e35"]},
+    {Effect="Allow",Action=["ssm:GetCommandInvocation"],Resource="*"}
+  ]})
+}
+output "scanner_document_name" { value=aws_ssm_document.scanner.name }
+output "scanner_document_hash" { value=aws_ssm_document.scanner.hash }

@@ -118,7 +118,7 @@
     ref.label = mk("text", { class: "lbl", x: 16, y: 64 }, g);
     ref.label.textContent = n.mock ? "추후" : "도구";
     const tool = (n.tool || "").length > 17 ? n.tool.slice(0, 16) + "…" : n.tool || "";
-    mk("text", { class: "val", x: n.w - 16, y: 64, "text-anchor": "end" }, g).textContent = tool;
+    ref.tool=mk("text", { class: "val", x: n.w - 16, y: 64, "text-anchor": "end" }, g);ref.tool.textContent = tool;
     mk("rect", { class: "fieldbox", x: 12, y: 72, width: n.w - 24, height: 18, rx: 6 }, g);
     ref.out = mk("text", { class: "out", x: 20, y: 85 }, g);
     return ref;
@@ -149,6 +149,11 @@
     return n ? n.state : "pending";
   };
   const isReal = (id) => !!nodeOf(id) || id === "start";
+  const onpremMeta=(n)=>board?.options?.execution_cloud==="onprem" ? ({
+    build:{tool:"등록된 고정 이미지",desc:"선택한 성공 빌드의 commit과 digest를 재사용합니다. FE/BE 묶음은 같은 프로젝트·커밋으로 확인합니다."},
+    stage:{tool:"기존 Worker · k3s",desc:"기존 실행기에서 동일 이미지를 검증하고 DAST 후 제한 로그를 저장한 뒤 자기 Pod와 Secret을 정리합니다."},
+    dast:{tool:"현재 CP DAST · 브라우저",desc:"같은 SAST 근거와 Pod UID에 묶인 실제 브라우저 검사입니다. 후보 없음·차단·미확인은 안전 통과로 해석하지 않습니다."}
+  }[n.id]||{}) : {};
 
   function paint() {
     for (const n of NODES) {
@@ -170,6 +175,7 @@
         n.ref.time.textContent = s0 ? fmtDur(((s1 || Date.now() / 1000) - s0)) : "";
       }
       if (n.ref.label) n.ref.label.textContent = real ? "도구" : "추후";
+      if(n.ref.tool){const text=onpremMeta(n).tool||n.tool||"";n.ref.tool.textContent=text.length>17?text.slice(0,16)+"…":text;}
       if (n.ref.respT) n.ref.respT.textContent = st === "waiting" ? "승인 대기..." : "실행 중...";
     }
     for (const e of edgeList) {
@@ -295,8 +301,8 @@
       <div class="p-sec">
         <div class="eyebrow"><span>${sel ? "선택한 단계" : "현재 단계 · 자동으로 따라갑니다"}</span>${sel ? '<button type="button" id="unsel">자동으로</button>' : ""}</div>
         <div class="p-title"><h2>${esc(n.label)}</h2><span class="state s-${st}">${real ? STATE[st] : "추후"}</span>${n.ai ? '<span class="state s-running">AI</span>' : ""}</div>
-        ${n.tool ? `<div class="tool">${esc(n.tool)}</div>` : ""}
-        ${n.desc ? `<p class="desc">${esc(n.desc)}</p>` : ""}
+        ${n.tool ? `<div class="tool">${esc(onpremMeta(n).tool||n.tool)}</div>` : ""}
+        ${n.desc ? `<p class="desc">${esc(onpremMeta(n).desc||n.desc)}</p>` : ""}
         ${real ? `<dl class="kv"><dt>소요</dt><dd class="mono">${esc(dur)}</dd>${data && data.summary ? `<dt>결과</dt><dd>${esc(data.summary)}</dd>` : ""}</dl>` : ""}
         ${data?.detail?.diagnostic_report ? `<h3>분석 보고서</h3>${special("exception-report", {report: data.detail.diagnostic_report})}` : ""}
         ${data?.detail?.recovery_plan ? `<h3>복구 제안 · 사람 확인 필요</h3><p>${esc(data.detail.recovery_plan.proposal.explanation)}</p>` : ""}${ask}
@@ -411,6 +417,9 @@
       stop(); key = k; ctx = { run, node, state: st, round };
       $("#panel").scrollTop = 0;
       if (!k) { box().innerHTML = ""; return; }
+      if(board?.options?.execution_cloud==="onprem" && ["build","stage"].includes(node)){
+        box().innerHTML=`<div class="p-sec"><h3>온프레미스 실행 근거</h3><p>${esc(nodeOf(node)?.summary||"상태 확인 중")}</p><pre>${esc(JSON.stringify(nodeOf(node)?.detail||{},null,2))}</pre></div>`;return;
+      }
       ({ build: logView, stage: logView, sast: sastView, dast: dastView })[node](ctx, k);
     }
     const live = (c) => ["running", "waiting"].includes(c.state);
@@ -784,8 +793,8 @@
     const r=await fetch("/api/onprem/builds"); const value=await r.json();
     onpremBuilds=value.builds||[];
     const select=$("#onprem-build");select.replaceChildren(new Option("등록된 이미지를 선택하세요",""));
-    for(const item of onpremBuilds)select.add(new Option(item.service.name+" · "+item.build.resolved_commit_sha.slice(0,7),item.build.id));
-    $("#run-msg").textContent=r.ok?"등록된 단일 이미지 실행 검사":"온프레미스 이미지 조회 실패";
+    for(const item of onpremBuilds)select.add(new Option(item.service.name+" · "+item.build.resolved_commit_sha.slice(0,7)+(item.backend_build_id?" · FE/BE":" · 단일 이미지"),item.build.id));
+    $("#run-msg").textContent=r.ok?"등록 이미지의 실제 SAST·DAST·정리 검사":"온프레미스 이미지 조회 실패";
   });
   $("#onprem-build").addEventListener("change",()=>{
     const item=onpremBuilds.find(x=>x.build.id===$("#onprem-build").value);

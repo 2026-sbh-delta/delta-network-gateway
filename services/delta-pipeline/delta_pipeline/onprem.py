@@ -26,9 +26,11 @@ class NativeOnpremJob:
         security_check_id=None,
         backend_build_id=None,
         cleanup_probe=None,
+        dast_target_override=None,
     ):
         self.store, self.settings = store, settings
         self.cleanup_probe = cleanup_probe
+        self.dast_target_override = dast_target_override
         self.service_id = UUID(str(service_id))
         self.build_id = UUID(str(build_id))
         self.security_id = UUID(str(security_check_id)) if security_check_id else None
@@ -74,7 +76,7 @@ class NativeOnpremJob:
                 sandbox_target(self.settings, "onprem"),
                 backend_build_id=self.backend_build_id,
                 security_check_id=self.security_id,
-                dast_target=dast_target(self.settings) if self.security_id else None,
+                dast_target=(self.dast_target_override or dast_target(self.settings)) if self.security_id else None,
             )
             return str(job["id"])
         except (Problem, KeyError, ValueError, TypeError):
@@ -342,6 +344,8 @@ def wait(steps, state):
         )
         raise Stopped(f"온프레미스 실행 실패: {code}", code=code)
     value = job.get("result") or {}
+    from delta_pipeline.evidence import capture_runtime
+    capture_runtime(deps,state)
     if (
         value.get("execution_cloud") != "onprem"
         or value.get("runtime") != "k3s"
@@ -398,7 +402,10 @@ def wait(steps, state):
         )
     ):
         raise Stopped("온프레미스 DAST 근거가 없습니다")
-    deps.board.add_detail("dast", run_id=run_id, results=findings, cleanup="stopped")
+    deps.board.add_detail("dast", run_id=run_id, results=findings, cleanup="stopped",
+        coverage=value.get('coverage'),dast_check=value.get('dast_check'),
+        sast_evidence_sha256=value.get('sast_evidence_sha256'),dast_evidence_sha256=value.get('dast_evidence_sha256'),
+        runtime_evidence_sha256=value.get('runtime_evidence_sha256'),deployment_approved=False)
     if value.get("dast_check") != "completed":
         return steps._ask("dast", "dast", "온프레미스 DAST 미실행·검사 범위 확인", 0)
     if (

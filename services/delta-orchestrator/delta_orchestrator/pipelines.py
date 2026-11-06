@@ -67,18 +67,14 @@ def platform_run(options: Options, store_dir: Path, run_id: str | None) -> Run:
     if options.execution_cloud == 'onprem':
         if os.environ.get('DELTA_ONPREM_ENABLED')!='1' or not options.onprem_build_id:
             raise ServiceUnavailable('온프레미스 연결과 등록된 빌드를 확인하세요')
-        from delta_pipeline.onprem_ssm import WorkerRpc,RemoteOnprem
+        from delta_pipeline.onprem_ssm import WorkerRpc,RemoteOnprem,RemoteSast
         from delta_pipeline.registered_build import RegisteredBuild
         rpc=WorkerRpc();value=rpc.call('context',build_id=options.onprem_build_id)
         artifact=RegisteredBuild.from_snapshot(value['build'],service=value['service'])
         artifact.assert_request(options.repo,options.commit)
         run_id=run_id or uuid.uuid4().hex
-        class NativeSast(Sast):
-            def start(self,key,repo,commit):
-                identifier=str(uuid.uuid5(uuid.NAMESPACE_URL,'delta-onprem/'+key))
-                return super().start(identifier,repo,commit)
         return Run(options,run_id=run_id,store_dir=store_dir,build_jenkins=artifact,deploy_jenkins=artifact,
-            sast=NativeSast(f'http://sast.{zone}:8790',os.environ.get('DELTA_SAST_TOKEN','')),
+            sast=RemoteSast(rpc,artifact.build_id),
             dast=Dast(f'http://dast.{zone}:8765',os.environ.get('DAST_PLATFORM_TOKEN','')),
             staging=Staging(f'http://jenkins.{zone}:8091',os.environ.get('DELTA_STAGING_TOKEN','')),
             image_repo=artifact.image.rsplit('@',1)[0],diagnostic=diagnostic,evidence=evidence,

@@ -27,7 +27,7 @@ class WorkerRpc:
 
     def call(self, action, **values):
         request={'action':action,**values}
-        if action not in {'catalog','context','start','status','cancel','inspect','retry_ready','resume_ready','observation_ready','absence'}:
+        if action not in {'catalog','context','start','status','cancel','inspect','retry_ready','resume_ready','observation_ready','absence','sast_start','sast_status','sast_report'}:
             raise ServiceUnavailable('허용되지 않은 온프레미스 동작입니다')
         raw=json.dumps(request,separators=(',',':')).encode()
         if len(raw)>10000:raise ServiceUnavailable('온프레미스 요청이 너무 큽니다')
@@ -92,3 +92,9 @@ class RemoteOnprem:
         value[key]=count-1
         temporary=path.with_suffix('.tmp');temporary.write_text(json.dumps(value));temporary.chmod(0o600);temporary.replace(path)
         raise TransientServiceError('검증용 호출자 응답 유실: 기존 작업 ID·키를 유지합니다')
+
+class RemoteSast:
+    def __init__(self,rpc,build_id):self.rpc,self.build_id=rpc,str(UUID(build_id))
+    def start(self,key,repo,commit):return self.rpc.call('sast_start',build_id=self.build_id,key=key,binding={'repo':repo,'commit':commit})
+    def scan(self,identifier):return self.rpc.call('sast_status',build_id=self.build_id,id=str(UUID(identifier)))
+    def sarif(self,identifier):return self.rpc.call('sast_report',build_id=self.build_id,id=str(UUID(identifier)))

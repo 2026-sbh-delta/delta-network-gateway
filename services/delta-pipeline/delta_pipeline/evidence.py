@@ -39,12 +39,13 @@ def capture_runtime(deps, state):
         return
     try:
         snapshot = deps.onprem.inspect(state['onprem_run_id'])
-        if 'pod' not in snapshot and 'logs' not in snapshot:
+        if not any(k in snapshot for k in ('pod','logs','preserved_logs')):
             return
         path = cache_path(deps, state)
         value = {'native_run_id': state['onprem_run_id'], 'image_digest': state['image_digest'],
                  'commit': state.get('commit') or deps.options.commit, 'captured_at': time.time(),
                  'observations': {key: clean(snapshot[key], 6000) for key in ('pod', 'logs', 'events', 'limitations') if key in snapshot}}
+        if 'preserved_logs'in snapshot:value['preserved_logs']=snapshot['preserved_logs']
         raw = json.dumps(value, ensure_ascii=False).encode()
         fd, name = tempfile.mkstemp(prefix='.runtime-', dir=path.parent)
         temporary = Path(name)
@@ -81,6 +82,12 @@ class EvidenceCollector:
                 for key in ('facts', 'events', 'pod', 'logs', 'limitations'):
                     if key in snapshot:
                         extra.append(('native-' + key, 'platform-worker', snapshot[key]))
+                if 'preserved_logs'in snapshot:
+                    record=snapshot['preserved_logs'];payload=record['record']
+                    extra.append(('native-log-binding','platform-worker',{k:payload.get(k)for k in
+                        ('native_run_id','build_id','commit','image_digest','captured_at','before_cleanup')}|{'sha256':record['sha256']}))
+                    for container in payload['containers']:
+                        extra.append(('native-log-'+container['component'],'platform-worker',container))
             except Exception:  # noqa: BLE001 — evidence gaps do not fabricate success or leak credentials
                 extra.append(('native-unavailable', 'platform-worker', '추가 상태/로그를 수집하지 못했습니다. 원인 확정에 제한이 있습니다.'))
         if state.get('onprem_run_id'):

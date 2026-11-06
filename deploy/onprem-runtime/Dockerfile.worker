@@ -1,0 +1,7 @@
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+# Keep the reviewed platform wheel, web assets, dependencies and existing user unchanged.
+COPY services/delta-pipeline/delta_pipeline /opt/delta-native/delta_pipeline
+COPY services/delta-ai/delta_ai /opt/delta-native/delta_ai
+ENV PYTHONPATH=/opt/delta-native
+CMD ["python", "-m", "delta_pipeline.onprem_native_worker"]
