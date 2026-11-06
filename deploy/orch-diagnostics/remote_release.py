@@ -40,7 +40,7 @@ def hashes(root):
             for p in root.rglob('*') if p.is_file() and not p.is_symlink()}
 
 
-def main(image):
+def main(image, expected_image=None):
     if not re.fullmatch(r'616723161368.dkr.ecr.ap-northeast-2.amazonaws.com/delta-cp-orchestrator@sha256:[a-f0-9]{64}', image):
         raise ValueError('Expected fixed repository and immutable digest')
     base = Path('/opt/delta/orchestrator')
@@ -48,6 +48,8 @@ def main(image):
     with (base / 'diagnostic-release.lock').open('w') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         old = inspect()
+        if expected_image is not None and old['Config']['Image'] != expected_image:
+            raise RuntimeError('Runtime changed since the reviewed inventory')
         env = dict(v.split('=', 1) for v in old['Config']['Env'] if '=' in v)
         if old['HostConfig']['NetworkMode'] != 'host' or env.get('ORCH_STATE_DIR') != '/state':
             raise RuntimeError('Unexpected network/state configuration')
@@ -148,7 +150,7 @@ def main(image):
 
 if __name__ == '__main__':
     try:
-        result = main(IMAGE)
+        result = main(IMAGE, globals().get('EXPECTED_OLD_IMAGE'))
         print(base64.b64encode(gzip.compress(json.dumps(result).encode())).decode())
     except Exception as error:
         raise SystemExit('Diagnostic release failed safely: '+type(error).__name__) from None
