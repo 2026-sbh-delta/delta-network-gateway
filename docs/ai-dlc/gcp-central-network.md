@@ -2,17 +2,53 @@
 
 ## 단계와 승인 상태
 
-- 기준일: 2026-11-05 (Asia/Seoul).
+- 기준일: 2026-11-07 (Asia/Seoul).
+- 검사 재개(2026-11-07): 사용자 `GCP NW?도 이제 켜자` 지시로 기존 Cloud NGFW의 Operation 재개를 완료했다. `disabled -> bypass -> enabled`로 endpoint 1개/association 2개 ACTIVE와 두 사설 검사 규칙을 실제 적용했다. 양방향 TCP3000 HTTP200, 실제 ALERT Threat 8건을 포함한 원본 12건의 Security/플랫폼 도착 및 최종 실제 Plan No changes/종료0을 확인했다. 상세 명령과 검증 한계는 아래 재개 절을 따른다.
 - 로그 전달 최신 상태(2026-11-07): 사용자 승인으로 방화벽 규칙과 NGFW 위협 로그 두 종류를 새 [Security 전용 수집](gcp-security-log-consolidation.md)으로 일원화했다. 이 네트워크 root에는 전달 리소스를 다시 추가하지 않았다. 기존 플랫폼의 나머지 GCP 수집과 과거 로그를 유지하며 최신 실제 적용과 수신 검증은 별도 기록을 따른다.
 - 2026-11-05 정리 기록: 당시 네트워크 계정 전용 AWS 리소스8개와 GCP 전달 리소스12개 및 이전 root를 정리했다. 과거 로그와 공유 자원을 보존한 사실은 아래 정리 절을 따른다. 이번에 새로 승인한 두 방화벽 로그 전용 구성과 구분한다.
 - Ideation: 사용자 `그럼 Ideation대로 ㄱㄱ`로 승인 완료. 앞서 설명한 Cloud NGFW Enterprise의 IDS/IPS, NCC, AWS 중앙 TGW 연결과 AWS 로그 수집 방향을 따른다.
 - Inception: 2026-11-04 사용자 `ANF원복은 하지말고, GCP 중앙 탐지 VPC 나눌 수 있으면 나눠 승인`으로 수정 조건을 포함해 승인 완료.
 - Construction: 수정 승인된 U1~U5의 코드/문서 구현과 로컬 Test/Review를 완료했다. GCP/AWS 기반과 VPN/수집기를 실제 적용했고 양방향 통신과 GCP 자체 검사/중앙 원본 로그를 검증했다. AWS ANF 원복은 수행하지 않았다. 네 단일 BGP 경로 철회/복구, 저장 실패/재수집 및 최종 No changes 검증을 완료했다.
 - 실계정 확인: 사용자 ADC 로그인 후 `term2-delta` / Number `366844544284`의 ACTIVE 상태와 조직 `354852153719` 소속, 기존 네트워크/서울 쿼터와 필요한 IAM 권한을 확인했다. Billing 조회는 API 비활성 오류였고 필수 API 6개 활성화를 완료했다. 재조회에서 Billing 활성, 18개 권한/12개 API와 실제 입력/저장 Plan을 확인했다. AWS 중앙 STS는 `482840608926`, 실제 ANF 목록은 비어 있고 중앙 state도 disabled다.
-- 현재 운영: 사용자 후속 요청으로 GCP inspection_mode=disabled, endpoint/association 제거 완료. AWS ANF도 disabled를 유지한다. NCC/VPN/BGP와 기본 방화벽 로깅을 유지하며 두 방화벽 로그는 Security를 거쳐 플랫폼으로, 나머지는 기존 플랫폼 직접 경로로 전달한다. 별도 AWS 워크로드 통합의 경로 변경은 해당 작업 기록을 따른다.
+- 현재 운영: GCP inspection_mode=enabled, 공유 endpoint 1개와 중앙/업무 association 2개 ACTIVE다. priority200/300이 AWS 사설 TCP3000/8080을 검사하고 모든 심각도는 ALERT다. NCC/VPN/BGP와 기본 방화벽 로깅을 유지하며 두 방화벽 로그는 Security를 거쳐 플랫폼으로, 나머지는 기존 플랫폼 직접 경로로 전달한다. 공개 ALB 앱의 L7 검사는 포함하지 않는다. AWS ANF와 경로는 별도 AWS 재개 작업의 승인/실제 상태를 따른다.
 - 상태 저장소(2026-11-05): 사용자 승인으로 GCP 네트워크 state를 중앙 S3의 전용 key로 이전했다. 리소스/출력과 check 결과의 동일성, GCS 원본과 다른 root의 state 보존, 잠금 해제와 이전 후 실제 Plan No changes/종료0을 확인했다. 상세 기록은 아래 S3 이전 절을 따른다.
-- Terraform: 로컬 mock과 실계정 Plan/Apply를 구분해 아래에 기록한다. 첫 GCP 부분 Apply를 복구했고 GCP 기반/4터널, AWS 수집기/업무 경로와 중앙 VPN을 적용했다. 초기 배포 뒤 총5개 root No changes를 확인했고, 후속 GCP 비용 중단 뒤 해당 root의 최신 실계정 Plan도 No changes/종료0이다. AWS root는 이번 중단에서 변경하지 않았다.
+- Terraform: 로컬 mock과 실계정 Plan/Apply를 구분해 아래에 기록한다. 초기 배포/중단/이전과 수집 정리는 날짜별 과거 기록이다. 2026-11-07 GCP 재개는 실제 신규 3개와 기존 검사 규칙 2개 갱신/삭제0개이며 기존 managed ID 57개를 보존했다. 최신 전체 입력의 실제 최종 Plan은 No changes/종료0, state serial25와 잠금 해제를 확인했다. 이 GCP 재개에서 AWS root를 Apply하지 않았다.
 - Git: 사용자 2026-11-04 지시로 구현/로그 수집/회귀 테스트/운영 문서를 분할 커밋해 `feat/gcp-central-network`에서 게시한다. 앞의 세 서명 커밋 푸시와 `main` 대상 [PR #27](https://github.com/2026-sbh-delta/delta-network-gateway/pull/27) 생성을 확인했고 운영 문서도 같은 PR에 포함한다. 최종 검사/병합 상태와 squash 결과는 해당 PR을 기준으로 확인한다.
+
+## 2026-11-07 Operation: GCP Cloud NGFW 검사 재개
+
+사용자 `GCP NW?도 이제 켜자` 지시로 기존 구현의 유료 검사 운영 재개를 승인받았다. Ideation, Inception과 Construction의 기존 승인 범위를 유지하는 Operation이며 새로운 기능을 추가하지 않는다.
+
+- 목표: `term2-delta`의 기존 공유 endpoint 1개와 중앙/업무 VPC association 2개를 복구하고 기존 AWS 사설 통신 검사를 재개한다.
+- 실행: 최신 S3 state 백업과 잠금 확인 후 `bypass` 저장 Plan에서 추가 3개만 허용한다. endpoint/association ACTIVE 확인 후 `enabled` 저장 Plan에서 현재 사설 ingress priority 200과 egress priority 300의 action/profile만 전환한다. 예전 3개 규칙 절차와 달리 시험 VM/NLB 교체 후 현재 검사 규칙은 2개다.
+- 유지: GCP VPN/NCC/BGP, 기존 VM/앱/DB 운영 상태, 공개 앱 ALB/헬스 규칙과 2026-11-07 Security 로그 수집 경로. AWS ANF와 AWS 라우팅/정책은 별도 AWS 재개 작업이 소유하며 이 GCP 작업에서 변경하지 않는다.
+- 관측: endpoint/association 준비 상태, 네 BGP, 실제 두 검사 규칙과 ALERT 프로필, 최종 실제 Plan 및 가능한 사설 통신/새 원본 로그를 구분해 확인한다. 앱 중지 상태에서 HTTP 성공을 가정하지 않는다.
+- 범위 밖: 공개 앱 L7 검사 정책 추가, 앱 재가동, AWS ANF 재가동, IPS 차단 모드 변경, 새 취약점 공격.
+- 비용: 2026-11-07 확인한 [공식 가격](https://cloud.google.com/firewall/pricing)은 endpoint USD 1.75/h와 검사 USD 0.0193/GiB다. endpoint 1개를 24시간 유지하면 시간 요금만 USD 42다.
+- 복구: 활성화 실패 시 endpoint를 유지한 `bypass`로 일반 허용을 복구하고 통신을 확인한다. 프로필 참조 제거에 기존 Provider 8.10.0의 JSON null 절차가 필요할 수 있다. 비용 중단까지 필요하면 검토한 별도 `disabled` Plan을 사용한다.
+- Git: 사용자 후속 요청으로 GCP 운영 기록을 커밋하고 푸시한다. 최종 게시 상태는 Git 이력을 따른다. state, 실제 입력, Plan과 원본 증거는 ignored `.validation/gcp-ngfw-resume-20261107/`에 제한된 권한으로 보존한다.
+
+| 날짜 | 명령 또는 확인 | 실제 결과 |
+| --- | --- | --- |
+| 2026-11-07 | `operate.py baseline`, AWS STS/S3와 GCP Project/Endpoint/association/Router/Policy GET | Project Number 366844544284와 중앙 계정 482840608926 일치, GCP mode disabled/endpoint 0/association 0, BGP 4개 UP, 현재 두 사설 규칙 allow/logging true. AWS ANF 0개와 중앙 mode disabled 확인. 기존 S3 state와 로컬 mode 백업 |
+| 2026-11-07 | `bash terraform/network-security-gcp/scripts/validate.sh` | 최초 샌드박스 실행은 Provider 시작 제한으로 실패. 실행 제한 해소 후 init/validate/fmt, Terraform mock 14개와 Python 10개 실제 통과. PSK 미노출 검사 포함 |
+| 2026-11-07 | `operate.py plan/review --stage bypass --mode bypass` | 실제 추가 3개, 갱신/삭제 0개. 별도 `gateway_handoff.remote_cidrs` 출력에만 이미 실제 Router가 광고하는 DB subnet과 플랫폼 PSC /32가 누락돼 있었음. Router no-op과 네 prefix 동일성을 대조한 뒤 출력 동기화만 허용. 다른 resource/출력 변경 없음 |
+| 2026-11-07 | `operate.py apply --stage bypass --mode bypass` | 실제 추가 3개/갱신 0개/삭제 0개 완료. endpoint 21분3초, 업무 association 8분35초와 중앙 association 8분36초 소요. mode bypass이며 아직 enabled 검사 전환 전 |
+| 2026-11-07 | `traffic.py before-enabled` | 기존 AWS FE 10.10.1.211과 GCP FE 10.32.1.20의 고정 JSON 시험 서버로 양방향8080 HTTP200/정확한 상대 출발지 확인. GCP8081은 listener가 있어도 연결 거부. 기존 GCP OS Login 키와 60초 AWS EIC 사용, 180초 제한 시험 서버 종료와 GCP /32 임시 SG 2개 회수 후 기존 SG 동일성 확인. 양쪽 delta-compose inactive/disabled 유지. 앱 재개/IDS 증거와 구분 |
+| 2026-11-07 | `verify.py logs before-enabled` | 실제 사설 시험 tuple의 방화벽 원본 4건을 Cloud Logging, Security `/delta/security/gcp-firewall`와 플랫폼 `/delta-cp/central/gcp`에서 식별자와 original JSON까지 대조. GCP priority1000/DENIED도 확인. Threat 0건은 enabled 전 상태이며 탐지 성공으로 기록하지 않음 |
+| 2026-11-07 | `operate.py observe --stage provisioning-15m --mode bypass`, 별도 AWS AI-DLC 확인 | GCP endpoint CREATING/BGP 4개 UP. 작업 시작 때와 달리 별도 승인된 AWS ANF 재개 작업에서 Firewall 1개 생성 중임을 관측. AWS 상태를 disabled로 강제하거나 해당 작업의 SG/정책을 복원하지 않는다. 검사 후 검증은 양쪽 기존 정책에 포함된 TCP3000과 그 시점의 SG를 기준으로 임시 규칙만 회수한다 |
+| 2026-11-07 | `verify.py bypass` | endpoint 1개/association 2개 ACTIVE, BGP 4개 UP, 기존 managed ID 57개와 로그 Sink 보존, 새 ID 3개 및 state serial24/잠금 부재 확인. 두 규칙 allow, 프로필의 모든 심각도 ALERT. AWS Firewall 1개는 별도 작업 결과로 구분 |
+| 2026-11-07 | `traffic.py bypass` | 첫 시도는 별도 AWS 작업이 이미 추가한 TCP3000 /32 규칙과 중복돼 API가 거부했으며 새 규칙 0개/변경 0개로 종료. 현재 허용 규칙과 확인된 고정 JSON 시험 서버를 재사용한 재실행에서 양방향 TCP3000 HTTP200/정확한 상대 출발지 확인. 이 작업의 새 SG 0개, 별도 서버/SG 보존 및 양쪽 앱 inactive/disabled 유지 |
+| 2026-11-07 | `operate.py plan/review --stage enabled --mode enabled` | 실제 생성/삭제 0개, 갱신 2개. 두 규칙의 action/security_profile_group만 변경하고 검사 모드 출력 외 다른 출력과 기존 모든 조건/로깅 보존 확인 |
+| 2026-11-07 | `operate.py apply --stage enabled --mode enabled` | 실제 생성/삭제 0개, 갱신 2개 완료. priority300은 13초, priority200은 23초 소요. mode enabled/두 규칙 apply_security_profile_group 적용 완료 |
+| 2026-11-07 | `traffic.py enabled` | TCP3000 양방향 정상 요청과 공식 안전 시험 URI 모두 HTTP200/상대 출발지 일치. URI가 파일 읽기/명령 실행을 하지 않는 기존 고정 JSON 서버임을 확인했다. 기존 SG/서버 재사용, 이 작업의 새 SG 0개와 양쪽 앱 inactive/disabled 보존. ALERT 동작이며 실제 Threat 원본과 수신은 별도 대조 중 |
+| 2026-11-07 | `verify.py enabled`와 최종 Plan의 첫 실행 | API의 ACTIVE/두 검사 규칙/BGP와 state ID 보존 확인 후 마지막 잠금 검사에서 동시 실행한 이 작업의 최종 Plan 잠금을 감지해 종료1. 잠금을 강제 해제하지 않으며 Plan 종료 뒤 전체 검증을 다시 실행한다. 이 첫 실행을 PASS로 기록하지 않음 |
+| 2026-11-07 | `verify.py logs enabled` | 실제 시험 tuple의 방화벽 원본 12건 중 Threat 8건, 일반 규칙 4건을 GCP 원본 -> Security 두 그룹 -> 플랫폼 `/delta-cp/central/gcp`의 original JSON과 식별자까지 대조. 양방향 각 Threat 4건, IDs30844/30852/35107/55558과 action ALERT. 평문 HTTP 시험 문자열 탐지이며 파일 접근/공격 성공 또는 IPS 차단 증거가 아님 |
+| 2026-11-07 | `operate.py plan/review --stage final --mode enabled` | 최신 전체 입력의 실제 Plan No changes/종료0. JSON에서도 리소스/출력 변경0개 확인. 이 최종 Plan은 Apply하지 않음 |
+| 2026-11-07 | Plan 종료 후 `verify.py enabled` 재실행 | 종료0. endpoint1/association2 ACTIVE, 두 검사 규칙과 모든 심각도 ALERT, BGP4개 UP, 기존 managed ID57개/기존 네트워크 출력/모든 로그 Sink 보존. state serial25와 잠금 부재 확인. 별도 AWS Firewall1개는 관측만 했으며 이 GCP 작업이 생성/전환한 결과로 보고하지 않음 |
+| 2026-11-07 | `git diff --check`, `python3` 인라인 문서/증거 검사, `git check-ignore` | 공백, 추가 문자 제한, 코드 블록 짝과 로컬 링크 확인 통과. 모듈의 현재 입력16개/출력7개가 모두 README 표에 있으며 기존 누락 입력2개와 DB 광고 설명을 현재 코드/Router에 맞췄다. 실제 mode/Plan/state/증거 ignored 확인. 문서 검사이며 추가 클라우드 Apply나 원격 CI가 아님 |
+
+Review: 기존 GCP 사설 검사 재개를 완료했다. TCP3000의 실제 검사/ALERT와 중앙 원본 수신을 검증했고 TCP8080은 같은 정책의 구성 검증이다. 공개 앱 L7 검사, TLS 복호화와 IPS 차단은 이번 검증 범위가 아니다. 이 작업의 임시 서버/규칙은 정리했으며 뒤의 두 단계에서는 별도 AWS 작업의 고정 응답 서버와 기존 허용 규칙을 재사용하고 종료/삭제하지 않았다. 중지한 앱은 양쪽 모두 inactive/disabled로 보존했다. 기존 입력/Plan/state와 원본 증거는 ignored 경로이며 Git 게시 결과는 Git 이력을 따른다.
 
 ## Ideation: 승인된 범위
 
@@ -35,12 +71,12 @@
 | GCP Project ID / Number | `term2-delta` / `366844544284` | 새 ADC의 실제 Project GET 성공, ACTIVE |
 | Organization | `354852153719` | 실제 Project GET의 parent로 확인. 최초 사용자 전달값과 달랐으며 새 조직을 만들지 않음 |
 | Billing | `billingEnabled=true` | 실제 Cloud Billing GET 확인. 연결 계정의 open 메타데이터 조회는 권한 부족으로 null이며 계정 상태는 추정하지 않음 |
-| GCP Region / Zone | `asia-northeast3` / `asia-northeast3-a` | 서울 UP/실제 쿼터와 고정 Ubuntu READY 이미지 확인. 초기 enabled 검증 때 ACTIVE. 후속 disabled 요청으로 endpoint/두 association 제거 완료 |
+| GCP Region / Zone | `asia-northeast3` / `asia-northeast3-a` | 2026-11-07 재개에서 공유 endpoint와 두 VPC association ACTIVE 재확인 |
 | 초기 워크로드 | 단일 Zone의 사설 시험 VM 1대와 외부 패스스루 NLB | 신규 검증 환경 제안. 워크로드의 다중 Zone 가용성을 보장하는 구성이 아님 |
-| 검사 엔드포인트 | 현재 disabled, endpoint0/association0 | 초기에 공유 endpoint1개로 검증했고 후속 비용 중단에서 제거. 프로필/그룹은 보존 |
+| 검사 엔드포인트 | 현재 enabled, endpoint1/association2 ACTIVE | 2026-11-07 두 사설 규칙 검사, 모든 심각도 ALERT와 실제 Threat8건의 중앙 도착 확인 |
 | GCP CIDR / ASN | 중앙 `10.31.0.0/24`, 업무 `10.32.1.0/24`, ASN `65001` | 기존 업무 VPC가 `10.30.1.0/24`를 사용해 예시값 재사용을 피함. GCP 전체 Subnet과 중앙 등록 AWS `10.10/16`, `10.20/16`, 검사 `10.250/16`과 대조 |
 | AWS 중앙 계정 / Region | 실조회 `482840608926` / `ap-northeast-2` | STS/실제 TGW/state를 다시 확인 |
-| AWS ANF | 사용자 지시로 `disabled` 유지 | 원복 금지. VPN 직접 경로를 지원하도록 계약과 BGP 전파를 수정. 실계정 변경은 별도 |
+| AWS ANF | 별도 AWS 재개 작업에서 생성/전환 | 이 GCP 작업 시작 때0개, 마지막 조회1개. 실제 READY/경로와 AWS 검증은 해당 AI-DLC를 따름 |
 | 이전 GCP 코드 | 현재 tracked tree에 `terraform/gcp-server` 없음 | 이전 구현과 검증은 [과거 AI-DLC](gcp-server-vpn.md)의 기록. 이번 환경의 구현이나 테스트 결과로 사용하지 않음 |
 
 ## Inception: Functional Requirements
@@ -295,9 +331,9 @@ AWS Workload의 경로/SG는 공통 `workload` root와 기존 Client backend key
 | 2026-11-04 | 중앙 CloudWatch 세 그룹 통합 Logs Insights 조회 | Complete. 기존 AWS ANF와 신규 GCP 기록이 같은 쿼리에서 각각 aws/gcp로 조회됨. 신규 ANF 로그 생성/ANF 재가동을 뜻하지 않음 |
 | 2026-11-04 | task OS Login key 일치 대조 후 삭제/로컬 키 정리 | 이 작업에서 만든 공개 키1개와 두 클라우드의 임시 개인 키 제거. 다른 사용자 키/인증 변경 없음. 민감한 실행 자료 디렉터리0700 |
 
-## 운영 상태와 검증 한계
+## 초기 운영 상태와 검증 한계 (2026-11-04 재개 전 기록)
 
-- 현재 GCP 중앙/업무 VPC, NCC/4터널과 AWS 중앙 수집기를 운영한다. 사용자 후속 비용 중단으로 GCP endpoint/association은 제거했으며 AWS ANF도 disabled/Firewall 없음이다. 기존 GCP 업무 VPC와 AWS 서비스는 보존했다.
+- 당시 GCP 중앙/업무 VPC, NCC/4터널과 AWS 중앙 수집기를 운영했다. 후속 비용 중단으로 GCP endpoint/association을 제거했고 AWS ANF도 disabled/Firewall 없음이었다. 2026-11-07 이후 검사 재개와 최신 운영 상태는 문서 첫 재개 절을 따른다.
 - 시험용 공개 주소는 실제 관측한 두 /32에서만 허용한다. 출발지/NAT가 바뀌면 통제한 요청의 GCP deny 로그와 시각/주소를 확인하고 입력의 /32를 저장 Plan으로 갱신한다. 공개 로그에 등장한 임의 출발지를 자동 허용하지 않는다.
 - 평문 HTTP와 ALERT 탐지를 검증했다. TLS 복호화, IPS 위협 차단, 부하/다중 Zone 가용성 및 장시간 유지된 TCP 세션의 장애 생존은 검증하지 않았다. 장애 주입은 단일 BGP 경로 철회이며 실제 IPsec 장비/Zone 고장과 구분한다.
 - 저장 실패/복구와 타 역할 거부는 실제 확인했다. 잘못된 메시지의 DLQ 최대10회 전달 과정은 로컬 테스트와 설정 확인이며 실제10회 재전달/수동 재처리까지 실행하지 않았다.
@@ -393,7 +429,7 @@ Review: 현재 목적은 완료했다. GCP Endpoint 시간 과금 대상은 제�
 
 - 사용자 후속 요청 `설명을 왜 넣는거임? 아이콘만 넣어 그냥`에 따라 설명 카드, 운영 상태 배너, CIDR과 검증 설명, 범례와 출처 각주를 그림에서 제거했다. 최신 저장본에는 아이콘과 리소스 이름, 영역 경계와 연결선만 남겼다.
 - 저장 전 원본을 다시 받아 세 번째 시트의 기존 AWS/온프레미스 셀 71개를 유지하고 GCP를 연결했다. GCP 공식 아이콘 13개를 내장하고 AWS와 같은 글꼴, 계정/VPC/Subnet 경계 형식과 직각 연결선으로 정리했다. 첫 두 시트는 원본 diagram 바이트 그대로 보존했다.
-- 현재 Endpoint와 association이 제거된 운영 상태는 이 문서의 U6 기록을 따른다. 그림의 회색 점선 검사 구성은 보존한 구성 표현이며 클라우드 설정을 변경한 결과가 아니다. 이번 실제 GCP 재조회 시도는 로컬 Python CA 검증 오류로 완료하지 못했고, 기존 실계정 검증 기록과 Terraform 코드를 참조했다.
+- 당시 Endpoint와 association이 제거된 운영 상태는 U6 기록을 따른다. 그림의 회색 점선 검사 구성은 당시 중단 상태의 표현이며 2026-11-07 재개 후 실제 리소스 상태와 다르다. 이번 운영 재개에서는 공유 그림을 수정하지 않았으며 최신 ACTIVE 상태는 첫 재개 절과 API 증거를 따른다. 당시 GCP 재조회는 로컬 Python CA 검증 오류로 완료하지 못했고 기존 실계정 검증과 Terraform 코드를 참조했다.
 
 | 날짜 | 명령 또는 확인 | 실제 결과 |
 | --- | --- | --- |

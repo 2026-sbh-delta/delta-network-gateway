@@ -2,6 +2,8 @@
 
 기준일: 2026-11-07, Asia/Seoul.
 
+후속 운영 검증: 같은 날 별도 [GCP Cloud NGFW 재개](gcp-central-network.md#2026-11-07-operation-gcp-cloud-ngfw-검사-재개) 후 실제 사설 시험의 Threat8건과 일반 규칙4건을 Cloud Logging 원본, Security 두 그룹과 플랫폼 `/delta-cp/central/gcp`에서 original JSON/식별자까지 대조했다. 합성 전달 시험과 구분하며 모든 위협 action은 ALERT다. 아래의 신규 위협 미검증 설명은 이 재개 전 수집 경로 변경 당시의 한계다. 수집 인프라에 추가 Apply는 하지 않았다.
+
 ## 현재 단계
 
 - Ideation: 사용자의 `어 그거 다시 Security계정으로 일원화해줘` 지시로 아래 두 로그의 Security 계정 집계 목표 승인.
