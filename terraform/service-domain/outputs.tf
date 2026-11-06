@@ -10,12 +10,13 @@ output "acm_certificate_arn" {
 # 오케스트레이터 DELTA_CUTOVER. deploy.sh 가 SSM orchestrator/cutover_config 로 올린다.
 output "cutover_config" {
   value = jsonencode({
-    zone_id          = var.cloudflare_zone_id
-    record           = var.service_domain
-    green            = var.green_domain
-    blue             = var.blue_domain
-    blue_origin      = "https://${var.blue_domain}"
-    verify_path      = var.health_path
-    expect_served_by = "gcp"
+    zone_id           = var.cloudflare_zone_id
+    record            = var.service_domain
+    green             = var.green_domain
+    blue              = var.blue_domain
+    blue_origin       = "https://${var.blue_domain}"
+    verify_path       = var.health_path
+    expect_served_by  = "gcp"
+    green_verify_path = var.green_health_path
   })
 }

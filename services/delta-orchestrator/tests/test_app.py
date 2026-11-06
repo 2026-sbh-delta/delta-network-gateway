@@ -156,3 +156,26 @@ def test_cross_site_link_navigation_opens_but_cross_site_posts_and_fetches_do_no
         assert client.post("/login", data={"password": "x"},
                            headers={"Sec-Fetch-Site": "cross-site", "Sec-Fetch-Mode": "navigate"}).status_code == 403
         assert client.get("/api/status", headers={"Sec-Fetch-Site": "cross-site", "Sec-Fetch-Mode": "cors"}).status_code == 403
+
+
+def test_domain_revert_needs_login_and_explicit_approval(monkeypatch):
+    """도메인 되돌리기는 로그인한 사람이 approve: true 로 승인해야 시작한다."""
+    started = []
+    monkeypatch.setenv("DELTA_CUTOVER", '{"zone_id": "' + "a" * 32 + '", "record": "app.a.site", "green": "aws.a.site", '
+                       '"blue": "gcp.a.site", "blue_origin": "https://gcp.a.site"}')
+    monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "t")
+    monkeypatch.setattr(orch.pipelines_mod.domain, "current_target", lambda cfg, cf: "gcp.a.site")
+    monkeypatch.setattr(orch.pipelines_mod.domain, "revert", lambda cfg, cf, **kw: started.append(cfg.green))
+    app = make(monkeypatch)
+    with TestClient(app, base_url=PUBLIC, follow_redirects=False) as client:
+        assert client.post("/api/domain/revert", json={"approve": True}, headers={"Origin": PUBLIC}).status_code == 401
+        client.post("/login", data={"password": "orchestrator-password-123"}, headers={"Origin": PUBLIC})
+        view = client.get("/api/domain").json()
+        assert view["configured"] and view["target"] == "gcp.a.site" and view["green"] == "aws.a.site"
+        assert client.post("/api/domain/revert", json={}, headers={"Origin": PUBLIC}).status_code == 400
+        assert client.post("/api/domain/revert", json={"approve": True}, headers={"Origin": PUBLIC}).status_code == 202
+    for _ in range(50):
+        if started:
+            break
+        __import__("time").sleep(0.02)
+    assert started == ["aws.a.site"]

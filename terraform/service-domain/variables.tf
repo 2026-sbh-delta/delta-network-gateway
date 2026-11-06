@@ -56,3 +56,8 @@ variable "health_path" {
   type        = string
   default     = "/api/health"
 }
+variable "green_health_path" {
+  description = "AWS 입구 확인 경로(되돌리기 사전 확인). AWS 앱 ALB 대상 그룹 상태 확인과 같은 경로."
+  type        = string
+  default     = "/healthz"
+}

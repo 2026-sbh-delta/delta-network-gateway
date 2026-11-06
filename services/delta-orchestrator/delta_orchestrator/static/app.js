@@ -776,6 +776,36 @@
   new ResizeObserver(() => { lastKey = ""; }).observe(stageEl);
   fitWeb(); Object.assign(cam, tgt);
   requestAnimationFrame(frame);
+  // 서비스 도메인: 지금 어느 입구를 가리키는지 보이고, 사람이 승인하면 AWS 로 되돌린다(시연 초기화)
+  let domainTimer = null;
+  async function loadDomain() {
+    try {
+      const d = await get("/api/domain");
+      const btn = $("#domain-revert"), chip = $("#domain-chip");
+      btn.hidden = !d.configured;
+      if (!d.configured) return;
+      const rv = d.revert || {}, busy = rv.state === "running";
+      const where = d.target === d.blue ? "GCP" : d.target === d.green ? "AWS" : "확인 불가";
+      chip.textContent = busy ? "되돌리는 중…" : where;
+      chip.className = busy ? "" : rv.state === "fail" ? "bad" : "ok";
+      btn.dataset.target = d.target || "";
+      btn.dataset.green = d.green; btn.dataset.record = d.record;
+      btn.title = rv.summary ? `최근 되돌리기: ${rv.summary}` : `${d.record} → ${d.target || "?"}`;
+      btn.disabled = busy;
+      clearTimeout(domainTimer);
+      domainTimer = setTimeout(loadDomain, busy ? 3000 : 30000);
+    } catch (e) { $("#domain-chip").textContent = "확인 실패"; }
+  }
+  $("#domain-revert").addEventListener("click", async () => {
+    const b = $("#domain-revert");
+    if (b.dataset.target === b.dataset.green) { alert(`${b.dataset.record} 는 이미 AWS(${b.dataset.green})를 가리킵니다.\n${b.title}`); return; }
+    if (!confirm(`${b.dataset.record} 를 AWS(${b.dataset.green})로 되돌립니다.\nAWS 입구가 정상일 때만 바꾸고, 확인하지 못하면 GCP 로 다시 돌립니다. 승인합니까?`)) return;
+    const r = await fetch("/api/domain/revert", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ approve: true }) });
+    if (!r.ok) { const j = await r.json().catch(() => ({})); alert("거부: " + (j.detail || r.status)); }
+    loadDomain();
+  });
+
   loadHealth(); setInterval(loadHealth, 15000);
+  loadDomain();
   poll();
 })();
