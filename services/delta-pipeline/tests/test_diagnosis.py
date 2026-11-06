@@ -26,6 +26,15 @@ def test_failed_run_sends_failed_stage_and_reason(tmp_path):
     assert request["service"]["commit"] == COMMIT
 
 
+def test_other_failed_stages_are_sent_as_evidence(tmp_path):
+    board = Board(tmp_path / "board.json", Options(REPO, COMMIT), "run-1")
+    board.update("build", state="fail", summary="빌드 실패 (#45 FAILURE)")
+    board.update("sast", state="fail", summary="점검 실패: git fetch 실패: not our ref")
+    board.finish("stopped", "빌드 실패 (#45 FAILURE)")
+    log_tail = request_for("run-1", Options(REPO, COMMIT), board.snapshot())["evidence"]["deployment"]["log_tail"]
+    assert "#45" in log_tail and "not our ref" in log_tail
+
+
 def test_human_stop_and_success_are_not_diagnosed(tmp_path):
     human = _stopped_board(tmp_path, node_summary="DAST: 사람이 중단", reason="DAST에서 사람이 중단했다")
     assert request_for("run-1", Options(REPO, COMMIT), human.snapshot()) is None

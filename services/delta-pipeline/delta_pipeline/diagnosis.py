@@ -38,7 +38,12 @@ def request_for(run_id: str, options: Options, snapshot: Mapping[str, Any]) -> d
     if node is None or HUMAN_STOP in reason or HUMAN_STOP in str(node.get("summary") or ""):
         return None
     detail = json.dumps(node.get("detail") or {}, ensure_ascii=False, sort_keys=True, default=str)
+    # 같은 원인으로 함께 실패한 단계(예: 빌드와 병렬 SAST)의 요약에 실제 오류가 있는 경우가 많다.
+    others = [f"- {n.get('label') or n.get('id')}: {n.get('summary') or ''}" for n in snapshot.get("nodes") or []
+              if n.get("state") == "fail" and n.get("id") not in ("result", node.get("id"))]
     log_tail = f"단계: {node.get('label') or node.get('id')}\n멈춘 사유: {reason}\n단계 요약: {node.get('summary') or ''}\n세부: {detail}"
+    if others:
+        log_tail += "\n함께 실패한 단계:\n" + "\n".join(others)
     deployment: dict[str, Any] = {"stage": str(node.get("id")), "status": "failed", "log_tail": log_tail[-LOG_TAIL_CHARS:]}
     if options.staging_cloud in PROVIDERS:
         deployment["target"] = options.staging_cloud
