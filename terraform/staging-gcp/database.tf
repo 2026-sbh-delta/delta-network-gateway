@@ -103,18 +103,10 @@ locals {
     # Only loopback is plaintext. Proxy -> Cloud SQL remains IAM-authenticated TLS.
     PGSSLMODE = "disable"
   }
-  # Cloud Run jobs wait for every container. Explicitly stop the proxy after the
-  # Node script drains its DB client, preserving failure status if shutdown fails.
-  reset_proxy_shutdown_hook = <<-JS
-    process.once('beforeExit', async () => {
-      try {
-        const response = await fetch('http://127.0.0.1:9091/quitquitquit', {
-          method: 'POST', signal: AbortSignal.timeout(5000)
-        });
-        if (!response.ok) process.exitCode = 1;
-      } catch { process.exitCode = 1; }
-    });
-  JS
+  # 초기화 Job은 Cloud Run 내장 Cloud SQL 소켓으로 붙는다(프록시 컨테이너 기동·종료 비용 없음).
+  reset_database_environment = merge(local.node_database_environment, {
+    PGHOST = "/cloudsql/${try(google_sql_database_instance.app[0].connection_name, "")}"
+  })
 }
 resource "google_cloud_run_v2_job" "db_reset" {
   count               = var.database_enabled ? 1 : 0
@@ -128,25 +120,20 @@ resource "google_cloud_run_v2_job" "db_reset" {
       service_account = google_service_account.app.email
       max_retries     = 0
       timeout         = "120s"
-      dynamic "volumes" {
-        for_each = var.dual_container ? [] : [1]
-        content {
-          name = "cloudsql"
-          cloud_sql_instance {
-            instances = [google_sql_database_instance.app[0].connection_name]
-          }
+      volumes {
+        name = "cloudsql"
+        cloud_sql_instance {
+          instances = [google_sql_database_instance.app[0].connection_name]
         }
       }
       containers {
-        name       = "reset"
-        image      = var.dual_container ? var.bootstrap_backend_image : var.bootstrap_image
-        command    = var.dual_container ? ["node", "scripts/reset-db.mjs"] : ["python", "-m", "app.reset"]
-        depends_on = var.dual_container ? ["cloud-sql-proxy"] : []
+        name    = "reset"
+        image   = var.dual_container ? var.bootstrap_backend_image : var.bootstrap_image
+        command = var.dual_container ? ["node", "scripts/reset-db.mjs"] : ["python", "-m", "app.reset"]
         dynamic "env" {
-          for_each = merge({ APP_ENV = "staging" }, var.dual_container ? merge(local.node_database_environment, {
+          for_each = merge({ APP_ENV = "staging" }, var.dual_container ? merge(local.reset_database_environment, {
             PGUSER             = local.database_user
             APP_RESET_DATABASE = local.database_name
-            NODE_OPTIONS       = "--import=data:text/javascript;base64,${base64encode(local.reset_proxy_shutdown_hook)}"
           }) : {})
           content {
             name  = env.key
@@ -174,34 +161,9 @@ resource "google_cloud_run_v2_job" "db_reset" {
             }
           }
         }
-        dynamic "volume_mounts" {
-          for_each = var.dual_container ? [] : [1]
-          content {
-            name       = "cloudsql"
-            mount_path = "/cloudsql"
-          }
-        }
-      }
-      dynamic "containers" {
-        for_each = var.dual_container ? [1] : []
-        content {
-          name  = "cloud-sql-proxy"
-          image = var.cloud_sql_proxy_image
-          args = ["--address=127.0.0.1", "--port=5432", "--health-check", "--http-address=0.0.0.0", "--http-port=9090",
-            "--quitquitquit", "--admin-port=9091", "--exit-zero-on-sigterm", "--lazy-refresh",
-          google_sql_database_instance.app[0].connection_name]
-          startup_probe {
-            period_seconds    = 2
-            timeout_seconds   = 1
-            failure_threshold = 30
-            http_get {
-              path = "/startup"
-              port = 9090
-            }
-          }
-          resources {
-            limits = { cpu = "1", memory = "256Mi" }
-          }
+        volume_mounts {
+          name       = "cloudsql"
+          mount_path = "/cloudsql"
         }
       }
     }

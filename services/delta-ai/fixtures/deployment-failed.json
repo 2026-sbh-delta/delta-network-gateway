@@ -1,0 +1,7 @@
+{
+  "assessment_id": "eval-deployment",
+  "kind": "deployment_gate",
+  "service": {"service_id": "delta-sample-app", "repo": "https://github.com/2026-sbh-delta/delta-sample-app"},
+  "evidence": {"deployment": {"stage": "release", "status": "failed", "target": "gcp", "exit_code": 1,
+    "log_tail": "운영 배포 실패(vm_runtime/gcloud_compute_failed)\nbackend startup_failed: Check storage configuration and connectivity."}}
+}

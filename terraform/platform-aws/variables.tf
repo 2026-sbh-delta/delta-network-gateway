@@ -86,3 +86,15 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+variable "bundle_ecr_repository" {
+  description = "빌드 묶음을 복사할 A 기업 ECR 저장소 이름(AWS 스테이징·운영 공용)."
+  type        = string
+  default     = "delta-lab-staging"
+}
+
+variable "release_state_bucket" {
+  description = "운영 배포(환경별 VM·DB) Terraform state 버킷. 키 접두사 delta-cp/release/."
+  type        = string
+  default     = "sbh-delta-workload-tf-616723161368"
+}

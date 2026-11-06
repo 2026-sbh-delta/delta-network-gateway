@@ -9,7 +9,7 @@ import threading
 import time
 import uuid
 from collections.abc import Callable, Mapping
-from dataclasses import replace
+from dataclasses import fields, replace
 from pathlib import Path
 from typing import Any
 
@@ -35,6 +35,11 @@ def latest_unfinished(store_dir: Path) -> tuple[str, Options] | None:
     for path in boards:
         saved = json.loads(path.read_text(encoding="utf-8"))
         if saved["outcome"] is None and "options" in saved:
+            # 다른 버전 오케스트레이터가 같은 상태 폴더에 남긴 실행(모르는 옵션)은 이어 받지 않는다.
+            # 이어 받으면 그 옵션을 버린 채 엉뚱한 환경으로 실행하거나, 시작 자체가 실패한다(11/6 실측).
+            if set(saved["options"]) - {f.name for f in fields(Options)}:
+                LOG.warning("실행 %s: 이 버전이 모르는 옵션이 있어 이어 받지 않는다", saved.get("run_id"))
+                continue
             return saved["run_id"], Options(**saved["options"])
     return None
 

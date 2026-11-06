@@ -1,0 +1,13 @@
+{
+  "a-corp-gcp-prod": {
+    "target_id": "a-corp-gcp-prod",
+    "environment": "production",
+    "cloud": "gcp",
+    "region": "asia-northeast3",
+    "profile_id": "e2-small",
+    "database": {
+      "profile_id": "gcp-postgres18",
+      "mode": "new"
+    }
+  }
+}
