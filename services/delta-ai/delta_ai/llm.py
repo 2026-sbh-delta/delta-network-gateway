@@ -70,8 +70,11 @@ class ClaudeLLM:
         import anthropic
 
         if client is None:
-            if not os.environ.get("ANTHROPIC_API_KEY"):
-                raise LlmUnavailable("ANTHROPIC_API_KEY 가 없다")
+            # 플랫폼은 OIDC로 단기 토큰을 받는다. 인증 교환·갱신은 SDK가 맡는다.
+            if not any(os.environ.get(name) for name in (
+                "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_FEDERATION_RULE_ID",
+            )):
+                raise LlmUnavailable("Claude API 키·단기 토큰·OIDC 설정이 없다")
             client = anthropic.AsyncAnthropic(**(client_options or {}))
         self._anthropic = anthropic
         self._client = client

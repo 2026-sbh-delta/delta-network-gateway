@@ -12,6 +12,11 @@ from typing import Annotated, Any, Literal, Self
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
 
 from delta_ai.execution import ExecutionContext
+from delta_ai.mapping_contract import (
+    KubernetesInventory,
+    SourceDatabase,
+    SourceLoadBalancer,
+)
 
 Kind = Literal["migration_parity", "feedback_ingest", "deployment_gate", "runtime_security", "dast_verification",
                "migration_mapping"]
@@ -216,7 +221,7 @@ def _valid_cidr(value: str) -> str:
 
 
 Cidr = Annotated[str, AfterValidator(_valid_cidr)]
-ValueOrigin = Literal["terraform", "default", "operator"]
+ValueOrigin = Literal["terraform", "default", "operator", "kubernetes"]
 SubnetTier = Literal["public", "private"]
 
 
@@ -260,19 +265,19 @@ GCP_REGION = re.compile(r"^[a-z]+-[a-z]+\d+$")  # asia-northeast3
 REGIONS = {"aws": AWS_REGION, "gcp": GCP_REGION}
 # AWS 타입은 t4g.nano 처럼 점으로, GCP 타입은 e2-micro 처럼 줄표로 나뉜다
 INSTANCE_TYPES = {"aws": re.compile(r"^[a-z0-9-]+\.[a-z0-9-]+$"), "gcp": re.compile(r"^[a-z0-9]+-[a-z0-9-]+$")}
-MAPPING_DIRECTIONS = frozenset({("aws", "gcp"), ("gcp", "aws")})
-DIRECTION = "migration_mapping 은 AWS → GCP 와 GCP → AWS 만 다룬다"
+MAPPING_DIRECTIONS = frozenset((a, b) for a in ("aws", "gcp", "onprem") for b in ("aws", "gcp", "onprem") if a != b)
+DIRECTION = "migration_mapping 은 서로 다른 AWS·GCP·온프레미스 환경을 다룬다"
 
 
 def _direction_errors(config: MappingInput) -> list[str]:
     source, target = config.source_provider, config.target_provider
     label = f"{source.upper()} → {target.upper()}"
     errors = []
-    if config.region is not None and not REGIONS[target].fullmatch(config.region):
+    if config.region is not None and (target not in REGIONS or not REGIONS[target].fullmatch(config.region)):
         errors.append(f"{label}: 대상 region {config.region} 이 {target.upper()} 리전이 아니다")
-    if config.source_region is not None and not REGIONS[source].fullmatch(config.source_region):
+    if config.source_region is not None and (source not in REGIONS or not REGIONS[source].fullmatch(config.source_region)):
         errors.append(f"{label}: source_region {config.source_region} 이 {source.upper()} 리전이 아니다")
-    foreign = [s.name for s in config.servers if s.instance_type and not INSTANCE_TYPES[source].fullmatch(s.instance_type)]
+    foreign = [s.name for s in config.servers if s.instance_type and (source not in INSTANCE_TYPES or not INSTANCE_TYPES[source].fullmatch(s.instance_type))]
     if foreign:
         errors.append(f"{label}: {source.upper()} 인스턴스 타입이 아니다: {', '.join(foreign)}")
     wrong_identity = "service_account" if source == "aws" else "instance_profile"
@@ -289,7 +294,7 @@ def _direction_errors(config: MappingInput) -> list[str]:
 
 
 class MappingInput(_Model):
-    """이전 전에 무엇을 만들지 정하는 입력. AWS → GCP 와 GCP → AWS 를 다룬다.
+    """이전 전에 무엇을 만들지 정하는 입력. AWS·GCP·k3s 간 매핑을 다룬다.
 
     방향마다 대응표가 따로 있어서, 출발과 맞지 않는 값(다른 CSP 의 리전·타입·보안 도구)을 받으면 거부한다.
     잘못된 방향의 결과를 그럴듯하게 내지 않으려는 것이다.
@@ -303,6 +308,10 @@ class MappingInput(_Model):
     subnets: tuple[SourceSubnet, ...] = ()
     servers: tuple[SourceServer, ...] = ()
     security: SourceSecurity | None = None
+    load_balancers: tuple[SourceLoadBalancer, ...] = Field(default=(), max_length=200)
+    databases: tuple[SourceDatabase, ...] = Field(default=(), max_length=200)
+    kubernetes: KubernetesInventory | None = None
+    target_kubernetes: KubernetesInventory | None = None
     existing_subnets: tuple[ExistingSubnet, ...] | None = None
     reserved_cidrs: tuple[Cidr, ...] = ()
     scc_tier: Literal["standard", "premium"] | None = None  # GCP 대상만. 대상 프로젝트의 SCC 등급
@@ -310,7 +319,7 @@ class MappingInput(_Model):
 
     @model_validator(mode="after")
     def _require_something_to_map(self) -> Self:
-        if not (self.subnets or self.servers or self.security):
+        if not (self.subnets or self.servers or self.security or self.load_balancers or self.databases or self.kubernetes):
             raise ValueError("mapping 은 subnets, servers, security 중 하나가 필요하다")
         return self
 
@@ -318,6 +327,12 @@ class MappingInput(_Model):
     def _require_supported_direction(self) -> Self:
         if (self.source_provider, self.target_provider) not in MAPPING_DIRECTIONS:
             raise ValueError(f"{DIRECTION}: {self.source_provider} → {self.target_provider} 는 받지 않는다")
+        if self.source_provider == "onprem" and (self.kubernetes is None or self.servers or self.subnets):
+            raise ValueError(f"onprem → {self.target_provider} 출발에는 k3s kubernetes 입력이 필요하다")
+        if self.kubernetes is not None and self.source_provider != "onprem":
+            raise ValueError("kubernetes 입력은 onprem 출발에서만 쓴다")
+        if self.target_kubernetes is not None and self.target_provider != "onprem":
+            raise ValueError("target_kubernetes 는 onprem 대상에서만 쓴다")
         errors = _direction_errors(self)
         if errors:
             raise ValueError("; ".join(errors))
@@ -493,7 +508,7 @@ MappingGrade = Literal["exact", "approximate", "split", "gap", "unknown"]
 class MappingRow(_Model):
     """매핑표 한 행. 등급은 이전 전 판단이고 실제로 같은지는 migration_parity 와 시험으로 확인한다."""
 
-    resource: Literal["subnet", "compute", "cpu_arch", "os", "identity", "security"]
+    resource: Literal["subnet", "compute", "cpu_arch", "os", "identity", "security", "load_balancer", "database", "workload", "storage"]
     source: str
     target: str | None
     grade: MappingGrade

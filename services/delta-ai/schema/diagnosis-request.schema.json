@@ -1,0 +1,92 @@
+{
+  "$defs": {
+    "Observation": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Evidence Id",
+          "type": "string"
+        },
+        "source": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Source",
+          "type": "string"
+        },
+        "summary": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Summary",
+          "type": "string"
+        },
+        "rule_ids": {
+          "default": [],
+          "items": {
+            "pattern": "^[A-Z][A-Z0-9-]{0,63}$",
+            "type": "string"
+          },
+          "maxItems": 20,
+          "title": "Rule Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "evidence_id",
+        "source",
+        "summary"
+      ],
+      "title": "Observation",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "case_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Case Id",
+      "type": "string"
+    },
+    "run_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Run Id",
+      "type": "string"
+    },
+    "service_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Service Id",
+      "type": "string"
+    },
+    "node_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Node Id",
+      "type": "string"
+    },
+    "trigger": {
+      "enum": [
+        "ambiguous_result",
+        "execution_failure"
+      ],
+      "title": "Trigger",
+      "type": "string"
+    },
+    "observations": {
+      "items": {
+        "$ref": "#/$defs/Observation"
+      },
+      "maxItems": 40,
+      "minItems": 1,
+      "title": "Observations",
+      "type": "array"
+    }
+  },
+  "required": [
+    "case_id",
+    "run_id",
+    "service_id",
+    "node_id",
+    "trigger",
+    "observations"
+  ],
+  "title": "DiagnosisRequest",
+  "type": "object"
+}

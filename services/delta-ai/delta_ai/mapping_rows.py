@@ -5,10 +5,23 @@ from __future__ import annotations
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 
-from delta_ai.contract import Finding, FindingStatus, MappingGrade, MappingRow, Severity, SpecOp, ValueOrigin
+from delta_ai.contract import (
+    Finding,
+    FindingStatus,
+    MappingGrade,
+    MappingRow,
+    Severity,
+    SpecOp,
+    ValueOrigin,
+)
 from delta_ai.findings import finding_id
 
 RULES: dict[str, tuple[str, str]] = {  # rule_id → (category, 제목)
+    "MAP-LB-001": ("network", "로드밸런서 대응"),
+    "MAP-DB-001": ("database", "PostgreSQL 대응"),
+    "MAP-K8S-001": ("compute", "k3s 워크로드 대응"),
+    "MAP-K8S-002": ("storage", "영속 볼륨 대응"),
+    "MAP-K8S-003": ("security", "클러스터 정책 대응"),
     "MAP-NET-001": ("network", "서브넷 구조 대응"),
     "MAP-NET-002": ("network", "대상 대역 충돌"),
     "MAP-NET-003": ("network", "기존 네트워크 대조"),

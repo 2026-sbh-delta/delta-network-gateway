@@ -1,5 +1,7 @@
 # Delta network gateway
 
+2026-11-06 사용자 AWS 진단 서버 최신 기능 릴리스/준비 상태 검증 진행: 최신 AI 회귀317개 통과. 기존 독립 진단 EC2만 갱신하고, 연결된 오케스트레이터·클라우드/온프레미스·중앙 로그 활용·알 수 없는 입력의 실제 범위를 확인한다. [설계·검증 기록](ai-dlc/ai-aws-readiness.md)
+
 2026-11-06 진단·보고서 실제 콘솔 통합: 최신 main의 FE/BE 묶음·수정 재검증·운영 release 계약을 보존하고 예외 분석→보고서→사람 확인을 이식했다. 새 실제 SAST/DAST 실행8f177a83과 실제 Claude 분석·공개 인증 다운로드·브라우저 화면·재시작 후 보고서 보존을 확인했다. 회귀136개 통과, 런타임 이미지5a67fb9 배포 완료, 이전 기록27개/설정/로그 보존. 소스는 별도 codex/orchestrator-diagnostics-ui의 로컬 커밋이며 main 병합은 아직이다. [통합·기능·남은 작업](ai-dlc/orchestrator-diagnostics-ui.md)
 
 2026-11-06: 사용자 승인 명세에 따라 [FE·BE 이미지 묶음·운영 Compose 배포](ai-dlc/compose-delivery.md)를 구현했다. 스테이징은 ECS·Cloud Run을 유지하고 FE+BE 두 컨테이너와 PG18 단일 사용자 DB(Terraform이 비밀값까지 생성, 수동 단계 없음)로 바꿨다. 게시판 `145b62b`로 플랫폼에서 빌드(FE·BE 묶음)·SAST·GCP 스테이징 배포까지 실행했다. 운영 배포(release 작업)는 오케스트레이터 연결 전이다.
