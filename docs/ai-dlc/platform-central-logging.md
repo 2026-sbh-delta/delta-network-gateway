@@ -83,3 +83,11 @@
 tracked `platform/deploy/logging/aws.tf`는 여전히 `/delta-platform/central/*`를 정의한다. 이번에는 현재 연결 안내만 실제 값으로 정정하며 플랫폼 코드, state 또는 운영 설정을 바꾸지 않는다. 현재 플랫폼 root의 Plan/Apply와 코드 수렴 검증은 미실행이므로 2026-11-04의 No changes를 현재 root의 결과로 해석하지 않는다. GuardDuty 경로 추가를 위해 이 플랫폼 root를 그대로 Apply하지 않는다.
 
 2026-11-06 00:37 KST에 GuardDuty 샘플 `Backdoor:EC2/DenialOfService.Tcp` 1종/1건의 원본 그룹 저장과 `/delta-cp/central/aws` 도착을 확인했다. 플랫폼 레코드의 `account_id=482840608926`, 원본 그룹/스트림/시각, 전체 message 문자열과 원본 로그 ID 기반 event_id를 대조했다. 최초 같은 계정 smoke와 구분되는 실제 교차 계정 원본 수신 검증이다. 수신 Destination 정책과 AWS Lambda의 CodeSha256/RevisionId 및 조회한 운영 설정은 전후 동일했다. 중앙 송신 root의 최종 실제 Plan은 No changes/종료0이며, 플랫폼 root의 Plan 결과는 아니다. 대시보드 UI와 장기 부하/장애는 검증하지 않았다.
+
+## 2026-11-06 Network Firewall FLOW와 ALERT 송신 연결
+
+중앙 계정 `482840608926`에 기업 원본 그룹 `/delta/security/nfw-flow`, `/delta/security/nfw-alert`와 각 `delta-platform-central` 구독을 실제 적용했다. 두 구독은 같은 서울 리전 Destination, 빈 패턴과 `Random` 배포 방식을 사용한다. 기존 `/aws/vendedlogs/network-firewall/delta-lab/flow`, `/aws/vendedlogs/network-firewall/delta-lab/alert`와 과거 로그는 유지했다. 자세한 승인, Plan, Apply와 검증 명령은 [별도 기록](aws-traffic-log-forwarding.md)을 따른다.
+
+2026-11-06 23:55:57 KST에 새 두 그룹에 수동 smoke를 각각 1개 기록했다. `/delta-cp/central/aws`에서 두 이벤트의 `account_id=482840608926`, 리전, 원본 그룹, 스트림, 원본 시각과 전체 message가 일치했고 FLOW는 3922ms, ALERT는 4151ms 뒤 수집됐다. Destination 정책과 수집 Lambda의 CodeSha256 및 RevisionId는 적용 전후 같았다. 이는 교차 계정 구독과 중앙 수집기의 검증이다. ANF가 `disabled`여서 Network Firewall 서비스가 실제 생성한 FLOW와 ALERT는 검증하지 않았다.
+
+중앙 송신 root의 실제 Apply는 신규4개, 기존 정책 변경1개, 삭제0개였고 최종 Plan은 No changes, 종료0이다. 플랫폼 root에는 Plan이나 Apply를 실행하지 않았으며 tracked 이름과 실제 중앙 그룹 이름의 기존 차이도 바꾸지 않았다.

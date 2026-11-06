@@ -19,7 +19,7 @@ GCP Cloud Logging  → Sink → Pub/Sub → Lambda(WIF 인증) ─────�
 - 중앙 로그 기본 3일, 전송 대기 24시간, 실패 보관 7일. 원본 로그 보관 설정은 변경하지 않는다.
 - OTel 메트릭·트레이스 수신 주소가 아니다. 이 작업으로 플랫폼 웹의 로그 화면이 자동 연결되지는 않는다.
 
-2026-11-06 현재 운영 그룹은 위 `/delta-cp/central/*`이며 AWS 수집기의 `DESTINATION_LOG_GROUP`도 확인했다. 다만 tracked `aws.tf`는 아직 이전 `/delta-platform/central/*`를 정의한다. 아래 배포 명령은 최초 구축 절차이며, 현재 환경에 실행하려면 이 차이를 먼저 검토해야 한다. 이번 GuardDuty 송신 경로 설계에서는 플랫폼 root의 코드/state/운영 설정이나 Plan/Apply를 변경 또는 실행하지 않았다. [조회 근거와 검증 한계](../../../docs/ai-dlc/platform-central-logging.md#2026-11-06-guardduty-송신-연결-설계와-현재-로그-이름)
+2026-11-06 현재 운영 그룹은 위 `/delta-cp/central/*`이며 AWS 수집기의 `DESTINATION_LOG_GROUP`도 확인했다. 다만 tracked `aws.tf`는 아직 이전 `/delta-platform/central/*`를 정의한다. 아래 배포 명령은 최초 구축 절차이며, 현재 환경에 실행하려면 이 차이를 먼저 검토해야 한다. GuardDuty와 Network Firewall 송신 경로 추가에서는 플랫폼 root의 코드, state, 운영 설정이나 Plan과 Apply를 변경 또는 실행하지 않았다. [조회 근거와 검증 한계](../../../docs/ai-dlc/platform-central-logging.md#2026-11-06-guardduty-송신-연결-설계와-현재-로그-이름)
 
 ## 팀원에게 전달할 AWS 설정
 
@@ -32,6 +32,8 @@ arn:aws:logs:ap-northeast-2:616723161368:destination:delta-platform-logs
 현재 허용 계정은 `482840608926`, `616723161368`다. 다른 계정은 Terraform의 `source_aws_accounts`에 먼저 추가한다. 송신 로그 그룹도 **서울 리전**이어야 한다. 다른 리전에는 해당 리전용 Destination을 별도 준비한다.
 
 2026-11-06 중앙 계정 `482840608926`의 `/delta/security/guardduty`는 `delta-platform-central` 구독으로 위 Destination에 연결했다. 원본과 `/delta-cp/central/aws`에서 같은 GuardDuty 샘플1건의 본문/출처/시각/ID를 확인했다. 구독은 이 저장소의 중앙 Terraform root가 관리하며 [중앙 Runbook](../../../terraform/network-security/RUNBOOK.md#guardduty-finding-로그-전달)으로 조회/중지/재개한다. [실제 검증 기록](../../../docs/ai-dlc/aws-guardduty-logging.md)을 따른다.
+
+같은 날 `/delta/security/nfw-flow`와 `/delta/security/nfw-alert`도 각각 `delta-platform-central` 구독으로 연결했다. 각 그룹의 수동 smoke 1건이 `/delta-cp/central/aws`에서 원본 계정, 리전, 그룹, 스트림, 원본 시각과 본문까지 일치했다. ANF가 `disabled`여서 실제 Network Firewall 서비스 로그 생성은 미검증이다. 구독은 중앙 Terraform root가 관리하며 [중앙 Runbook](../../../terraform/network-security/RUNBOOK.md#network-firewall-로그-전달)과 [실제 검증 기록](../../../docs/ai-dlc/aws-traffic-log-forwarding.md)을 따른다.
 
 송신 계정에서 필요한 로그 그룹 하나를 선택하고 실행한다. `SOURCE_LOG_GROUP`만 실제 값으로 바꾼다. 빈 필터는 **선택한 그룹의 모든 새 이벤트**를 전달하며, 과거 로그를 복사하지 않는다. 기존 구독은 먼저 조회하고 덮어쓰지 않는다.
 

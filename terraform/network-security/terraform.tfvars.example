@@ -30,6 +30,11 @@ guardduty_finding_publishing_frequency = "SIX_HOURS"
 guardduty_findings_forwarding_enabled = true
 guardduty_findings_destination_arn    = "arn:aws:logs:ap-northeast-2:616723161368:destination:delta-platform-logs"
 
+# Forward the enterprise Network Firewall FLOW and ALERT groups. This does not
+# restore the firewall when inspection_mode is disabled.
+network_firewall_logs_forwarding_enabled = true
+network_firewall_logs_destination_arn    = "arn:aws:logs:ap-northeast-2:616723161368:destination:delta-platform-logs"
+
 # Optional onboarding examples. Do NOT uncomment unverified attachment IDs/IPs.
 # shared_account_ids = ["444455556666"]
 # spoke_attachments = {

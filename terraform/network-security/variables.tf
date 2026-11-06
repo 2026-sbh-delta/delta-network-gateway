@@ -291,6 +291,24 @@ variable "retain_logs_on_destroy" {
   default     = true
 }
 
+variable "network_firewall_logs_forwarding_enabled" {
+  description = "Forward the enterprise Network Firewall FLOW and ALERT groups to the platform while retaining local storage."
+  type        = bool
+  default     = true
+  nullable    = false
+}
+
+variable "network_firewall_logs_destination_arn" {
+  description = "Same-Region CloudWatch Logs logical Destination for enterprise Network Firewall logs."
+  type        = string
+  default     = "arn:aws:logs:ap-northeast-2:616723161368:destination:delta-platform-logs"
+  nullable    = false
+  validation {
+    condition     = can(regex("^arn:aws:logs:${var.region}:616723161368:destination:[A-Za-z0-9_.#/-]+$", var.network_firewall_logs_destination_arn))
+    error_message = "Use a same-Region CloudWatch Logs logical Destination in platform account 616723161368."
+  }
+}
+
 variable "guardduty_enabled" {
   description = "Enable account/Region threat detection; false suspends the retained detector without deleting findings."
   type        = bool

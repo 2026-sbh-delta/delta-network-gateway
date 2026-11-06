@@ -127,6 +127,55 @@ aws logs filter-log-events --profile sbh-delta-workload --region ap-northeast-2 
 
 전달만 중지하려면 실제 ignored tfvars에 `guardduty_findings_forwarding_enabled=false`를 저장한 뒤 새 Plan을 검토해 구독 1개만 제거한다. true로 되돌려 새 Plan/Apply하면 구독을 재생성한다. 원본 그룹/규칙/탐지와 로그는 유지한다. `retain_logs_on_destroy=true`로 관리에서 제거한 그룹은 재관리 시 Import가 필요하다. 모든 실제 검증 후 중앙 root의 `plan -detailed-exitcode`가 No changes/종료0인지 확인한다.
 
+## Network Firewall 로그 전달
+
+`terraform/network-security`는 기존 Network Firewall FLOW와 ALERT 그룹을 과거 로그용으로 보존하고, 새 기업 원본 그룹 `/delta/security/nfw-flow`와 `/delta/security/nfw-alert`를 플랫폼 Destination에 구독한다. `inspection_mode=disabled`에서는 ANF와 실제 logging configuration이 없으며 그룹과 구독 경로만 유지한다. [승인과 실제 실행 기록](../../docs/ai-dlc/aws-traffic-log-forwarding.md)을 먼저 확인한다.
+
+```bash
+AWS_PROFILE=sbh-delta-security terraform -chdir=terraform/network-security output -json network_firewall_logs
+aws logs describe-log-groups --profile sbh-delta-security --region ap-northeast-2 \
+  --log-group-name-prefix /delta/security/nfw-
+aws logs describe-subscription-filters --profile sbh-delta-security --region ap-northeast-2 \
+  --log-group-name /delta/security/nfw-flow
+aws logs describe-subscription-filters --profile sbh-delta-security --region ap-northeast-2 \
+  --log-group-name /delta/security/nfw-alert
+```
+
+각 그룹은 Standard, 기대 보관 기간과 삭제 시 보존 설정이어야 한다. 각 구독은 이름 `delta-platform-central`, 빈 필터, 배포 방식 `Random`, 지정된 논리 Destination을 사용하고 송신 역할은 없어야 한다. 기존 두 그룹이 남아 있는지도 별도로 확인한다.
+
+실제 적용 전 저장 Plan에서 새 그룹 2개와 구독 2개, 기존 Firewall 전달 정책의 제한된 갱신만 있는지 확인한다. 출력 변경은 리소스 변경과 구분한다. ANF Firewall, Endpoint, Route, 기존 그룹, GuardDuty와 플랫폼 수신 리소스의 변경이나 삭제가 있으면 적용하지 않는다.
+
+```bash
+umask 077
+mkdir -p terraform/network-security/.validation/network-firewall-logging
+AWS_PROFILE=sbh-delta-security terraform -chdir=terraform/network-security plan \
+  -input=false -parallelism=1 -lock-timeout=2m \
+  -out=.validation/network-firewall-logging/connect.tfplan
+AWS_PROFILE=sbh-delta-security terraform -chdir=terraform/network-security apply \
+  -input=false -parallelism=1 .validation/network-firewall-logging/connect.tfplan
+```
+
+ANF가 disabled이면 실제 Network Firewall FLOW와 ALERT를 만들 수 없다. 승인된 전달 smoke에서는 각 새 그룹에 식별 가능한 이벤트 1개를 직접 기록하고 중앙 도착을 대조한다. 이는 구독과 수집기의 검증이며 Network Firewall 서비스 로그 생성 검증이 아니다.
+
+```bash
+DELTA_NFW_SMOKE_STREAM="delta-platform-smoke-$(date +%Y%m%d%H%M%S)"
+DELTA_NFW_SMOKE_MS="$(($(date +%s) * 1000))"
+aws logs create-log-stream --profile sbh-delta-security --region ap-northeast-2 \
+  --log-group-name /delta/security/nfw-flow --log-stream-name "$DELTA_NFW_SMOKE_STREAM"
+aws logs put-log-events --profile sbh-delta-security --region ap-northeast-2 \
+  --log-group-name /delta/security/nfw-flow --log-stream-name "$DELTA_NFW_SMOKE_STREAM" \
+  --log-events "timestamp=$DELTA_NFW_SMOKE_MS,message=delta-nfw-flow-subscription-smoke"
+aws logs create-log-stream --profile sbh-delta-security --region ap-northeast-2 \
+  --log-group-name /delta/security/nfw-alert --log-stream-name "$DELTA_NFW_SMOKE_STREAM"
+aws logs put-log-events --profile sbh-delta-security --region ap-northeast-2 \
+  --log-group-name /delta/security/nfw-alert --log-stream-name "$DELTA_NFW_SMOKE_STREAM" \
+  --log-events "timestamp=$DELTA_NFW_SMOKE_MS,message=delta-nfw-alert-subscription-smoke"
+```
+
+원본 두 그룹에서 같은 스트림, 시각과 본문을 확인한다. 플랫폼 계정의 `/delta-cp/central/aws`에서는 `account_id=482840608926`, 원본 그룹, 스트림, source timestamp와 message를 대조한다. smoke가 중앙에 도착해도 실제 Network Firewall FLOW와 ALERT는 미검증으로 남긴다.
+
+전달만 중지하려면 ignored tfvars에 `network_firewall_logs_forwarding_enabled=false`를 저장하고 새 Plan에서 구독 2개만 제거되는지 확인한 뒤 적용한다. true로 되돌리면 두 구독을 재생성한다. 원본 그룹과 향후 Firewall 대상은 유지한다. ANF 복구 시 실제 허용 및 차단 트래픽으로 두 서비스 로그가 새 그룹과 중앙에 들어오는지 별도 검증한다.
+
 ## ANF 비용 중단과 원복
 
 승인 범위와 실제 결과는 [ANF 비용 절감 AI-DLC](../../docs/ai-dlc/anf-cost-mode.md)를 따른다. 나머지 검사/관제 절차는 `inspection_mode=enabled` 기준이다. 아래 명령을 실행했다는 사실만으로 통신이나 원복을 성공으로 기록하지 않는다.
