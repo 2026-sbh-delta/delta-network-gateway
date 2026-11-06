@@ -70,6 +70,11 @@ def markdown(request: DiagnosisRequest, report: DiagnosisReport) -> str:
         *[f"- {x}" for x in report.limitations],
         "",
     ]
+    if report.related_cases:
+        lines += ["", "## 과거 유사 사례", "",
+                  "현재 관측과 구분된 다른 실행의 단계 재검사 결과이며 원인 확정/검사 통과를 보장하지 않는다."]
+        lines += [f"- {c.case_id} / {c.run_id} / {c.outcome} / 범위 {c.scope} / 버전 {c.revision}"
+                  for c in report.related_cases]
     return "\n".join(lines)
 
 

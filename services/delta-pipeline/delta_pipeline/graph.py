@@ -16,6 +16,7 @@ from delta_pipeline.exception_flow import ExceptionFlow, HUMAN_GATES, prepare_ex
 from delta_pipeline.recovery import RecoveryFlow, capture
 from delta_pipeline.assistance import Assistance
 from delta_pipeline.evidence import EvidenceCollector
+from delta_pipeline.case_learning import CaseLearning, begin_attempt
 
 HALTED = "halted"
 BRANCHES = ("build_start", "sast_start")
@@ -116,6 +117,10 @@ def build_graph(deps: Deps, checkpointer: Any) -> Any:
             recovery = capture(deps, name, state, result)
             if recovery is not None:
                 return recovery
+            result = {**result, **CaseLearning(deps).settled(name, state, result)}
+            if name == "fix_apply" and not result.get("halt") and state.get("diagnosis_ref"):
+                result["learning_pending"] = begin_attempt(deps, state["diagnosis_ref"],
+                    action="code_fix", attempt=state.get("round", 1), target="dast_wait")
             merged = {**state, **result}
             target = route(merged)
             if target == HALTED and state.get("halt") and not result.get("halt"):

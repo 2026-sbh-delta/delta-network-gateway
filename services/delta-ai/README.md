@@ -83,3 +83,14 @@ python scripts/collect_onprem.py --config <설정.json> --out <결과 폴더> --
 - 규칙 저장소는 프로세스 1개 전제의 JSON 파일이다.
 
 `delta_ai/llm.py`·`knowledge.py`·`secrets_pattern.py`·`errors.py`·`resources.py` 는 예선 review-service 에서 가져왔다.
+
+## 검증된 장애 사례 피드백 (2026-11-06)
+
+진단 보고서는 기존 계약을 유지하고 검토된 과거 사례를 별도 참고 자료로 사용한다. 이는 `feedback_ingest` 탐지 규칙 후보와 별개이며, 승인된 탐지 규칙을 SAST로 활성화하는 기능은 추가하지 않는다.
+
+- 그래프가 인증된 `POST /v1/incident-cases`로 게시한다. 게시자 토큰에는 사례 승인 API가 없다.
+- 사례는 `DELTA_CASE_STORE` 또는 `DELTA_RULE_STORE`와 같은 디렉터리의 `verified-cases.sqlite`에 영속 저장한다.
+- 서버 로컬 `python -m delta_ai.case_cli`로 목록 확인·정확한 버전 검토·승인 취소·평가셋 후보 추출을 수행한다.
+- 진단 요청의 `context`가 없으면 사례 검색을 하지 않아 기존 호출과 호환된다.
+- 조치 결과와 원인 가설의 정확성은 별개다. 동일 서비스/환경/실패 단계에서 검증·승격된 사례만 참고하며 현재 실행/동일 관측은 제외한다.
+- 실제 운영 배포·사례 데이터 이관은 이번 로컬 구현에 포함되지 않는다. [상세 절차](../../docs/ai-dlc/verified-case-learning.md).

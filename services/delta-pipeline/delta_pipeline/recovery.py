@@ -40,6 +40,8 @@ class RecoveryFlow:
                   "failure_type": failure["failure_type"],
                   "failure_code": failure["failure_code"],
                   "recovery_pending": False, "recovery_events": events}
+        from delta_pipeline.case_learning import CaseLearning
+        result.update(CaseLearning(self.deps).settled(failure["node"], state, result))
         return prepare_exception(self.deps, failure["node"], result, "halted", {**state, **result})
 
     def prepare(self, state):

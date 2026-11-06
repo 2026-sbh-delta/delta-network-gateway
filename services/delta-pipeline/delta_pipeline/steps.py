@@ -69,6 +69,7 @@ class PipelineState(TypedDict, total=False):
     diagnosis_report: dict[str, Any] | None
     diagnosis_ref: dict[str, Any] | None
     diagnosis_resume: str
+    learning_pending: dict[str, Any] | None
     report_failed: bool
     exception_cleanup_done: bool
     failure_type: Annotated[str | None, _first]

@@ -39,6 +39,7 @@ from delta_ai.judge import LlmOutput
 from delta_ai.llm import ClaudeLLM, LlmClient
 from delta_ai.service import assess
 from delta_ai.store import CandidateNotFound, CandidateNotReady, RuleStore
+from delta_ai.cases import CaseConflict, CaseStore, IncidentCase
 
 MAX_BODY_BYTES = 10_000_000
 DEFAULT_LLM_TIMEOUT_SECONDS = "60"
@@ -53,6 +54,7 @@ def create_app(
     token: str,
     diagnostic_llm: LlmClient | None = None,
     recovery_llm: LlmClient | None = None,
+    case_store: CaseStore | None = None,
 ) -> FastAPI:
     if not token:
         raise ValueError("DELTA_API_TOKEN 이 필요하다")
@@ -60,6 +62,7 @@ def create_app(
     bearer = HTTPBearer(auto_error=False)
     ledger = AssessmentLedger(store.assessment_directory)
     assessment_lock = asyncio.Lock()
+    incidents = case_store or CaseStore(store.assessment_directory.parent / "verified-cases.sqlite")
 
     def require_token(
         credentials: HTTPAuthorizationCredentials | None = Depends(bearer),  # noqa: B008
@@ -70,7 +73,7 @@ def create_app(
 
     @app.exception_handler(RequestValidationError)
     async def validation_error(request: Request, exc: RequestValidationError):
-        if request.url.path in ("/v1/diagnoses", "/v1/recovery-proposals"):
+        if request.url.path in ("/v1/diagnoses", "/v1/recovery-proposals", "/v1/incident-cases"):
             return JSONResponse(
                 status_code=422, content={"detail": "진단 요청 형식이 잘못됐다"}
             )
@@ -79,7 +82,18 @@ def create_app(
     @app.post("/v1/diagnoses", dependencies=[Depends(require_token)])
     async def create_diagnosis(req: DiagnosisRequest) -> DiagnosisReport:
         async with assessment_lock:
-            return await diagnose(req, diagnostic_llm)
+            return await diagnose(req, diagnostic_llm, case_store=incidents)
+
+    @app.post("/v1/incident-cases", dependencies=[Depends(require_token)])
+    async def publish_incident(case: IncidentCase):
+        # No review/approval endpoint: the producer token cannot promote its own output.
+        try:
+            revision = incidents.publish(case)
+            return {"case_id": case.request.case_id, "revision": revision, "review": "required"}
+        except CaseConflict as exc:
+            raise HTTPException(status_code=409, detail="사례 버전 충돌") from exc
+        except (OSError, ValueError) as exc:
+            raise HTTPException(status_code=503, detail="사례 저장 불가") from exc
 
     @app.post("/v1/recovery-proposals", dependencies=[Depends(require_token)])
     async def recovery_proposal(req: RecoveryRequest) -> RecoveryProposal:
@@ -93,7 +107,7 @@ def create_app(
         declared = request.headers.get("content-length", "0")
         if declared.isdigit() and int(declared) > MAX_BODY_BYTES:
             return JSONResponse(status_code=413, content={"detail": "요청이 너무 크다"})
-        if request.url.path in ("/v1/diagnoses", "/v1/recovery-proposals"):
+        if request.url.path in ("/v1/diagnoses", "/v1/recovery-proposals", "/v1/incident-cases"):
             body = bytearray()
             async for chunk in request.stream():
                 body.extend(chunk)
@@ -220,6 +234,7 @@ def _app_from_env() -> FastAPI:
         token=os.environ.get("DELTA_API_TOKEN", ""),
         diagnostic_llm=_diagnostic_llm_from_env(),
         recovery_llm=_recovery_llm_from_env(),
+        case_store=CaseStore(os.environ["DELTA_CASE_STORE"]) if os.environ.get("DELTA_CASE_STORE") else None,
     )
 
 

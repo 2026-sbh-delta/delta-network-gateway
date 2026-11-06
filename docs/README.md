@@ -1,5 +1,7 @@
 # Delta network gateway
 
+2026-11-06 검증된 장애 사례 피드백: 별도 `codex/verified-case-learning`에서 보고서→조치 후 재검사 결과→버전 사례→로컬 검토/승격→다음 진단 검색과 평가셋 추출을 구현했다. 현재 실행/동일 관측 제외, 승인 취소 이력, outbox 재전송, 사람 확인/접수를 성공으로 보지 않는 경계를 포함한다. 공용 최신본 통합·AWS/실제 Claude 검증·배포·Git 게시 상태와 로컬 검증 결과는 [설계·운영 절차](ai-dlc/verified-case-learning.md)를 따른다.
+
 2026-11-06 온프레미스 실제 DAST·로그 보존 후속: 사용자 선택에 따라 팀 Worker를 보존하고 독립 큐/실행기를 배포했다. core 회귀176개 통과. 독립 AWS 시험에서 실제 SAST→FE/BE 실행→정리 전 두 컨테이너 로그 보존→정리→실제 Claude 실패 진단/보고서를 확인했으나, DAST는 기본 대상 템플릿 미등록 문제로 HTTP422여서 전체 성공 검증은 미완료다. 다른 AWS 계정의 후속 배포2건이 공용 오케스트레이터를 교체한 사실을 감사 기록으로 확인했으며 최신 팀 변경의 보존 통합·배포 조정·실제 화면 검증이 남았다. 소스 da2c15d는 로컬이며 push/main 병합 없음. [실제 결과·충돌 근거·남은 작업](ai-dlc/onprem-dast-evidence.md)
 
 2026-11-06 온프레미스 실행·복구 AWS 연결 완료: 기존 Worker를 고정 SSM 문서/최소 IAM으로 연결하고 실제 새 SAST13파일→온프레미스 실행→제한 자동 복구→사람 재검사→실제 Claude/보고서·화면을 검증했다. 실제2실행은 각 native배포1회·Pod/Secret정리, 기존34/35개board 보존, 시험OFF·정상재시작·보고서인증·최종Terraform No changes 확인. 회귀155+native fixture28+Terraform mock1 통과. DAST 미실행·단일 이미지 sandbox 범위이며 전체 FE/BE/DB/DNS 이전은 별도다. 소스6b8c405 로컬/런타임613c3c64 배포완료, main미병합. [설계·실제 결과·남은 범위](ai-dlc/onprem-runtime.md)

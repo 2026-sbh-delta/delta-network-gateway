@@ -53,7 +53,10 @@ class DiagnosticClient:
     def propose(self, body):
         return self._post("/v1/recovery-proposals", body)
 
-    def _post(self, path, body):
+    def publish_case(self, body):
+        return self._post("/v1/incident-cases", body, timeout=min(5, JUDGE_TIMEOUT_SECONDS))
+
+    def _post(self, path, body, *, timeout=JUDGE_TIMEOUT_SECONDS):
         payload = json.dumps(body, ensure_ascii=False, separators=(",", ":")).encode()
         if len(payload) > 64_000:
             raise ServiceUnavailable("진단 요청 크기 제한을 초과했다")
@@ -73,7 +76,7 @@ class DiagnosticClient:
             },
         )
         try:
-            with self._opener.open(request, timeout=JUDGE_TIMEOUT_SECONDS) as response:
+            with self._opener.open(request, timeout=timeout) as response:
                 if response.status != 200:
                     raise ValueError()
                 raw = response.read(128_001)
