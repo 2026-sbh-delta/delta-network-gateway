@@ -71,7 +71,9 @@ class Inbox:
 
 class Webhook:
     def __init__(self, url, origin, *, allowed_hosts=('hooks.slack.com',)):
-        from delta_diff.client import _NoRedirect
+        class _NoRedirect(urllib.request.HTTPRedirectHandler):
+            def redirect_request(self, req, fp, code, msg, headers, newurl):
+                return None
 
         parsed, public = urllib.parse.urlparse(url), urllib.parse.urlparse(origin)
         loopback = parsed.scheme == 'http' and parsed.hostname in ('127.0.0.1', 'localhost', '::1')
