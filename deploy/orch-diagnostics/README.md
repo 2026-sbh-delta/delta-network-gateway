@@ -1,5 +1,7 @@
 # 진단·보고서 오케스트레이터 릴리스
 
+팀 인수/PR 적용은 [인수 안내](../../docs/ai-dlc/diagnostics-pipeline-handoff.md)를 먼저 읽는다. 이 디렉터리의 `check.sh`는 AI·파이프라인·오케스트레이터 회귀만 실행하고 배포하지 않는다. 배포 helper는 상수를 주입하는 호스트 실행용 템플릿이다.
+
 기존 runtime/volume/env/logging을 보존하며 기존 SSM `/delta-cp/orchestrator/diagnostic_ai_connection`만 추가한다. 역할/정책/SG/DNS를 변경하지 않는다. `remote_release.py`는 호스트에서만 실행하고 연결 값/환경 값을 출력하지 않는다. 새 이미지 digest는 로컬 렌더러가 `IMAGE` 상수로 주입한다.
 
 1. 서비스 소스를 커밋하고 `python3 deploy/orch-diagnostics/build_image.py`로 기존 ECR에 ARM64 이미지를 올린다. 결과는 ignored `image.json`.

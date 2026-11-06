@@ -1,0 +1,56 @@
+name: Diagnostics handoff checks
+
+on:
+  pull_request:
+    paths:
+      - 'services/delta-ai/**'
+      - 'services/delta-pipeline/**'
+      - 'services/delta-orchestrator/**'
+      - 'deploy/orch-diagnostics/**'
+      - 'deploy/onprem-runtime/**'
+      - 'terraform/onprem-orchestrator-aws/**'
+      - 'terraform/orchestrator-evidence-aws/**'
+      - '.github/workflows/diagnostics-check.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnostics:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      AWS_EC2_METADATA_DISABLED: 'true'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e
+        with:
+          version: '0.10.0'
+          python-version: '3.12'
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+      - name: Install local service packages with tested dependency versions
+        run: |
+          uv venv --python 3.12 .venv
+          uv pip install --python .venv/bin/python -c deploy/orch-diagnostics/requirements-test.txt -e './services/delta-ai[dev]' -e './services/delta-pipeline[dev]' -e './services/delta-orchestrator[dev]' -e ./platform/backend -e ./services/delta-staging
+      - name: AI, pipeline, orchestrator and source checks
+        run: bash deploy/orch-diagnostics/check.sh
+      - name: Verify every Terraform test uses a mock provider
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          for root in ('onprem-orchestrator-aws', 'orchestrator-evidence-aws'):
+              for path in Path('terraform', root, 'tests').glob('*.tftest.hcl'):
+                  assert 'mock_provider "aws"' in path.read_text(), str(path)
+          PY
+      - name: Terraform validation and mock tests (no AWS credentials)
+        run: |
+          for root in onprem-orchestrator-aws orchestrator-evidence-aws; do
+            docker run --rm -e TF_IN_AUTOMATION=1 -v "$PWD:/work" -w "/work/terraform/$root" hashicorp/terraform:1.16.4 init -backend=false -lockfile=readonly
+            docker run --rm -e TF_IN_AUTOMATION=1 -v "$PWD:/work" -w "/work/terraform/$root" hashicorp/terraform:1.16.4 validate
+            docker run --rm -e TF_IN_AUTOMATION=1 -v "$PWD:/work" -w "/work/terraform/$root" hashicorp/terraform:1.16.4 test
+          done

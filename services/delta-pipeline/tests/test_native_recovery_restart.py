@@ -28,5 +28,3 @@ def test_restart_at_human_gate_keeps_exhausted_budget(tmp_path):
     assert done.returncode == 0, done.stderr
     assert json.loads(done.stdout.splitlines()[-1])["outcome"] == "stopped"
     assert len(json.loads((tmp_path / "jobs.json").read_text())) == 3
-
-
