@@ -1,5 +1,8 @@
-# 오케스트레이터 이미지(빌드 경로 services/)는 delta-pipeline·delta-orchestrator 소스만 쓴다
+# 오케스트레이터와 진단 계약에 필요한 소스만 포함한다.
 *
+!delta-ai/pyproject.toml
+!delta-ai/delta_ai/
+!delta-ai/knowledge/
 !delta-pipeline/pyproject.toml
 !delta-pipeline/README.md
 !delta-pipeline/delta_pipeline/
