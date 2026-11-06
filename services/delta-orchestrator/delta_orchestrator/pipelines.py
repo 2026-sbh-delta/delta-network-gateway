@@ -4,7 +4,7 @@
 DELTA_IMAGE_REPO(선택), DELTA_INTERNAL_ZONE(선택),
 DELTA_CUTOVER(선택, JSON: 서비스 도메인 전환 설정), CLOUDFLARE_API_TOKEN(선택: 해당 zone DNS 편집만),
 DELTA_RELEASE_TARGETS(선택, JSON: 운영 대상 인벤토리 {target_id: 항목}), DELTA_RELEASE_SIGNING_KEY_B64(선택: Ed25519 PEM, base64),
-DELTA_ECR_IMAGE_REPO(선택: 빌드 묶음의 ECR 사본 저장소)
+DELTA_ECR_IMAGE_REPO(선택: 빌드 묶음의 ECR 사본 저장소), DELTA_AI_TOKEN(선택: 원인 진단 delta-ai)
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ from dataclasses import replace
 from typing import Any
 
 from delta_pipeline.diagnostic_client import DiagnosticClient
-from delta_pipeline.clients import Cloudflare, Dast, Jenkins, Sast, Staging, ServiceUnavailable
+from delta_pipeline.clients import Cloudflare, Dast, DeltaAi, Jenkins, Sast, Staging, ServiceUnavailable
 from delta_pipeline.model import Options
 from delta_pipeline.run import BOARD_DIR, Run, latest_unfinished
 from delta_pipeline.steps import CutoverConfig
@@ -94,7 +94,10 @@ def platform_run(options: Options, store_dir: Path, run_id: str | None) -> Run:
                release_jenkins=Jenkins(jenkins, "platform", password, job="delta-release") if options.release_target else None,
                release_signing_key=release_signing_key(),
                release_config=release_targets().get(options.release_target) if options.release_target else None,
-               ecr_image_repo=os.environ.get("DELTA_ECR_IMAGE_REPO", ""))
+               ecr_image_repo=os.environ.get("DELTA_ECR_IMAGE_REPO", ""),
+               # 멈춘 실행의 원인 진단(연재님 delta-ai). 판정은 바꾸지 않는다
+               diagnose=DeltaAi(f"http://ai.{zone}:8090", os.environ["DELTA_AI_TOKEN"]).assess
+               if os.environ.get("DELTA_AI_TOKEN") else None)
 
 
 class Pipelines:

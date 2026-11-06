@@ -30,8 +30,8 @@
     T("fix", "AI 수정 · PR", 690, -150, { icon: "spark", ai: true, tool: "delta-dast 수정 에이전트", desc: "DAST 가 재현하자마자 SAST 코드 경로와 재현 증거로 수정안을 만들어 둡니다. 사람이 DAST 승인 단계에서 '수정 적용'을 고르면 수정 브랜치·PR 을 올리고, 그 커밋으로 빌드부터 다시 돌아 같은 항목을 재검증합니다(1회)." }),
     // 운영 반영
     T("release", "운영 배포 · 검증", 1580, 116, { icon: "cloud", tool: "Jenkins delta-release · 환경별 VM", desc: "사람이 승인하면(서명 토큰) 검증한 같은 FE·BE digest 로 운영 VM 을 새로 만들고 DB 를 준비해 Compose 로 띄운 뒤, 실제 실행 이미지·헬스·PostgreSQL 18 을 확인합니다." }),
-    T("cutover", "서비스 도메인 전환", 1850, 116, { icon: "shift", mock: true, tool: "Cloudflare DNS 전용 CNAME", desc: "사람 승인 뒤 CNAME 을 AWS → GCP 로 바꾸고, 공개 DNS·실제 응답으로 확인한 뒤 TTL 만큼 AWS 를 유지합니다. 실패하면 되돌립니다." }),
-    { id: "end", label: "이전 완료", x: 2130, y: 140, w: 120, h: 50, kind: "pill", icon: "flag", mock: true },
+    T("cutover", "서비스 도메인 전환", 1850, 116, { icon: "shift", tool: "Cloudflare DNS 전용 CNAME", desc: "사람 승인 뒤 CNAME 을 AWS → GCP 로 바꾸고, 공개 DNS·실제 응답으로 확인한 뒤 TTL 만큼 AWS 를 유지합니다. 실패하면 되돌립니다." }),
+    { id: "end", label: "이전 완료", x: 2130, y: 140, w: 120, h: 50, kind: "pill", icon: "flag" },
     // 추후: 인프라 갈래
     T("recovery", "장애 복구·재검사", 960, 730, {icon:"shift",mock:true,tool:"그래프 · 기존 Worker",desc:"동일 작업 조회 또는 정리 확인 뒤 같은 이미지 재배포를 최대 2회 수행합니다."}),
     T("exception-analysis", "예외 분석", 150, 730, { icon: "search", ai: true, mock: true, tool: "delta-ai 진단 API", desc: "실패·모호한 결과의 원인 후보를 분석합니다. 실행이나 승인을 결정하지 않습니다." }),
@@ -145,13 +145,14 @@
   const nodeOf = (id) => board && board.nodes.find((n) => n.id === id);
   const stateOf = (id) => {
     if (id === "start") return board ? "pass" : "pending";
+    if (id === "end") return stateOf("cutover") === "pass" ? "pass" : "pending";  // 도메인 전환까지 끝나야 이전 완료
     const n = nodeOf(id);
     return n ? n.state : "pending";
   };
-  const isReal = (id) => !!nodeOf(id) || id === "start";
+  const isReal = (id) => !!nodeOf(id) || id === "start" || (id === "end" && !!nodeOf("cutover"));
   const onpremMeta=(n)=>board?.options?.execution_cloud==="onprem" ? ({
     build:{tool:"등록된 고정 이미지",desc:"선택한 성공 빌드의 commit과 digest를 재사용합니다. FE/BE 묶음은 같은 프로젝트·커밋으로 확인합니다."},
-    stage:{tool:"기존 Worker · k3s",desc:"기존 실행기에서 동일 이미지를 검증하고 DAST 후 제한 로그를 저장한 뒤 자기 Pod와 Secret을 정리합니다."},
+    stage:{tool:"독립 실행기 · k3s",desc:"기존 실행기에서 동일 이미지를 검증하고 DAST 후 제한 로그를 저장한 뒤 자기 Pod와 Secret을 정리합니다."},
     dast:{tool:"현재 CP DAST · 브라우저",desc:"같은 SAST 근거와 Pod UID에 묶인 실제 브라우저 검사입니다. 후보 없음·차단·미확인은 안전 통과로 해석하지 않습니다."}
   }[n.id]||{}) : {};
 
@@ -281,6 +282,14 @@
         ${d.patch ? `<h3>패치</h3><pre class="console diff">${esc(d.patch)}</pre>` : ""}`;
     }
     if (id === "cutover") return `<dl class="kv"><dt>이전 대상</dt><dd class="mono">${esc(d.previous || "—")}</dd><dt>TTL</dt><dd>${esc(d.ttl ?? "—")}</dd><dt>확인</dt><dd class="mono">${esc(JSON.stringify(d.verified || "—"))}</dd></dl>`;
+    if (id === "release") return `<dl class="kv"><dt>대상</dt><dd class="mono">${esc(d.target_id || "—")}</dd><dt>Jenkins</dt><dd>${d.url ? `<a href="${esc(d.url)}" target="_blank" rel="noopener noreferrer">delta-release #${esc(d.build)}</a>` : "—"}</dd><dt>묶음</dt><dd class="mono">${esc((d.bundle_sha256 || "—").slice(0, 16))}</dd></dl>`;
+    if (id === "result" && d.diagnosis) {
+      // 멈춘 실행의 원인 진단(delta-ai). 판정은 파이프라인이 하고 이건 설명이다. 사람이 확인한다.
+      const g = d.diagnosis;
+      const body = g.status === "running" ? "원인 분석 중…" : g.status === "unavailable" ? "진단을 받지 못했습니다(실행 결과와 무관)."
+        : `${esc(g.why || "—")}${g.llm_used ? "" : ' <span class="g g-idle">규칙 문서 기반</span>'}`;
+      return `<div class="callout"><b>AI 원인 진단</b> <span class="g g-warn">사람 확인 필요</span><p>${body}</p>${(g.citations || []).length ? `<p class="hint">근거: ${(g.citations || []).map(esc).join(", ")}</p>` : ""}</div>`;
+    }
     return "";
   }
   function renderPanel() {
