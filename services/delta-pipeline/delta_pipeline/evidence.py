@@ -66,6 +66,7 @@ class EvidenceCollector:
         self.deps = deps
 
     def collect(self, state):
+        owner='onprem-executor' if getattr(self.deps.onprem,'execution_owner',None)=='orchestrator-private' else 'platform-worker'
         request = DiagnosisRequest.model_validate(state['diagnosis_request'])
         observations = list(request.observations)
         facts = {'requested_commit': state.get('commit') or self.deps.options.commit,
@@ -81,15 +82,15 @@ class EvidenceCollector:
                 snapshot = self.deps.onprem.inspect(state['onprem_run_id'])
                 for key in ('facts', 'events', 'pod', 'logs', 'limitations'):
                     if key in snapshot:
-                        extra.append(('native-' + key, 'platform-worker', snapshot[key]))
+                        extra.append(('native-' + key, owner, snapshot[key]))
                 if 'preserved_logs'in snapshot:
                     record=snapshot['preserved_logs'];payload=record['record']
-                    extra.append(('native-log-binding','platform-worker',{k:payload.get(k)for k in
+                    extra.append(('native-log-binding',owner,{k:payload.get(k)for k in
                         ('native_run_id','build_id','commit','image_digest','captured_at','before_cleanup')}|{'sha256':record['sha256']}))
                     for container in payload['containers']:
-                        extra.append(('native-log-'+container['component'],'platform-worker',container))
+                        extra.append(('native-log-'+container['component'],owner,container))
             except Exception:  # noqa: BLE001 — evidence gaps do not fabricate success or leak credentials
-                extra.append(('native-unavailable', 'platform-worker', '추가 상태/로그를 수집하지 못했습니다. 원인 확정에 제한이 있습니다.'))
+                extra.append(('native-unavailable', owner, '추가 상태/로그를 수집하지 못했습니다. 원인 확정에 제한이 있습니다.'))
         if state.get('onprem_run_id'):
             try:
                 path = cache_path(self.deps, state)
@@ -97,12 +98,12 @@ class EvidenceCollector:
                     value = json.loads(path.read_bytes()[:32001])
                     if (value['native_run_id'] == state['onprem_run_id'] and value['image_digest'] == state['image_digest']
                             and value['commit'] == (state.get('commit') or self.deps.options.commit)):
-                        extra.append(('native-before-cleanup', 'platform-worker', {
+                        extra.append(('native-before-cleanup', owner, {
                             'captured_at': value['captured_at'], 'observations': value['observations']}))
                     else:
-                        extra.append(('runtime-cache-mismatch', 'platform-worker', '정리 전 근거의 실행/이미지/커밋 바인딩이 달라 사용하지 않았습니다.'))
+                        extra.append(('runtime-cache-mismatch', owner, '정리 전 근거의 실행/이미지/커밋 바인딩이 달라 사용하지 않았습니다.'))
             except Exception:  # noqa: BLE001 — unavailable/tampered cache is not a successful observation
-                extra.append(('runtime-cache-unavailable', 'platform-worker', '정리 전 근거 파일을 검증하지 못했습니다.'))
+                extra.append(('runtime-cache-unavailable', owner, '정리 전 근거 파일을 검증하지 못했습니다.'))
         known = {o.evidence_id for o in observations}
         for identifier, source, value in extra:
             if identifier not in known and len(observations) < 20:

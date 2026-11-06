@@ -55,6 +55,7 @@ class WorkerRpc:
             raise ServiceUnavailable('온프레미스 연결 또는 응답을 검증하지 못했습니다') from None
 
 class RemoteOnprem:
+    execution_owner="orchestrator-private"
     def __init__(self,rpc,build_id,*,graph_id=None,state_dir=None):
         self.rpc,self.build_id=rpc,str(UUID(build_id))
         self.graph_id,self.state_dir=graph_id,Path(state_dir) if state_dir else None
@@ -68,7 +69,7 @@ class RemoteOnprem:
         result=self.rpc.call('status',build_id=self.build_id,id=identifier)
         self._verification_loss('read')
         if self.board is not None:
-            self.board.add_detail('stage',platform_status=result.get('status'),platform_step=result.get('current_step'),
+            self.board.add_detail('stage',execution_owner=result.get('execution_owner'),platform_status=result.get('status'),platform_step=result.get('current_step'),
                 error_code=(result.get('error') or {}).get('code'))
         return result
     def cancel(self,identifier):return self.rpc.call('cancel',build_id=self.build_id,id=identifier)

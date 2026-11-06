@@ -58,7 +58,7 @@ def execute(request):
         if action=='sast_start':
             binding=request['binding']
             if binding!={'repo':REPO,'commit':value['build']['resolved_commit_sha']}:raise ValueError('Source mismatch')
-            job,_=store.enqueue_security(UUID(value['service']['id']),UUID(request['build_id']),request['key'],SAST_TARGET)
+            job,_=store.enqueue_security(UUID(str(value['service']['id'])),UUID(request['build_id']),request['key'],SAST_TARGET)
             return {'run_id':str(job['id']),'state':'running'}
         if action in ('sast_status','sast_report'):
             job=store.run(UUID(request['id']),'security_check')

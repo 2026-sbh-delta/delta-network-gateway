@@ -33,7 +33,7 @@
     T("cutover", "서비스 도메인 전환", 1850, 116, { icon: "shift", tool: "Cloudflare DNS 전용 CNAME", desc: "사람 승인 뒤 CNAME 을 AWS → GCP 로 바꾸고, 공개 DNS·실제 응답으로 확인한 뒤 TTL 만큼 AWS 를 유지합니다. 실패하면 되돌립니다." }),
     { id: "end", label: "이전 완료", x: 2130, y: 140, w: 120, h: 50, kind: "pill", icon: "flag" },
     // 추후: 인프라 갈래
-    T("recovery", "장애 복구·재검사", 960, 730, {icon:"shift",mock:true,tool:"그래프 · 기존 Worker",desc:"동일 작업 조회 또는 정리 확인 뒤 같은 이미지 재배포를 최대 2회 수행합니다."}),
+    T("recovery", "장애 복구·재검사", 960, 730, {icon:"shift",mock:true,tool:"그래프 · 독립 실행기",desc:"동일 작업 조회 또는 정리 확인 뒤 같은 이미지 재배포를 최대 2회 수행합니다."}),
     T("exception-analysis", "예외 분석", 150, 730, { icon: "search", ai: true, mock: true, tool: "delta-ai 진단 API", desc: "실패·모호한 결과의 원인 후보를 분석합니다. 실행이나 승인을 결정하지 않습니다." }),
     T("exception-report", "분석 보고서", 420, 730, { icon: "doc", mock: true, tool: "오케스트레이터 보고서 저장소", desc: "관측 근거와 분석 결과를 저장하고 무결성을 검증합니다." }),
     T("exception-review", "실패 보고서 확인", 690, 730, { icon: "pause", mock: true, tool: "사람 확인", desc: "실패한 작업을 재실행하지 않고 보고서를 확인한 뒤 종료합니다." }),

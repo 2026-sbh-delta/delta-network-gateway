@@ -54,3 +54,17 @@ def test_existing_platform_process_one_operates_only_private_jobs(private):
     assert process_one(store,None,security=SimpleNamespace(execute=lambda claim,st,progress:{'scanner_run_id':str(claim['id'])}))
     assert store.run(job['id'])['result']['scanner_run_id']==job['id']
     assert not process_one(store,None)
+
+def test_bridge_accepts_real_platform_uuid_objects_in_context(private,monkeypatch):
+    from delta_pipeline import onprem_independent_store as module
+    from delta_pipeline.onprem_worker_bridge import execute
+    store,service,build,commit=private
+    store.engine=SimpleNamespace(dispose=lambda:None)
+    store.catalog.service=lambda identifier:{'id':UUID(str(identifier)),'name':'registered','project_id':uuid4(),
+        'repository_url':'https://github.com/2026-sbh-delta/delta-sample-app','build_context':'backend'}
+    monkeypatch.setattr(module,'settings',lambda:None)
+    monkeypatch.setattr(module,'catalog',lambda _:store.catalog)
+    monkeypatch.setattr(module,'IndependentStore',lambda _:store)
+    result=execute({'action':'sast_start','build_id':build,'key':'graph-sast','binding':{
+        'repo':'https://github.com/2026-sbh-delta/delta-sample-app','commit':commit}})
+    assert result['state']=='running'and store.run(result['run_id'])['kind']=='security_check'
