@@ -118,3 +118,19 @@ PYTHONPATH=services/delta-ai ../delta-network-gateway-diagnostics-handoff/.venv/
 배포는 기존 AI/오케스트레이터2개만 변경하며 기존43실행/80영속파일·인증/설정/로그/볼륨을 보존한다. 기대 이전 이미지/동시변경·idle 재확인, 후보 인증 검사, 중지 후 state 백업 확인, 실패 시 기존 컨테이너 복구를 사용한다. Terraform/SG/IAM/DNS/팀 Worker/스캐너 변경은 하지 않는다. 검증은 독립 service_id의 로컬HTTP 장애를 AWS호스트 안에 만들고 실제Claude/API/사례게시/승인/다음진단/평가를 검사한다. 합성장애임을 기록하며 고객 앱 장애·전체 이전으로 설명하지 않는다.
 
 통합 회귀: AI337통과, pipeline/orchestrator210통과(이후 요청멱등성 회귀1건 추가). 최종 실행·배포 결과는 완료 후 갱신한다.
+
+## 2026-11-06 실제 AWS 배포·Claude 검증 완료
+
+- 최종 서비스 소스 `523ae5a0f596f3ecc9e0a6c02949f4d688e19a48`. main `ad48e2e`·공유 PR #60 `03a29a3`를 merge commit `9e75ae3`으로 보존했고 실행 중 공용6개 파일의 미반영 변경을 추가 통합했다. 최종 main 재조회에서도 ad48e2e가 유지됐다. main 직접 push/PR 병합은 하지 않았다.
+- AI 기존 `10.90.10.90`: `delta-cp-ai/api@sha256:7f387e27cc11de0171a133e57aa030ef5461b00e41d585b6dd39270cb4f7c746`. 오케스트레이터 기존 `10.90.10.75`: `delta-cp-orchestrator@sha256:db5d8bff7395debc2fe7fdfb65609093d542559fc4b44556e987af9c5a2b7431`.
+- AI 배포 SSM `497d718f-5fd7-4c10-9ce6-63523413b148`, 오케스트레이터 `a00cf015-4392-4639-bc94-cb9706b622a7`. 후보검사0모델호출, 기존 인증/TLS/환경/로그/볼륨 보존, 중지 후 state 백업 검증. 복구용 이전 컨테이너는 stopped로 보존했다. 사설NGINX는 기존 catch-all404를 유지하고 `/v1/incident-cases`만 추가했다.
+- 실제 import 모듈 해시 AI38개/오케스트레이터70개가 커밋 소스와 일치했다. AI 지식134청크를 확인했다. 오케스트레이터 복사소스76파일도 일치한다.
+- 기존43개 실행과80영속파일은 최종조회까지 모두 같은 해시다. 미완료 실행0개다. 검증용 기록은 원래 runs 밖의 `/state/case-learning-verification/1aa722776440495bb635c6106af1301d/`에 분리했다. 고객 빌드/스캐너/배포/DNS 작업 제출0건, SG/IAM/Terraform/팀Worker 변경0건이다.
+- 검증 그룹 `1aa722776440495bb635c6106af1301d`. first: 실제AWS컨테이너 안의 독립 loopbackHTTP서버503 → 실제Claude Sonnet5.5 진단9.82초 → 검증용 handler 복구 → 실제HTTP200 → success 사례3버전 게시. 사용자 승인 검증프로그램이 로컬CLI로 합성사례만 승인했다. 사람의 실제 운영승인이라고 표기하지 않는다.
+- next: 새 독립HTTP503 → 실제Claude Sonnet5.5 진단9.35초. 승인된 first를 `related_cases`로 검색했고 모델의 `historical_case_ids`에도 실제first ID가 들어갔다. 복구 없이 반복한 실제503을 failure로 기록했다. 과거 성공을 현재 해결/원인 확정으로 해석하지 않았다.
+- next를 독립기대값 `503`으로CLI평가셋에 추출했다. 평가기는 next원본/동일관측을 제외하고 실제Claude baseline/with_cases 각1회 실행(총21.2초). baseline1/1·with_cases1/1, 각각 검색0건/first1건. 총 실제모델4호출이다. 합성1건의 연결검증이므로 정확도 향상을 주장하지 않는다.
+- 검증완료 후 first/next의 검색승인을 취소했다. 원본2사례/6버전·감사4이벤트·평가파일은 보존했다. AI 정상재시작 뒤 영속5파일 해시와 해당사례/감사·승인취소를 재확인했다.
+- 공개 `https://d2rjxujgsi1fjg.cloudfront.net/login`200, 익명runs/capabilities API401. 사설진단/복구/사례게시 각각 익명401·빈인증요청422. 브라우저 시각검증은 수행하지 않았다.
+- 최종 로컬회귀 AI337 + pipeline/orchestrator211 = **548 passed**. XML `ai-tests.xml`, `integration-tests-final.xml`. `node --check`, `compileall`, `git diff --check` 통과. 실제배포는 위증거를 따르며 GitHub CI/머지와 구분한다.
+
+증거 정본은 작업 루트 `notes/case-learning-aws-20261106/summary.json` 및 `ai-release.json`, `orch-release.json`, `verified-{first,next}.json`, `reviewed-{first,next}.json`, `evaluated.json`, `ai-restart-verified.json`, `orch-after.json`, `*-modules-verified.json`, `public-auth.json`이다. 실제제어기·모델/CLI검증 코드는 `deploy/case-learning/`에 보존했다. 기존 운영인증이나 원문자격증명은 기록·반출하지 않았다.
