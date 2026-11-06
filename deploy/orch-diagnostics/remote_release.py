@@ -64,7 +64,8 @@ def main(image):
         connection = json.loads(raw['Parameter']['Value'])
         # DiagnosticClient candidate preflight performs full URL/CA/auth validation.
         env.update(DELTA_DIAGNOSTIC_URL=connection['url'], DELTA_DIAGNOSTIC_TOKEN=connection['token'],
-                   DELTA_DIAGNOSTIC_CA_BASE64=connection.get('ca_base64', ''), DELTA_DIAGNOSTICS_REQUIRED='1')
+                   DELTA_DIAGNOSTIC_CA_BASE64=connection.get('ca_base64', ''), DELTA_DIAGNOSTICS_REQUIRED='1',
+                   DELTA_LOG_EVIDENCE_ENABLED='1')
         tag = datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%d%H%M%S')
         release = base / ('diagnostics-' + tag)
         release.mkdir(mode=0o700)

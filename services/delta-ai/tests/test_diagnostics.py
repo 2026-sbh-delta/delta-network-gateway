@@ -196,3 +196,18 @@ def test_invalid_request_and_chunked_large_body_do_not_echo_secrets(tmp_path):
         "/v1/diagnoses", content=iter([b"{", b"x" * 65_000, b"}"]), headers=AUTH
     )
     assert response.status_code == 413
+
+
+@pytest.mark.parametrize('llm', [None, FakeAnalysis()])
+async def test_log_collection_limits_survive_model_omission_or_outage(llm):
+    request=DiagnosisRequest.model_validate({**BODY,'observations':[
+        *BODY['observations'],
+        {'evidence_id':'cw-context','source':'cloudwatch','summary':json.dumps({
+            'kind':'delta-log-evidence/v1','scope':'environment','status':'unavailable',
+            'sample_events':1,'unparsed':3,'truncated':True})}]})
+    report=await diagnose(request,llm)
+    limits=' '.join(report.limitations)
+    assert '정상·안전으로 해석하지 않는다' in limits
+    assert '연관성은 확인되지 않았다' in limits and '샘플' in limits
+    assert '해석하지 못한 로그' in limits and '전체 이력' in limits
+    assert report.requires_human is True

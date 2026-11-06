@@ -24,7 +24,11 @@ def check():
         if error.code != 422:
             raise ValueError('Diagnostic authentication failed') from None
         error.close()
-    return {'diagnostics': 'ready', 'state_reads': 0, 'llm_calls': 0}
+    result = {'diagnostics': 'ready', 'state_reads': 0, 'llm_calls': 0}
+    if os.environ.get('DELTA_LOG_EVIDENCE_ENABLED') == '1':
+        import boto3
+        result['log_evidence'] = 'sdk-ready'
+    return result
 
 
 if __name__ == '__main__':

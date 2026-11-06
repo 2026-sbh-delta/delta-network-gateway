@@ -36,6 +36,7 @@ def platform_run(options: Options, store_dir: Path, run_id: str | None) -> Run:
     jenkins = f"http://jenkins.{zone}:8080"
     password = os.environ.get("JENKINS_PLATFORM_PASSWORD", "")
     diagnostic = None
+    evidence = None
     if os.environ.get("DELTA_DIAGNOSTIC_URL") or os.environ.get("DELTA_DIAGNOSTICS_REQUIRED") == "1":
         try:
             diagnostic = DiagnosticClient(os.environ["DELTA_DIAGNOSTIC_URL"],
@@ -43,6 +44,9 @@ def platform_run(options: Options, store_dir: Path, run_id: str | None) -> Run:
             options = replace(options, diagnostics=True)
         except Exception:
             raise ServiceUnavailable("진단 서비스 연결 설정을 확인하세요") from None
+    if os.environ.get("DELTA_LOG_EVIDENCE_ENABLED") == "1":
+        from delta_pipeline.cloudwatch_evidence import CloudWatchEvidence
+        evidence = CloudWatchEvidence(store_dir / "log-evidence")
     return Run(options,
                sast=Sast(f"http://sast.{zone}:8790", os.environ.get("DELTA_SAST_TOKEN", "")),
                # Host 가 DAST_INTERNAL_HOSTS(dast.cp.internal:8765)와 맞아야 플랫폼 토큰이 통한다
@@ -52,7 +56,7 @@ def platform_run(options: Options, store_dir: Path, run_id: str | None) -> Run:
                # 조회 토큰: 점검을 끝낸 뒤 자기 스테이징 점유를 푸는 데만 쓴다(배포·초기화는 못 한다)
                staging=Staging(f"http://jenkins.{zone}:8091", os.environ.get("DELTA_STAGING_TOKEN", "")),
                image_repo=os.environ.get("DELTA_IMAGE_REPO", IMAGE_REPO), store_dir=store_dir, run_id=run_id,
-               diagnostic=diagnostic,
+               diagnostic=diagnostic, evidence=evidence,
                cloudflare=Cloudflare(token) if token else None, cutover=cutover_config() if options.cutover else None)
 
 

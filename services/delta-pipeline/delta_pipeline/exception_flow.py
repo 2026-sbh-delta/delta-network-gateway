@@ -187,6 +187,8 @@ class ExceptionFlow:
 
     def analyze(self, state):
         request = DiagnosisRequest.model_validate(state["diagnosis_request"])
+        if self.deps.evidence is not None:
+            request = self.deps.evidence.enrich(request, started_at=self.deps.board.snapshot().get("started_at"))
         self.deps.board.update(
             "exception-analysis",
             state="running",
@@ -209,7 +211,7 @@ class ExceptionFlow:
             state="pass" if report.status == "analyzed" else "fail",
             summary=report.summary,
         )
-        return {"diagnosis_report": report.model_dump(mode="json")}
+        return {"diagnosis_request": request.model_dump(mode="json"), "diagnosis_report": report.model_dump(mode="json")}
 
     def save(self, state):
         self.deps.board.update(

@@ -185,6 +185,7 @@ class Deps:
     image_repo: str
     sleep: Callable[[float], None]
     diagnostic: Any = None
+    evidence: Any = None
     report_dir: Path | None = None
     cloudflare: CloudflareClient | None = None
     cutover: CutoverConfig | None = None

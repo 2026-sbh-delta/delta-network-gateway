@@ -47,7 +47,7 @@ class Run:
                  resolve: Callable[[str], str | None] | None = None, now: Callable[[], float] | None = None,
                  release_jenkins: JenkinsClient | None = None, release_signing_key: bytes | None = None,
                  release_config: dict[str, Any] | None = None,
-                 diagnostic: Any = None, report_dir: Path | None = None) -> None:
+                 diagnostic: Any = None, report_dir: Path | None = None, evidence: Any = None) -> None:
         self.run_id = run_id or uuid.uuid4().hex
         if diagnostic is not None:
             options = replace(options, diagnostics=True)
@@ -58,7 +58,7 @@ class Run:
         self._deps = Deps(run_id=self.run_id, options=options, board=self._board, sast=sast, dast=dast,
                           build_jenkins=build_jenkins, deploy_jenkins=deploy_jenkins, staging=staging,
                           image_repo=image_repo, sleep=sleep, cloudflare=cloudflare, cutover=cutover,
-                          diagnostic=diagnostic, report_dir=report_dir or store_dir / "reports",
+                          diagnostic=diagnostic, evidence=evidence, report_dir=report_dir or store_dir / "reports",
                           release_jenkins=release_jenkins, release_signing_key=release_signing_key, release_config=release_config,
                           **{k: v for k, v in (("probe", probe), ("resolve", resolve), ("now", now)) if v})
         self._waiting = False
