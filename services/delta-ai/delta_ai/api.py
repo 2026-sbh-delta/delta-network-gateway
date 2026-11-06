@@ -55,14 +55,20 @@ def create_app(
     diagnostic_llm: LlmClient | None = None,
     recovery_llm: LlmClient | None = None,
     case_store: CaseStore | None = None,
+    review_token: str | None = None,
 ) -> FastAPI:
     if not token:
         raise ValueError("DELTA_API_TOKEN 이 필요하다")
+    if review_token and hmac.compare_digest(review_token.encode(), token.encode()):
+        raise ValueError("사례 검토 토큰은 생산자 토큰과 달라야 한다")
     app = FastAPI(title="Delta AI 판단 서비스", version="0.1.0")
     bearer = HTTPBearer(auto_error=False)
     ledger = AssessmentLedger(store.assessment_directory)
     assessment_lock = asyncio.Lock()
     incidents = case_store or CaseStore(store.assessment_directory.parent / "verified-cases.sqlite")
+
+    from delta_ai.case_review_api import review_router
+    app.include_router(review_router(incidents, review_token))
 
     def require_token(
         credentials: HTTPAuthorizationCredentials | None = Depends(bearer),  # noqa: B008
@@ -73,7 +79,7 @@ def create_app(
 
     @app.exception_handler(RequestValidationError)
     async def validation_error(request: Request, exc: RequestValidationError):
-        if request.url.path in ("/v1/diagnoses", "/v1/recovery-proposals", "/v1/incident-cases"):
+        if request.url.path.startswith("/v1/case-reviews") or request.url.path in ("/v1/diagnoses", "/v1/recovery-proposals", "/v1/incident-cases"):
             return JSONResponse(
                 status_code=422, content={"detail": "진단 요청 형식이 잘못됐다"}
             )
@@ -86,7 +92,7 @@ def create_app(
 
     @app.post("/v1/incident-cases", dependencies=[Depends(require_token)])
     async def publish_incident(case: IncidentCase):
-        # No review/approval endpoint: the producer token cannot promote its own output.
+        # The producer credential cannot use the separate operator review endpoints.
         try:
             revision = incidents.publish(case)
             return {"case_id": case.request.case_id, "revision": revision, "review": "required"}
@@ -107,7 +113,7 @@ def create_app(
         declared = request.headers.get("content-length", "0")
         if declared.isdigit() and int(declared) > MAX_BODY_BYTES:
             return JSONResponse(status_code=413, content={"detail": "요청이 너무 크다"})
-        if request.url.path in ("/v1/diagnoses", "/v1/recovery-proposals", "/v1/incident-cases"):
+        if request.url.path.startswith("/v1/case-reviews") or request.url.path in ("/v1/diagnoses", "/v1/recovery-proposals", "/v1/incident-cases"):
             body = bytearray()
             async for chunk in request.stream():
                 body.extend(chunk)
@@ -229,6 +235,7 @@ def _recovery_llm_from_env():
 
 def _app_from_env() -> FastAPI:
     return create_app(
+        review_token=os.environ.get("DELTA_CASE_REVIEW_TOKEN") or None,
         llm=_llm_from_env(),
         store=RuleStore(os.environ.get("DELTA_RULE_STORE", "var/rule_candidates.json")),
         token=os.environ.get("DELTA_API_TOKEN", ""),

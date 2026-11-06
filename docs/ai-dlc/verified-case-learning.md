@@ -134,3 +134,8 @@ PYTHONPATH=services/delta-ai ../delta-network-gateway-diagnostics-handoff/.venv/
 - 최종 로컬회귀 AI337 + pipeline/orchestrator211 = **548 passed**. XML `ai-tests.xml`, `integration-tests-final.xml`. `node --check`, `compileall`, `git diff --check` 통과. 실제배포는 위증거를 따르며 GitHub CI/머지와 구분한다.
 
 증거 정본은 작업 루트 `notes/case-learning-aws-20261106/summary.json` 및 `ai-release.json`, `orch-release.json`, `verified-{first,next}.json`, `reviewed-{first,next}.json`, `evaluated.json`, `ai-restart-verified.json`, `orch-after.json`, `*-modules-verified.json`, `public-auth.json`이다. 실제제어기·모델/CLI검증 코드는 `deploy/case-learning/`에 보존했다. 기존 운영인증이나 원문자격증명은 기록·반출하지 않았다.
+
+
+## 2026-11-06 콘솔 검토 후속
+
+사례 검토·승인·취소와 독립 기대값 입력, 선택한 최신 승인 사례의 평가셋 JSON 추출을 기존 콘솔에 로컬 구현했다. 생산자와 분리된 운영자 API와 기존 관리자 세션을 사용한다. CLI도 유지한다. 전체 회귀561개와 실제 브라우저6시나리오 통과이며, 이 후속의 AWS 배포/검토 토큰·프록시 연결은 미실행이다. [후속 설계·검증 상태](case-review-console.md)와 [운영 연결](../../deploy/case-review-console/README.md)을 따른다.

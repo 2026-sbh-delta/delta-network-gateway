@@ -209,7 +209,7 @@ async def git_refs(client: httpx.AsyncClient, repo: str, branch: str | None) -> 
     return result
 
 
-def create_app(pipelines: Pipelines | None = None) -> FastAPI:
+def create_app(pipelines: Pipelines | None = None, *, case_review_client_factory=None) -> FastAPI:
     access = Access.from_env()
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
     if pipelines is None and os.environ.get("ORCH_STATE_DIR"):
@@ -264,7 +264,16 @@ def create_app(pipelines: Pipelines | None = None) -> FastAPI:
                 if request.method == "GET" and not path.startswith(("/api/", "/static/")):
                     return secured(RedirectResponse("/login", status_code=303))
                 return secured(JSONResponse({"detail": "로그인이 필요합니다."}, status_code=401))
+        if path == "/api/case-reviews" or path.startswith("/api/case-reviews/"):
+            # Review authority always requires an admin session, including loopback access.
+            if not access.valid(request.cookies.get(COOKIE)):
+                return secured(JSONResponse({"detail": "관리자 로그인이 필요합니다."}, status_code=401))
+            if request.method not in {"GET", "HEAD"} and origin != expected:
+                return secured(JSONResponse({"detail": "같은 출처에서 검토를 제출하세요."}, status_code=403))
         return secured(await call_next(request))
+
+    from .case_reviews import console_case_router
+    app.include_router(console_case_router(**({"client_factory": case_review_client_factory} if case_review_client_factory else {})))
 
     @app.get("/api/status")
     async def status():
