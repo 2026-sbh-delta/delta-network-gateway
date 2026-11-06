@@ -95,11 +95,14 @@ class Run:
     def snapshot(self) -> dict[str, Any]:
         return self._board.snapshot()
 
-    def answer(self, value: str, case_id: str | None = None) -> bool:
+    def answer(self, value: str, case_id: str | None = None, *, decision_id: str | None = None) -> bool:
         with self._answer_lock:
             if not self._waiting or self._answered.is_set() or value not in self._board.waiting_options():
                 return False
             if self._waiting_case is not None and case_id != self._waiting_case:
+                return False
+            decisions = [n["decision"] for n in self.snapshot()["nodes"] if n.get("decision")]
+            if decision_id is not None and not any(d.get("id") == decision_id for d in decisions):
                 return False
             self._answer = value
             self._answered.set()
@@ -107,8 +110,16 @@ class Run:
 
     def execute(self) -> None:
         connection = sqlite3.connect(self._store_dir / CHECKPOINT_FILE, check_same_thread=False)
+        graph = None
         try:
-            self._drive(build_graph(self._deps, SqliteSaver(connection)))
+            if self.options.diagnostics:
+                from delta_pipeline.case_learning import CaseLearning
+                try:
+                    CaseLearning(self._deps).flush()
+                except Exception:
+                    LOG.warning("사례 재전송 미완료; 로컬 outbox를 보존한다")
+            graph = build_graph(self._deps, SqliteSaver(connection))
+            self._drive(graph)
         except TimeoutError as exc:
             self._board.finish("stopped", str(exc))
         except ServiceUnavailable as exc:
@@ -118,6 +129,12 @@ class Run:
             LOG.exception("실행 %s 이 예상하지 못한 오류로 멈췄다", self.run_id)
             self._board.finish("stopped", "내부 오류로 멈췄다. 통과로 보지 않는다")
         finally:
+            if graph is not None and self.options.diagnostics:
+                try:
+                    from delta_pipeline.case_learning import CaseLearning
+                    CaseLearning(self._deps).unfinished(graph.get_state({"configurable": {"thread_id": self.run_id}}).values)
+                except Exception:
+                    LOG.warning("사례 최종 결과 확인 불가; 성공으로 처리하지 않는다")
             connection.close()
         if self._diagnose is not None:
             # 다음 실행을 막지 않게 따로 돈다. 결과(outcome)는 바꾸지 않는다
@@ -153,6 +170,7 @@ class Run:
         self._waiting_case = request.get("case_id")
         self._waiting = True
         self._board.update(node_id, state="waiting", decision={
+            "id": uuid.uuid4().hex,
             "prompt": request["prompt"], "case_id": request.get("case_id"), "options": [{"value": value, "label": label} for value, label in request["options"]]})
         deadline = time.time() + DECISION_DEADLINE_SECONDS
         try:

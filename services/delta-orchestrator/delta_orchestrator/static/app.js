@@ -253,8 +253,10 @@
       const r = d.report || {}, ref = r.reference;
       const links = ref && board ? ["json", "md"].map((f) => `<a href="/api/pipeline/runs/${encodeURIComponent(board.run_id)}/reports/${encodeURIComponent(ref.case_id)}/${f}">${f.toUpperCase()} 다운로드</a>`).join(" · ") : "";
       const observations = (r.observations || []).map(observationView).join("");
-      const hypotheses = (r.hypotheses || []).map((h) => `<li>${esc(h.explanation)} (${esc(h.confidence)} · 근거: ${(h.evidence_ids || []).map(esc).join(", ")} · 규칙: ${(h.rule_ids || []).map(esc).join(", ") || "없음"})</li>`).join("");
-      return `<section class="diagnostic-report"><p>${links}</p><p>${esc(r.summary || "—")}</p><p>상태: ${esc(r.status || "—")} · 모델: ${esc(r.model || "미사용")}</p><h3>관측 사실</h3><ul>${observations}</ul><h3>원인 후보</h3><ul>${hypotheses || "<li>확정할 수 있는 원인 후보가 없습니다.</li>"}</ul><h3>추가 확인</h3><ul>${(r.next_checks || []).map((v) => `<li>${esc(v)}</li>`).join("")}</ul><h3>한계</h3><ul>${(r.limitations || []).map((v) => `<li>${esc(v)}</li>`).join("")}</ul></section>`;
+      const hypotheses = (r.hypotheses || []).map((h) => `<li>${esc(h.explanation)} (${esc(h.confidence)} · 근거: ${(h.evidence_ids || []).map(esc).join(", ")} · 규칙: ${(h.rule_ids || []).map(esc).join(", ") || "없음"}${h.historical_case_ids?.length ? ` · 과거 사례: ${h.historical_case_ids.map(esc).join(", ")}` : ""})</li>`).join("");
+      const history = (r.related_cases || []).map((c) => `<li>${esc(c.case_id)} · ${esc(c.outcome === "success" ? "조치 후 재검사 성공" : "조치 후 재검사 실패")} · 범위: ${esc(c.scope)} · 실행: ${esc(c.run_id)}</li>`).join("");
+      const pastCases = history ? `<h3>과거 유사 사례</h3><p>다른 실행에서 확인한 제한된 결과입니다. 현재 원인 확정이나 검사 통과를 뜻하지 않습니다.</p><ul>${history}</ul>` : "";
+      return `<section class="diagnostic-report"><p>${links}</p><p>${esc(r.summary || "—")}</p><p>상태: ${esc(r.status || "—")} · 모델: ${esc(r.model || "미사용")}</p><h3>관측 사실</h3><ul>${observations}</ul><h3>원인 후보</h3><ul>${hypotheses || "<li>확정할 수 있는 원인 후보가 없습니다.</li>"}</ul>${pastCases}<h3>추가 확인</h3><ul>${(r.next_checks || []).map((v) => `<li>${esc(v)}</li>`).join("")}</ul><h3>한계</h3><ul>${(r.limitations || []).map((v) => `<li>${esc(v)}</li>`).join("")}</ul></section>`;
     }
     if (id === "build") return `<dl class="kv"><dt>이미지</dt><dd class="mono">${esc(d.image || "—")}</dd><dt>Jenkins</dt><dd>빌드 #${esc(d.build ?? "—")}</dd></dl>`;
     if (id === "sast") {
@@ -297,7 +299,7 @@
     const st = real ? stateOf(id) : "pending";
     const dur = data && data.started_at ? fmtDur(((data.ended_at || Date.now() / 1000) - data.started_at)) + (data.ended_at ? "" : " 경과") : "—";
     const ask = data && data.decision ? `<div class="ask"><b>${esc(data.decision.prompt)}</b><div class="actions">${data.decision.options.map((o) =>
-      `<button type="button" class="btn ${o.value === "approve" ? "approve" : o.value === "fix" ? "primary" : ""}" data-answer="${esc(o.value)}">${esc(o.label)}</button>`).join("")}</div></div>` : "";
+      `<button type="button" class="btn ${o.value === "approve" ? "approve" : o.value === "fix" ? "primary" : ""}" data-answer="${esc(o.value)}" data-decision="${esc(data.decision.id || "")}">${esc(o.label)}</button>`).join("")}</div></div>` : "";
     Live.show(board && real ? board.run_id : "", id, st, (data && data.round) || 1);
     // 2차로 다시 돈 노드는 1차 결과를 접어서 함께 보여 준다
     const past = (data && data.history || []).map((h) => `<details class="past"><summary>${esc(h.round)}차 · ${esc(STATE[h.state] || h.state)} · ${esc(h.summary || "")}</summary>
@@ -326,7 +328,7 @@
     if (!b || !board) return;
     b.disabled = true;
     const r = await fetch(`/api/pipeline/runs/${encodeURIComponent(board.run_id)}/answer`, { method: "POST",
-      headers: { "Content-Type": "application/json" }, body: JSON.stringify({ value: b.dataset.answer, case_id: board.nodes.find(n => n.decision)?.decision?.case_id || undefined }) });
+      headers: { "Content-Type": "application/json" }, body: JSON.stringify({ value: b.dataset.answer, decision_id: b.dataset.decision || undefined, case_id: board.nodes.find(n => n.decision)?.decision?.case_id || undefined }) });
     if (!r.ok) { const j = await r.json().catch(() => ({})); alert(j.detail || "답을 보내지 못했습니다"); }
     await loadRun();
   });

@@ -108,6 +108,8 @@ class Assistance:
             'report': ref.model_dump(), 'proposal': state['assisted_plan']['proposal']})
         if answer not in state['assisted_plan']['allowed']:
             self.reports.decide(ref, 'stop' if answer == 'stop' else 'acknowledge')
+            from delta_pipeline.case_learning import CaseLearning
+            CaseLearning(self.deps).record(ref, sequence=1, outcome='stopped' if answer == 'stop' else 'unknown')
             self.deps.board.update('exception-review', state='fail' if answer == 'stop' else 'pass',
                                    summary='사람이 중단했습니다' if answer == 'stop' else '보고서 확인·실행 종료')
             return {'assisted_choice': 'stop'}
@@ -152,9 +154,12 @@ class Assistance:
                     summary='조치 후 재검사를 시작합니다. 완료 결과를 다시 확인합니다.')
                 if self.deps.notification_sender:
                     self.deps.inbox.deliver(identifier, self.deps.notification_sender)
+            from delta_pipeline.case_learning import begin_attempt
+            pending = begin_attempt(self.deps, ref.model_dump(), action=action,
+                                    attempt=count + 1, target='onprem_wait')
             return {**previous, 'halt': Overwrite(None), 'failure_type': Overwrite(None), 'failure_code': None,
                     'manual_count': count + 1, 'manual_resume': resume, 'recovery_events': events,
-                    'diagnosis_pending': False, 'recovery_pending': False}
+                    'diagnosis_pending': False, 'recovery_pending': False, 'learning_pending': pending}
         except Exception:  # noqa: BLE001 — failed revalidation creates a new report, not a hidden retry loop
             result = {'halt': '조치 후 재검사 조건을 확인하지 못했습니다. 소유권·정리·검사 근거를 다시 확인하세요.',
                       'failure_type': 'Stopped', 'failure_code': 'manual_revalidation_failed',

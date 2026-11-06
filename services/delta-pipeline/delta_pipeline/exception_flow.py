@@ -7,6 +7,7 @@ import json
 import re
 
 from delta_ai.diagnostic_contract import (
+    DiagnosisContext,
     DiagnosisReport,
     DiagnosisRequest,
     safe_text,
@@ -174,6 +175,11 @@ def prepare_exception(deps, name, result, target, state):
         node_id=name,
         trigger="ambiguous_result" if ambiguous else "execution_failure",
         observations=observations,
+        context=DiagnosisContext(environment="onprem" if deps.options.execution_cloud == "onprem" else deps.options.staging_cloud,
+            error_code=result.get("failure_code") or state.get("failure_code") or result.get("failure_type")
+                or ("scanner_requires_review" if ambiguous else "execution_failed"),
+            commit=state.get("commit") or deps.options.commit,
+            image_digest=state.get("image_digest")),
     )
     resume = "exception_finish" if target in ("__end__", "migrate_rollback") else target
     return {
@@ -192,6 +198,10 @@ def record_review(deps, state, answer):
         ReportStore(deps.report_dir).decide(
             ReportRef.model_validate(state["diagnosis_ref"]), answer
         )
+        if answer in ("stop", "acknowledge"):
+            from delta_pipeline.case_learning import CaseLearning
+            CaseLearning(deps).record(state["diagnosis_ref"], sequence=1,
+                                      outcome="stopped" if answer == "stop" else "unknown")
 
 
 class ExceptionFlow:
@@ -256,7 +266,10 @@ class ExceptionFlow:
             "limitations": list(report.limitations),
             "model": report.model,
             "observations": [o.model_dump(mode="json") for o in request.observations],
+            "related_cases": [c.model_dump(mode="json") for c in report.related_cases],
         }
+        from delta_pipeline.case_learning import CaseLearning
+        CaseLearning(self.deps).record(ref)
         prior=next(n for n in self.deps.board.snapshot()['nodes'] if n['id']=='exception-report').get('detail',{}).get('report')
         if prior and prior.get('reference',{}).get('case_id')!=ref.case_id:
             self.deps.board.archive('exception-report')
@@ -290,6 +303,8 @@ class ExceptionFlow:
             }
         )
         self.store.decide(ref, answer)
+        from delta_pipeline.case_learning import CaseLearning
+        CaseLearning(self.deps).record(ref, sequence=1, outcome="stopped" if answer == "stop" else "unknown")
         self.deps.board.update(
             "exception-review",
             state="pass",

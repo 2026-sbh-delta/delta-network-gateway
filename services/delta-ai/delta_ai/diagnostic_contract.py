@@ -60,6 +60,21 @@ class Observation(SafeModel):
     )
 
 
+class DiagnosisContext(SafeModel):
+    environment: Literal["aws", "gcp", "onprem", "local"]
+    error_code: Identifier | None = None
+    commit: Annotated[str, Field(pattern=r"^[0-9a-f]{40}$")] | None = None
+    image_digest: Annotated[str, Field(pattern=r"^sha256:[0-9a-f]{64}$")] | None = None
+
+
+class HistoricalCaseRef(SafeModel):
+    case_id: Identifier
+    run_id: Identifier
+    revision: Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
+    outcome: Literal["success", "failure"]
+    scope: Identifier
+
+
 class DiagnosisRequest(SafeModel):
     case_id: Identifier
     run_id: Identifier
@@ -67,6 +82,7 @@ class DiagnosisRequest(SafeModel):
     node_id: Identifier
     trigger: Literal["ambiguous_result", "execution_failure"]
     observations: tuple[Observation, ...] = Field(min_length=1, max_length=40)
+    context: DiagnosisContext | None = None
 
     @model_validator(mode="after")
     def unique_evidence(self):
@@ -79,7 +95,8 @@ class DiagnosisRequest(SafeModel):
 def diagnosis_hash(request: DiagnosisRequest) -> str:
     return hashlib.sha256(
         json.dumps(
-            request.model_dump(mode="json"), sort_keys=True, separators=(",", ":")
+            request.model_dump(mode="json", exclude={"context"} if request.context is None else set()),
+            sort_keys=True, separators=(",", ":")
         ).encode()
     ).hexdigest()
 
@@ -89,6 +106,7 @@ class Hypothesis(SafeModel):
     confidence: Literal["low", "medium", "high"]
     evidence_ids: tuple[Identifier, ...] = Field(min_length=1, max_length=40)
     rule_ids: tuple[str, ...] = Field(default=(), max_length=20)
+    historical_case_ids: tuple[Identifier, ...] = Field(default=(), max_length=3)
 
 
 class DiagnosisDraft(SafeModel):
@@ -106,6 +124,8 @@ class DiagnosisReport(DiagnosisDraft):
     model: str | None = Field(default=None, max_length=128)
     # This is always human review. There is deliberately no "next node", retry or approve field.
     requires_human: Literal[True] = True
+    related_cases: tuple[HistoricalCaseRef, ...] = Field(default=(), max_length=3)
+    knowledge_snapshot_hash: Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")] | None = None
 
 
 def unavailable_report(
@@ -140,6 +160,7 @@ def validate_report(
     rules = requested_rules if allowed_rules is None else allowed_rules
     if any(
         not set(h.evidence_ids) <= evidence_ids or not set(h.rule_ids) <= rules
+        or not set(h.historical_case_ids) <= {c.case_id for c in report.related_cases}
         for h in report.hypotheses
     ):
         raise ValueError("진단이 제공되지 않은 근거를 인용했다")

@@ -69,6 +69,7 @@ class PipelineState(TypedDict, total=False):
     diagnosis_report: dict[str, Any] | None
     diagnosis_ref: dict[str, Any] | None
     diagnosis_resume: str
+    learning_pending: dict[str, Any] | None
     report_failed: bool
     exception_cleanup_done: bool
     failure_type: Annotated[str | None, _first]
@@ -656,7 +657,8 @@ class Steps:
     @staticmethod
     def _target_bundle(bundle: dict[str, Any], cloud: str) -> dict[str, Any]:
         """운영 대상 클라우드의 사본(AWS=ECR, GCP=AR). digest·묶음 해시는 같고 레지스트리 주소만 다르다."""
-        images = (bundle.get("registry_images") or {}).get(cloud) or bundle["images"]
+        registry = "aws" if cloud == "onprem" else cloud
+        images = (bundle.get("registry_images") or {}).get(registry) or bundle["images"]
         return {**bundle, "images": dict(images), "image_ref": images["frontend"]}
 
     def _release_config(self, state: PipelineState) -> dict[str, Any]:
@@ -739,7 +741,8 @@ class Steps:
             raise
         # 토큰·비밀 등 제어기 응답의 예상 밖 필드는 체크포인트·화면에 복사하지 않는다.
         keys = ("state", "target_id", "environment", "commit", "images", "image_digests", "bundle_sha256",
-                "image_digest", "schema", "platform", "image_ref", "database_version_num", "deployment_id", "config_sha256")
+                "image_digest", "schema", "platform", "image_ref", "database_version_num", "deployment_id", "config_sha256",
+                "environment_id", "resource_binding", "service_url", "telemetry_service_id")
         return {"release_result": {key: result[key] for key in keys if key in result}}
 
     def _verified_release(self, state: PipelineState) -> None:
@@ -766,6 +769,7 @@ class Steps:
             self._board.update("release", state="fail", summary=str(exc))
             raise
         self._board.update("release", state="pass", summary=f"운영 검증 완료 · {self._deps.options.release_target}")
+        self._board.add_detail("release", verified_result=state["release_result"])
         return {"gates": {"release": "pass"}}
 
     def _require_release(self, state: PipelineState) -> None:

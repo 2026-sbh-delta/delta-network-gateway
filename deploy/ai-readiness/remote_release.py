@@ -34,9 +34,9 @@ def probe(base, token, context=None):
             with opener.open(request,timeout=5) as response:return response.status
         except urllib.error.HTTPError as error:return error.code
     result={'health':req('/healthz')}
-    for path in ('/v1/diagnoses','/v1/recovery-proposals'):
+    for path in ('/v1/diagnoses','/v1/recovery-proposals','/v1/incident-cases'):
         result[path]={'anonymous':req(path,b'{}'),'invalid':req(path,b'{}',True)}
-    if result['health']!=200 or any(result[p]!={'anonymous':401,'invalid':422} for p in ('/v1/diagnoses','/v1/recovery-proposals')):
+    if result['health']!=200 or any(result[p]!={'anonymous':401,'invalid':422} for p in ('/v1/diagnoses','/v1/recovery-proposals','/v1/incident-cases')):
         raise RuntimeError('Candidate authentication or schema validation failed')
     return result
 
@@ -51,6 +51,8 @@ def main(image):
             raise RuntimeError('Unexpected user AI runtime')
         if len(old['Mounts'])!=1 or old['Mounts'][0]['Source']!=str(base/'var') or old['Mounts'][0]['Destination']!='/app/var':
             raise RuntimeError('Unexpected user AI volume')
+        if globals().get('EXPECTED_OLD_IMAGE') and old['Config']['Image'] != EXPECTED_OLD_IMAGE:
+            raise RuntimeError('AI runtime changed since inventory')
         env=dict(s.split('=',1) for s in old['Config']['Env'] if '=' in s)
         if not env.get('DELTA_API_TOKEN') or env.get('DELTA_LLM')!='claude' or not env.get('ANTHROPIC_API_KEY'):
             raise RuntimeError('Expected existing authenticated Claude runtime')
@@ -77,6 +79,9 @@ def main(image):
     }
 '''
             newconfig=config.replace('    location / { return 404; }',block+'    location / { return 404; }')
+        if 'location = /v1/incident-cases {' not in newconfig:
+            block='    location = /v1/incident-cases {\n        proxy_pass http://127.0.0.1:8090;\n        proxy_http_version 1.1;\n        proxy_read_timeout 10s;\n        proxy_set_header Host $host;\n        proxy_set_header X-Forwarded-For $remote_addr;\n    }\n'
+            newconfig=newconfig.replace('    location / { return 404; }',block+'    location / { return 404; }')
         (release/'nginx.before.conf').write_text(config)
         registry_config=release/'registry';registry_config.mkdir(mode=0o700)
         try:
@@ -101,6 +106,8 @@ def main(image):
         stopped=renamed=created=config_changed=False
         try:
             command(['docker','stop','delta-ai']);stopped=True
+            shutil.copytree(base/'var',release/'state-before')
+            if file_hashes(release/'state-before') != before:raise RuntimeError('AI state backup mismatch')
             command(['docker','rename','delta-ai',previous]);renamed=True
             args=['docker','run','-d','--name','delta-ai','--restart','unless-stopped',
                   '-p','127.0.0.1:8090:8090','--env-file',str(envfile),'--mount','type=bind,source='+str(base/'var')+',target=/app/var']
