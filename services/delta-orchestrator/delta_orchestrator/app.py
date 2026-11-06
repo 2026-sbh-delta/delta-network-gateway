@@ -318,10 +318,41 @@ def create_app(pipelines: Pipelines | None = None) -> FastAPI:
 
     @app.post("/api/pipeline/runs/{run_id}/answer")
     async def answer(run_id: str, request: Request):
-        value = (await json_body(request)).get("value")
-        if not isinstance(value, str) or not need_pipelines().answer(run_id, value):
+        body = await json_body(request)
+        value, case_id = body.get("value"), body.get("case_id")
+        accepted = False
+        if isinstance(value, str) and (case_id is None or isinstance(case_id, str)):
+            accepted = (need_pipelines().answer(run_id, value, case_id=case_id)
+                        if case_id is not None else need_pipelines().answer(run_id, value))
+        if not accepted:
             raise HTTPException(409, "지금 받을 수 없는 답입니다")
         return {"ok": True}
+
+    @app.get("/api/pipeline/runs/{run_id}/reports/{case_id}/{format}")
+    async def diagnostic_report(run_id: str, case_id: str, format: str):
+        from delta_pipeline.reports import ReportRef, ReportStore
+        if format not in ("json", "md"):
+            raise HTTPException(404, "없는 보고서 형식입니다")
+        pipelines = need_pipelines()
+        board = pipelines.get(run_id)
+        if board is None:
+            raise HTTPException(404, "없는 실행입니다")
+        # Earlier mapping/DAST reports remain downloadable after later diagnoses and fix rounds.
+        references = []
+        for node in board["nodes"]:
+            for version in [node, *node.get("history", [])]:
+                detail = version.get("detail", {})
+                for key in ("report", "diagnostic_report"):
+                    references.append((detail.get(key) or {}).get("reference"))
+        try:
+            ref = next(ReportRef.model_validate(r) for r in references if r and r.get("case_id") == case_id)
+            if ref.run_id != run_id:
+                raise ValueError()
+            directory = ReportStore(pipelines.store_dir / "reports").verify(ref)
+        except Exception:
+            raise HTTPException(404, "검증된 보고서가 없습니다") from None
+        return FileResponse(directory / f"report.{format}", media_type="application/json" if format == "json" else "text/markdown",
+                            filename=f"{case_id}.{format}")
 
     # ── 진행 보기: 실행 기록에 남은 빌드 번호·점검 ID 로만 각 도구의 진행 정보를 받아 넘긴다(live.py)
     def board_of(run_id: str) -> dict:

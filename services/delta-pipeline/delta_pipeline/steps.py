@@ -12,6 +12,7 @@ import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from functools import wraps
+from pathlib import Path
 from typing import Annotated, Any, Protocol, TypedDict, TypeVar
 from uuid import NAMESPACE_URL, uuid4, uuid5
 
@@ -60,6 +61,15 @@ class PipelineState(TypedDict, total=False):
     halt: Annotated[str | None, _first]
     gates: Annotated[dict[str, str], _merge]  # 게이트별 "pass" 또는 사람의 "approved"
     pending_gate: dict[str, Any] | None
+    diagnosis_pending: bool
+    diagnosis_count: int
+    diagnosis_request: dict[str, Any] | None
+    diagnosis_report: dict[str, Any] | None
+    diagnosis_ref: dict[str, Any] | None
+    diagnosis_resume: str
+    report_failed: bool
+    exception_cleanup_done: bool
+    failure_type: str | None
     build: int
     image: str
     image_digest: str
@@ -174,6 +184,8 @@ class Deps:
     staging: StagingClient
     image_repo: str
     sleep: Callable[[float], None]
+    diagnostic: Any = None
+    report_dir: Path | None = None
     cloudflare: CloudflareClient | None = None
     cutover: CutoverConfig | None = None
     probe: Callable[..., tuple[int, str]] = probe
@@ -253,6 +265,9 @@ class Steps:
         options = [FIX, PROCEED, ("stop", "중단")] if fixable else [PROCEED, ("stop", "중단")]
         answer = interrupt({"node_id": gate["node_id"], "prompt": f"{what} 결과를 보고 다음 단계로 갈지 정합니다.",
                             "options": options})
+        if state.get("diagnosis_ref"):
+            from delta_pipeline.exception_flow import record_review
+            record_review(self._deps, state, answer)
         if answer == "fix" and fixable:
             self._board.update(gate["node_id"], state="fail", summary=f"{what}: 재현 확인 → 수정 적용 선택")
             return {"fix_target": gate["fix_target"], "pending_gate": None}
@@ -445,6 +460,11 @@ class Steps:
         self._board.update("dast", state="running", summary="수정 후 재검증: 1차 재현 항목을 다시 점검 중" if previous
                            else "스테이징을 실제 브라우저로 점검 중")
         report = self._read(lambda: self._deps.sast.sarif(state["sast_run_id"]))
+        findings = [item for run in report.get("runs", []) for item in run.get("results", [])]
+        self._board.add_detail("sast", diagnostic_findings=[{
+            "rule": item.get("ruleId"), "message": str(item.get("message", {}).get("text", ""))[:500],
+            "locations": [loc.get("physicalLocation", {}) for loc in item.get("locations", [])[:2]],
+        } for item in findings[:2]])
         # 점검 ID 를 실행에서 정해 재개해도 같은 점검을 받는다(입력이 같으면 DAST 가 기존 점검을 돌려준다)
         round_ = state.get("round") or 1
         run_id = str(uuid5(NAMESPACE_URL, f"delta-pipeline/{self._deps.run_id}/dast"
@@ -473,6 +493,15 @@ class Steps:
 
     def _dast_gate(self, view: Mapping[str, Any], state: PipelineState) -> dict[str, Any]:
         """명세 v1.1 7-2 의 최소판. 모두 NOT_REPRODUCED 일 때만 자동 통과, 나머지는 사람 확인(D3: 자동 통과 금지)."""
+        binding = view.get("binding") or {}
+        self._board.add_detail("dast", diagnostic_evidence={
+            "mode": "live_orchestrator", "source_pipeline_run_id": self._deps.run_id,
+            "sast_run_id": state.get("sast_run_id"), "dast_run_id": state.get("dast_run_id"),
+            "commit": self._commit(state), "images": state.get("images"),
+            "bundle_sha256": state.get("bundle_sha256"), "runtime_revision": state.get("staging_revision"),
+            "sarif_sha256": binding.get("sast_evidence_sha256"),
+            "coverage": view.get("coverage", "sast_candidates_only"), "deployment_approved": False,
+        })
         status = view.get("status")
         results = [{"finding_id": r.get("finding_id"), "status": r.get("status")} for r in view.get("results", ())]
         self._board.add_detail("dast", results=results, evidence_sha256=view.get("evidence_sha256"))
@@ -819,7 +848,7 @@ class Steps:
         return {"halt": None}
 
     def halted(self, state: PipelineState) -> dict[str, Any]:
-        if state.get("deploy_build") is not None:
+        if state.get("deploy_build") is not None and not state.get("exception_cleanup_done"):
             self._release()
         self._board.finish("stopped", str(state.get("halt")))
         return {"halt": state.get("halt")}

@@ -4,6 +4,9 @@
   const NS = "http://www.w3.org/2000/svg";
   const $ = (s) => document.querySelector(s);
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const requested = new URLSearchParams(location.search);
+  const requestedRun = /^[a-f0-9]{32}$/.test(requested.get("run") || "") ? requested.get("run") : null;
+  let requestedNode = requested.get("node");
   const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
   if (location.protocol === "https:") $("#logout").hidden = false;
 
@@ -30,6 +33,9 @@
     T("cutover", "서비스 도메인 전환", 2120, 116, { icon: "shift", mock: true, tool: "Cloudflare DNS 전용 CNAME", desc: "사람 승인 뒤 CNAME 을 AWS → GCP 로 바꾸고, 공개 DNS·실제 응답으로 확인한 뒤 TTL 만큼 AWS 를 유지합니다. 실패하면 되돌립니다." }),
     { id: "end", label: "이전 완료", x: 2400, y: 140, w: 120, h: 50, kind: "pill", icon: "flag", mock: true },
     // 추후: 인프라 갈래
+    T("exception-analysis", "예외 분석", 150, 730, { icon: "search", ai: true, mock: true, tool: "delta-ai 진단 API", desc: "실패·모호한 결과의 원인 후보를 분석합니다. 실행이나 승인을 결정하지 않습니다." }),
+    T("exception-report", "분석 보고서", 420, 730, { icon: "doc", mock: true, tool: "오케스트레이터 보고서 저장소", desc: "관측 근거와 분석 결과를 저장하고 무결성을 검증합니다." }),
+    T("exception-review", "실패 보고서 확인", 690, 730, { icon: "pause", mock: true, tool: "사람 확인", desc: "실패한 작업을 재실행하지 않고 보고서를 확인한 뒤 종료합니다." }),
     T("read_aws", "AWS 구성 읽기", 150, 470, { icon: "doc", mock: true, tool: "S3 Terraform 코드·state", desc: "A 기업 AWS Terraform 코드와 state 를 조회 역할로 읽습니다. (3단계)" }),
     T("map", "차분 매핑", 420, 470, { icon: "spark", ai: true, mock: true, tool: "차분 에이전트", desc: "AWS 자원·보안 설정(GuardDuty·WAF·ANF)을 GCP 대응과 등급(일치·근사·공백)으로 매핑합니다. (3단계)" }),
     T("gen_plan", "GCP 구성 · plan", 690, 470, { icon: "doc", mock: true, tool: "Terraform plan", desc: "매핑으로 GCP 구성을 만들고 plan 을 저장합니다. (3단계)" }),
@@ -43,6 +49,7 @@
     ["stage", "dast"], ["dast", "result", { label: "재현 없음·승인" }],
     ["dast", "fix", { from: "top", to: "right", label: "재현 · 수정 적용" }], ["fix", "build", { from: "left", to: "top", label: "2차" }],
     ["result", "prod_deploy"], ["prod_deploy", "prod_verify"], ["prod_verify", "cutover"], ["cutover", "end"],
+    ["exception-analysis", "exception-report"], ["exception-report", "exception-review"],
     ["start", "read_aws", { from: "bottom", to: "left", mock: true }], ["read_aws", "map", { mock: true }], ["map", "gen_plan", { mock: true }],
     ["gen_plan", "infra_approve", { mock: true }], ["infra_approve", "apply", { mock: true }], ["apply", "db_dump", { mock: true }],
     ["db_dump", "prod_deploy", { from: "top", to: "bottom", mock: true }],
@@ -217,6 +224,13 @@
   };
   function special(id, d) {
     d = d || {};
+    if (id === "exception-report") {
+      const r = d.report || {}, ref = r.reference;
+      const links = ref && board ? ["json", "md"].map((f) => `<a href="/api/pipeline/runs/${encodeURIComponent(board.run_id)}/reports/${encodeURIComponent(ref.case_id)}/${f}">${f.toUpperCase()} 다운로드</a>`).join(" · ") : "";
+      const observations = (r.observations || []).map((o) => `<li>[${esc(o.evidence_id)}] ${esc(o.summary)}</li>`).join("");
+      const hypotheses = (r.hypotheses || []).map((h) => `<li>${esc(h.explanation)} (${esc(h.confidence)} · 근거: ${(h.evidence_ids || []).map(esc).join(", ")} · 규칙: ${(h.rule_ids || []).map(esc).join(", ") || "없음"})</li>`).join("");
+      return `<p>${esc(r.summary || "—")}</p><p>상태: ${esc(r.status || "—")} · 모델: ${esc(r.model || "미사용")}</p><h3>관측 사실</h3><ul>${observations}</ul><h3>원인 후보</h3><ul>${hypotheses || "<li>확정할 수 있는 원인 후보가 없습니다.</li>"}</ul><h3>추가 확인</h3><ul>${(r.next_checks || []).map((v) => `<li>${esc(v)}</li>`).join("")}</ul><h3>한계</h3><ul>${(r.limitations || []).map((v) => `<li>${esc(v)}</li>`).join("")}</ul>${links}`;
+    }
     if (id === "build") return `<dl class="kv"><dt>이미지</dt><dd class="mono">${esc(d.image || "—")}</dd><dt>Jenkins</dt><dd>빌드 #${esc(d.build ?? "—")}</dd></dl>`;
     if (id === "sast") {
       const sc = d.scope || {}, langs = Object.entries(sc.languages || {}).map(([k, v]) => `${k} ${v}`).join(", ");
@@ -266,6 +280,7 @@
         ${n.tool ? `<div class="tool">${esc(n.tool)}</div>` : ""}
         ${n.desc ? `<p class="desc">${esc(n.desc)}</p>` : ""}
         ${real ? `<dl class="kv"><dt>소요</dt><dd class="mono">${esc(dur)}</dd>${data && data.summary ? `<dt>결과</dt><dd>${esc(data.summary)}</dd>` : ""}</dl>` : ""}
+        ${data?.detail?.diagnostic_report ? `<h3>분석 보고서</h3>${special("exception-report", {report: data.detail.diagnostic_report})}` : ""}
         ${ask}
       </div>`;
     $("#p-rest").innerHTML = `
@@ -661,13 +676,13 @@
     const data = await get("/api/pipeline/runs");
     runs = data.runs || [];
     const box = $("#runs");
-    const want = current || data.active || (runs[0] && runs[0].run_id);
+    const want = current || (runs.some((r) => r.run_id === requestedRun) ? requestedRun : null) || data.active || (runs[0] && runs[0].run_id);
     box.innerHTML = runs.map((r) => {
       const o = { verified: "검증 완료", unresolved: "보안 미해결", stopped: "멈춤" }[r.outcome] || "진행 중";
       return `<option value="${esc(r.run_id)}">${esc(clock(r.started_at))} · ${esc(((r.options || {}).commit || "").slice(0, 7))} · ${esc(o)}</option>`;
     }).join("") || "<option value=''>실행 기록 없음</option>";
     if (want) box.value = want;
-    if (want !== current) { current = want; sel = null; lastKey = ""; }
+    if (want !== current) { current = want; sel = byId[requestedNode] ? requestedNode : null; requestedNode = null; lastKey = ""; }
   }
   async function loadRun() {
     if (!current) { board = null; paint(); return; }

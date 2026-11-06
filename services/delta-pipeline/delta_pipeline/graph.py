@@ -12,6 +12,7 @@ from typing import Any
 from langgraph.graph import END, START, StateGraph
 
 from delta_pipeline.steps import Deps, PipelineState, Steps, branch, guarded
+from delta_pipeline.exception_flow import ExceptionFlow, HUMAN_GATES, prepare_exception
 
 HALTED = "halted"
 BRANCHES = ("build_start", "sast_start")
@@ -95,10 +96,31 @@ def build_graph(deps: Deps, checkpointer: Any) -> Any:
                    "cutover_switch": steps.cutover_switch, "cutover_verify": steps.cutover_verify}
     routes = step_routes(deps.options.cutover, release)
     graph = StateGraph(PipelineState)
+    def diagnosed(name, body, route):
+        execute = guarded(body)
+        if not deps.options.diagnostics:
+            return execute
+        def run(state):
+            result = execute(state)
+            merged = {**state, **result}
+            target = route(merged)
+            if target == HALTED and state.get("halt") and not result.get("halt"):
+                result = {**result, "halt": state["halt"]}
+            return prepare_exception(deps, name, result, target, merged)
+        return run
+
+    def diagnostic_route(route):
+        def run(state):
+            if deps.options.diagnostics and state.get("diagnosis_pending"):
+                return "exception_cleanup" if state.get("halt") else "diagnose_exception"
+            return route(state)
+        return run
+
     for name, body in bodies.items():
-        graph.add_node(name, guarded(body))
         route, targets = routes[name]
-        graph.add_conditional_edges(name, route, list(targets))
+        graph.add_node(name, diagnosed(name, body, route))
+        graph.add_conditional_edges(name, diagnostic_route(route), list(targets) +
+                                    (["exception_cleanup", "diagnose_exception"] if deps.options.diagnostics else []))
     # 병렬 갈래: 갈래 안에서는 멈춰도 합류(join)까지 간 뒤 한 곳에서 판단한다(동시 전이 충돌을 피한다)
     graph.add_node("build_start", guarded(steps.build_start))
     graph.add_node("build_wait", guarded(branch(steps.build_wait)))
@@ -108,6 +130,30 @@ def build_graph(deps: Deps, checkpointer: Any) -> Any:
     graph.add_edge("sast_start", "sast_wait")
     graph.add_edge(["build_wait", "sast_wait"], "join")
     graph.add_node(HALTED, steps.halted)
+    if deps.options.diagnostics:
+        flow = ExceptionFlow(deps)
+        def cleanup(state):
+            if state.get("deploy_build") is not None and not state.get("exception_cleanup_done"):
+                steps._release()
+            return {"exception_cleanup_done": True}
+        graph.add_node("exception_cleanup", cleanup)
+        graph.add_node("diagnose_exception", flow.analyze)
+        graph.add_node("save_diagnostic_report", flow.save)
+        graph.add_node("review_failed_execution", guarded(flow.review_failure))
+        graph.add_node("exception_finish", flow.finish)
+        graph.add_edge("exception_cleanup", "diagnose_exception")
+        graph.add_edge("diagnose_exception", "save_diagnostic_report")
+        def after_report(state):
+            if state.get("report_failed"):
+                return HALTED
+            resume = state.get("diagnosis_resume")
+            return resume if resume in HUMAN_GATES else "review_failed_execution"
+        graph.add_conditional_edges("save_diagnostic_report", after_report,
+                                    [HALTED, "review_failed_execution", *HUMAN_GATES])
+        graph.add_conditional_edges("review_failed_execution",
+                                   lambda state: HALTED if state.get("report_failed") else "exception_finish",
+                                   [HALTED, "exception_finish"])
+        graph.add_edge("exception_finish", END)
     graph.add_edge(START, "prepare")
     graph.add_edge(HALTED, END)
     return graph.compile(checkpointer=checkpointer)

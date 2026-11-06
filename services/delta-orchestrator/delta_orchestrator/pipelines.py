@@ -12,9 +12,11 @@ import os
 import threading
 from collections.abc import Callable
 from pathlib import Path
+from dataclasses import replace
 from typing import Any
 
-from delta_pipeline.clients import Cloudflare, Dast, Jenkins, Sast, Staging
+from delta_pipeline.diagnostic_client import DiagnosticClient
+from delta_pipeline.clients import Cloudflare, Dast, Jenkins, Sast, Staging, ServiceUnavailable
 from delta_pipeline.model import Options
 from delta_pipeline.run import BOARD_DIR, Run, latest_unfinished
 from delta_pipeline.steps import CutoverConfig
@@ -33,6 +35,14 @@ def platform_run(options: Options, store_dir: Path, run_id: str | None) -> Run:
     token = os.environ.get("CLOUDFLARE_API_TOKEN")
     jenkins = f"http://jenkins.{zone}:8080"
     password = os.environ.get("JENKINS_PLATFORM_PASSWORD", "")
+    diagnostic = None
+    if os.environ.get("DELTA_DIAGNOSTIC_URL") or os.environ.get("DELTA_DIAGNOSTICS_REQUIRED") == "1":
+        try:
+            diagnostic = DiagnosticClient(os.environ["DELTA_DIAGNOSTIC_URL"],
+                os.environ["DELTA_DIAGNOSTIC_TOKEN"], os.environ.get("DELTA_DIAGNOSTIC_CA_BASE64"))
+            options = replace(options, diagnostics=True)
+        except Exception:
+            raise ServiceUnavailable("진단 서비스 연결 설정을 확인하세요") from None
     return Run(options,
                sast=Sast(f"http://sast.{zone}:8790", os.environ.get("DELTA_SAST_TOKEN", "")),
                # Host 가 DAST_INTERNAL_HOSTS(dast.cp.internal:8765)와 맞아야 플랫폼 토큰이 통한다
@@ -42,6 +52,7 @@ def platform_run(options: Options, store_dir: Path, run_id: str | None) -> Run:
                # 조회 토큰: 점검을 끝낸 뒤 자기 스테이징 점유를 푸는 데만 쓴다(배포·초기화는 못 한다)
                staging=Staging(f"http://jenkins.{zone}:8091", os.environ.get("DELTA_STAGING_TOKEN", "")),
                image_repo=os.environ.get("DELTA_IMAGE_REPO", IMAGE_REPO), store_dir=store_dir, run_id=run_id,
+               diagnostic=diagnostic,
                cloudflare=Cloudflare(token) if token else None, cutover=cutover_config() if options.cutover else None)
 
 
@@ -72,8 +83,8 @@ class Pipelines:
                 raise RuntimeError("이미 실행 중인 파이프라인이 있습니다(스테이징은 하나뿐)")
             return self._launch(Options(repo, commit, cutover=cutover, branch=branch))
 
-    def answer(self, run_id: str, value: str) -> bool:
-        return bool(self.run and self.run.run_id == run_id and self.run.answer(value))
+    def answer(self, run_id: str, value: str, case_id: str | None = None) -> bool:
+        return bool(self.run and self.run.run_id == run_id and self.run.answer(value, case_id))
 
     def get(self, run_id: str) -> dict[str, Any] | None:
         if self.run and self.run.run_id == run_id:
