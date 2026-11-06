@@ -113,7 +113,8 @@
     ref.resp = mk("g", { class: "resp", transform: `translate(${n.w - 104},-12)` }, g);
     for (let i = 0; i < 6; i++) mk("rect", { x: (i % 3) * 3.4, y: -6 + Math.floor(i / 3) * 3.4, width: 2.2, height: 2.2, rx: 0.6 }, ref.resp);
     ref.respT = mk("text", { x: 14 }, ref.resp);
-    mk("text", { class: "lbl", x: 16, y: 64 }, g).textContent = n.mock ? "추후" : "도구";
+    ref.label = mk("text", { class: "lbl", x: 16, y: 64 }, g);
+    ref.label.textContent = n.mock ? "추후" : "도구";
     const tool = (n.tool || "").length > 17 ? n.tool.slice(0, 16) + "…" : n.tool || "";
     mk("text", { class: "val", x: n.w - 16, y: 64, "text-anchor": "end" }, g).textContent = tool;
     mk("rect", { class: "fieldbox", x: 12, y: 72, width: n.w - 24, height: 18, rx: 6 }, g);
@@ -166,6 +167,7 @@
         const s0 = data && data.started_at, s1 = data && data.ended_at;
         n.ref.time.textContent = s0 ? fmtDur(((s1 || Date.now() / 1000) - s0)) : "";
       }
+      if (n.ref.label) n.ref.label.textContent = real ? "도구" : "추후";
       if (n.ref.respT) n.ref.respT.textContent = st === "waiting" ? "승인 대기..." : "실행 중...";
     }
     for (const e of edgeList) {
