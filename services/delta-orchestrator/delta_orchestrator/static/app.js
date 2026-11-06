@@ -25,10 +25,9 @@
     // 조치 루프(1-B): DAST 재현 → 사람이 '수정 적용' → 수정안 PR → 그 커밋으로 빌드부터 2차(재검증)
     T("fix", "AI 수정 · PR", 690, -150, { icon: "spark", ai: true, tool: "delta-dast 수정 에이전트", desc: "DAST 가 재현하자마자 SAST 코드 경로와 재현 증거로 수정안을 만들어 둡니다. 사람이 DAST 승인 단계에서 '수정 적용'을 고르면 수정 브랜치·PR 을 올리고, 그 커밋으로 빌드부터 다시 돌아 같은 항목을 재검증합니다(1회)." }),
     // 운영 반영
-    T("prod_deploy", "운영 배포", 1580, 116, { icon: "cloud", mock: true, tool: "운영 배포 도구 · 승인 토큰", desc: "검증한 같은 digest 를 GCP 운영에 배포합니다. 서명한 승인 토큰이 있어야 진행합니다. (2단계)" }),
-    T("prod_verify", "운영 검증", 1850, 116, { icon: "check", mock: true, tool: "운영 원본 직접 확인", desc: "GCP 운영 진입점이 서비스 도메인 요청에 정상 응답하는지 봅니다. (2단계)" }),
-    T("cutover", "서비스 도메인 전환", 2120, 116, { icon: "shift", mock: true, tool: "Cloudflare DNS 전용 CNAME", desc: "사람 승인 뒤 CNAME 을 AWS → GCP 로 바꾸고, 공개 DNS·실제 응답으로 확인한 뒤 TTL 만큼 AWS 를 유지합니다. 실패하면 되돌립니다." }),
-    { id: "end", label: "이전 완료", x: 2400, y: 140, w: 120, h: 50, kind: "pill", icon: "flag", mock: true },
+    T("release", "운영 배포 · 검증", 1580, 116, { icon: "cloud", tool: "Jenkins delta-release · 환경별 VM", desc: "사람이 승인하면(서명 토큰) 검증한 같은 FE·BE digest 로 운영 VM 을 새로 만들고 DB 를 준비해 Compose 로 띄운 뒤, 실제 실행 이미지·헬스·PostgreSQL 18 을 확인합니다." }),
+    T("cutover", "서비스 도메인 전환", 1850, 116, { icon: "shift", mock: true, tool: "Cloudflare DNS 전용 CNAME", desc: "사람 승인 뒤 CNAME 을 AWS → GCP 로 바꾸고, 공개 DNS·실제 응답으로 확인한 뒤 TTL 만큼 AWS 를 유지합니다. 실패하면 되돌립니다." }),
+    { id: "end", label: "이전 완료", x: 2130, y: 140, w: 120, h: 50, kind: "pill", icon: "flag", mock: true },
     // 추후: 인프라 갈래
     T("read_aws", "AWS 구성 읽기", 150, 470, { icon: "doc", mock: true, tool: "S3 Terraform 코드·state", desc: "A 기업 AWS Terraform 코드와 state 를 조회 역할로 읽습니다. (3단계)" }),
     T("map", "차분 매핑", 420, 470, { icon: "spark", ai: true, mock: true, tool: "차분 에이전트", desc: "AWS 자원·보안 설정(GuardDuty·WAF·ANF)을 GCP 대응과 등급(일치·근사·공백)으로 매핑합니다. (3단계)" }),
@@ -42,10 +41,10 @@
     ["start", "prepare"], ["prepare", "build"], ["prepare", "sast"], ["build", "stage"], ["sast", "stage", { label: "합류" }],
     ["stage", "dast"], ["dast", "result", { label: "재현 없음·승인" }],
     ["dast", "fix", { from: "top", to: "right", label: "재현 · 수정 적용" }], ["fix", "build", { from: "left", to: "top", label: "2차" }],
-    ["result", "prod_deploy"], ["prod_deploy", "prod_verify"], ["prod_verify", "cutover"], ["cutover", "end"],
+    ["result", "release"], ["release", "cutover"], ["cutover", "end"],
     ["start", "read_aws", { from: "bottom", to: "left", mock: true }], ["read_aws", "map", { mock: true }], ["map", "gen_plan", { mock: true }],
     ["gen_plan", "infra_approve", { mock: true }], ["infra_approve", "apply", { mock: true }], ["apply", "db_dump", { mock: true }],
-    ["db_dump", "prod_deploy", { from: "top", to: "bottom", mock: true }],
+    ["db_dump", "release", { from: "top", to: "bottom", mock: true }],
   ];
   const ICONS = {
     play: "M5.5 3.2 L12.8 8 L5.5 12.8 Z", box: "M2.5 5 L8 2 L13.5 5 V11 L8 14 L2.5 11 Z M2.5 5 L8 8 L13.5 5 M8 8 V14",
@@ -682,6 +681,10 @@
       const chip = $("#health-chip");
       chip.textContent = `${up}/${total} 정상`; chip.className = up === total ? "ok" : "bad";
       $("#run-cutover-label").hidden = !s.cutover_configured;
+      const rel = $("#run-release"), picked = rel.value, releases = s.release_targets || [];
+      rel.innerHTML = `<option value="">스테이징까지만</option>` + releases.map((t) => `<option value="${esc(t.id)}">${esc(t.label)} (${esc((t.cloud || "").toUpperCase())})</option>`).join("");
+      if (releases.some((t) => t.id === picked)) rel.value = picked;
+      $("#run-release-label").hidden = !releases.length;
       if (!s.cutover_configured) $("#run-cutover").checked = false;
       const svc = s.services.map((x) => `<div><b>${esc(x.label)}</b><span>${esc(x.role)}</span><span>${x.state === "up" ? "정상" : esc(x.state)}${x.placeholder ? " · 임시 서버" : ""}${x.ms != null ? " · " + esc(x.ms) + "ms" : ""}</span></div>`).join("");
       const targets = ((s.staging || {}).targets || []).map((t) => `<dt>${esc((t.cloud || "").toUpperCase())} 스테이징</dt><dd class="mono">${esc(t.url || t.error || "—")}</dd>`).join("");
@@ -751,7 +754,7 @@
     ev.preventDefault();
     if (!/^[0-9a-f]{40}$/.test($("#run-commit").value)) { $("#run-msg").textContent = "커밋 목록을 불러온 뒤 커밋을 고르세요"; return; }
     const r = await fetch("/api/pipeline/runs", { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ repo: $("#run-repo").value.trim().replace(/\.git$|\/$/g, ""), commit: $("#run-commit").value, branch: $("#run-branch").value || "", cutover: $("#run-cutover").checked }) });
+      body: JSON.stringify({ repo: $("#run-repo").value.trim().replace(/\.git$|\/$/g, ""), commit: $("#run-commit").value, branch: $("#run-branch").value || "", cutover: $("#run-cutover").checked, release_target: $("#run-release").value || null }) });
     const body = await r.json().catch(() => ({}));
     $("#run-msg").textContent = r.ok ? "시작했습니다" : "거부: " + (body.detail || r.status);
     if (r.ok) { current = body.run_id; sel = null; lastKey = ""; followOn(true); $("#start").hidden = true; await loadRuns(); await loadRun(); }

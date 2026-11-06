@@ -24,11 +24,19 @@ def test_staging_job_accepts_bundle_parameters():
         assert re.search(rf"(?:stringParam|textParam)\(['\"]{name}['\"]", job), name
 
 
-def test_controller_image_ships_release_and_common_host_entrypoints():
+def test_controller_image_ships_release_and_vm_deployer():
     dockerfile = (CONTROLLER / "Dockerfile").read_text()
     copies = " ".join(re.findall(r"^COPY\s+(.+(?:\\\n.+)*)", dockerfile, re.M))
-    for name in ("Jenkinsfile.release", "release_deploy.py", "compose_host.py"):
+    for name in ("Jenkinsfile.release", "release_deploy.py", "vm_release.py"):
         assert name in copies, f"컨트롤러 startup image에 {name}이 포함되지 않는다"
+    # 배포기와 Terraform 모듈은 이름 있는 빌드 컨텍스트(release=deploy/platform/release)에서 /opt/delta/release로 들어간다.
+    assert re.search(r"^COPY --from=release \*\.py /opt/delta/release/$", dockerfile, re.M)
+    assert re.search(r"^COPY --from=release terraform /opt/delta/release/terraform$", dockerfile, re.M)
+    assert "compose_host.py" not in dockerfile and "release_transport.py" not in dockerfile
+    # 배포기 실행 도구(Terraform 고정 버전·gcloud IAP·SSM 포워딩)와 Python 의존을 이미지에서 확인한다.
+    assert re.search(r"terraform:1\.16\.4\b", dockerfile)
+    for tool in ("terraform version", "gcloud --version", "session-manager-plugin", "/opt/delta/venv/bin/python"):
+        assert tool in dockerfile, tool
 
 
 def test_release_pipeline_runs_only_trusted_controller_script():

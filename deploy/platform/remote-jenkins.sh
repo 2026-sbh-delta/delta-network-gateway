@@ -23,11 +23,23 @@ if [ -n "$gcp_creds" ]; then
   gcp_env=(-e GOOGLE_APPLICATION_CREDENTIALS=/state/gcp-credentials.json)
 fi
 chown 10001:10001 "$base/state/staging/"*.json
+# 운영 배포(delta-release, 배포 전용 실행기): 서버 소유 인벤토리·서명 공개키·배포 설정·GCP 배포 계정 WIF 설정.
+# 모두 비밀값이 아니다(서명 개인키는 오케스트레이터에만 있다). 없으면 운영 배포 작업이 시작 단계에서 거부한다.
+install -d -o 1000 -g 1000 -m 0750 "$base/release"
+param jenkins/release_targets > "$base/release/release-targets.json"
+param jenkins/release_public_key > "$base/release/release-public.pem"
+param jenkins/release_config > "$base/release/release-config.json"
+param jenkins/gcp_release_credentials > "$base/release/gcp-release-credentials.json"
+chown 1000:1000 "$base/release/"*
+release_env=(-e DELTA_RELEASE_TARGETS=/run/delta/release-targets.json -e DELTA_RELEASE_PUBLIC_KEY=/run/delta/release-public.pem
+  -e DELTA_DEPLOY_CONFIG=/run/delta/release-config.json)
+[ -s "$base/release/gcp-release-credentials.json" ] && release_env+=(-e GOOGLE_APPLICATION_CREDENTIALS=/run/delta/gcp-release-credentials.json)
 
 docker rm -f delta-jenkins delta-staging >/dev/null 2>&1 || true
 platform_logs jenkins jenkins
 docker run -d --name delta-jenkins --restart unless-stopped --network host "${log_opts[@]}" \
-  --env-file "$base/jenkins.env" -v "$base/state/jenkins:/var/jenkins_home" "$IMAGE" >/dev/null
+  --env-file "$base/jenkins.env" "${release_env[@]}" -v "$base/release:/run/delta:ro" \
+  -v "$base/state/jenkins:/var/jenkins_home" "$IMAGE" >/dev/null
 platform_logs jenkins staging
 docker run -d --name delta-staging --restart unless-stopped --network host "${log_opts[@]}" \
   --env-file "$base/staging.env" -e DELTA_STAGING_CONFIG=/state/staging.json -e DELTA_STAGING_STATE=/state/deployments.json "${gcp_env[@]}" \

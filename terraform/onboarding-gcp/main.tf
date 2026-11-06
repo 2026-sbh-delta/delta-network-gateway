@@ -59,3 +59,49 @@ resource "google_service_account_iam_member" "wif" {
   role               = "roles/iam.workloadIdentityUser"
   member             = "principalSet://iam.googleapis.com/${local.pool_name}/attribute.aws_role/${each.value.role}"
 }
+
+# 운영 배포(동규님 방식, 환경별 VM 생성)는 기존 배포 계정 delta-platform-deployer 로 한다.
+# 이 계정의 VM 생성·IAP·DB 비밀값 권한은 platform/deploy/workloads/runtime-gcp 가 만든다(Terraform 통일 때 이 루트로 옮긴다).
+# 여기서는 플랫폼 Jenkins 역할만 이 계정을 쓰도록 허용한다.
+resource "google_service_account_iam_member" "release_deployer" {
+  service_account_id = "projects/${var.project_id}/serviceAccounts/${var.release_deployer_account}"
+  role               = "roles/iam.workloadIdentityUser"
+  member             = "principalSet://iam.googleapis.com/${local.pool_name}/attribute.aws_role/${var.platform_role_prefix}jenkins"
+}
+
+# 운영 배포의 새 PostgreSQL 18 서버(Cloud SQL·PSC 사설 주소·사설 DNS·관리자 비밀값)를 만드는 권한.
+resource "google_project_iam_member" "release_deployer" {
+  for_each = toset(["roles/cloudsql.admin", "roles/dns.admin", "roles/compute.networkAdmin", "roles/secretmanager.admin"])
+  project  = var.project_id
+  role     = each.value
+  member   = "serviceAccount:${var.release_deployer_account}"
+}
+
+# 운영 앱 VM 계정: 우리 빌드 묶음(스테이징 AR) 이미지 pull, 컨테이너 로그(gcplogs) 쓰기.
+resource "google_artifact_registry_repository_iam_member" "release_app_pull" {
+  location   = var.region
+  repository = "${var.staging_name}-staging"
+  role       = "roles/artifactregistry.reader"
+  member     = "serviceAccount:${var.release_app_account}"
+}
+resource "google_project_iam_member" "release_app_logs" {
+  project = var.project_id
+  role    = "roles/logging.logWriter"
+  member  = "serviceAccount:${var.release_app_account}"
+}
+
+# 운영 앱 VM → 같은 앱 서브넷의 PostgreSQL 사설 연결(PSC) 주소. 기존 송신 차단(egress-deny, 1000)보다 먼저 적용한다.
+# 운영 배포의 새 PG18 서버는 사설 주소를 앱 서브넷에 받는다. 5432 만 연다.
+resource "google_compute_firewall" "release_app_database" {
+  name                    = "delta-cp-release-app-database"
+  project                 = var.project_id
+  network                 = var.release_network
+  direction               = "EGRESS"
+  priority                = 100
+  destination_ranges      = [var.release_app_subnet_cidr]
+  target_service_accounts = [var.release_app_account]
+  allow {
+    protocol = "tcp"
+    ports    = ["5432"]
+  }
+}

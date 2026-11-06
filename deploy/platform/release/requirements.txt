@@ -1,0 +1,22 @@
+# 운영 배포기(deploy.py) 전용 의존. 컨트롤러 이미지의 /opt/delta/venv에 설치한다.
+# 갱신: uv pip compile --python-version 3.11 --python-platform x86_64-manylinux_2_28 (최상위: boto3, psycopg[binary], google-auth[requests])
+boto3==1.43.105
+botocore==1.43.125
+certifi==2026.10.23
+cffi==2.1.1
+charset-normalizer==3.5.2
+cryptography==50.0.2
+google-auth==2.62.1
+idna==3.20
+jmespath==1.1.0
+psycopg==3.3.8
+psycopg-binary==3.3.8
+pyasn1==0.6.5
+pyasn1-modules==0.4.2
+pycparser==3.12
+python-dateutil==2.9.0.post0
+requests==2.34.2
+s3transfer==0.19.3
+six==1.17.0
+typing-extensions==4.16.0
+urllib3==2.8.0

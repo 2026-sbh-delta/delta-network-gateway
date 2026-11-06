@@ -84,7 +84,10 @@ build_spec() {
 build_push() {  # build_push <platform> <context> <dockerfile> <image:tag> → digest 참조를 출력
   local platform="$1" context="$2" dockerfile="$3" ref="$4"
   if [ -z "${TAG:-}" ]; then
-    docker buildx build --platform "$platform" --provenance=false --sbom=false \
+    # Jenkins 컨트롤러는 운영 배포기(deploy/platform/release)도 함께 담는다
+    local extra=()
+    [ "$context" = "deploy/platform/jenkins" ] && extra=(--build-context "release=$repo/deploy/platform/release")
+    docker buildx build --platform "$platform" --provenance=false --sbom=false ${extra[@]+"${extra[@]}"} \
       -f "$repo/$context/$dockerfile" -t "$ref" --push "$repo/$context" >&2 || { echo "빌드·푸시 실패: $ref" >&2; return 1; }
   fi
   local digest

@@ -15,6 +15,14 @@ pull_image
   cutover="$(param orchestrator/cutover_config)"
   case "$cutover" in "{"*) printf 'DELTA_CUTOVER=%s\n' "$cutover" ;; esac
   printf 'DELTA_PUBLIC_URLS=%s\n' "$(echo "$PUBLIC_URLS_B64" | base64 -d)"
+  # 운영 배포(선택): 사람 승인 서명 개인키(오케스트레이터만 가진다)·대상 인벤토리·빌드 묶음 ECR 사본 저장소.
+  # 줄바꿈 있는 PEM 은 env 파일 한 줄로 넣을 수 없어 base64 로 감싸 두고 앱이 푼다.
+  rel_key="$(secret orchestrator/release_signing_key 2>/dev/null || true)"
+  [ -n "$rel_key" ] && printf 'DELTA_RELEASE_SIGNING_KEY_B64=%s\n' "$(printf '%s' "$rel_key" | base64 | tr -d '\n')"
+  rel_targets="$(param jenkins/release_targets)"
+  case "$rel_targets" in "{"*) printf 'DELTA_RELEASE_TARGETS=%s\n' "$(printf '%s' "$rel_targets" | tr -d '\n')" ;; esac
+  ecr_repo="$(param orchestrator/ecr_image_repo)"
+  [ -n "$ecr_repo" ] && printf 'DELTA_ECR_IMAGE_REPO=%s\n' "$ecr_repo"
 } > "$base/secrets.env"
 # 체크포인트·승인·점유 기록은 호스트 디렉터리에 둔다(컨테이너를 재배포해도 남는다, 명세 v1.1 11장).
 install -d -o 10001 -g 10001 -m 0750 "$base/state/orchestrator"

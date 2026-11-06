@@ -35,3 +35,27 @@ variable "tfstate_bucket" {
   type        = string
   default     = "term2-delta-tfstate"
 }
+
+variable "release_deployer_account" {
+  description = "운영 배포(환경별 VM 생성)에 쓰는 기존 배포 계정 이메일."
+  type        = string
+  default     = "delta-platform-deployer@term2-delta.iam.gserviceaccount.com"
+}
+
+variable "release_app_account" {
+  description = "운영 앱 VM 서비스 계정 이메일(기존 runtime-gcp 계정)."
+  type        = string
+  default     = "delta-platform-app@term2-delta.iam.gserviceaccount.com"
+}
+
+variable "release_network" {
+  description = "운영 앱 VM 네트워크(A 기업 GCP 워크로드 VPC)."
+  type        = string
+  default     = "delta-lab-workload"
+}
+
+variable "release_app_subnet_cidr" {
+  description = "운영 앱 VM·PostgreSQL 사설 연결 주소가 있는 서브넷 대역(delta-lab-app-backend)."
+  type        = string
+  default     = "10.32.2.0/24"
+}

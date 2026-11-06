@@ -45,7 +45,7 @@ class Run:
                  probe: Callable[..., tuple[int, str]] | None = None,
                  resolve: Callable[[str], str | None] | None = None, now: Callable[[], float] | None = None,
                  release_jenkins: JenkinsClient | None = None, release_signing_key: bytes | None = None,
-                 release_config: dict[str, Any] | None = None) -> None:
+                 release_config: dict[str, Any] | None = None, ecr_image_repo: str = "") -> None:
         self.run_id = run_id or uuid.uuid4().hex
         self.options = options
         (store_dir / BOARD_DIR).mkdir(parents=True, exist_ok=True)
@@ -55,6 +55,7 @@ class Run:
                           build_jenkins=build_jenkins, deploy_jenkins=deploy_jenkins, staging=staging,
                           image_repo=image_repo, sleep=sleep, cloudflare=cloudflare, cutover=cutover,
                           release_jenkins=release_jenkins, release_signing_key=release_signing_key, release_config=release_config,
+                          ecr_image_repo=ecr_image_repo,
                           **{k: v for k, v in (("probe", probe), ("resolve", resolve), ("now", now)) if v})
         self._answer: str | None = None
         self._answered = threading.Event()

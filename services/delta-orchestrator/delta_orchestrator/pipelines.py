@@ -2,11 +2,14 @@
 
 환경 변수: ORCH_STATE_DIR, JENKINS_PLATFORM_PASSWORD, DELTA_SAST_TOKEN, DAST_PLATFORM_TOKEN, DELTA_STAGING_TOKEN(조회),
 DELTA_IMAGE_REPO(선택), DELTA_INTERNAL_ZONE(선택),
-DELTA_CUTOVER(선택, JSON: 서비스 도메인 전환 설정), CLOUDFLARE_API_TOKEN(선택: 해당 zone DNS 편집만)
+DELTA_CUTOVER(선택, JSON: 서비스 도메인 전환 설정), CLOUDFLARE_API_TOKEN(선택: 해당 zone DNS 편집만),
+DELTA_RELEASE_TARGETS(선택, JSON: 운영 대상 인벤토리 {target_id: 항목}), DELTA_RELEASE_SIGNING_KEY_B64(선택: Ed25519 PEM, base64),
+DELTA_ECR_IMAGE_REPO(선택: 빌드 묶음의 ECR 사본 저장소)
 """
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 import threading
@@ -28,6 +31,19 @@ def cutover_config() -> CutoverConfig | None:
     return CutoverConfig(**json.loads(raw)) if raw else None
 
 
+def release_targets() -> dict[str, Any]:
+    """운영 대상 인벤토리(비밀값 없음). 화면의 대상 선택과 승인 설정 해시의 기준이다."""
+    raw = os.environ.get("DELTA_RELEASE_TARGETS")
+    value = json.loads(raw) if raw else {}
+    return value if isinstance(value, dict) else {}
+
+
+def release_signing_key() -> bytes | None:
+    """운영 승인 서명 개인키(Ed25519 PEM). env 파일 한 줄에 넣으려고 base64 로 감싼 값을 푼다."""
+    raw = os.environ.get("DELTA_RELEASE_SIGNING_KEY_B64", "")
+    return base64.b64decode(raw) if raw else None
+
+
 def platform_run(options: Options, store_dir: Path, run_id: str | None) -> Run:
     zone = os.environ.get("DELTA_INTERNAL_ZONE", "cp.internal")
     token = os.environ.get("CLOUDFLARE_API_TOKEN")
@@ -42,7 +58,12 @@ def platform_run(options: Options, store_dir: Path, run_id: str | None) -> Run:
                # 조회 토큰: 점검을 끝낸 뒤 자기 스테이징 점유를 푸는 데만 쓴다(배포·초기화는 못 한다)
                staging=Staging(f"http://jenkins.{zone}:8091", os.environ.get("DELTA_STAGING_TOKEN", "")),
                image_repo=os.environ.get("DELTA_IMAGE_REPO", IMAGE_REPO), store_dir=store_dir, run_id=run_id,
-               cloudflare=Cloudflare(token) if token else None, cutover=cutover_config() if options.cutover else None)
+               cloudflare=Cloudflare(token) if token else None, cutover=cutover_config() if options.cutover else None,
+               # 운영 배포(환경별 VM 생성)는 사람 승인 서명 뒤 Jenkins delta-release 가 한다
+               release_jenkins=Jenkins(jenkins, "platform", password, job="delta-release") if options.release_target else None,
+               release_signing_key=release_signing_key(),
+               release_config=release_targets().get(options.release_target) if options.release_target else None,
+               ecr_image_repo=os.environ.get("DELTA_ECR_IMAGE_REPO", ""))
 
 
 class Pipelines:
@@ -66,11 +87,12 @@ class Pipelines:
     def running(self) -> bool:
         return self._thread is not None and self._thread.is_alive()
 
-    def start(self, repo: str, commit: str, *, cutover: bool = False, branch: str = "") -> str:
+    def start(self, repo: str, commit: str, *, cutover: bool = False, branch: str = "",
+              release_target: str | None = None) -> str:
         with self._lock:
             if self.running():
                 raise RuntimeError("이미 실행 중인 파이프라인이 있습니다(스테이징은 하나뿐)")
-            return self._launch(Options(repo, commit, cutover=cutover, branch=branch))
+            return self._launch(Options(repo, commit, cutover=cutover, branch=branch, release_target=release_target))
 
     def answer(self, run_id: str, value: str) -> bool:
         return bool(self.run and self.run.run_id == run_id and self.run.answer(value))

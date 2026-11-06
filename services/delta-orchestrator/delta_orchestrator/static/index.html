@@ -27,6 +27,7 @@
     <button class="btn" type="button" id="run-load">확인</button>
     <label>브랜치 <select id="run-branch" aria-label="브랜치" disabled><option value="">저장소 확인 후 선택</option></select></label>
     <label>커밋 <select id="run-commit" aria-label="커밋" required disabled><option value="">저장소 확인 후 선택</option></select></label>
+    <label id="run-release-label" hidden>운영 배포 <select id="run-release" aria-label="운영 배포 대상"><option value="">스테이징까지만</option></select></label>
     <label id="run-cutover-label" hidden class="toggle"><input type="checkbox" id="run-cutover"> 검증 뒤 서비스 도메인 전환</label>
     <button class="btn primary" type="submit" id="run-submit" disabled>실행</button>
     <span id="run-msg" class="hint"></span>
