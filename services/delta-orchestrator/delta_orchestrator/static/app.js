@@ -12,6 +12,7 @@
 
   /* ── 그래프 정의: 실제 노드 id 는 실행 기록(Board)의 노드 id 와 같다 ── */
   const GROUPS = [
+    { label: "진단·보고서", code: "관측 → 원인 후보 → 사람 확인", x: -40, y: 680, w: 1000, h: 190 },
     { label: "웹 갈래", code: "build ∥ sast → stage → dast", x: -40, y: -200, w: 1520, h: 560 },
     { label: "인프라 갈래 · 추후", code: "차분 에이전트", x: -40, y: 410, w: 1820, h: 200 },
     { label: "운영 반영", code: "운영 배포 → 도메인 전환", x: 1530, y: 40, w: 1110, h: 300 },
@@ -49,6 +50,7 @@
     ["stage", "dast"], ["dast", "result", { label: "재현 없음·승인" }],
     ["dast", "fix", { from: "top", to: "right", label: "재현 · 수정 적용" }], ["fix", "build", { from: "left", to: "top", label: "2차" }],
     ["result", "prod_deploy"], ["prod_deploy", "prod_verify"], ["prod_verify", "cutover"], ["cutover", "end"],
+    ["dast", "exception-analysis", { from: "bottom", to: "top", label: "진단" }],
     ["exception-analysis", "exception-report"], ["exception-report", "exception-review"],
     ["start", "read_aws", { from: "bottom", to: "left", mock: true }], ["read_aws", "map", { mock: true }], ["map", "gen_plan", { mock: true }],
     ["gen_plan", "infra_approve", { mock: true }], ["infra_approve", "apply", { mock: true }], ["apply", "db_dump", { mock: true }],
@@ -224,14 +226,28 @@
     const [c, t] = m[status] || ["g-idle", status || "—"];
     return `<span class="g ${c}">${esc(t)}</span>`;
   };
+  function observationView(o) {
+    let value = null;
+    try { value = JSON.parse(o.summary); } catch (_) { /* ordinary observation text */ }
+    if (o.evidence_id === "scanner-execution-binding" && value) {
+      return `<li><b>검사 실행 근거</b><dl class="kv"><dt>커밋</dt><dd class="mono">${esc(value.commit)}</dd>
+        <dt>SAST</dt><dd class="mono">${esc(value.sast_run_id)}</dd><dt>DAST</dt><dd class="mono">${esc(value.dast_run_id)}</dd></dl>
+        <details><summary>이미지·런타임 상세 근거</summary><pre>${esc(JSON.stringify(value, null, 2))}</pre></details></li>`;
+    }
+    if (o.evidence_id === "scanner-source-findings" && Array.isArray(value)) {
+      return value.map((f) => `<li><b>소스 검사 근거</b><p>${esc(f.message)}</p>${(f.locations || []).map((loc) =>
+        `<code>${esc(loc.artifactLocation?.uri)}:${esc(loc.region?.startLine)}</code>`).join(" · ")}</li>`).join("");
+    }
+    return `<li>${esc(o.summary)}</li>`;
+  }
   function special(id, d) {
     d = d || {};
     if (id === "exception-report") {
       const r = d.report || {}, ref = r.reference;
       const links = ref && board ? ["json", "md"].map((f) => `<a href="/api/pipeline/runs/${encodeURIComponent(board.run_id)}/reports/${encodeURIComponent(ref.case_id)}/${f}">${f.toUpperCase()} 다운로드</a>`).join(" · ") : "";
-      const observations = (r.observations || []).map((o) => `<li>[${esc(o.evidence_id)}] ${esc(o.summary)}</li>`).join("");
+      const observations = (r.observations || []).map(observationView).join("");
       const hypotheses = (r.hypotheses || []).map((h) => `<li>${esc(h.explanation)} (${esc(h.confidence)} · 근거: ${(h.evidence_ids || []).map(esc).join(", ")} · 규칙: ${(h.rule_ids || []).map(esc).join(", ") || "없음"})</li>`).join("");
-      return `<p>${esc(r.summary || "—")}</p><p>상태: ${esc(r.status || "—")} · 모델: ${esc(r.model || "미사용")}</p><h3>관측 사실</h3><ul>${observations}</ul><h3>원인 후보</h3><ul>${hypotheses || "<li>확정할 수 있는 원인 후보가 없습니다.</li>"}</ul><h3>추가 확인</h3><ul>${(r.next_checks || []).map((v) => `<li>${esc(v)}</li>`).join("")}</ul><h3>한계</h3><ul>${(r.limitations || []).map((v) => `<li>${esc(v)}</li>`).join("")}</ul>${links}`;
+      return `<section class="diagnostic-report"><p>${links}</p><p>${esc(r.summary || "—")}</p><p>상태: ${esc(r.status || "—")} · 모델: ${esc(r.model || "미사용")}</p><h3>관측 사실</h3><ul>${observations}</ul><h3>원인 후보</h3><ul>${hypotheses || "<li>확정할 수 있는 원인 후보가 없습니다.</li>"}</ul><h3>추가 확인</h3><ul>${(r.next_checks || []).map((v) => `<li>${esc(v)}</li>`).join("")}</ul><h3>한계</h3><ul>${(r.limitations || []).map((v) => `<li>${esc(v)}</li>`).join("")}</ul></section>`;
     }
     if (id === "build") return `<dl class="kv"><dt>이미지</dt><dd class="mono">${esc(d.image || "—")}</dd><dt>Jenkins</dt><dd>빌드 #${esc(d.build ?? "—")}</dd></dl>`;
     if (id === "sast") {
@@ -635,11 +651,12 @@
   function followTick() {
     if (!follow || !board) return;
     const act = board.nodes.filter((n) => ["running", "waiting"].includes(n.state) && byId[n.id]).map((n) => n.id).sort();
-    const key = act.join(",") || "web";
+    const selected = sel && sel.startsWith("exception-") ? ["exception-analysis", "exception-report", "exception-review"] : [];
+    const key = act.concat(selected).join(",") || "web";
     if (key === lastKey) return;
     lastKey = key;
     // 웹 갈래 전체는 늘 보이게 두고, 웹 밖(운영 반영 등)에서 진행 중이면 그 노드까지 넓힌다
-    fitTo(bounds(["start", "prepare", "build", "sast", "stage", "dast", "result", ...act]), 60, 1.0);
+    fitTo(bounds(["start", "prepare", "build", "sast", "stage", "dast", "result", ...act, ...selected]), 60, 1.0);
   }
   let drag = null;
   svg.addEventListener("pointerdown", (e) => { if (e.target.closest(".node, .thumb")) return; drag = { x: e.clientX, y: e.clientY }; svg.classList.add("dragging"); svg.setPointerCapture(e.pointerId); followOn(false); });

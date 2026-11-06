@@ -293,3 +293,9 @@ dialog.viewer { width: min(1280px, calc(100vw - 32px)); }
 /* 실시간 화면의 점검 ID(실행·회차별로 화면을 나눈다) */
 .pip-head em { font-style: normal; font-weight: 400; color: var(--muted); font-size: 11px; margin-left: 6px; }
 .thumb .tid { fill: var(--muted); font-size: 9.5px; font-weight: 500; font-family: var(--f-mono); }
+
+/* Diagnostic evidence stays readable inside the existing responsive panel. */
+.diagnostic-report { min-width: 0; overflow-wrap: anywhere; }
+.diagnostic-report pre { white-space: pre-wrap; overflow-wrap: anywhere; max-width: 100%; font-size: 12px; }
+.diagnostic-report details { margin-top: 8px; }
+.diagnostic-report summary { cursor: pointer; color: var(--violet-soft); }
