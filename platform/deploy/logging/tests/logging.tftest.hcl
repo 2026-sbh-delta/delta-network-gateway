@@ -62,3 +62,20 @@ run "reject_empty_sink_filter" {
   variables { gcp_log_filter = " " }
   expect_failures = [var.gcp_log_filter]
 }
+run "security_relay_preserves_central_gcp_and_excludes_direct_firewall" {
+  command = apply
+  variables {
+    gcp_security_relay_enabled             = true
+    gcp_firewall_direct_collection_enabled = false
+  }
+  assert {
+    condition = (
+      aws_lambda_function.aws.environment[0].variables.GCP_DESTINATION_LOG_GROUP == "/delta-cp/central/gcp" &&
+      contains(jsondecode(aws_iam_role_policy.logs["aws"].policy).Statement[0].Resource, "${aws_cloudwatch_log_group.central["gcp"].arn}:*") &&
+      startswith(google_logging_project_sink.logs.filter, "(") &&
+      strcontains(google_logging_project_sink.logs.filter, "AND NOT logName=(") &&
+      strcontains(google_logging_project_sink.logs.filter, "cloud_run_revision")
+    )
+    error_message = "Trust the Security relay while preserving GCP storage and excluding firewall logs from the entire direct filter."
+  }
+}

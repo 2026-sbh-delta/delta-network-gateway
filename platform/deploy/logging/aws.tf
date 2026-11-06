@@ -25,8 +25,11 @@ resource "aws_iam_role_policy" "logs" {
   name     = "write-own-log-groups"
   role     = aws_iam_role.collector[each.key].id
   policy = jsonencode({ Version = "2012-10-17", Statement = [{
-    Effect   = "Allow", Action = ["logs:CreateLogStream", "logs:PutLogEvents"],
-    Resource = ["${aws_cloudwatch_log_group.central[each.key].arn}:*", "${aws_cloudwatch_log_group.runtime[each.key].arn}:*"]
+    Effect = "Allow", Action = ["logs:CreateLogStream", "logs:PutLogEvents"],
+    Resource = concat(
+      ["${aws_cloudwatch_log_group.central[each.key].arn}:*", "${aws_cloudwatch_log_group.runtime[each.key].arn}:*"],
+      each.key == "aws" && var.gcp_security_relay_enabled ? ["${aws_cloudwatch_log_group.central["gcp"].arn}:*"] : []
+    )
   }] })
 }
 resource "aws_kinesis_stream" "aws" {
@@ -118,12 +121,12 @@ resource "aws_lambda_function" "aws" {
   filename         = var.aws_lambda_zip
   source_code_hash = filebase64sha256(var.aws_lambda_zip)
   environment {
-    variables = {
+    variables = merge({
       DESTINATION_LOG_GROUP   = aws_cloudwatch_log_group.central["aws"].name
       ALLOWED_SOURCE_ACCOUNTS = join(",", sort(tolist(var.source_aws_accounts)))
       SOURCE_STREAM_ARN       = aws_kinesis_stream.aws.arn
       COLLECTOR_NAME_PREFIX   = var.name
-    }
+    }, var.gcp_security_relay_enabled ? { GCP_DESTINATION_LOG_GROUP = aws_cloudwatch_log_group.central["gcp"].name } : {})
   }
   depends_on = [aws_iam_role_policy.logs, aws_iam_role_policy.aws_read]
 }

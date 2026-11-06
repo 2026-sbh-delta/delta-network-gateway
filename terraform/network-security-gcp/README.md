@@ -14,7 +14,7 @@ AWS 연결 대상은 공통 `10.10.0.0/16` VPC 하나다. `aws_cidrs`는 NCC exp
 
 ## 로그 수집 소유권
 
-방화벽과 VPN 등의 네트워크 로그는 GCP Cloud Logging에 저장한다. AWS 전달은 별도 [플랫폼 중앙 로그 root](../../platform/deploy/logging/README.md)가 관리하며 플랫폼 계정 `616723161368`의 `/delta-platform/central/gcp`에서 확인한다. 이 네트워크 root는 전용 Sink, Pub/Sub 구독이나 AWS 수집 역할 계약을 정의하지 않는다. 공통 Pub/Sub 서비스 에이전트와 프로젝트 API는 기존 Terraform 주소로 보존한다.
+방화벽과 VPN 등의 네트워크 로그는 GCP Cloud Logging에 저장한다. 방화벽 규칙과 NGFW 위협 로그 두 종류는 별도 [Security 전용 root](../gcp-security-log-ingest/README.md)가 계정 `482840608926`에 먼저 저장하고 기존 Destination으로 전달한다. 플랫폼 계정 `616723161368`의 최종 저장 위치는 `/delta-cp/central/gcp`다. 나머지 GCP 로그는 기존 [플랫폼 중앙 로그 root](../../platform/deploy/logging/README.md)가 직접 수집한다. 이 네트워크 root는 전용 Sink, Pub/Sub 구독이나 AWS 수집 역할 계약을 정의하지 않는다. 공통 Pub/Sub 서비스 에이전트와 프로젝트 API는 기존 Terraform 주소로 보존한다.
 
 이전 네트워크 계정 `482840608926`의 전용 수집 경로 정리와 보존 로그, 실제 적용 상태는 [정리 기록](../../docs/ai-dlc/gcp-central-network.md#2026-11-05-gcp-로그-전달-경로-정리-검토)을 따른다. 2026-11-04의 수집 및 장애 검증은 당시 별도 수집기의 과거 기록이다.
 

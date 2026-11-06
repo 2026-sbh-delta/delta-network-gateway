@@ -18,6 +18,44 @@ def message(index=1, project="term2-delta", payload=None):
 
 
 class IngestTests(unittest.TestCase):
+    def test_routed_groups_store_before_ack_and_preserve_identity(self):
+        calls = []
+        client, pubsub = Mock(), Mock()
+        client.put_log_events.side_effect = lambda **kwargs: calls.append(("store", kwargs)) or {}
+        pubsub.ack.side_effect = lambda ids: calls.append(("ack", ids))
+        firewall = "projects/term2-delta/logs/compute.googleapis.com%2Ffirewall"
+        threat = "projects/term2-delta/logs/networksecurity.googleapis.com%2Ffirewall_threat"
+        writer = collector.RoutedCloudWatchWriter(client, {firewall: "/delta/security/gcp-firewall", threat: "/delta/security/gcp-firewall-threat"}, "test")
+        entry = {"logName": firewall, "insertId": "firewall-2", "timestamp": "2026-11-07T00:00:00Z"}
+        result = collector.process_messages([message(1), message(2, payload=entry)], pubsub, writer, "term2-delta", 1000)
+        self.assertEqual(result, {"pulled": 2, "stored": 2, "acked": 2, "failed": 0})
+        self.assertEqual([kind for kind, _ in calls], ["store", "store", "ack"])
+        self.assertEqual({item[1]["logGroupName"] for item in calls[:2]}, set(writer.routes.values()))
+        self.assertEqual(json.loads(calls[1][1]["logEvents"][0]["message"])["original"], entry)
+
+    def test_one_route_failure_does_not_ack_that_route(self):
+        client, pubsub = Mock(), Mock()
+        threat = "projects/term2-delta/logs/networksecurity.googleapis.com%2Ffirewall_threat"
+        firewall = "projects/term2-delta/logs/compute.googleapis.com%2Ffirewall"
+        client.put_log_events.side_effect = [OSError("storage unavailable"), {}]
+        writer = collector.RoutedCloudWatchWriter(client, {threat: "/delta/security/threat", firewall: "/delta/security/firewall"}, "test")
+        result = collector.process_messages([message(1), message(2, payload={"logName": firewall})], pubsub, writer, "term2-delta", 1000)
+        self.assertEqual(result, {"pulled": 2, "stored": 1, "acked": 1, "failed": 1})
+        pubsub.ack.assert_called_once_with(["2"])
+
+    def test_unknown_route_never_uses_a_default_group(self):
+        client, pubsub = Mock(), Mock()
+        writer = collector.RoutedCloudWatchWriter(client, {"projects/term2-delta/logs/other": "/delta/security/other"}, "test")
+        result = collector.process_messages([message()], pubsub, writer, "term2-delta", 1000)
+        self.assertEqual(result["failed"], 1)
+        client.put_log_events.assert_not_called()
+        pubsub.ack.assert_not_called()
+
+    def test_invalid_route_configuration_fails_closed(self):
+        for routes in ({}, [], {"projects/other/logs/test": "/delta/security/test"}, {"projects/term2-delta/logs/test": "/delta-cp/central/gcp"}):
+            with self.assertRaises(ValueError):
+                collector.RoutedCloudWatchWriter(Mock(), routes, "test")
+
     def test_drains_partial_pull_batches_until_empty(self):
         writer, pubsub = Mock(), Mock()
         writer.put.return_value = set()

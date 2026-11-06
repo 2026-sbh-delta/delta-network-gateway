@@ -1,0 +1,8 @@
+security_account_id = "482840608926"
+aws_region          = "ap-northeast-2"
+gcp_project_id      = "term2-delta"
+collector_zip       = "../../services/gcp-log-collector/.build/collector.zip"
+retention_days      = 30
+sink_enabled        = true
+collector_enabled   = true
+forwarding_enabled  = true

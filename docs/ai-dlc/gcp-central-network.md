@@ -3,12 +3,13 @@
 ## 단계와 승인 상태
 
 - 기준일: 2026-11-05 (Asia/Seoul).
-- 로그 전달 최신 상태: 2026-11-05 네트워크 계정의 전용 수집 리소스8개와 GCP 전용 전달 리소스12개를 제거하고 AWS 전용 root를 정리했다. 플랫폼의 AWS/GCP 수집, 기존 로그 그룹2개와 공유 코드/API/서비스 에이전트는 보존했다. 아래 과거 배포 기록과 구분하며 최신 적용 및 검증 한계는 로그 정리 절을 따른다.
+- 로그 전달 최신 상태(2026-11-07): 사용자 승인으로 방화벽 규칙과 NGFW 위협 로그 두 종류를 새 [Security 전용 수집](gcp-security-log-consolidation.md)으로 일원화했다. 이 네트워크 root에는 전달 리소스를 다시 추가하지 않았다. 기존 플랫폼의 나머지 GCP 수집과 과거 로그를 유지하며 최신 실제 적용과 수신 검증은 별도 기록을 따른다.
+- 2026-11-05 정리 기록: 당시 네트워크 계정 전용 AWS 리소스8개와 GCP 전달 리소스12개 및 이전 root를 정리했다. 과거 로그와 공유 자원을 보존한 사실은 아래 정리 절을 따른다. 이번에 새로 승인한 두 방화벽 로그 전용 구성과 구분한다.
 - Ideation: 사용자 `그럼 Ideation대로 ㄱㄱ`로 승인 완료. 앞서 설명한 Cloud NGFW Enterprise의 IDS/IPS, NCC, AWS 중앙 TGW 연결과 AWS 로그 수집 방향을 따른다.
 - Inception: 2026-11-04 사용자 `ANF원복은 하지말고, GCP 중앙 탐지 VPC 나눌 수 있으면 나눠 승인`으로 수정 조건을 포함해 승인 완료.
 - Construction: 수정 승인된 U1~U5의 코드/문서 구현과 로컬 Test/Review를 완료했다. GCP/AWS 기반과 VPN/수집기를 실제 적용했고 양방향 통신과 GCP 자체 검사/중앙 원본 로그를 검증했다. AWS ANF 원복은 수행하지 않았다. 네 단일 BGP 경로 철회/복구, 저장 실패/재수집 및 최종 No changes 검증을 완료했다.
 - 실계정 확인: 사용자 ADC 로그인 후 `term2-delta` / Number `366844544284`의 ACTIVE 상태와 조직 `354852153719` 소속, 기존 네트워크/서울 쿼터와 필요한 IAM 권한을 확인했다. Billing 조회는 API 비활성 오류였고 필수 API 6개 활성화를 완료했다. 재조회에서 Billing 활성, 18개 권한/12개 API와 실제 입력/저장 Plan을 확인했다. AWS 중앙 STS는 `482840608926`, 실제 ANF 목록은 비어 있고 중앙 state도 disabled다.
-- 현재 운영: 사용자 후속 요청으로 GCP inspection_mode=disabled, endpoint/association 제거 완료. AWS ANF도 disabled를 유지한다. NCC/VPN/BGP와 기본 방화벽 로깅은 유지하며 AWS 로그 수집은 별도 플랫폼 계정 경로를 사용한다. 별도 AWS 워크로드 통합의 경로 변경은 해당 작업 기록을 따른다.
+- 현재 운영: 사용자 후속 요청으로 GCP inspection_mode=disabled, endpoint/association 제거 완료. AWS ANF도 disabled를 유지한다. NCC/VPN/BGP와 기본 방화벽 로깅을 유지하며 두 방화벽 로그는 Security를 거쳐 플랫폼으로, 나머지는 기존 플랫폼 직접 경로로 전달한다. 별도 AWS 워크로드 통합의 경로 변경은 해당 작업 기록을 따른다.
 - 상태 저장소(2026-11-05): 사용자 승인으로 GCP 네트워크 state를 중앙 S3의 전용 key로 이전했다. 리소스/출력과 check 결과의 동일성, GCS 원본과 다른 root의 state 보존, 잠금 해제와 이전 후 실제 Plan No changes/종료0을 확인했다. 상세 기록은 아래 S3 이전 절을 따른다.
 - Terraform: 로컬 mock과 실계정 Plan/Apply를 구분해 아래에 기록한다. 첫 GCP 부분 Apply를 복구했고 GCP 기반/4터널, AWS 수집기/업무 경로와 중앙 VPN을 적용했다. 초기 배포 뒤 총5개 root No changes를 확인했고, 후속 GCP 비용 중단 뒤 해당 root의 최신 실계정 Plan도 No changes/종료0이다. AWS root는 이번 중단에서 변경하지 않았다.
 - Git: 사용자 2026-11-04 지시로 구현/로그 수집/회귀 테스트/운영 문서를 분할 커밋해 `feat/gcp-central-network`에서 게시한다. 앞의 세 서명 커밋 푸시와 `main` 대상 [PR #27](https://github.com/2026-sbh-delta/delta-network-gateway/pull/27) 생성을 확인했고 운영 문서도 같은 PR에 포함한다. 최종 검사/병합 상태와 squash 결과는 해당 PR을 기준으로 확인한다.

@@ -57,3 +57,17 @@ variable "gcp_log_filter" {
     error_message = "빈 필터로 프로젝트의 모든 로그를 수집하지 않습니다."
   }
 }
+
+variable "gcp_security_relay_enabled" {
+  type        = bool
+  default     = false
+  nullable    = false
+  description = "Accept the two trusted Security-account GCP relay groups into the existing GCP central group."
+}
+
+variable "gcp_firewall_direct_collection_enabled" {
+  type        = bool
+  default     = true
+  nullable    = false
+  description = "Keep direct collection until Security relay receipt is verified; false excludes both firewall logs from the complete Sink filter."
+}

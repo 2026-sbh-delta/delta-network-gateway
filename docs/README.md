@@ -1,5 +1,7 @@
 # Delta network gateway
 
+2026-11-07 GCP 방화벽 로그의 Security 일원화 완료: 사용자 승인으로 `/delta/security/gcp-firewall`, `/delta/security/gcp-firewall-threat`와 전용 수집24개를 실제 생성했다. 기존 Destination을 통해 플랫폼 `/delta-cp/central/gcp`와 GCP 원본 ID 및 JSON을 유지하고, 실제 규칙 로그를 전환 전19건과 후17건 대조한 뒤 기존 직접 Sink에서 두 종류를 제외했다. 합성2종과 나머지 GCP 및 기존 AWS 회귀도 수신 확인했다. Python34개와 Terraform mock7개 및 Ruff 통과, 양쪽 실제 마지막 Plan No changes/종료0. 기존 플랫폼43개 ID, 과거 로그와 양쪽 검사 disabled를 유지했다. 새 NGFW 위협 발생은 미검증이며 게시와 원격 CI 상태는 Git 이력을 따른다. [승인과 실제 검증](ai-dlc/gcp-security-log-consolidation.md)
+
 2026-11-06 AWS Network Firewall 로그 전달 완료: VPC Flow Log는 제외하고 `/delta/security/nfw-flow`와 `/delta/security/nfw-alert` 및 각 `delta-platform-central` 구독을 실제 적용했다. 신규4개, 기존 정책 변경1개, 삭제0개이며 두 수동 smoke가 `/delta-cp/central/aws`에서 원본 계정, 그룹, 스트림, 시각과 본문까지 일치했다. 기존 두 그룹과 과거 로그, ANF disabled, GuardDuty와 플랫폼 Destination 및 수집기를 보존했다. Python11개와 Terraform mock71개가 통과했고 최종 실제 Plan은 No changes, 종료0이다. ANF가 꺼져 있어 실제 Network Firewall 서비스 FLOW와 ALERT 생성은 미검증이며 게시 상태는 Git 이력을 따른다. [설계와 실제 검증](ai-dlc/aws-traffic-log-forwarding.md)
 
 2026-11-06 검증 사례 피드백 실제 AWS 릴리스 완료: main ad48e2e·공유 PR #60·실행 중 공용6파일을 보존 통합하고 소스523ae5a의 AI/오케스트레이터를 배포했다. AWS 내부 합성 HTTP503→200 성공 사례와 별도503 유지 실패 사례에서 실제Claude4호출, 승인된 이전 사례의 실제 인용, 평가셋 추출·비교·승인취소·재시작 보존을 확인했다. 기존43실행/80영속파일과인증/로그를 보존했고 회귀548개 통과. 합성장애검증이며 고객앱/전체이전/진단정확도향상 실증은 아니다. [실제 결과와 운영 절차](ai-dlc/verified-case-learning.md#2026-11-06-실제-aws-배포claude-검증-완료).

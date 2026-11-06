@@ -2,10 +2,10 @@ name: Platform checks
 
 on:
   pull_request:
-    paths: ['platform/**', 'services/delta-staging/**', 'services/delta-dast/**', 'services/delta-ai/**', 'services/gcp-log-collector/**', '.github/workflows/platform-*.yml']
+    paths: ['platform/**', 'services/delta-staging/**', 'services/delta-dast/**', 'services/delta-ai/**', 'services/gcp-log-collector/**', 'terraform/gcp-security-log-ingest/**', '.github/workflows/platform-*.yml']
   push:
     branches: [main, feat/platform]
-    paths: ['platform/**', 'services/delta-staging/**', 'services/delta-dast/**', 'services/delta-ai/**', 'services/gcp-log-collector/**', '.github/workflows/platform-*.yml']
+    paths: ['platform/**', 'services/delta-staging/**', 'services/delta-dast/**', 'services/delta-ai/**', 'services/gcp-log-collector/**', 'terraform/gcp-security-log-ingest/**', '.github/workflows/platform-*.yml']
   workflow_call:
   workflow_dispatch:
 
@@ -143,7 +143,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        root: [platform/deploy/terraform, platform/deploy/identity, platform/deploy/builds, platform/deploy/sandbox, platform/deploy/jenkins/identity, platform/deploy/sast/network, platform/deploy/observability/identity, platform/deploy/sandbox-gcp, platform/deploy/logging, platform/deploy/ai, platform/deploy/workloads/terraform/aws, platform/deploy/workloads/terraform/gcp, platform/deploy/databases/aws, platform/deploy/databases/gcp, platform/deploy/workloads/runtime-aws, platform/deploy/workloads/runtime-gcp, platform/deploy/workloads/image-gcp]
+        root: [platform/deploy/terraform, platform/deploy/identity, platform/deploy/builds, platform/deploy/sandbox, platform/deploy/jenkins/identity, platform/deploy/sast/network, platform/deploy/observability/identity, platform/deploy/sandbox-gcp, platform/deploy/logging, platform/deploy/ai, platform/deploy/workloads/terraform/aws, platform/deploy/workloads/terraform/gcp, platform/deploy/databases/aws, platform/deploy/databases/gcp, platform/deploy/workloads/runtime-aws, platform/deploy/workloads/runtime-gcp, platform/deploy/workloads/image-gcp, terraform/gcp-security-log-ingest]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:

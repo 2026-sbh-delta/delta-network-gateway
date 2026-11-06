@@ -69,7 +69,7 @@ GCP의 다음 Plan에서 4터널, BGP Peer 4개와 NCC hybrid spoke를 확인한
 
 ## 로그 수집
 
-원본은 GCP Cloud Logging에서 확인하고, AWS 중앙 수집은 [플랫폼 로그 안내](../../platform/deploy/logging/README.md)를 따른다. 플랫폼 계정 `616723161368`의 `/delta-platform/central/gcp`로 전달하며 플랫폼 전용 Sink는 `delta-platform-logs`다. 이 네트워크 root에서 전용 AWS 전달 입력이나 출력을 다시 만들지 않는다. 플랫폼 수집은 업무 VPN과 독립적이다.
+원본은 GCP Cloud Logging에서 확인한다. 방화벽 규칙과 NGFW 위협 로그 두 종류는 [Security 전용 수집 절차](../gcp-security-log-ingest/README.md)를 따라 계정 `482840608926`의 두 원본 그룹에 먼저 저장하고 플랫폼 계정 `616723161368`의 `/delta-cp/central/gcp`로 전달한다. 나머지 GCP 로그는 [플랫폼 로그 안내](../../platform/deploy/logging/README.md)의 기존 `delta-platform-logs` Sink로 직접 수집한다. 이 네트워크 root에서 전용 AWS 전달 입력이나 출력을 다시 만들지 않는다. 수집은 업무 VPN과 독립적이다.
 
 Pub/Sub 서비스 에이전트는 프로젝트의 공유 자원이며 이 root의 기존 주소로 보존한다. 플랫폼의 전용 Topic, Subscription과 권한은 플랫폼 root가 소유한다. 이전 네트워크 계정 전용 전달의 정리 결과와 보존한 로그는 [AI-DLC 기록](../../docs/ai-dlc/gcp-central-network.md#2026-11-05-gcp-로그-전달-경로-정리-검토)을 따른다.
 
@@ -80,7 +80,7 @@ Pub/Sub 서비스 에이전트는 프로젝트의 공유 자원이며 이 root�
 | Internet -> GCP | ALB HTTP80/FE3000, FE를 통한 BE8080 API와 PostgreSQL CRUD/재시작 보존, ALB HEALTHY | LB 미전달/비정상 헬스/앱 미기동은 방화벽 거부가 아님 |
 | GCP IDS | 현재 disabled로 신규 검증하지 않음. 아래 Threat ID는 초기 시험 VM의 과거 검증 | 포트 차단만으로 IDS/IPS 성공 판정하지 않음. 공식 시험 URI에서 실제 IDs 30844/30852/35107/55558과 ALERT를 확인. 앱은 URI만 반환하므로 실제 취약점/파일 접근 성공으로 해석하지 않음 |
 | AWS <-> GCP | 4터널/BGP, NCC의 AWS Prefix/업무 subnet, 양쪽 실제 TCP 요청과 반환 경로, 터널별 장애 전환 | 터널 UP만으로 앱 통신이나 장애 전환 성공 판정하지 않음. AWS ANF 검사로 보고하지 않음 |
-| GCP -> 플랫폼 AWS 로그 | 새 원본의 project/logName/insertId/시각/요청 정보와 `/delta-platform/central/gcp`의 원본 JSON 및 실제 도착 시각 | Lambda 실행 로그나 합성 메시지 저장만으로 실제 네트워크 로그 수집 완료 판정하지 않음 |
+| GCP -> Security -> 플랫폼 로그 | 방화벽 두 종류의 새 원본 project/logName/insertId/시각과 Security 원본 그룹 및 `/delta-cp/central/gcp`의 original과 event_id 대조 | 합성 메시지 저장만으로 실제 위협 탐지 성공 판정하지 않음. source_timestamp와 수집 시각 구분 |
 
 각 요청에 고유한 `request_id`를 붙여 앱 응답과 로그의 tuple/발생 시각을 대조한다. 초기 평문 HTTP 검증을 HTTPS 본문 검사로 확대하지 않는다. AWS 방화벽과 SG는 별개이므로 시험할 사설 서비스의 SG/리스너도 확인한다. 기존 AWS SG를 이 root에서 변경하지 않는다.
 
@@ -89,7 +89,7 @@ Pub/Sub 서비스 에이전트는 프로젝트의 공유 자원이며 이 root�
 - GCP에서 endpoint/association 준비 상태, 규칙/위협 로그, ALB 헬스와 FE/BE/SQL 상태, NCC 경로, VPN/BGP를 확인한다.
 - 플랫폼 전용 Pub/Sub 구독의 backlog, oldest unacked age와 DLQ를 확인한다. 플랫폼 일반 구독은 24시간, 실패 구독은 7일 보존이다. DLQ는 자동 폐기하지 않으며 원인을 해결한 뒤 권한 있는 운영자가 원본을 검토해 재전달한다.
 - 플랫폼의 Lambda Errors 경보와 `ingest_summary`의 pulled/stored/acked/failed를 확인한다. `event_id`로 재전달 중복을 식별한다. 실패 원문이나 인증 토큰을 로그에 넣지 않는다.
-- 수집 장애 시 플랫폼 운영 절차로 해당 Sink와 실행 규칙을 조정하고 메시지를 보존한다. 원인 해결 후 저장과 ack를 대조한다. 보존 기간을 넘긴 데이터까지 복구된다고 주장하지 않는다. 폐기한 네트워크 계정 수집기를 임의로 재생성하지 않는다.
+- 수집 장애 시 해당 수집 root의 절차로 Sink와 실행 규칙을 조정하고 메시지를 보존한다. 방화벽 로그의 Security 경유 복귀는 플랫폼 직접 수집을 먼저 복구한 후 수행한다. 원인 해결 후 저장과 ack를 대조한다. 보존 기간을 넘긴 데이터까지 복구된다고 주장하지 않는다. 과거 폐기한 수집기를 현재 승인한 전용 root와 혼동하지 않는다.
 - 검사 장애나 정리가 필요하면 공개 forwarding rule을 먼저 닫고 association과 endpoint를 정리한다. VM 중지만으로 검사 과금 중단을 선언하지 않는다. state, 원본 로그와 기존 AWS 기반은 보존한다.
 - VPN 롤백은 신규 VPN 경로/전파와 계약을 의존 순서에 맞게 정리한다. ANF를 재생성하지 않는다. 실제 적용 뒤 최종 Plan과 기존 AWS 통신을 다시 확인한다.
 

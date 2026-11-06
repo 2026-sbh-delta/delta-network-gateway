@@ -4,6 +4,8 @@
 
 2026-11-06 현재 연결 정보: 실제 중앙 그룹은 `/delta-cp/central/aws`, `/delta-cp/central/gcp`이고 각각 보관 3일이다. AWS 수집기의 실제 저장 그룹과 원본 계정 허용도 재조회했다. 아래 최초 배포 기록과 당시 Plan 결과는 보존하며, 현재 tracked 플랫폼 Terraform의 `/delta-platform/central/*` 정의와 실제 이름의 차이는 아래 후속 기록을 따른다.
 
+2026-11-07 후속: 현재 tracked 코드와 원격 state 및 실제 중앙 이름은 `/delta-cp/central/*`로 일치한다. 사용자 승인으로 두 GCP 방화벽 로그만 Security 우선 저장으로 전환했고 나머지 GCP 직접 수집은 유지한다. 아래 최신 후속 절과 [별도 실제 검증](gcp-security-log-consolidation.md)을 따른다.
+
 ## 목적과 범위
 
 팀원이 연결할 실제 로그 수신 경로를 만든다. AWS/GCP 원본 로그는 유지하고 플랫폼 AWS 계정(616723161368, 서울)에 복사한다. 기존 네트워크 계정(482840608926)의 수집기와 GCP Sink는 변경하지 않는다. 서버 IP·VPN이 필요한 방식이 아니며 OTel 앱 메트릭/트레이스 수신과 구분한다.
@@ -91,3 +93,11 @@ tracked `platform/deploy/logging/aws.tf`는 여전히 `/delta-platform/central/*
 2026-11-06 23:55:57 KST에 새 두 그룹에 수동 smoke를 각각 1개 기록했다. `/delta-cp/central/aws`에서 두 이벤트의 `account_id=482840608926`, 리전, 원본 그룹, 스트림, 원본 시각과 전체 message가 일치했고 FLOW는 3922ms, ALERT는 4151ms 뒤 수집됐다. Destination 정책과 수집 Lambda의 CodeSha256 및 RevisionId는 적용 전후 같았다. 이는 교차 계정 구독과 중앙 수집기의 검증이다. ANF가 `disabled`여서 Network Firewall 서비스가 실제 생성한 FLOW와 ALERT는 검증하지 않았다.
 
 중앙 송신 root의 실제 Apply는 신규4개, 기존 정책 변경1개, 삭제0개였고 최종 Plan은 No changes, 종료0이다. 플랫폼 root에는 Plan이나 Apply를 실행하지 않았으며 tracked 이름과 실제 중앙 그룹 이름의 기존 차이도 바꾸지 않았다.
+
+## 2026-11-07 GCP 방화벽 로그의 Security 우선 수집
+
+`compute.googleapis.com/firewall`, `networksecurity.googleapis.com/firewall_threat`는 전용 Sink와 Pub/Sub 및 WIF로 Security 계정 `482840608926`의 `/delta/security/gcp-firewall`, `/delta/security/gcp-firewall-threat`에 먼저 저장한다. 각 빈 구독이 기존 Destination을 사용하고 플랫폼 AWS 수신기는 지정한 계정과 그룹 및 GCP 원본 식별자를 검증해 `/delta-cp/central/gcp`로 분기한다. 기존 cloud=gcp, event_id와 original을 보존하고 `relay`에 중계 정보를 추가한다.
+
+전용 리소스24개 생성과 플랫폼 수신 준비3개 갱신 후 합성2종 및 실제 새 규칙 로그19건의 원본 일치를 확인했다. 이어 2026-11-07 00:34:12 KST에 기존 플랫폼 Sink에서 두 logName을 전체 필터 바깥의 제외 조건으로 제거했다. 전환 후 새 규칙 로그17건과 나머지 GCP 직접 수집 및 AWS 구독 회귀 마커 각1건도 확인했다. Security와 플랫폼의 raw original은 같으며 GCP 조회 시각은 소수점 끝 0의 표기만 정규화해 나노초 단위로 대조했다.
+
+기존 플랫폼 리소스43개의 ID, Destination, 중앙 그룹과 나머지 GCP 직접 수집을 유지했다. 기존 GCP 수집기의 ZIP 경로는 state의 다른 로컬 경로에서 이번 실행 경로로 갱신했지만 배포 코드 해시와 환경은 같다. 두 root의 최종 실제 Plan은 No changes, 종료0이다. 양쪽 검사는 disabled이며 새 NGFW 위협 발생과 대시보드 UI는 검증하지 않았다. 승인, 명령과 복귀는 [Security 수집 기록](gcp-security-log-consolidation.md)과 [전용 Runbook](../../terraform/gcp-security-log-ingest/README.md)을 따른다.
