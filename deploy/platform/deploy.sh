@@ -49,6 +49,35 @@ if [ -f "$repo/services/delta-staging/staging.json" ]; then
     --value "$(cat "$repo/services/delta-staging/staging.json")" --overwrite >/dev/null
 fi
 
+# 운영 배포(delta-release) 설정(비밀값 아님, 저장소 파일): 대상 인벤토리·배포 설정(공개 CA 포함)·ECR 사본 저장소.
+release_dir="$repo/deploy/platform/release"
+if [ -f "$release_dir/targets.json" ] && [ -f "$release_dir/config.json" ]; then
+  aws ssm put-parameter --region "$region" --name "${prefix}jenkins/release_targets" --type String \
+    --value "$(cat "$release_dir/targets.json")" --overwrite >/dev/null
+  aws ssm put-parameter --region "$region" --name "${prefix}jenkins/release_config" --type String --tier Advanced \
+    --value "$(cat "$release_dir/config.json")" --overwrite >/dev/null
+  aws ssm put-parameter --region "$region" --name "${prefix}orchestrator/ecr_image_repo" --type String \
+    --value "$(aws sts get-caller-identity --query Account --output text).dkr.ecr.${region}.amazonaws.com/delta-lab-staging" --overwrite >/dev/null
+fi
+# 운영 승인 서명 키(Ed25519): 없을 때만 만든다. 개인키는 오케스트레이터 경로(SecureString), 공개키는 Jenkins 경로.
+# 개인키는 출력·파일로 남기지 않고 Terraform state 에도 넣지 않는다(다른 비밀값과 같은 규칙).
+if ! aws ssm get-parameter --region "$region" --name "${prefix}orchestrator/release_signing_key" --query Parameter.Name --output text >/dev/null 2>&1; then
+  REGION="$region" PREFIX="$prefix" uv run --quiet --with cryptography python - <<'PYKEY'
+import os, subprocess
+from cryptography.hazmat.primitives import serialization as s
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+k = Ed25519PrivateKey.generate()
+put = ["aws", "ssm", "put-parameter", "--region", os.environ["REGION"], "--overwrite"]
+subprocess.run(put + ["--name", os.environ["PREFIX"] + "orchestrator/release_signing_key", "--type", "SecureString",
+               "--value", k.private_bytes(s.Encoding.PEM, s.PrivateFormat.PKCS8, s.NoEncryption()).decode()],
+               check=True, stdout=subprocess.DEVNULL)
+subprocess.run(put + ["--name", os.environ["PREFIX"] + "jenkins/release_public_key", "--type", "String",
+               "--value", k.public_key().public_bytes(s.Encoding.PEM, s.PublicFormat.SubjectPublicKeyInfo).decode()],
+               check=True, stdout=subprocess.DEVNULL)
+PYKEY
+  echo "  운영 승인 서명 키 생성"
+fi
+
 port_of() {
   case "$1" in
     orchestrator|jenkins) echo 8080 ;;
@@ -63,6 +92,10 @@ gcp_tf="$repo/terraform/onboarding-gcp"
 if gcp_cfg="$(terraform -chdir="$gcp_tf" output -json credential_configs 2>/dev/null)" && [ -n "$gcp_cfg" ] && [ "$gcp_cfg" != "{}" ]; then
   aws ssm put-parameter --region "$region" --name "${prefix}jenkins/gcp_staging_credentials" --type String \
     --value "$(python3 -c "import json,sys; print(json.loads(sys.argv[1])['staging-deploy'])" "$gcp_cfg")" --overwrite >/dev/null
+  if python3 -c "import json,sys; sys.exit(0 if 'release-deployer' in json.loads(sys.argv[1]) else 1)" "$gcp_cfg"; then
+    aws ssm put-parameter --region "$region" --name "${prefix}jenkins/gcp_release_credentials" --type String \
+      --value "$(python3 -c "import json,sys; print(json.loads(sys.argv[1])['release-deployer'])" "$gcp_cfg")" --overwrite >/dev/null
+  fi
   if python3 -c "import json,sys; sys.exit(0 if 'build-push' in json.loads(sys.argv[1]) else 1)" "$gcp_cfg"; then
     aws ssm put-parameter --region "$region" --name "${prefix}jenkins-agent/gcp_build_credentials" --type String \
       --value "$(python3 -c "import json,sys; print(json.loads(sys.argv[1])['build-push'])" "$gcp_cfg")" --overwrite >/dev/null

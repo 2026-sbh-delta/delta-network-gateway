@@ -69,39 +69,20 @@ resource "google_service_account_iam_member" "release_deployer" {
   member             = "principalSet://iam.googleapis.com/${local.pool_name}/attribute.aws_role/${var.platform_role_prefix}jenkins"
 }
 
-# 운영 배포의 새 PostgreSQL 18 서버(Cloud SQL·PSC 사설 주소·사설 DNS·관리자 비밀값)를 만드는 권한.
-resource "google_project_iam_member" "release_deployer" {
-  for_each = toset(["roles/cloudsql.admin", "roles/dns.admin", "roles/compute.networkAdmin", "roles/secretmanager.admin"])
-  project  = var.project_id
-  role     = each.value
-  member   = "serviceAccount:${var.release_deployer_account}"
+# 운영 배포 런타임 권한·방화벽은 terraform/release-runtime-gcp 로 옮겼다(11/6). 리소스는 지우지 않고 state 소유만 넘긴다.
+removed {
+  from = google_project_iam_member.release_deployer
+  lifecycle { destroy = false }
 }
-
-# 운영 앱 VM 계정: 우리 빌드 묶음(스테이징 AR) 이미지 pull, 컨테이너 로그(gcplogs) 쓰기.
-resource "google_artifact_registry_repository_iam_member" "release_app_pull" {
-  location   = var.region
-  repository = "${var.staging_name}-staging"
-  role       = "roles/artifactregistry.reader"
-  member     = "serviceAccount:${var.release_app_account}"
+removed {
+  from = google_artifact_registry_repository_iam_member.release_app_pull
+  lifecycle { destroy = false }
 }
-resource "google_project_iam_member" "release_app_logs" {
-  project = var.project_id
-  role    = "roles/logging.logWriter"
-  member  = "serviceAccount:${var.release_app_account}"
+removed {
+  from = google_project_iam_member.release_app_logs
+  lifecycle { destroy = false }
 }
-
-# 운영 앱 VM → 같은 앱 서브넷의 PostgreSQL 사설 연결(PSC) 주소. 기존 송신 차단(egress-deny, 1000)보다 먼저 적용한다.
-# 운영 배포의 새 PG18 서버는 사설 주소를 앱 서브넷에 받는다. 5432 만 연다.
-resource "google_compute_firewall" "release_app_database" {
-  name                    = "delta-cp-release-app-database"
-  project                 = var.project_id
-  network                 = var.release_network
-  direction               = "EGRESS"
-  priority                = 100
-  destination_ranges      = [var.release_app_subnet_cidr]
-  target_service_accounts = [var.release_app_account]
-  allow {
-    protocol = "tcp"
-    ports    = ["5432"]
-  }
+removed {
+  from = google_compute_firewall.release_app_database
+  lifecycle { destroy = false }
 }

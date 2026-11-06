@@ -91,3 +91,9 @@ flowchart LR
 ```
 
 Terraform은 `terraform fmt -check -recursive terraform`, 각 모듈 `init -backend=false` 후 `validate`, `vm-*`는 `terraform test`(mock provider)로 확인한다. 실제 plan/apply·클라우드 실행은 이 시험 범위가 아니다.
+
+## 플랫폼 설정 관리(11/6)
+
+- 인프라(배포 계정·권한·앱 VM 방화벽·인터넷 경로·NAT)는 Terraform `terraform/release-runtime-gcp`와 `terraform/onboarding-gcp`가 관리한다.
+- 운영 대상 인벤토리 `targets.json`과 배포 설정 `config.json`(비밀값 없음, 공개 CA 포함)은 이 저장소 파일이 원본이다. `deploy/platform/deploy.sh`가 SSM(`/delta-cp/jenkins/release_targets`, `release_config`)으로 올린다. 손으로 SSM 값을 바꾸지 않는다.
+- GCP 배포 계정 WIF 설정은 onboarding-gcp 출력(`release-deployer`)에서, 운영 승인 서명 키는 없을 때만 deploy.sh 가 만든다(개인키는 state·출력에 남기지 않는다).
