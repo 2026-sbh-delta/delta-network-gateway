@@ -16,7 +16,7 @@ def main():
     result = {}
     for name in ("delta-ai", "delta-orchestrator"):
         inspected = subprocess.run(
-            ["docker", "inspect", name], text=True, capture_output=True
+            ["docker", "inspect", name], text=True, capture_output=True, check=False
         )
         if inspected.returncode:
             continue
@@ -64,5 +64,5 @@ print(json.dumps({r.name+'/'+str(p.relative_to(r)):hashlib.sha256(p.read_bytes()
 if __name__ == "__main__":
     try:
         print(base64.b64encode(gzip.compress(json.dumps(main()).encode())).decode())
-    except Exception as error:
+    except Exception as error:  # noqa: BLE001 — sanitize the remote process boundary
         raise SystemExit("Inventory failed: " + type(error).__name__) from None
