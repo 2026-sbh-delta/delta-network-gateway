@@ -116,7 +116,8 @@ def main(image):
             for name, flag in [('Memory','--memory'),('CpuQuota','--cpu-quota'),('CpuPeriod','--cpu-period')]:
                 if old['HostConfig'].get(name, 0) > 0: args += [flag,str(old['HostConfig'][name])]
             args += [image]
-            command(args); created = True
+            created = True
+            command(args)
             opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
             ready = False
             for _ in range(40):
@@ -137,7 +138,8 @@ def main(image):
                     'existing_state_files_preserved':len(before),'candidate':json.loads(candidate),
                     'logging_preserved':True,'existing_env_preserved':True,'diagnostics_required':True}
         except Exception:
-            if created: command(['docker','rm','-f','delta-orchestrator'])
+            if created:
+                subprocess.run(['docker','rm','-f','delta-orchestrator'], capture_output=True)
             if renamed: command(['docker','rename',previous,'delta-orchestrator'])
             if stopped: command(['docker','start','delta-orchestrator'])
             raise
