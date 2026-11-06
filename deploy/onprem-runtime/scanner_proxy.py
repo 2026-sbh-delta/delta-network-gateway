@@ -13,8 +13,8 @@ def invoke(request):
             or service=='dast' and method=='PUT' and len(tail)==1 or service=='dast' and method=='POST' and tail[1:]==['cancel'])
     if not valid:raise ValueError()
     if service=='sast' and method=='POST':
-        if (set(body)!={'run_id','repo','commit','mode'} or body['repo']!='https://github.com/2026-sbh-delta/delta-sample-app'
-                or not re.fullmatch('[a-f0-9]{40}',body['commit']) or body['mode']!='fast'):raise ValueError()
+        if (set(body)!={'run_id','repo','commit','mode','payload_mode'} or body['repo']!='https://github.com/2026-sbh-delta/delta-sample-app'
+                or not re.fullmatch('[a-f0-9]{40}',body['commit']) or body['mode']!='fast'or body['payload_mode']!='preset'):raise ValueError()
         UUID(body['run_id'])
     if service=='dast' and method=='PUT':
         b=body['binding']

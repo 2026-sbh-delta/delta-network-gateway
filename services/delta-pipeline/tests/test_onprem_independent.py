@@ -68,3 +68,32 @@ def test_bridge_accepts_real_platform_uuid_objects_in_context(private,monkeypatc
     result=execute({'action':'sast_start','build_id':build,'key':'graph-sast','binding':{
         'repo':'https://github.com/2026-sbh-delta/delta-sample-app','commit':commit}})
     assert result['state']=='running'and store.run(result['run_id'])['kind']=='security_check'
+
+def test_real_security_adapter_persists_submission_before_scanner_call(private):
+    from delta_pipeline.onprem_scanners import security_runner
+    from delta_platform.worker.main import process_one
+    from delta_platform.adapters.security import SecurityRunner
+    store,service,build,commit=private
+    job,_=store.enqueue_security(UUID(service),UUID(build),'real-adapter',SAST_TARGET)
+    report={'version':'2.1.0','runs':[{'results':[]}]}
+    class Rpc:
+        def request(self,scanner,method,path,body=None):
+            assert scanner=='sast'
+            if method=='POST':
+                saved=store.run(job['id'])['submission']
+                assert saved['request']==body and body['payload_mode']=='preset'
+                self.body=body
+            return report if path.endswith('/sarif')else {**self.body,'state':'done'}
+    assert process_one(store,None,security=security_runner(None,Rpc()))
+    value=store.run(job['id']);assert value['status']=='succeeded'
+    assert value['result']['scanner_run_id']==job['id']
+    assert value['result']['evidence_sha256']==SecurityRunner.summarize(report)['evidence_sha256']
+
+def test_private_security_attempts_are_bounded(private):
+    store,service,build,_=private
+    job,_=store.enqueue_security(UUID(service),UUID(build),'stale-adapter',SAST_TARGET)
+    for i in range(3):
+        assert store.claim()['attempt']==i+1
+        with store.db()as db:db.execute('UPDATE jobs SET lease_until=0')
+    assert store.claim()is None
+    assert store.run(job['id'])['error']['code']=='private_attempts_exhausted'

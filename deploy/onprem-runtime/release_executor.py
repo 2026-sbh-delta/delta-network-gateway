@@ -9,14 +9,14 @@ def cmd(args,**kwargs):
 def shared():return json.loads(cmd(['docker','inspect','delta-platform-worker-1']))[0]
 def main():
  old=shared()
-    previous=None
-    existing=subprocess.run(['docker','inspect','delta-onprem-executor'],capture_output=True,text=True)
-    if existing.returncode==0:
-        current=json.loads(existing.stdout)[0]
-        if (current['Config']['Labels'].get('delta.owner')!='orchestrator-onprem'
-                or current['Config']['Image']!=globals().get('EXPECTED_EXECUTOR_IMAGE')):raise RuntimeError('Independent executor changed; review required')
-        idle="import sqlite3;c=sqlite3.connect('/var/lib/delta-platform/tmp/onprem-queue.sqlite');assert c.execute(\"SELECT COUNT(*) FROM jobs WHERE status IN ('queued','running')\").fetchone()[0]==0;print('idle')"
-        cmd(['docker','exec','delta-onprem-executor','python','-c',idle])
+ previous=None
+ existing=subprocess.run(['docker','inspect','delta-onprem-executor'],capture_output=True,text=True)
+ if existing.returncode==0:
+  current=json.loads(existing.stdout)[0]
+  if (current['Config']['Labels'].get('delta.owner')!='orchestrator-onprem'
+    or current['Config']['Image']!=globals().get('EXPECTED_EXECUTOR_IMAGE')):raise RuntimeError('Independent executor changed; review required')
+  idle="import sqlite3;c=sqlite3.connect('/var/lib/delta-platform/tmp/onprem-queue.sqlite');assert c.execute(\"SELECT COUNT(*) FROM jobs WHERE status IN ('queued','running')\").fetchone()[0]==0;print('idle')"
+  cmd(['docker','exec','delta-onprem-executor','python','-c',idle])
  env0=dict(i.split('=',1)for i in old['Config']['Env']if '='in i)
  # No platform login, Jenkins, cloud credential or legacy scanner token is copied.
  keys=('PLATFORM_DATABASE_URL','PLATFORM_ONPREM_SANDBOX_TARGET','PLATFORM_ONPREM_SANDBOX_TOKEN')
@@ -37,10 +37,10 @@ def main():
  cmd(['docker','run','--rm','--network',network,'--env-file',str(file),'--entrypoint','python',IMAGE,'-c',code])
  created=False
  try:
-        if existing.returncode==0:
-            cmd(['docker','exec','delta-onprem-executor','python','-c',idle])
-            previous='delta-onprem-executor-previous-'+str(int(time.time()))
-            cmd(['docker','stop','delta-onprem-executor']);cmd(['docker','rename','delta-onprem-executor',previous])
+  if existing.returncode==0:
+   cmd(['docker','exec','delta-onprem-executor','python','-c',idle])
+   previous='delta-onprem-executor-previous-'+str(int(time.time()))
+   cmd(['docker','stop','delta-onprem-executor']);cmd(['docker','rename','delta-onprem-executor',previous])
   cmd(['docker','run','-d','--name','delta-onprem-executor','--label','delta.owner=orchestrator-onprem','--restart','unless-stopped',
    '--network',network,'--env-file',str(file),'--mount','type=bind,source='+str(state)+',target=/var/lib/delta-platform/tmp',
    '--read-only','--tmpfs','/tmp:rw,noexec,nosuid,size=64m','--security-opt','no-new-privileges','--cap-drop','ALL',
@@ -50,12 +50,14 @@ def main():
   check=shared()
   if check['Id']!=old['Id']or check['Config']!=old['Config']:raise RuntimeError('Shared Worker changed concurrently')
   cmd(['docker','exec','delta-onprem-executor','python','-c',"from delta_pipeline.onprem_independent_store import IndependentStore,catalog,settings;s=IndependentStore(catalog(settings()));assert s.claim()is None;print('private-queue-ready')"])
-        return {'image':IMAGE,'container':'delta-onprem-executor','previous_container':previous,'shared_worker_unchanged':True,'shared_worker_image':old['Config']['Image'],
+  return {'image':IMAGE,'container':'delta-onprem-executor','previous_container':previous,'shared_worker_unchanged':True,'shared_worker_image':old['Config']['Image'],
    'database_transactions_readonly':True,'private_state':str(state),'memory_limit_mib':512,'cpu_limit':0.5}
  except Exception:
   if created:subprocess.run(['docker','rm','-f','delta-onprem-executor'],capture_output=True)
-        if previous:cmd(['docker','rename',previous,'delta-onprem-executor']);cmd(['docker','start','delta-onprem-executor'])
+  if previous:cmd(['docker','rename',previous,'delta-onprem-executor']);cmd(['docker','start','delta-onprem-executor'])
   raise
 if __name__=='__main__':
  try:print(base64.b64encode(gzip.compress(json.dumps(main()).encode())).decode())
- except Exception as error:raise SystemExit('Independent executor release failed safely: '+type(error).__name__)
+ except Exception as error:
+  import traceback
+  raise SystemExit('Independent executor release failed safely: '+type(error).__name__+' '+str([(f.name,f.lineno)for f in traceback.extract_tb(error.__traceback__)]))

@@ -70,7 +70,7 @@ def execute(request):
             if job['status']!='succeeded':
                 if action=='sast_report':raise ValueError('SAST not complete')
                 return {'run_id':request['id'],'repo':REPO,'commit':job['resolved_commit_sha'],'mode':'fast',
-                    'state':'running' if job['status']in('queued','running')else 'error'}
+                    'state':'running' if job['status']in('queued','running')else 'error','error':(job.get('error')or{}).get('code')}
             path='/v1/sast/scans/'+request['id']+('/sarif' if action=='sast_report' else '')
             result=ScannerRpc().request('sast','GET',path)
             if action=='sast_report':

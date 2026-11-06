@@ -110,6 +110,11 @@ CREATE TABLE IF NOT EXISTS events(sequence INTEGER PRIMARY KEY AUTOINCREMENT,run
         with self.db()as db:
             row=db.execute("SELECT * FROM jobs WHERE status='queued' OR(status='running'AND lease_until<?) ORDER BY created LIMIT 1",(time.time(),)).fetchone()
             if not row:return None
+            if row['kind']=='security_check'and row['attempt']>=3:
+                value=json.loads(row['data']);value.update(status='failed',finished_at=datetime.now(UTC).isoformat(),
+                    error={'code':'private_attempts_exhausted','message':'독립 SAST 실행기 재시도 한도를 초과했습니다.'})
+                db.execute("UPDATE jobs SET status='failed',token=NULL,lease_until=NULL,data=? WHERE id=?",(json.dumps(value),row['id']))
+                self._event(db,row['id'],'failed','독립 SAST 재시도 한도를 초과했습니다.');return None
             value=json.loads(row['data']);token=uuid4().hex;attempt=row['attempt']+1
             value.update(status='running',attempt=attempt,started_at=value.get('started_at')or datetime.now(UTC).isoformat())
             db.execute("UPDATE jobs SET status='running',token=?,lease_until=?,attempt=?,data=? WHERE id=?",(token,time.time()+90,attempt,json.dumps(value),row['id']))
@@ -138,6 +143,14 @@ CREATE TABLE IF NOT EXISTS events(sequence INTEGER PRIMARY KEY AUTOINCREMENT,run
             value=self._owned(db,rid,token)
             if value['submission']:return value['submission']
             value['submission']=outcome;db.execute('UPDATE jobs SET data=? WHERE id=?',(json.dumps(value),str(rid)));return outcome
+    def prepare_submission(self,rid,token,request):
+        with self.db()as db:
+            value=self._owned(db,rid,token)
+            if value['submission']:return value['submission']
+            intent={'request':request,'prepared_at':datetime.now(UTC).isoformat()}
+            value['submission']=intent
+            db.execute('UPDATE jobs SET data=? WHERE id=?',(json.dumps(value),str(rid)))
+            return intent
     def sandbox_control(self,rid,token):
         with self.db()as db:return self._owned(db,rid,token)['cancel_requested']
     def sandbox_lock(self):return self.catalog.sandbox_lock()
