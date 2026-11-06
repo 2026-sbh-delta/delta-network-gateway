@@ -39,4 +39,26 @@ AI 소스6f65166의 ARM64 digest177de19d를 기존 사용자 호스트에 실제
 - 기존 역할에는 로그 쓰기만 있으므로 별도 `terraform/orchestrator-evidence-aws` root에서 `logs:FilterLogEvents`를 세 그룹에만 허용하는 정책1건을 추가한다. 기존 역할/기본 정책/IAM 배포 권한/SG/DNS/Secret 경로는 변경하지 않는다.
 - 최신 전체 회귀: AI319개1.79초, pipeline/orchestrator144개14.61초 통과. Terraform mock1개(역할·Action·3그룹assertion) 통과. 실제 Plan 생성1/변경삭제0 확인. 아직 후속 Apply/이미지/자동 수집 실측 완료로 기록하지 않는다.
 
-최종 배포·자동 수집 검증은 후속 기록에 기입한다. 근거는 루트 notes/ai-aws-readiness-20261106이다.
+## 최종 실제 배포·검증
+
+- AI/오케스트레이터 서비스 소스fdbfbd3, 배포 동시 변경 보호0bdba96. AI digestb58bdfb7, 오케스트레이터digestf12742e5로 기존 EC2에 배포했다. TLS/토큰/환경/로그/볼륨 보존, 이전 컨테이너 stopped 보존. 후보는 모델 호출/실행 상태 mount 없이 health/인증/스키마와 SDK를 확인했다. 기존 영속파일37개 해시 보존.
+- Terraform 실제 Apply는 `delta-cp-diagnostic-log-read` 정책1건 생성/기존 변경삭제0. 최종 실제 Plan No changes/종료0. 실제 오케스트레이터 역할로3그룹 FilterLogEvents 성공. 진단 EC2에는 클라우드 조회/배포 권한을 추가하지 않았다.
+- 새 실제 실행 `b719e7707a4b418b93252a0ff2a68f68`: 게시판731ebbb → SAST15파일/후보1 → FE/BE 묶음 빌드 → GCP staging revision00008-qcv → DAST `11c2c9f7-45ef-5dda-ae70-e1e59282ea27` 저장형XSS1건 REPRODUCED → 자동 중앙 로그 수집 → 실제 Claude Sonnet14초 → 보고서 → 기존 DAST 사람 확인.
+- 자동 근거는 해당 실행의 전이 로그8건, AWS 같은 시간 구간0건, GCP 환경로그40건(ALLOWED21/미해석19/페이지상한)이다. 환경과 앱/실행의 연관성 미확인·미해석·빈 조회·조회 상한을 서버가 강제 한계로 보존했다. 허용 로그로 안전을 선언하거나 샘플을 실제 공격으로 처리하지 않는다. 실행 로그의 상태 수치는 전이 이벤트 누적이며 현재 노드 상태를 의미하지 않는다.
+- 실제 브라우저에서 새 보고서의3개 로그 관측·미해석19건·한계·근거·다운로드를 확인했다. SSM 임시 루프백만 사용하고 종료했다. 공개 인증 JSON/MD200, 익명401, 다른 run404, 보고서 해시 일치.
+- 이번 실행만 stop, lease=released·active=null, 이전28개 board 해시 보존. 실제 import된3개 핵심 모듈/AI35개 소스 해시 일치. 새 collector 객체가 저장된 요청과 같은 근거를 새 조회 없이 재사용했다. 고객 운영 release/DB/DNS 변경·전체 이전은 실행하지 않았다.
+- 최종 근거: `notes/ai-aws-readiness-20261106/summary.json`, `postcheck.json`, `new-report.json`, `final-diagnosis.md`, `ai-tests-final.xml`, `compat-tests-final.xml`. 소스는 이 로컬 브랜치에 커밋했으며 push/main 병합은 미실행.
+
+실제 보고서: https://d2rjxujgsi1fjg.cloudfront.net/?run=b719e7707a4b418b93252a0ff2a68f68&node=exception-report
+
+## 남은 범위
+
+| 질문 | 현재 확인 범위 | 남은 부분 |
+|---|---|---|
+| AWS→GCP | 실제 FE/BE 스테이징·SAST/DAST·로그/진단/보고서 | 실제 state 차분→plan/apply와 운영 DB·쓰기·DNS 이전 전체 연결 |
+| 온프레미스 | 기존 AWS Worker→k3s 단일 실행/상태·정리 실증 기록,6방향 매핑 라이브러리·안전한 unknown 처리 | 현재 공개 오케스트레이터 팩터리에 onprem 실행기/복구·재개 미연결. pods/log 읽기 권한 부족은 기존 미결 |
+| 로그 | 예외/모호한 결과 분석 전에 고정3그룹 자동 수집·근거 보존 | 중앙 환경 로그와 특정 앱/실행의 직접 연계, GCP 비지원 형식 해석 확대, 온프레미스 실제 컨테이너 로그 |
+| 판단 데이터 | 이미지에36개 규칙 문서, 고정 자원/권한/보안 매핑과2026-11-02 비용표. 서버가 근거 ID/입력 해시·한계를 검증 | 전체 CSP 자원 지원, 실시간 단가/기능 갱신·피드백 자동 승격은 미구현. 규칙 후보는 승인/검증 없이 활성화하지 않음 |
+| 처리 불가 정보 | 미지원·누락은 unknown/needs_human, 입력 형식 오류422/크기413, 모델 실패는 analysis_unavailable/invalid_analysis·사람 확인 | 일반 정보의 자동 변환·원인 확정·임의 조치 실행을 제공하는 것은 아님 |
+
+팀의 운영 배포/Terraform 풀체인은 준우의11/06 14:26 통합 계획에 맞춰 별도로 합친다. 이 변경을 공유 소스에 넣어 후속 팀 배포에 보존하는 작업도 남아 있다.
