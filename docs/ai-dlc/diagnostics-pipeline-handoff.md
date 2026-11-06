@@ -47,7 +47,7 @@ Python 3.12, Node.js, uv가 필요하다. 아래 설치는 외부 의존성만 �
 
 ```bash
 uv venv --python 3.12 .venv
-uv pip install --python .venv/bin/python -c deploy/orch-diagnostics/requirements-test.txt -e './services/delta-ai[dev]' -e './services/delta-pipeline[dev]' -e './services/delta-orchestrator[dev]' -e ./platform/backend -e ./services/delta-staging
+uv pip install --python .venv/bin/python -c deploy/orch-diagnostics/requirements-test.txt -e './services/delta-ai[dev]' -e './services/delta-pipeline[dev]' -e './services/delta-orchestrator[dev]' -e ./platform/backend
 bash deploy/orch-diagnostics/check.sh
 ```
 

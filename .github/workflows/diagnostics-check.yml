@@ -36,7 +36,7 @@ jobs:
       - name: Install local service packages with tested dependency versions
         run: |
           uv venv --python 3.12 .venv
-          uv pip install --python .venv/bin/python -c deploy/orch-diagnostics/requirements-test.txt -e './services/delta-ai[dev]' -e './services/delta-pipeline[dev]' -e './services/delta-orchestrator[dev]' -e ./platform/backend -e ./services/delta-staging
+          uv pip install --python .venv/bin/python -c deploy/orch-diagnostics/requirements-test.txt -e './services/delta-ai[dev]' -e './services/delta-pipeline[dev]' -e './services/delta-orchestrator[dev]' -e ./platform/backend
       - name: AI, pipeline, orchestrator and source checks
         run: bash deploy/orch-diagnostics/check.sh
       - name: Verify every Terraform test uses a mock provider
