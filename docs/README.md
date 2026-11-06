@@ -1,5 +1,7 @@
 # Delta network gateway
 
+2026-11-06 진단·보고서 실제 콘솔 통합: 최신 main의 FE/BE 묶음·수정 재검증·운영 release 계약을 보존하고 예외 분석→보고서→사람 확인을 이식했다. 새 실제 SAST/DAST 실행8f177a83과 실제 Claude 분석·공개 인증 다운로드·브라우저 화면·재시작 후 보고서 보존을 확인했다. 회귀136개 통과, 런타임 이미지5a67fb9 배포 완료, 이전 기록27개/설정/로그 보존. 소스는 별도 codex/orchestrator-diagnostics-ui의 로컬 커밋이며 main 병합은 아직이다. [통합·기능·남은 작업](ai-dlc/orchestrator-diagnostics-ui.md)
+
 2026-11-06: 사용자 승인 명세에 따라 [FE·BE 이미지 묶음·운영 Compose 배포](ai-dlc/compose-delivery.md)를 구현했다. 스테이징은 ECS·Cloud Run을 유지하고 FE+BE 두 컨테이너와 PG18 단일 사용자 DB(Terraform이 비밀값까지 생성, 수동 단계 없음)로 바꿨다. 게시판 `145b62b`로 플랫폼에서 빌드(FE·BE 묶음)·SAST·GCP 스테이징 배포까지 실행했다. 운영 배포(release 작업)는 오케스트레이터 연결 전이다.
 
 2026-11-06: 사용자 승인으로 중앙 계정 `482840608926`의 GuardDuty Finding 전달 경로를 실제 적용했다. 신규5개/기존 변경과 삭제0개이며 `/delta/security/guardduty`에서 기존 플랫폼 Destination을 거쳐 `/delta-cp/central/aws`로 샘플1건의 본문/원본 메타데이터 일치를 확인했다. 로컬 mock63개/Python11개 통과, 기존 ID58개/출력18개와 탐지/ANF/플랫폼 설정 보존 및 중앙 최종 실제 Plan No changes/종료0을 확인했다. 구현 `c543892d`와 운영 기록 `01ff0708`을 main에 푸시했고 해당 SHA의 [Platform checks](https://github.com/2026-sbh-delta/delta-network-gateway/actions/runs/42058840223) 17개가 통과했다. 중앙 네트워크 root의 검증은 앞의 로컬 결과다. [설계와 실제 검증](ai-dlc/aws-guardduty-logging.md)
