@@ -1,5 +1,17 @@
 # Delta network gateway
 
+2026-11-06 사용자 승인으로 DAST 통합 CI의 외부 사전점검 모의 누락·오래된 impact 기대를 수정하고 PR #60→#61 순차 main 병합을 진행한다. 실제 PostgreSQL 통합2·플랫폼248·DAST계약45개와 Ruff 검사를 통과했다. 운영 DAST 판정/사전점검은 유지한다. [원인·검증·병합 절차](ai-dlc/dast-ci-sequential-merge.md).
+
+2026-11-06 사용자 담당 진단·보고서·로그·제한 복구를 `codex/diagnostics-pipeline-handoff`로 인수 정리했다. 최신 main `ad48e2e`(#59)의 운영 배포·도메인 전환/복귀·OIDC를 보존 통합했으며, 팀 Worker 교체나 AWS 추가 배포는 하지 않았다. [인수 안내·설치·결합 접점·남은 조건](ai-dlc/diagnostics-pipeline-handoff.md)을 먼저 읽는다. 현재 게시/CI 상태는 해당 PR과 Git 이력을 따른다.
+
+2026-11-06 온프레미스 실제 DAST·로그 보존 후속: 사용자 선택에 따라 팀 Worker를 보존하고 독립 큐/실행기를 배포했다. core 회귀176개 통과. 독립 AWS 시험에서 실제 SAST→FE/BE 실행→정리 전 두 컨테이너 로그 보존→정리→실제 Claude 실패 진단/보고서를 확인했으나, DAST는 기본 대상 템플릿 미등록 문제로 HTTP422여서 전체 성공 검증은 미완료다. 다른 AWS 계정의 후속 배포2건이 공용 오케스트레이터를 교체한 사실을 감사 기록으로 확인했으며 최신 팀 변경의 보존 통합·배포 조정·실제 화면 검증이 남았다. 소스 da2c15d는 로컬이며 push/main 병합 없음. [실제 결과·충돌 근거·남은 작업](ai-dlc/onprem-dast-evidence.md)
+
+2026-11-06 온프레미스 실행·복구 AWS 연결 완료: 기존 Worker를 고정 SSM 문서/최소 IAM으로 연결하고 실제 새 SAST13파일→온프레미스 실행→제한 자동 복구→사람 재검사→실제 Claude/보고서·화면을 검증했다. 실제2실행은 각 native배포1회·Pod/Secret정리, 기존34/35개board 보존, 시험OFF·정상재시작·보고서인증·최종Terraform No changes 확인. 회귀155+native fixture28+Terraform mock1 통과. DAST 미실행·단일 이미지 sandbox 범위이며 전체 FE/BE/DB/DNS 이전은 별도다. 소스6b8c405 로컬/런타임613c3c64 배포완료, main미병합. [설계·실제 결과·남은 범위](ai-dlc/onprem-runtime.md)
+
+2026-11-06 사용자 AWS 진단·중앙 로그 근거 릴리스 완료: 실제 새 SAST15파일→GCP FE/BE staging→DAST XSS재현1→자동 로그(실행8/GCP40·미해석19)→실제Claude→보고서·화면을 검증했다. AI319+pipeline/orchestrator144개 통과, 고정3그룹 조회 정책1건 추가/최종No changes, 기존28실행 보존·이번실행stop/lease해제. 전체 DB/DNS 이전·현재runtime의onprem복구 연결은 남아 있다. [설계·실제 검증·남은 범위](ai-dlc/ai-aws-readiness.md)
+
+2026-11-06 진단·보고서 실제 콘솔 통합: 최신 main의 FE/BE 묶음·수정 재검증·운영 release 계약을 보존하고 예외 분석→보고서→사람 확인을 이식했다. 새 실제 SAST/DAST 실행8f177a83과 실제 Claude 분석·공개 인증 다운로드·브라우저 화면·재시작 후 보고서 보존을 확인했다. 회귀136개 통과, 런타임 이미지5a67fb9 배포 완료, 이전 기록27개/설정/로그 보존. 소스는 별도 codex/orchestrator-diagnostics-ui의 로컬 커밋이며 main 병합은 아직이다. [통합·기능·남은 작업](ai-dlc/orchestrator-diagnostics-ui.md)
+
 2026-11-06: 사용자 승인 명세에 따라 [FE·BE 이미지 묶음·운영 Compose 배포](ai-dlc/compose-delivery.md)를 구현했다. 스테이징은 ECS·Cloud Run을 유지하고 FE+BE 두 컨테이너와 PG18 단일 사용자 DB(Terraform이 비밀값까지 생성, 수동 단계 없음)로 바꿨다. 게시판 `145b62b`로 플랫폼에서 빌드(FE·BE 묶음)·SAST·GCP 스테이징 배포까지 실행했다. 운영 배포(release 작업)는 오케스트레이터 연결 전이다.
 
 2026-11-06: 사용자 승인으로 중앙 계정 `482840608926`의 GuardDuty Finding 전달 경로를 실제 적용했다. 신규5개/기존 변경과 삭제0개이며 `/delta/security/guardduty`에서 기존 플랫폼 Destination을 거쳐 `/delta-cp/central/aws`로 샘플1건의 본문/원본 메타데이터 일치를 확인했다. 로컬 mock63개/Python11개 통과, 기존 ID58개/출력18개와 탐지/ANF/플랫폼 설정 보존 및 중앙 최종 실제 Plan No changes/종료0을 확인했다. 구현 `c543892d`와 운영 기록 `01ff0708`을 main에 푸시했고 해당 SHA의 [Platform checks](https://github.com/2026-sbh-delta/delta-network-gateway/actions/runs/42058840223) 17개가 통과했다. 중앙 네트워크 root의 검증은 앞의 로컬 결과다. [설계와 실제 검증](ai-dlc/aws-guardduty-logging.md)

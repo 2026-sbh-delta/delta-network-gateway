@@ -12,12 +12,13 @@ import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from functools import wraps
+from pathlib import Path
 from typing import Annotated, Any, Protocol, TypedDict, TypeVar
 from uuid import NAMESPACE_URL, uuid4, uuid5
 
 from langgraph.types import interrupt
 
-from delta_pipeline.clients import ServiceUnavailable, evidence_hash, probe, resolve_cname
+from delta_pipeline.clients import ServiceUnavailable, TransientServiceError, evidence_hash, probe, resolve_cname
 from delta_pipeline.delivery import (TARGET_RE, canonical_json, match_runtime, require_postgres18,
                                      sign_approval, validate_bundle, validate_config)
 from delta_pipeline.model import REPO_PREFIX, Board, Options
@@ -62,6 +63,15 @@ class PipelineState(TypedDict, total=False):
     halt: Annotated[str | None, _first]
     gates: Annotated[dict[str, str], _merge]  # 게이트별 "pass" 또는 사람의 "approved"
     pending_gate: dict[str, Any] | None
+    diagnosis_pending: bool
+    diagnosis_count: int
+    diagnosis_request: dict[str, Any] | None
+    diagnosis_report: dict[str, Any] | None
+    diagnosis_ref: dict[str, Any] | None
+    diagnosis_resume: str
+    report_failed: bool
+    exception_cleanup_done: bool
+    failure_type: Annotated[str | None, _first]
     build: int
     image: str
     image_digest: str
@@ -90,10 +100,32 @@ class PipelineState(TypedDict, total=False):
     release_config: dict[str, Any] | None
     release_build: int
     release_result: dict[str, Any] | None
+    mapping_input_hash: str
+    mapping_source: dict[str, Any]
+    assisted_origin: dict[str, Any]
+    assisted_plan: dict[str, Any]
+    assisted_choice: str | None
+    manual_count: int
+    manual_redeploy: bool
+    manual_resume: str
+    recovery_pending: bool
+    recovery_failure: dict[str, Any]
+    recovery_count: int
+    recovery_events: list[dict[str, Any]]
+    recovery_resume: str
+    recovery_previous_run_id: str
+    recovery_previous_key: str
+    onprem_attempt: int
+    failure_code: Annotated[str | None, _first]
+    onprem_run_id: str
+    onprem_evidence_sha256: str
 
 
 class Stopped(Exception):
-    """사람이 중단했거나 판정·서비스 상태 때문에 멈췄다. 뒤 단계로 가지 않는다."""
+    """사람이 중단했거나 판정·서비스 상태 때문에 멈췄다."""
+    def __init__(self, message, *, code=None):
+        super().__init__(message)
+        self.code = code
 
 
 class SastClient(Protocol):
@@ -182,6 +214,13 @@ class Deps:
     staging: StagingClient
     image_repo: str
     sleep: Callable[[float], None]
+    diagnostic: Any = None
+    evidence: Any = None
+    onprem: Any = None
+    inbox: Any = None
+    notification_sender: Any = None
+    cancelled: Callable[[], bool] = lambda: False
+    report_dir: Path | None = None
     ecr_image_repo: str = ""  # 비우지 않으면 빌드가 같은 manifest를 이 ECR 저장소에도 복사한다(AWS 스테이징·운영용)
     cloudflare: CloudflareClient | None = None
     cutover: CutoverConfig | None = None
@@ -200,9 +239,9 @@ def guarded(step: Step) -> Step:
         try:
             return step(state)
         except Stopped as stop:
-            return {"halt": str(stop)}
+            return {"halt": str(stop), "failure_type": "Stopped", "failure_code": stop.code}
         except ServiceUnavailable as exc:
-            return {"halt": f"서비스 응답 없음, 통과로 보지 않는다: {exc}"}
+            return {"halt": f"서비스 응답 없음, 통과로 보지 않는다: {exc}", "failure_type": type(exc).__name__}
     return wrapper
 
 
@@ -245,7 +284,8 @@ class Steps:
     def _key(self, state: PipelineState, name: str) -> str:
         """Jenkins·SAST 작업 키. 2차는 다른 키를 써서 1차 작업을 다시 찾지 않는다."""
         round_ = state.get("round") or 1
-        return f"{self._deps.run_id}-{name}" if round_ == 1 else f"{self._deps.run_id}-r{round_}-{name}"
+        key = f"{self._deps.run_id}-{name}" if round_ == 1 else f"{self._deps.run_id}-r{round_}-{name}"
+        return key + (f"-recovery{state['onprem_attempt']}" if name == "onprem" and state.get("onprem_attempt") else "")
 
     def _ask(self, key: str, node_id: str, what: str, count: int, **extra: Any) -> dict[str, Any]:
         self._board.update(node_id, state="waiting", summary=f"{what}: 사람 확인 필요 (항목 {count}건)")
@@ -260,8 +300,11 @@ class Steps:
         what = gate["what"]
         fixable = gate.get("fix_target") is not None
         options = [FIX, PROCEED, ("stop", "중단")] if fixable else [PROCEED, ("stop", "중단")]
-        answer = interrupt({"node_id": gate["node_id"], "prompt": f"{what} 결과를 보고 다음 단계로 갈지 정합니다.",
+        answer = interrupt({**({"case_id": state["diagnosis_ref"]["case_id"]} if self._deps.options.assistance and state.get("diagnosis_ref") else {}), "node_id": gate["node_id"], "prompt": f"{what} 결과를 보고 다음 단계로 갈지 정합니다.",
                             "options": options})
+        if state.get("diagnosis_ref"):
+            from delta_pipeline.exception_flow import record_review
+            record_review(self._deps, state, answer)
         if answer == "fix" and fixable:
             self._board.update(gate["node_id"], state="fail", summary=f"{what}: 재현 확인 → 수정 적용 선택")
             return {"fix_target": gate["fix_target"], "pending_gate": None}
@@ -356,7 +399,10 @@ class Steps:
     def sast_start(self, state: PipelineState) -> dict[str, Any]:
         options, run_id = self._deps.options, self._key(state, "sast")
         self._board.update("sast", state="running", summary="소스 점검 중")
-        self._deps.sast.start(run_id, options.repo, self._commit(state))
+        started = self._deps.sast.start(run_id, options.repo, self._commit(state))
+        if options.execution_cloud == "onprem":
+            from uuid import UUID
+            run_id = str(UUID(started["run_id"]))
         self._board.add_detail("sast", run_id=run_id)
         return {"sast_run_id": run_id}
 
@@ -458,6 +504,11 @@ class Steps:
         self._board.update("dast", state="running", summary="수정 후 재검증: 1차 재현 항목을 다시 점검 중" if previous
                            else "스테이징을 실제 브라우저로 점검 중")
         report = self._read(lambda: self._deps.sast.sarif(state["sast_run_id"]))
+        findings = [item for run in report.get("runs", []) for item in run.get("results", [])]
+        self._board.add_detail("sast", diagnostic_findings=[{
+            "rule": item.get("ruleId"), "message": str(item.get("message", {}).get("text", ""))[:500],
+            "locations": [loc.get("physicalLocation", {}) for loc in item.get("locations", [])[:2]],
+        } for item in findings[:2]])
         # 점검 ID 를 실행에서 정해 재개해도 같은 점검을 받는다(입력이 같으면 DAST 가 기존 점검을 돌려준다)
         round_ = state.get("round") or 1
         run_id = str(uuid5(NAMESPACE_URL, f"delta-pipeline/{self._deps.run_id}/dast"
@@ -486,6 +537,15 @@ class Steps:
 
     def _dast_gate(self, view: Mapping[str, Any], state: PipelineState) -> dict[str, Any]:
         """명세 v1.1 7-2 의 최소판. 모두 NOT_REPRODUCED 일 때만 자동 통과, 나머지는 사람 확인(D3: 자동 통과 금지)."""
+        binding = view.get("binding") or {}
+        self._board.add_detail("dast", diagnostic_evidence={
+            "mode": "live_orchestrator", "source_pipeline_run_id": self._deps.run_id,
+            "sast_run_id": state.get("sast_run_id"), "dast_run_id": state.get("dast_run_id"),
+            "commit": self._commit(state), "images": state.get("images"),
+            "bundle_sha256": state.get("bundle_sha256"), "runtime_revision": state.get("staging_revision"),
+            "sarif_sha256": binding.get("sast_evidence_sha256"),
+            "coverage": view.get("coverage", "sast_candidates_only"), "deployment_approved": False,
+        })
         status = view.get("status")
         results = [{"finding_id": r.get("finding_id"), "status": r.get("status")} for r in view.get("results", ())]
         self._board.add_detail("dast", results=results, evidence_sha256=view.get("evidence_sha256"))
@@ -566,6 +626,8 @@ class Steps:
         raise Stopped("수정안이 제한 시간 안에 만들어지지 않았다")
 
     def _release(self) -> None:
+        if self._deps.options.execution_cloud == 'onprem':
+            return
         """스테이징 점유를 푼다. 실패해도 만료(기본 1시간)로 풀리므로 실행 결과를 바꾸지 않는다."""
         try:
             released = self._deps.staging.release(self._deps.options.staging_cloud, self._deps.run_id)
@@ -842,11 +904,23 @@ class Steps:
         return {"halt": None}
 
     def halted(self, state: PipelineState) -> dict[str, Any]:
-        if state.get("deploy_build") is not None:
+        if state.get("deploy_build") is not None and not state.get("exception_cleanup_done"):
             self._release()
         self._board.finish("stopped", str(state.get("halt")))
         return {"halt": state.get("halt")}
 
+
+    def onprem_start(self, state: PipelineState) -> dict[str, Any]:
+        from delta_pipeline.onprem import start
+        return start(self, state)
+
+    def onprem_wait(self, state: PipelineState) -> dict[str, Any]:
+        from delta_pipeline.onprem import wait
+        result=wait(self, state)
+        if (state.get('recovery_count') or state.get('manual_count')) and any(
+                node['id']=='stage' and node['state']=='pass' for node in self._board.snapshot()['nodes']):
+            self._board.update('recovery',state='pass',summary='같은 실행의 UID·이미지·HTTP·정리 재검사 완료')
+        return result
 
 def _rows_remaining(step: Mapping[str, Any] | None) -> int | None:
     """스테이징 도구의 data_reset 단계 내용("<Job>: 남은 행 N")에서 N 을 읽는다. 기록이 없으면 확인하지 못한 것이다."""

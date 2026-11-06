@@ -34,10 +34,26 @@ async def test_claude_client_sends_schema_and_cached_system_prompt():
 
 
 def test_claude_client_without_key_is_unavailable(monkeypatch):
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    for name in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_FEDERATION_RULE_ID"):
+        monkeypatch.delenv(name, raising=False)
 
     with pytest.raises(LlmUnavailable):
         ClaudeLLM(output=LlmOutput)
+
+
+@pytest.mark.parametrize("auth_env", ["ANTHROPIC_FEDERATION_RULE_ID", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_API_KEY"])
+def test_claude_client_accepts_platform_authentication(monkeypatch, auth_env):
+    import anthropic
+
+    for name in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_FEDERATION_RULE_ID"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv(auth_env, "test-auth-setting")
+    calls = []
+    monkeypatch.setattr(anthropic, "AsyncAnthropic", lambda **kw: calls.append(kw) or SimpleNamespace())
+
+    ClaudeLLM(output=LlmOutput, client_options={"timeout": 60, "max_retries": 1})
+
+    assert calls == [{"timeout": 60, "max_retries": 1}]
 
 
 def test_claude_client_gets_explicit_timeout_and_retry_limit(monkeypatch):

@@ -13,13 +13,16 @@ import base64
 import json
 import os
 import threading
+import uuid
 import time
 from collections.abc import Callable
 from pathlib import Path
+from dataclasses import replace
 from typing import Any
 
+from delta_pipeline.diagnostic_client import DiagnosticClient
 from delta_pipeline import domain
-from delta_pipeline.clients import Cloudflare, Dast, DeltaAi, Jenkins, Sast, Staging, probe, resolve_cname
+from delta_pipeline.clients import Cloudflare, Dast, DeltaAi, Jenkins, Sast, Staging, ServiceUnavailable, probe, resolve_cname
 from delta_pipeline.model import Options
 from delta_pipeline.run import BOARD_DIR, Run, latest_unfinished
 from delta_pipeline.steps import CutoverConfig
@@ -51,6 +54,33 @@ def platform_run(options: Options, store_dir: Path, run_id: str | None) -> Run:
     token = os.environ.get("CLOUDFLARE_API_TOKEN")
     jenkins = f"http://jenkins.{zone}:8080"
     password = os.environ.get("JENKINS_PLATFORM_PASSWORD", "")
+    diagnostic = None
+    evidence = None
+    if os.environ.get("DELTA_DIAGNOSTIC_URL") or os.environ.get("DELTA_DIAGNOSTICS_REQUIRED") == "1":
+        try:
+            diagnostic = DiagnosticClient(os.environ["DELTA_DIAGNOSTIC_URL"],
+                os.environ["DELTA_DIAGNOSTIC_TOKEN"], os.environ.get("DELTA_DIAGNOSTIC_CA_BASE64"))
+            options = replace(options, diagnostics=True)
+        except Exception:
+            raise ServiceUnavailable("진단 서비스 연결 설정을 확인하세요") from None
+    if os.environ.get("DELTA_LOG_EVIDENCE_ENABLED") == "1":
+        from delta_pipeline.cloudwatch_evidence import CloudWatchEvidence
+        evidence = CloudWatchEvidence(store_dir / "log-evidence")
+    if options.execution_cloud == 'onprem':
+        if os.environ.get('DELTA_ONPREM_ENABLED')!='1' or not options.onprem_build_id:
+            raise ServiceUnavailable('온프레미스 연결과 등록된 빌드를 확인하세요')
+        from delta_pipeline.onprem_ssm import WorkerRpc,RemoteOnprem,RemoteSast
+        from delta_pipeline.registered_build import RegisteredBuild
+        rpc=WorkerRpc();value=rpc.call('context',build_id=options.onprem_build_id)
+        artifact=RegisteredBuild.from_snapshot(value['build'],service=value['service'])
+        artifact.assert_request(options.repo,options.commit)
+        run_id=run_id or uuid.uuid4().hex
+        return Run(options,run_id=run_id,store_dir=store_dir,build_jenkins=artifact,deploy_jenkins=artifact,
+            sast=RemoteSast(rpc,artifact.build_id),
+            dast=Dast(f'http://dast.{zone}:8765',os.environ.get('DAST_PLATFORM_TOKEN','')),
+            staging=Staging(f'http://jenkins.{zone}:8091',os.environ.get('DELTA_STAGING_TOKEN','')),
+            image_repo=artifact.image.rsplit('@',1)[0],diagnostic=diagnostic,evidence=evidence,
+            onprem=RemoteOnprem(rpc,artifact.build_id,graph_id=run_id,state_dir=store_dir))
     return Run(options,
                sast=Sast(f"http://sast.{zone}:8790", os.environ.get("DELTA_SAST_TOKEN", "")),
                # Host 가 DAST_INTERNAL_HOSTS(dast.cp.internal:8765)와 맞아야 플랫폼 토큰이 통한다
@@ -60,6 +90,7 @@ def platform_run(options: Options, store_dir: Path, run_id: str | None) -> Run:
                # 조회 토큰: 점검을 끝낸 뒤 자기 스테이징 점유를 푸는 데만 쓴다(배포·초기화는 못 한다)
                staging=Staging(f"http://jenkins.{zone}:8091", os.environ.get("DELTA_STAGING_TOKEN", "")),
                image_repo=os.environ.get("DELTA_IMAGE_REPO", IMAGE_REPO), store_dir=store_dir, run_id=run_id,
+               diagnostic=diagnostic, evidence=evidence,
                cloudflare=Cloudflare(token) if token else None, cutover=cutover_config() if options.cutover else None,
                # 운영 배포(환경별 VM 생성)는 사람 승인 서명 뒤 Jenkins delta-release 가 한다
                release_jenkins=Jenkins(jenkins, "platform", password, job="delta-release") if options.release_target else None,
@@ -92,15 +123,15 @@ class Pipelines:
     def running(self) -> bool:
         return self._thread is not None and self._thread.is_alive()
 
-    def start(self, repo: str, commit: str, *, cutover: bool = False, branch: str = "",
-              release_target: str | None = None) -> str:
+    def start(self, repo: str, commit: str, *, cutover: bool = False, branch: str = "", execution_cloud='gcp', onprem_build_id=None, assistance=False, release_target=None) -> str:
         with self._lock:
             if self.running():
                 raise RuntimeError("이미 실행 중인 파이프라인이 있습니다(스테이징은 하나뿐)")
-            return self._launch(Options(repo, commit, cutover=cutover, branch=branch, release_target=release_target))
+            return self._launch(Options(repo, commit, cutover=cutover, branch=branch,
+                execution_cloud=execution_cloud,onprem_build_id=onprem_build_id,assistance=assistance,release_target=release_target))
 
-    def answer(self, run_id: str, value: str) -> bool:
-        return bool(self.run and self.run.run_id == run_id and self.run.answer(value))
+    def answer(self, run_id: str, value: str, case_id: str | None = None) -> bool:
+        return bool(self.run and self.run.run_id == run_id and self.run.answer(value, case_id))
 
     def get(self, run_id: str) -> dict[str, Any] | None:
         if self.run and self.run.run_id == run_id:

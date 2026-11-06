@@ -24,6 +24,10 @@ HTTP_NOT_FOUND = 404
 class ServiceUnavailable(RuntimeError):
     """호출한 서비스에서 판정이나 결과를 받지 못했다. 통과로 읽지 않는다."""
 
+class TransientServiceError(ServiceUnavailable):
+    """Bounded retry of a known transient transport/read failure."""
+
+
 
 class NotFound(ServiceUnavailable):
     """서비스는 응답했고 그런 항목이 없다고 답했다."""

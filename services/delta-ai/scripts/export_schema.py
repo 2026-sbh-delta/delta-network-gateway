@@ -6,9 +6,17 @@ import json
 from pathlib import Path
 
 from delta_ai.contract import AssessmentRequest, AssessmentResult
+from delta_ai.diagnostic_contract import DiagnosisReport, DiagnosisRequest
 
 OUT = Path(__file__).resolve().parent.parent / "schema"
 
-for name, model in {"assessment-request": AssessmentRequest, "assessment-result": AssessmentResult}.items():
+for name, model in {
+    "assessment-request": AssessmentRequest,
+    "assessment-result": AssessmentResult,
+    "diagnosis-request": DiagnosisRequest,
+    "diagnosis-report": DiagnosisReport,
+}.items():
     (OUT / f"{name}.schema.json").write_text(
-        json.dumps(model.model_json_schema(), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        json.dumps(model.model_json_schema(), ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )

@@ -41,6 +41,8 @@ def _node(board: dict[str, Any], node_id: str) -> dict[str, Any]:
 
 
 def jenkins_build(board: dict[str, Any], node_id: str) -> tuple[str, int]:
+    if board.get('options',{}).get('execution_cloud')=='onprem':
+        raise LiveError(404,'온프레미스 등록 이미지는 별도 Jenkins 콘솔 번호를 사용하지 않습니다')
     if node_id not in JOBS:
         raise LiveError(404, "콘솔 로그가 없는 단계입니다")
     build = (_node(board, node_id).get("detail") or {}).get("build")

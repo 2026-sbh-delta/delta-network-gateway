@@ -688,6 +688,67 @@
       "title": "IngressInventory",
       "type": "object"
     },
+    "KubernetesInventory": {
+      "additionalProperties": false,
+      "properties": {
+        "workloads": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Workload"
+          },
+          "maxItems": 200,
+          "title": "Workloads",
+          "type": "array"
+        },
+        "volumes": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Volume"
+          },
+          "maxItems": 200,
+          "title": "Volumes",
+          "type": "array"
+        },
+        "load_balancers": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/SourceLoadBalancer"
+          },
+          "maxItems": 200,
+          "title": "Load Balancers",
+          "type": "array"
+        },
+        "databases": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/SourceDatabase"
+          },
+          "maxItems": 200,
+          "title": "Databases",
+          "type": "array"
+        },
+        "network_policies": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 200,
+          "title": "Network Policies",
+          "type": "array"
+        },
+        "unsupported_kinds": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 200,
+          "title": "Unsupported Kinds",
+          "type": "array"
+        }
+      },
+      "title": "KubernetesInventory",
+      "type": "object"
+    },
     "LogSignal": {
       "additionalProperties": false,
       "description": "원본 로그가 아니라 수집기가 센 신호다. samples 는 신뢰하지 않는 데이터로 다룬다.",
@@ -777,7 +838,7 @@
     },
     "MappingInput": {
       "additionalProperties": false,
-      "description": "이전 전에 무엇을 만들지 정하는 입력. AWS → GCP 와 GCP → AWS 를 다룬다.\n\n방향마다 대응표가 따로 있어서, 출발과 맞지 않는 값(다른 CSP 의 리전·타입·보안 도구)을 받으면 거부한다.\n잘못된 방향의 결과를 그럴듯하게 내지 않으려는 것이다.",
+      "description": "이전 전에 무엇을 만들지 정하는 입력. AWS·GCP·k3s 간 매핑을 다룬다.\n\n방향마다 대응표가 따로 있어서, 출발과 맞지 않는 값(다른 CSP 의 리전·타입·보안 도구)을 받으면 거부한다.\n잘못된 방향의 결과를 그럴듯하게 내지 않으려는 것이다.",
       "properties": {
         "source_provider": {
           "default": "aws",
@@ -852,6 +913,46 @@
           "anyOf": [
             {
               "$ref": "#/$defs/SourceSecurity"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "load_balancers": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/SourceLoadBalancer"
+          },
+          "maxItems": 200,
+          "title": "Load Balancers",
+          "type": "array"
+        },
+        "databases": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/SourceDatabase"
+          },
+          "maxItems": 200,
+          "title": "Databases",
+          "type": "array"
+        },
+        "kubernetes": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/KubernetesInventory"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "target_kubernetes": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/KubernetesInventory"
             },
             {
               "type": "null"
@@ -1418,6 +1519,173 @@
       "title": "ServiceRef",
       "type": "object"
     },
+    "SourceDatabase": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "maxLength": 253,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "engine": {
+          "anyOf": [
+            {
+              "maxLength": 100,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Engine"
+        },
+        "version": {
+          "anyOf": [
+            {
+              "maxLength": 100,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Version"
+        },
+        "storage_gib": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Storage Gib"
+        },
+        "high_availability": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "High Availability"
+        },
+        "origin": {
+          "default": "operator",
+          "enum": [
+            "terraform",
+            "operator",
+            "kubernetes"
+          ],
+          "title": "Origin",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "SourceDatabase",
+      "type": "object"
+    },
+    "SourceLoadBalancer": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "maxLength": 253,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "kind": {
+          "default": "unknown",
+          "enum": [
+            "application",
+            "network",
+            "classic",
+            "service",
+            "ingress",
+            "unknown"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "protocols": {
+          "default": [],
+          "items": {
+            "enum": [
+              "HTTP",
+              "HTTPS",
+              "TCP",
+              "UDP",
+              "TLS",
+              "TCP_UDP"
+            ],
+            "type": "string"
+          },
+          "title": "Protocols",
+          "type": "array"
+        },
+        "ports": {
+          "default": [],
+          "items": {
+            "maximum": 65535,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "maxItems": 100,
+          "title": "Ports",
+          "type": "array"
+        },
+        "internal": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Internal"
+        },
+        "tls": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tls"
+        },
+        "origin": {
+          "default": "operator",
+          "enum": [
+            "terraform",
+            "operator",
+            "kubernetes"
+          ],
+          "title": "Origin",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "SourceLoadBalancer",
+      "type": "object"
+    },
     "SourceSecurity": {
       "additionalProperties": false,
       "properties": {
@@ -1469,7 +1737,8 @@
           "enum": [
             "terraform",
             "default",
-            "operator"
+            "operator",
+            "kubernetes"
           ],
           "title": "Origin",
           "type": "string"
@@ -1580,7 +1849,8 @@
           "enum": [
             "terraform",
             "default",
-            "operator"
+            "operator",
+            "kubernetes"
           ],
           "title": "Origin",
           "type": "string"
@@ -1649,7 +1919,8 @@
           "enum": [
             "terraform",
             "default",
-            "operator"
+            "operator",
+            "kubernetes"
           ],
           "title": "Origin",
           "type": "string"
@@ -1660,6 +1931,58 @@
         "cidr"
       ],
       "title": "SourceSubnet",
+      "type": "object"
+    },
+    "Volume": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "namespace": {
+          "default": "default",
+          "title": "Namespace",
+          "type": "string"
+        },
+        "size_gib": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Size Gib"
+        },
+        "storage_class": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Storage Class"
+        },
+        "access_modes": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Access Modes",
+          "type": "array"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "Volume",
       "type": "object"
     },
     "WafInventory": {
@@ -1722,6 +2045,90 @@
         }
       },
       "title": "WafInventory",
+      "type": "object"
+    },
+    "Workload": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "Pod",
+            "Deployment",
+            "StatefulSet",
+            "DaemonSet",
+            "Job",
+            "CronJob"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "namespace": {
+          "default": "default",
+          "title": "Namespace",
+          "type": "string"
+        },
+        "images": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Images",
+          "type": "array"
+        },
+        "container_count": {
+          "default": 1,
+          "maximum": 100,
+          "minimum": 1,
+          "title": "Container Count",
+          "type": "integer"
+        },
+        "replicas": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Replicas"
+        },
+        "cpu_requests": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Cpu Requests",
+          "type": "array"
+        },
+        "memory_requests": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Memory Requests",
+          "type": "array"
+        },
+        "volumes": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Volumes",
+          "type": "array"
+        }
+      },
+      "required": [
+        "name",
+        "kind"
+      ],
+      "title": "Workload",
       "type": "object"
     }
   },

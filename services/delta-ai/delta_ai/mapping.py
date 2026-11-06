@@ -28,6 +28,7 @@ from delta_ai.contract import (
 from delta_ai.findings import check_state
 from delta_ai.mapping_catalog import OS_SAME, ROUTES, InstanceSpec, Route
 from delta_ai.mapping_cost import estimate_cost
+from delta_ai.mapping_resources import check_onprem_mapping, map_resources
 from delta_ai.mapping_rows import RULES, Part, graded, make_finding, make_row, merge
 from delta_ai.mapping_security import map_security
 from delta_ai.parity import CheckOutcome
@@ -230,6 +231,8 @@ def _map_server(route: Route, index: int, server: SourceServer) -> Part:
 
 
 def check_mapping(config: MappingInput) -> CheckOutcome:
+    if "onprem" in (config.source_provider, config.target_provider):
+        return check_onprem_mapping(config)
     route = ROUTES[(config.source_provider, config.target_provider)]
     loaded = _load_defaults()
     defaults = {**loaded, "cidr_pool": loaded["cidr_pool"][route.target]}
@@ -237,7 +240,7 @@ def check_mapping(config: MappingInput) -> CheckOutcome:
     occupied = [ipaddress.ip_network(cidr) for cidr in (*reserved, *(s.cidr for s in config.subnets))]
     network, cidr_notes = _map_network(route, config, occupied, defaults)
     security = map_security(config.security, config) if config.security else Part()
-    result = merge((network, *(_map_server(route, i, s) for i, s in enumerate(config.servers)), security))
+    result = merge((network, *(_map_server(route, i, s) for i, s in enumerate(config.servers)), security, map_resources(config)))
     region = config.region or defaults["regions"][route.target]
     source_region = config.source_region or defaults["regions"][route.source]
     cost = estimate_cost(route, [(s, target_type(route, s)) for s in config.servers], source_region, region)

@@ -42,6 +42,8 @@ def run(coro):
 def test_ids_come_only_from_the_run_record():
     assert live.jenkins_build(BOARD, "build") == ("delta-build", 12)
     with pytest.raises(live.LiveError):
+        live.jenkins_build({**BOARD,'options':{'execution_cloud':'onprem'}},'build')
+    with pytest.raises(live.LiveError):
         live.jenkins_build(BOARD, "stage")  # 아직 빌드 번호가 없다
     with pytest.raises(live.LiveError):
         live.jenkins_build(BOARD, "dast")  # 콘솔 로그가 없는 단계

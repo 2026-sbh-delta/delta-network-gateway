@@ -8,6 +8,7 @@ version = "0.1.0"
 description = "Delta 본선 파이프라인 구동 — 온프레미스 증거·DAST·판단·Jenkins 배포"
 requires-python = ">=3.12"
 dependencies = [
+    "delta-ai",
     "cryptography>=44",
     "langgraph==1.2.19",
     "langgraph-checkpoint-sqlite==3.1.3",

@@ -485,7 +485,11 @@
             "cpu_arch",
             "os",
             "identity",
-            "security"
+            "security",
+            "load_balancer",
+            "database",
+            "workload",
+            "storage"
           ],
           "title": "Resource",
           "type": "string"
@@ -536,7 +540,8 @@
           "enum": [
             "terraform",
             "default",
-            "operator"
+            "operator",
+            "kubernetes"
           ],
           "title": "Value Source",
           "type": "string"

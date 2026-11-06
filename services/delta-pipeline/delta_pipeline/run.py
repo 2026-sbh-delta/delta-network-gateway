@@ -9,7 +9,7 @@ import threading
 import time
 import uuid
 from collections.abc import Callable, Mapping
-from dataclasses import fields
+from dataclasses import fields, replace
 from pathlib import Path
 from typing import Any
 
@@ -53,31 +53,57 @@ class Run:
                  resolve: Callable[[str], str | None] | None = None, now: Callable[[], float] | None = None,
                  release_jenkins: JenkinsClient | None = None, release_signing_key: bytes | None = None,
                  release_config: dict[str, Any] | None = None, ecr_image_repo: str = "",
+                 diagnostic: Any = None, report_dir: Path | None = None, evidence: Any = None, onprem: Any = None,
                  diagnose: Callable[[dict[str, Any]], dict[str, Any]] | None = None) -> None:
         self.run_id = run_id or uuid.uuid4().hex
+        if diagnostic is not None:
+            options = replace(options, diagnostics=True)
         self.options = options
         (store_dir / BOARD_DIR).mkdir(parents=True, exist_ok=True)
         self._board = Board(store_dir / BOARD_DIR / f"{self.run_id}.json", options, self.run_id)
         self._store_dir = store_dir
+        if options.execution_cloud == 'onprem':
+            self._board.update('stage',label='온프레미스 실행',owner='독립 온프레미스 실행기 · k3s')
+            if onprem is not None and hasattr(onprem,'bind_board'):onprem.bind_board(self._board)
+        self._cancelled = threading.Event()
+        if any(n["id"] == "result" and n["detail"].get("cancel_requested") for n in self._board.snapshot()["nodes"]):
+            self._cancelled.set()
+        from delta_pipeline.notifications import Inbox
+        self.inbox = Inbox(store_dir / "notifications") if options.assistance else None
         self._deps = Deps(run_id=self.run_id, options=options, board=self._board, sast=sast, dast=dast,
                           build_jenkins=build_jenkins, deploy_jenkins=deploy_jenkins, staging=staging,
                           image_repo=image_repo, sleep=sleep, cloudflare=cloudflare, cutover=cutover,
+                          diagnostic=diagnostic, evidence=evidence, onprem=onprem,
+                          cancelled=self._cancelled.is_set, inbox=self.inbox, report_dir=report_dir or store_dir / "reports",
                           release_jenkins=release_jenkins, release_signing_key=release_signing_key, release_config=release_config,
                           ecr_image_repo=ecr_image_repo,
                           **{k: v for k, v in (("probe", probe), ("resolve", resolve), ("now", now)) if v})
-        self._diagnose = diagnose  # 멈춘 실행의 원인 진단(delta-ai). 없으면 하지 않는다
+        self._waiting = False
+        self._waiting_case = None
+        self._answer_lock = threading.Lock()
+        self._diagnose = diagnose if not options.diagnostics else None  # 멈춘 실행의 원인 진단(delta-ai). 없으면 하지 않는다
         self._answer: str | None = None
         self._answered = threading.Event()
+
+    def cancel(self):
+        if self.options.execution_cloud != "onprem":
+            return False
+        self._board.add_detail("result", cancel_requested=True)
+        self._cancelled.set()
+        return True
 
     def snapshot(self) -> dict[str, Any]:
         return self._board.snapshot()
 
-    def answer(self, value: str) -> bool:
-        if value not in self._board.waiting_options():
-            return False
-        self._answer = value
-        self._answered.set()
-        return True
+    def answer(self, value: str, case_id: str | None = None) -> bool:
+        with self._answer_lock:
+            if not self._waiting or self._answered.is_set() or value not in self._board.waiting_options():
+                return False
+            if self._waiting_case is not None and case_id != self._waiting_case:
+                return False
+            self._answer = value
+            self._answered.set()
+            return True
 
     def execute(self) -> None:
         connection = sqlite3.connect(self._store_dir / CHECKPOINT_FILE, check_same_thread=False)
@@ -124,13 +150,19 @@ class Run:
         """사람의 답을 기다린다. 답이 없으면 진행하지 않는다."""
         node_id = request["node_id"]
         self._answered.clear()
+        self._waiting_case = request.get("case_id")
+        self._waiting = True
         self._board.update(node_id, state="waiting", decision={
-            "prompt": request["prompt"], "options": [{"value": value, "label": label} for value, label in request["options"]]})
+            "prompt": request["prompt"], "case_id": request.get("case_id"), "options": [{"value": value, "label": label} for value, label in request["options"]]})
         deadline = time.time() + DECISION_DEADLINE_SECONDS
         try:
             while time.time() < deadline:
+                if self._cancelled.is_set():
+                    return "stop"
                 if self._answered.wait(timeout=DECISION_POLL_SECONDS):
                     return self._answer or "stop"
             raise TimeoutError("사람 확인 시간이 지났다")
         finally:
+            self._waiting = False
+            self._waiting_case = None
             self._board.update(node_id, decision=None)

@@ -17,6 +17,7 @@
     <div class="controls">
       <select id="runs" aria-label="실행 기록"></select>
       <button class="btn primary" type="button" id="open-start">새 실행</button>
+      <button class="btn" type="button" id="cancel-onprem" hidden>온프레미스 실행 취소</button>
       <button class="btn" type="button" id="open-health">플랫폼 <span id="health-chip">…</span></button>
       <button class="btn" type="button" id="domain-revert" hidden title="서비스 도메인을 AWS 로 되돌립니다(시연 초기화)">도메인 <span id="domain-chip">…</span></button>
       <form id="logout" method="post" action="/logout" hidden><button class="btn" type="submit">로그아웃</button></form>
@@ -24,6 +25,9 @@
   </header>
 
   <form id="start" class="startbar" hidden>
+    <label>실행 환경 <select id="run-cloud"><option value="gcp">GCP 스테이징</option><option value="onprem">온프레미스 실행·복구 검사</option></select></label>
+    <label id="onprem-build-label" hidden>등록된 이미지 <select id="onprem-build"><option value="">조회 중</option></select></label>
+    <span id="onprem-scope" hidden>고정 이미지로 실제 SAST·DAST를 수행하고, 정리 전 제한 로그를 보존합니다. 후보 없음·실패는 별도 확인합니다.</span>
     <label>저장소 <input id="run-repo" value="https://github.com/2026-sbh-delta/delta-sample-app" size="42" required></label>
     <button class="btn" type="button" id="run-load">확인</button>
     <label>브랜치 <select id="run-branch" aria-label="브랜치" disabled><option value="">저장소 확인 후 선택</option></select></label>

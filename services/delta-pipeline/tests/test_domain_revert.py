@@ -81,6 +81,6 @@ def test_run_left_by_another_orchestrator_version_is_not_resumed(tmp_path):
     base = {"repo": "https://github.com/o/r", "commit": "a" * 40}
     (runs / "old.json").write_text(json.dumps({"run_id": "old", "outcome": None, "options": base}))
     (runs / "other.json").write_text(json.dumps({"run_id": "other", "outcome": None,
-                                                 "options": {**base, "execution_cloud": "onprem"}}))
+                                                 "options": {**base, "future_execution_setting": True}}))
     __import__("os").utime(runs / "other.json", (2e9, 2e9))  # 가장 최근
     assert latest_unfinished(tmp_path)[0] == "old"

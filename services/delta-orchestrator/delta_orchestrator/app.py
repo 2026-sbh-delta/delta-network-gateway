@@ -294,9 +294,23 @@ def create_app(pipelines: Pipelines | None = None) -> FastAPI:
         body = await json_body(request)
         repo, commit, cutover = body.get("repo"), body.get("commit"), body.get("cutover", False)
         branch = body.get("branch") or ""
+        execution_cloud=body.get('execution_cloud','gcp')
+        assistance=body.get('assistance',False)
+        onprem_build_id=body.get('onprem_build_id')
+        if execution_cloud not in ('gcp','onprem') or type(assistance) is not bool:
+            raise HTTPException(400,'실행 대상 또는 복구 설정이 잘못됐습니다')
+        if execution_cloud=='onprem':
+            from uuid import UUID
+            try:onprem_build_id=str(UUID(onprem_build_id))
+            except (ValueError,TypeError,AttributeError):raise HTTPException(400,'등록된 온프레미스 빌드를 선택하세요') from None
+            if cutover:raise HTTPException(400,'온프레미스 실행 검사는 DNS 전환과 별도입니다')
+        elif assistance or onprem_build_id:
+            raise HTTPException(400,'온프레미스 설정은 해당 대상에서만 사용할 수 있습니다')
         release_target = body.get("release_target") or None
         if release_target is not None and release_target not in pipelines_mod.release_targets():
             raise HTTPException(400, "등록되지 않은 운영 배포 대상입니다")
+        if execution_cloud=="onprem" and release_target:
+            raise HTTPException(400,"온프레미스 실행 검사는 운영 배포와 별도입니다")
         if not isinstance(repo, str) or not isinstance(commit, str) or not isinstance(cutover, bool):
             raise HTTPException(400, "repo와 commit(40자리 SHA)이 필요합니다(cutover는 true/false)")
         if not isinstance(branch, str) or (branch and (not BRANCH_RE.fullmatch(branch) or ".." in branch)):
@@ -307,10 +321,27 @@ def create_app(pipelines: Pipelines | None = None) -> FastAPI:
         if cutover and not (os.environ.get("DELTA_CUTOVER") and os.environ.get("CLOUDFLARE_API_TOKEN")):
             raise HTTPException(400, "서비스 도메인 전환 설정(대상 레코드·운영 진입점)이 아직 없습니다")
         try:
-            return {"run_id": need_pipelines().start(repo, commit, cutover=cutover, branch=branch,
-                                                     release_target=release_target)}
+            extra={'execution_cloud':execution_cloud,'onprem_build_id':onprem_build_id,'assistance':assistance} if execution_cloud=='onprem' else {}
+            if release_target is not None:extra["release_target"]=release_target
+            return {"run_id": need_pipelines().start(repo, commit, cutover=cutover, branch=branch,**extra)}
         except RuntimeError as exc:
             raise HTTPException(409, str(exc))
+
+    @app.get('/api/onprem/builds')
+    async def onprem_builds():
+        if os.environ.get('DELTA_ONPREM_ENABLED')!='1':return {'builds':[],'configured':False}
+        from delta_pipeline.onprem_ssm import WorkerRpc
+        try:
+            values=await asyncio.to_thread(WorkerRpc().call,'catalog')
+            return {'builds':values,'configured':True}
+        except Exception:raise HTTPException(503,'온프레미스 등록 빌드를 조회하지 못했습니다') from None
+
+    @app.post('/api/pipeline/runs/{run_id}/cancel')
+    async def cancel_onprem(run_id:str):
+        p=need_pipelines()
+        if not p.run or p.run.run_id!=run_id or not p.running() or not p.run.cancel():
+            raise HTTPException(409,'취소 가능한 온프레미스 실행이 아닙니다')
+        return {'ok':True}
 
     # 서비스 도메인 되돌리기(시연 초기화). 이전 실행과 따로, 사람이 화면에서 승인해야 시작한다.
     domain_revert = pipelines_mod.DomainRevert()
@@ -345,10 +376,41 @@ def create_app(pipelines: Pipelines | None = None) -> FastAPI:
 
     @app.post("/api/pipeline/runs/{run_id}/answer")
     async def answer(run_id: str, request: Request):
-        value = (await json_body(request)).get("value")
-        if not isinstance(value, str) or not need_pipelines().answer(run_id, value):
+        body = await json_body(request)
+        value, case_id = body.get("value"), body.get("case_id")
+        accepted = False
+        if isinstance(value, str) and (case_id is None or isinstance(case_id, str)):
+            accepted = (need_pipelines().answer(run_id, value, case_id=case_id)
+                        if case_id is not None else need_pipelines().answer(run_id, value))
+        if not accepted:
             raise HTTPException(409, "지금 받을 수 없는 답입니다")
         return {"ok": True}
+
+    @app.get("/api/pipeline/runs/{run_id}/reports/{case_id}/{format}")
+    async def diagnostic_report(run_id: str, case_id: str, format: str):
+        from delta_pipeline.reports import ReportRef, ReportStore
+        if format not in ("json", "md"):
+            raise HTTPException(404, "없는 보고서 형식입니다")
+        pipelines = need_pipelines()
+        board = pipelines.get(run_id)
+        if board is None:
+            raise HTTPException(404, "없는 실행입니다")
+        # Earlier mapping/DAST reports remain downloadable after later diagnoses and fix rounds.
+        references = []
+        for node in board["nodes"]:
+            for version in [node, *node.get("history", [])]:
+                detail = version.get("detail", {})
+                for key in ("report", "diagnostic_report"):
+                    references.append((detail.get(key) or {}).get("reference"))
+        try:
+            ref = next(ReportRef.model_validate(r) for r in references if r and r.get("case_id") == case_id)
+            if ref.run_id != run_id:
+                raise ValueError()
+            directory = ReportStore(pipelines.store_dir / "reports").verify(ref)
+        except Exception:
+            raise HTTPException(404, "검증된 보고서가 없습니다") from None
+        return FileResponse(directory / f"report.{format}", media_type="application/json" if format == "json" else "text/markdown",
+                            filename=f"{case_id}.{format}")
 
     # ── 진행 보기: 실행 기록에 남은 빌드 번호·점검 ID 로만 각 도구의 진행 정보를 받아 넘긴다(live.py)
     def board_of(run_id: str) -> dict:
