@@ -16,6 +16,7 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.types import Command
 
 from delta_pipeline.clients import ServiceUnavailable
+from delta_pipeline.diagnosis import diagnose
 from delta_pipeline.graph import build_graph
 from delta_pipeline.model import Board, Options
 from delta_pipeline.steps import CloudflareClient, CutoverConfig, DastClient, Deps, JenkinsClient, SastClient, StagingClient
@@ -45,7 +46,8 @@ class Run:
                  probe: Callable[..., tuple[int, str]] | None = None,
                  resolve: Callable[[str], str | None] | None = None, now: Callable[[], float] | None = None,
                  release_jenkins: JenkinsClient | None = None, release_signing_key: bytes | None = None,
-                 release_config: dict[str, Any] | None = None, ecr_image_repo: str = "") -> None:
+                 release_config: dict[str, Any] | None = None, ecr_image_repo: str = "",
+                 diagnose: Callable[[dict[str, Any]], dict[str, Any]] | None = None) -> None:
         self.run_id = run_id or uuid.uuid4().hex
         self.options = options
         (store_dir / BOARD_DIR).mkdir(parents=True, exist_ok=True)
@@ -57,6 +59,7 @@ class Run:
                           release_jenkins=release_jenkins, release_signing_key=release_signing_key, release_config=release_config,
                           ecr_image_repo=ecr_image_repo,
                           **{k: v for k, v in (("probe", probe), ("resolve", resolve), ("now", now)) if v})
+        self._diagnose = diagnose  # 멈춘 실행의 원인 진단(delta-ai). 없으면 하지 않는다
         self._answer: str | None = None
         self._answered = threading.Event()
 
@@ -84,6 +87,10 @@ class Run:
             self._board.finish("stopped", "내부 오류로 멈췄다. 통과로 보지 않는다")
         finally:
             connection.close()
+        if self._diagnose is not None:
+            # 다음 실행을 막지 않게 따로 돈다. 결과(outcome)는 바꾸지 않는다
+            threading.Thread(target=diagnose, args=(self._board, self.run_id, self.options, self._diagnose),
+                             daemon=True).start()
 
     def _drive(self, graph: Any) -> None:
         config = {"configurable": {"thread_id": self.run_id}}

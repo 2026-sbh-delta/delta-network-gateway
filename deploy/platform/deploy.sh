@@ -40,7 +40,7 @@ ensure_secret() {
 # 예전 shared/staging_token은 스테이징 API가 더 이상 받지 않는다.
 for s in shared/sast_token dast/admin_password dast/session_secret dast/platform_token \
          jenkins/admin_password jenkins/platform_password jenkins/staging_read_token jenkins/staging_write_token \
-         orchestrator/admin_password orchestrator/session_secret; do
+         orchestrator/admin_password orchestrator/session_secret ai/api_token; do
   ensure_secret "${prefix}$s"
 done
 # 스테이징 도구 설정(비밀값 아님): 로컬 staging.json이 있으면 올린다.
@@ -84,6 +84,7 @@ port_of() {
     diff) echo 8095 ;;
     sast) echo 8790 ;;
     dast) echo 8765 ;;
+    ai) echo 8090 ;;
   esac
 }
 
@@ -102,12 +103,19 @@ if gcp_cfg="$(terraform -chdir="$gcp_tf" output -json credential_configs 2>/dev/
   fi
 fi
 
+# 서비스 도메인 전환 설정(비밀값 아님): service-domain 이 적용돼 있으면 올린다. Cloudflare 토큰은 사람이 SSM 에 넣는다.
+if cutover_cfg="$(terraform -chdir="$repo/terraform/service-domain" output -raw cutover_config 2>/dev/null)" && [ "${cutover_cfg#\{}" != "$cutover_cfg" ]; then
+  aws ssm put-parameter --region "$region" --name "${prefix}orchestrator/cutover_config" --type String \
+    --value "$cutover_cfg" --overwrite >/dev/null
+fi
+
 # 빌드 대상: <서비스> → 플랫폼 아키텍처, 빌드 경로, Dockerfile
 build_spec() {
   case "$1" in
     sast|dast) echo "linux/arm64 services/delta-$1 Dockerfile" ;;
     orchestrator) echo "linux/arm64 services delta-orchestrator/Dockerfile" ;;   # delta-pipeline 함께
     diff) echo "linux/arm64 deploy/platform/placeholder Dockerfile" ;;   # 개발 전 임시 서버
+    ai) echo "linux/arm64 services/delta-ai Dockerfile" ;;   # 장애 원인 진단(연재님 delta-ai)
     jenkins) echo "linux/amd64 deploy/platform/jenkins controller/Dockerfile" ;;
     jenkins-agent) echo "linux/amd64 deploy/platform/jenkins agent/Dockerfile" ;;
     *) return 1 ;;

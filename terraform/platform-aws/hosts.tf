@@ -54,7 +54,7 @@ locals {
   extra_parameters = {
     # 오케스트레이터: Jenkins 'platform' 사용자(읽기·빌드만) 비밀번호, 스테이징 조회 토큰, DAST 플랫폼 토큰
     # 운영 대상 인벤토리(비밀 아님)는 Jenkins 와 같은 값을 쓴다
-    orchestrator = ["jenkins/platform_password", "jenkins/staging_read_token", "dast/platform_token", "jenkins/release_targets"]
+    orchestrator = ["jenkins/platform_password", "jenkins/staging_read_token", "dast/platform_token", "jenkins/release_targets", "ai/api_token"]
     # DAST: 스테이징 조회 토큰 하나(변경 토큰·Jenkins 경로 전체는 못 읽음)
     dast = ["jenkins/staging_read_token"]
   }

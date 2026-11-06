@@ -8,6 +8,9 @@ pull_image
   printf 'DELTA_STAGING_TOKEN=%s\n' "$(secret jenkins/staging_read_token)"
   printf 'DELTA_SAST_TOKEN=%s\n' "$(secret shared/sast_token)"
   printf 'DAST_PLATFORM_TOKEN=%s\n' "$(secret dast/platform_token)"
+  # 멈춘 실행의 원인 진단(delta-ai). 없으면 진단하지 않는다.
+  ai_token="$(secret ai/api_token 2>/dev/null || true)"
+  [ -n "$ai_token" ] && printf 'DELTA_AI_TOKEN=%s\n' "$ai_token"
   # 서비스 도메인 전환(선택). 토큰은 해당 zone 의 DNS 편집 권한만. 없으면 전환을 켠 실행이 시작 단계에서 멈춘다.
   cf_token="$(secret orchestrator/cloudflare_token 2>/dev/null || true)"
   [ -n "$cf_token" ] && printf 'CLOUDFLARE_API_TOKEN=%s\n' "$cf_token"

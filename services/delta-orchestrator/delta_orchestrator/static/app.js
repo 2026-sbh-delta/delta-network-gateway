@@ -26,8 +26,8 @@
     T("fix", "AI 수정 · PR", 690, -150, { icon: "spark", ai: true, tool: "delta-dast 수정 에이전트", desc: "DAST 가 재현하자마자 SAST 코드 경로와 재현 증거로 수정안을 만들어 둡니다. 사람이 DAST 승인 단계에서 '수정 적용'을 고르면 수정 브랜치·PR 을 올리고, 그 커밋으로 빌드부터 다시 돌아 같은 항목을 재검증합니다(1회)." }),
     // 운영 반영
     T("release", "운영 배포 · 검증", 1580, 116, { icon: "cloud", tool: "Jenkins delta-release · 환경별 VM", desc: "사람이 승인하면(서명 토큰) 검증한 같은 FE·BE digest 로 운영 VM 을 새로 만들고 DB 를 준비해 Compose 로 띄운 뒤, 실제 실행 이미지·헬스·PostgreSQL 18 을 확인합니다." }),
-    T("cutover", "서비스 도메인 전환", 1850, 116, { icon: "shift", mock: true, tool: "Cloudflare DNS 전용 CNAME", desc: "사람 승인 뒤 CNAME 을 AWS → GCP 로 바꾸고, 공개 DNS·실제 응답으로 확인한 뒤 TTL 만큼 AWS 를 유지합니다. 실패하면 되돌립니다." }),
-    { id: "end", label: "이전 완료", x: 2130, y: 140, w: 120, h: 50, kind: "pill", icon: "flag", mock: true },
+    T("cutover", "서비스 도메인 전환", 1850, 116, { icon: "shift", tool: "Cloudflare DNS 전용 CNAME", desc: "사람 승인 뒤 CNAME 을 AWS → GCP 로 바꾸고, 공개 DNS·실제 응답으로 확인한 뒤 TTL 만큼 AWS 를 유지합니다. 실패하면 되돌립니다." }),
+    { id: "end", label: "이전 완료", x: 2130, y: 140, w: 120, h: 50, kind: "pill", icon: "flag" },
     // 추후: 인프라 갈래
     T("read_aws", "AWS 구성 읽기", 150, 470, { icon: "doc", mock: true, tool: "S3 Terraform 코드·state", desc: "A 기업 AWS Terraform 코드와 state 를 조회 역할로 읽습니다. (3단계)" }),
     T("map", "차분 매핑", 420, 470, { icon: "spark", ai: true, mock: true, tool: "차분 에이전트", desc: "AWS 자원·보안 설정(GuardDuty·WAF·ANF)을 GCP 대응과 등급(일치·근사·공백)으로 매핑합니다. (3단계)" }),
@@ -134,10 +134,11 @@
   const nodeOf = (id) => board && board.nodes.find((n) => n.id === id);
   const stateOf = (id) => {
     if (id === "start") return board ? "pass" : "pending";
+    if (id === "end") return stateOf("cutover") === "pass" ? "pass" : "pending";  // 도메인 전환까지 끝나야 이전 완료
     const n = nodeOf(id);
     return n ? n.state : "pending";
   };
-  const isReal = (id) => !!nodeOf(id) || id === "start";
+  const isReal = (id) => !!nodeOf(id) || id === "start" || (id === "end" && !!nodeOf("cutover"));
 
   function paint() {
     for (const n of NODES) {
@@ -242,6 +243,14 @@
         ${d.patch ? `<h3>패치</h3><pre class="console diff">${esc(d.patch)}</pre>` : ""}`;
     }
     if (id === "cutover") return `<dl class="kv"><dt>이전 대상</dt><dd class="mono">${esc(d.previous || "—")}</dd><dt>TTL</dt><dd>${esc(d.ttl ?? "—")}</dd><dt>확인</dt><dd class="mono">${esc(JSON.stringify(d.verified || "—"))}</dd></dl>`;
+    if (id === "release") return `<dl class="kv"><dt>대상</dt><dd class="mono">${esc(d.target_id || "—")}</dd><dt>Jenkins</dt><dd>${d.url ? `<a href="${esc(d.url)}" target="_blank" rel="noopener noreferrer">delta-release #${esc(d.build)}</a>` : "—"}</dd><dt>묶음</dt><dd class="mono">${esc((d.bundle_sha256 || "—").slice(0, 16))}</dd></dl>`;
+    if (id === "result" && d.diagnosis) {
+      // 멈춘 실행의 원인 진단(delta-ai). 판정은 파이프라인이 하고 이건 설명이다. 사람이 확인한다.
+      const g = d.diagnosis;
+      const body = g.status === "running" ? "원인 분석 중…" : g.status === "unavailable" ? "진단을 받지 못했습니다(실행 결과와 무관)."
+        : `${esc(g.why || "—")}${g.llm_used ? "" : ' <span class="g g-idle">규칙 문서 기반</span>'}`;
+      return `<div class="callout"><b>AI 원인 진단</b> <span class="g g-warn">사람 확인 필요</span><p>${body}</p>${(g.citations || []).length ? `<p class="hint">근거: ${(g.citations || []).map(esc).join(", ")}</p>` : ""}</div>`;
+    }
     return "";
   }
   function renderPanel() {

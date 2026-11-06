@@ -133,3 +133,19 @@ def test_request_requires_deployment_evidence():
 def test_invalid_deployment_fields_are_rejected(field, value):
     with pytest.raises(ValidationError):
         _request(**{field: value})
+
+
+def test_claude_client_accepts_platform_oidc_federation(monkeypatch):
+    """플랫폼은 API 키 없이 OIDC 연동으로 Claude 를 쓴다. 키가 없다고 서버 기동이 실패하면 안 된다."""
+    import delta_ai.llm as llm
+    from delta_ai.api import LlmOutput
+
+    for name in llm.AUTH_ENV:
+        monkeypatch.delenv(name, raising=False)
+    with pytest.raises(llm.LlmUnavailable):
+        llm.ClaudeLLM(output=LlmOutput)
+    monkeypatch.setenv("ANTHROPIC_FEDERATION_RULE_ID", "rule-test")
+    created = []
+    monkeypatch.setattr("anthropic.AsyncAnthropic", lambda **kw: created.append(kw) or object())
+    assert llm.ClaudeLLM(output=LlmOutput).model
+    assert created == [{}]
