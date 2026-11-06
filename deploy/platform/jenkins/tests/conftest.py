@@ -16,16 +16,11 @@ def bundle():
 
 @pytest.fixture
 def release_request(bundle):
+    # vm_release 인벤토리 형식: 비밀·네트워크 값 없이 대상·사양·DB 선택만 둔다.
     target = {
         "target_id": "fixture-gcp", "cloud": "gcp", "environment": "production",
-        "project": "fixture-project", "region": "fixture-region", "zone": "fixture-zone",
-        "vm_name": "fixture-vm", "private_ip": "192.0.2.10", "connection": "iap",
-        "os_user": "fixture-user", "compose_project": "fixture-app",
-        "install_dir": "/fixture/app", "frontend_url": "http://127.0.0.1:3000",
-        "frontend_port": 3000, "backend_port": 8080,
-        "db_name": "fixture_db", "db_major": 18,
-        "db_secret_ref": "fixture-only-not-a-real-secret",
-        "log_driver": "gcplogs", "log_project": "fixture-project",
+        "region": "asia-northeast3", "profile_id": "e2-small",
+        "database": {"profile_id": "fixture-postgres18", "mode": "new"},
     }
     return {"deployment_id": "deployment-a", "commit_sha": bundle["commit"],
             "bundle": bundle, "target": target, "config_sha256": canonical_hash(target)}

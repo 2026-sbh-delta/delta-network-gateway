@@ -50,7 +50,7 @@ resource "aws_iam_role_policy" "native_scanner" {
 output "scanner_document_name" { value=aws_ssm_document.scanner.name }
 output "scanner_document_hash" { value=aws_ssm_document.scanner.hash }
 
-# Preserve the already deployed/rollback client while the optional shared Worker release awaits approval.
+# Preserve the already deployed legacy client for rollback; the current bridge uses its independent executor.
 resource "aws_ssm_document" "legacy_bridge" {
   name="delta-cp-onprem-bridge-a209f55948f0"
   document_type="Command"

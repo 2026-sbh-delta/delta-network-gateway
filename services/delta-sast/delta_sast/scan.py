@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -49,7 +50,7 @@ class ScanResult:
 
 
 def analyze(root: Path, marks: list[Mark], secrets: list[Secret], policy: Policy | None = None,
-            cache: RuleCache | None = None) -> ScanResult:
+            cache: RuleCache | None = None, facts=None) -> ScanResult:
     """②③: LLM 없이 경로와 결정적 분류까지."""
     policy = policy or load_policy()
     cache = cache if cache is not None else RuleCache()
@@ -59,7 +60,7 @@ def analyze(root: Path, marks: list[Mark], secrets: list[Secret], policy: Policy
     graph_s = time.perf_counter() - started
     # 다언어 엔진(Python 밖 언어): Opengrep taint 조각을 저장소·경로·함수 요약으로 이은 흐름
     started = time.perf_counter()
-    facts = collect_poly(root)
+    facts = collect_poly(root) if facts is None else facts
     flows += link_poly(facts)
     poly_s = time.perf_counter() - started
     space = Workspace(project, facts)
@@ -72,9 +73,13 @@ def analyze(root: Path, marks: list[Mark], secrets: list[Secret], policy: Policy
 def scan(root: Path, policy: Policy | None = None, cache: RuleCache | None = None) -> ScanResult:
     """①②③."""
     started = time.perf_counter()
-    marks, secrets = locate(root)
-    locate_s = time.perf_counter() - started
-    result = analyze(root, marks, secrets, policy, cache)
+    # 다언어 수집(Opengrep 두 단계)은 Python 위치 찾기와 서로 독립이라 동시에 돌린다(둘 다 외부 프로세스 대기).
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        poly = pool.submit(collect_poly, root)
+        marks, secrets = locate(root)
+        locate_s = time.perf_counter() - started
+        facts = poly.result()
+    result = analyze(root, marks, secrets, policy, cache, facts=facts)
     result.timings = {"locate": round(locate_s, 3), **result.timings,
                       "total": round(time.perf_counter() - started, 3)}
     return result

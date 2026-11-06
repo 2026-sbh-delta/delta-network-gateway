@@ -1,0 +1,19 @@
+{
+  "a-corp-gcp-prod": {
+    "target_id": "a-corp-gcp-prod",
+    "environment": "production",
+    "cloud": "gcp",
+    "region": "asia-northeast3",
+    "profile_id": "e2-small",
+    "database": {"profile_id": "gcp-postgres18", "mode": "new"}
+  },
+  "a-corp-aws-prod": {
+    "target_id": "a-corp-aws-prod",
+    "environment": "production",
+    "cloud": "aws",
+    "region": "ap-northeast-2",
+    "profile_id": "t3.small",
+    "database": {"profile_id": "aws-postgres18", "mode": "new"},
+    "environment_id": "00000000-0000-4000-8000-000000000a01"
+  }
+}

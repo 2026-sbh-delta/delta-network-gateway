@@ -343,6 +343,25 @@ def create_app(pipelines: Pipelines | None = None) -> FastAPI:
             raise HTTPException(409,'취소 가능한 온프레미스 실행이 아닙니다')
         return {'ok':True}
 
+    # 서비스 도메인 되돌리기(시연 초기화). 이전 실행과 따로, 사람이 화면에서 승인해야 시작한다.
+    domain_revert = pipelines_mod.DomainRevert()
+
+    @app.get("/api/domain")
+    def domain_view():
+        return domain_revert.view()
+
+    @app.post("/api/domain/revert", status_code=202)
+    async def domain_revert_start(request: Request):
+        if (await json_body(request)).get("approve") is not True:
+            raise HTTPException(400, "사람 승인(approve: true)이 필요합니다")
+        if pipelines is not None and pipelines.running():
+            raise HTTPException(409, "파이프라인 실행 중에는 도메인을 되돌리지 않습니다")
+        try:
+            domain_revert.start()
+        except RuntimeError as exc:
+            raise HTTPException(409, str(exc))
+        return domain_revert.status
+
     @app.get("/api/pipeline/runs")
     async def list_runs():
         p = need_pipelines()

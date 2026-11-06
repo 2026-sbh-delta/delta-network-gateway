@@ -175,6 +175,9 @@ class CutoverConfig:
     expect_served_by: str = "gcp"
     scheme: str = "https"  # 서비스 도메인으로 확인할 때 쓰는 방식(원본 인증서가 있으면 https)
     keep_green_seconds: int = 60  # 전환 뒤 green 을 최소한 유지할 시간(호원님 스크립트 기본 60초)
+    # 되돌리기(시연 초기화)에서 green 을 확인할 주소·경로. 비우면 https://<green>, verify_path 를 쓴다.
+    green_origin: str = ""
+    green_verify_path: str = ""
 
     def __post_init__(self) -> None:
         if not re.fullmatch(r"[0-9a-fA-F]{32}", self.zone_id):
@@ -185,6 +188,9 @@ class CutoverConfig:
             raise ValueError("record·green·blue 는 서로 다른 도메인이어야 한다")
         if not re.fullmatch(r"https?://[A-Za-z0-9.\-:\[\]]+", self.blue_origin) or not self.verify_path.startswith("/"):
             raise ValueError("blue_origin 은 http(s)://호스트, verify_path 는 / 로 시작해야 한다")
+        if (self.green_origin and not re.fullmatch(r"https?://[A-Za-z0-9.\-:\[\]]+", self.green_origin)) or (
+                self.green_verify_path and not self.green_verify_path.startswith("/")):
+            raise ValueError("green_origin 은 http(s)://호스트, green_verify_path 는 / 로 시작해야 한다")
         if self.scheme not in ("http", "https") or type(self.keep_green_seconds) is not int or self.keep_green_seconds < 60:
             raise ValueError("scheme 은 http/https, keep_green_seconds 는 60 이상 정수여야 한다")
 

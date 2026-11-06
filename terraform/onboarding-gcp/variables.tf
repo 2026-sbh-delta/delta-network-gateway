@@ -35,3 +35,9 @@ variable "tfstate_bucket" {
   type        = string
   default     = "term2-delta-tfstate"
 }
+
+variable "release_deployer_account" {
+  description = "운영 배포(환경별 VM 생성)에 쓰는 기존 배포 계정 이메일."
+  type        = string
+  default     = "delta-platform-deployer@term2-delta.iam.gserviceaccount.com"
+}

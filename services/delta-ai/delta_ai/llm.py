@@ -26,6 +26,9 @@ def _is_billing_error(exc: Any) -> bool:
     return isinstance(message, str) and BILLING_ERROR_MARKER in message.lower()
 
 
+AUTH_ENV = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_FEDERATION_RULE_ID")
+
+
 class LlmUnavailable(RuntimeError):
     """키 없음·권한 없음 — 재시도해도 소용없다. judge 가 LLM_UNAVAILABLE 로 끝낸다."""
 
@@ -70,11 +73,9 @@ class ClaudeLLM:
         import anthropic
 
         if client is None:
-            # 플랫폼은 OIDC로 단기 토큰을 받는다. 인증 교환·갱신은 SDK가 맡는다.
-            if not any(os.environ.get(name) for name in (
-                "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_FEDERATION_RULE_ID",
-            )):
-                raise LlmUnavailable("Claude API 키·단기 토큰·OIDC 설정이 없다")
+            # API 키 또는 플랫폼의 OIDC 연동(Anthropic Workload Identity Federation) 중 하나. SDK 기본 인증 체인이 고른다.
+            if not any(os.environ.get(name) for name in AUTH_ENV):
+                raise LlmUnavailable("Claude 인증(API 키·인증 토큰·OIDC 연동) 설정이 없다")
             client = anthropic.AsyncAnthropic(**(client_options or {}))
         self._anthropic = anthropic
         self._client = client

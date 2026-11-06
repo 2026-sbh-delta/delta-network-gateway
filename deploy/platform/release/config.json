@@ -1,0 +1,49 @@
+{
+  "state_bucket": "sbh-delta-workload-tf-616723161368",
+  "state_region": "ap-northeast-2",
+  "work_root": "/var/jenkins_home/delta-release/work",
+  "allowed_image_prefixes": [
+    "asia-northeast3-docker.pkg.dev/term2-delta/delta-lab-staging/delta-sample-app/frontend@",
+    "asia-northeast3-docker.pkg.dev/term2-delta/delta-lab-staging/delta-sample-app/backend@",
+    "616723161368.dkr.ecr.ap-northeast-2.amazonaws.com/delta-lab-staging@"
+  ],
+  "connections": {
+    "gcp": {
+      "identity": {
+        "revision": "v1",
+        "gcp_project": "term2-delta"
+      },
+      "credentials_file": "/run/delta/gcp-release-credentials.json",
+      "management_transport": "iap",
+      "ssh_service_account": "delta-platform-deployer@term2-delta.iam.gserviceaccount.com",
+      "artifact_repository": "asia-northeast3-docker.pkg.dev/term2-delta/delta-lab-staging/delta-sample-app",
+      "terraform": {
+        "project_id": "term2-delta",
+        "zone": "asia-northeast3-a",
+        "subnetwork": "projects/term2-delta/regions/asia-northeast3/subnetworks/delta-lab-app-backend",
+        "service_account": "delta-platform-app@term2-delta.iam.gserviceaccount.com",
+        "image": "projects/term2-delta/global/images/delta-runtime-5614f770af6f",
+        "network_tag": "delta-platform-customer-app",
+        "preinstalled_runtime": true
+      }
+    }
+  },
+  "databases": {
+    "gcp-postgres18": {
+      "revision": "v1",
+      "modes": [
+        "new"
+      ],
+      "clouds": [
+        "gcp"
+      ],
+      "server_mode": "create",
+      "ca_pem": "-----BEGIN CERTIFICATE-----\nMIIDSzCCAtGgAwIBAgIUAJUJGxJ1rCyLuhBFowwMvHAVz4cwCgYIKoZIzj0EAwMw\ngYsxCzAJBgNVBAYTAlVTMQswCQYDVQQIEwJDQTESMBAGA1UEBxMJU3Vubnl2YWxl\nMRMwEQYDVQQKEwpHb29nbGUgTExDMRUwEwYDVQQLEwxHb29nbGUgQ2xvdWQxLzAt\nBgNVBAMTJkdvb2dsZSBDbG91ZCBTUUwgUm9vdCBTZXJ2ZXIgQ0EgMGIyOWRmMB4X\nDTI0MDcwNDA2MjUzOVoXDTM0MDcwMjA2MjUzOFowgYoxCzAJBgNVBAYTAlVTMQsw\nCQYDVQQIEwJDQTESMBAGA1UEBxMJU3Vubnl2YWxlMRMwEQYDVQQKEwpHb29nbGUg\nTExDMRUwEwYDVQQLEwxHb29nbGUgQ2xvdWQxLjAsBgNVBAMTJUdvb2dsZSBDbG91\nZCBTUUwgU3ViIFNlcnZlciBDQSAzOTJmN2EwdjAQBgcqhkjOPQIBBgUrgQQAIgNi\nAATgOoQuPT6wbq3S8cPYAgUiluFogtVhZ5BhFlhRCO4ZXVcUzJa4OCnDo3kDrptf\nt7OLabZjpeXzRqvzlkZUNaB+xrtzg2GvwLlMOjY0ATZgyNnvSE+8rPR+SraAq2en\n69ejgfQwgfEwDgYDVR0PAQH/BAQDAgEGMA8GA1UdEwEB/wQFMAMBAf8wHQYDVR0O\nBBYEFN7sl5wGABE6YYD+9y/sXH8T0fANMB8GA1UdIwQYMBaAFIkp7IYYT1eORHHt\nP2g/aEkFHRVNMIGNBggrBgEFBQcBAQSBgDB+MHwGCCsGAQUFBzAChnBodHRwOi8v\ncHJpdmF0ZWNhLWNvbnRlbnQtNjY4MWM4OTAtMDAwMC0yMGI2LWI4YTYtZDQzYTJj\nYzg3YTVmLnN0b3JhZ2UuZ29vZ2xlYXBpcy5jb20vNTZjOTQ4NDliNGYxMGNiNjY3\nYTAvY2EuY3J0MAoGCCqGSM49BAMDA2gAMGUCMQDRwmkWOloWUzMuEuI4V5v2f+98\nLLzqIvdC0/GSkotMX90Ra+A9w0ZkeJrK/jXpFmACMFtX4L7NlL3OopphqIYQcFR6\nXehh8+9/B52+cP0oXUzgYokExemfXSZlaogWOBXkyQ==\n-----END CERTIFICATE-----\n\n-----BEGIN CERTIFICATE-----\nMIICujCCAj+gAwIBAgITQZN5Owxm5kiXO0mHgki8O5JtVDAKBggqhkjOPQQDAzCB\nizELMAkGA1UEBhMCVVMxCzAJBgNVBAgTAkNBMRIwEAYDVQQHEwlTdW5ueXZhbGUx\nEzARBgNVBAoTCkdvb2dsZSBMTEMxFTATBgNVBAsTDEdvb2dsZSBDbG91ZDEvMC0G\nA1UEAxMmR29vZ2xlIENsb3VkIFNRTCBSb290IFNlcnZlciBDQSAwYjI5ZGYwHhcN\nMjQwNzAzMjEyMjAxWhcNNDkwNjI3MjEyMjAwWjCBizELMAkGA1UEBhMCVVMxCzAJ\nBgNVBAgTAkNBMRIwEAYDVQQHEwlTdW5ueXZhbGUxEzARBgNVBAoTCkdvb2dsZSBM\nTEMxFTATBgNVBAsTDEdvb2dsZSBDbG91ZDEvMC0GA1UEAxMmR29vZ2xlIENsb3Vk\nIFNRTCBSb290IFNlcnZlciBDQSAwYjI5ZGYwdjAQBgcqhkjOPQIBBgUrgQQAIgNi\nAARjXVK0A4I2G7yQb4sconZgfJG4cjvhR+2dyogTxBkRvwyamTB5zV8iRo+QlCek\nOkUyF4n5aDhUqLUDAQvjh8vxeZKx2MV0WYhn1FWY5MWdDtNDnNGkGbHDjtmgukDe\nP1OjYzBhMA4GA1UdDwEB/wQEAwIBBjAPBgNVHRMBAf8EBTADAQH/MB0GA1UdDgQW\nBBSJKeyGGE9XjkRx7T9oP2hJBR0VTTAfBgNVHSMEGDAWgBSJKeyGGE9XjkRx7T9o\nP2hJBR0VTTAKBggqhkjOPQQDAwNpADBmAjEAt8nLRrTqiZIHWrAFbbuNnVL5HbNg\nnj9C1cmTnVrjlWB7fNJQlRwbmYop1a2SFN7jAjEAs30ekBXzGAsXxNDh11o/68C6\nMVSfEh8zsZDtdfYFDmSTQGwjSzUodZ+P2EI5Xslu\n-----END CERTIFICATE-----\n",
+      "terraform": {
+        "project_id": "term2-delta",
+        "network": "projects/term2-delta/global/networks/delta-lab-workload",
+        "subnetwork": "projects/term2-delta/regions/asia-northeast3/subnetworks/delta-lab-app-backend"
+      }
+    }
+  }
+}

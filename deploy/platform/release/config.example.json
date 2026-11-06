@@ -1,0 +1,78 @@
+{
+  "state_bucket": "REPLACE_PLATFORM_TFSTATE_BUCKET",
+  "state_region": "ap-northeast-2",
+  "work_root": "/var/jenkins_home/delta-release/work",
+  "allowed_image_prefixes": [
+    "asia-northeast3-docker.pkg.dev/REPLACE_BUILD_PROJECT/REPLACE_REPOSITORY/frontend@",
+    "asia-northeast3-docker.pkg.dev/REPLACE_BUILD_PROJECT/REPLACE_REPOSITORY/backend@",
+    "REPLACE_TARGET_ACCOUNT.dkr.ecr.ap-northeast-2.amazonaws.com/REPLACE_ECR_REPOSITORY@"
+  ],
+  "connections": {
+    "aws": {
+      "identity": {"revision": "v1", "account_id": "REPLACE_TARGET_ACCOUNT"},
+      "region": "ap-northeast-2",
+      "assume_role_arn": "arn:aws:iam::REPLACE_TARGET_ACCOUNT:role/delta-prod-deploy",
+      "external_id": "REPLACE_ONBOARDING_EXTERNAL_ID",
+      "management_transport": "ssm",
+      "terraform": {
+        "account_id": "REPLACE_TARGET_ACCOUNT",
+        "ami_id": "REPLACE_AL2023_X86_64_AMI",
+        "subnet_id": "REPLACE_PRIVATE_APP_SUBNET",
+        "security_group_ids": ["REPLACE_APP_VM_SG"],
+        "instance_profile": "REPLACE_APP_VM_INSTANCE_PROFILE"
+      }
+    },
+    "gcp": {
+      "identity": {"revision": "v1", "gcp_project": "REPLACE_TARGET_PROJECT"},
+      "credentials_file": "/run/delta/gcp-release-credentials.json",
+      "management_transport": "iap",
+      "ssh_service_account": "prod-deploy@REPLACE_TARGET_PROJECT.iam.gserviceaccount.com",
+      "artifact_repository": "asia-northeast3-docker.pkg.dev/REPLACE_TARGET_PROJECT/REPLACE_REPOSITORY/app",
+      "terraform": {
+        "project_id": "REPLACE_TARGET_PROJECT",
+        "zone": "asia-northeast3-a",
+        "subnetwork": "projects/REPLACE_TARGET_PROJECT/regions/asia-northeast3/subnetworks/REPLACE_APP_SUBNET",
+        "service_account": "REPLACE_APP_VM_SA@REPLACE_TARGET_PROJECT.iam.gserviceaccount.com",
+        "image": "projects/debian-cloud/global/images/REPLACE_FIXED_DEBIAN12_AMD64_IMAGE",
+        "network_tag": "delta-customer-app",
+        "preinstalled_runtime": false
+      }
+    }
+  },
+  "databases": {
+    "aws-postgres18": {
+      "revision": "v1",
+      "modes": ["new"],
+      "clouds": ["aws"],
+      "server_mode": "create",
+      "ca_pem": "REPLACE_RDS_GLOBAL_BUNDLE_PEM",
+      "terraform": {
+        "account_id": "REPLACE_TARGET_ACCOUNT",
+        "subnet_ids": ["REPLACE_DB_SUBNET_A", "REPLACE_DB_SUBNET_C"],
+        "security_group_ids": ["REPLACE_DB_SG_ALLOWING_APP_VM_SG_5432"]
+      }
+    },
+    "gcp-postgres18": {
+      "revision": "v1",
+      "modes": ["new"],
+      "clouds": ["gcp"],
+      "server_mode": "create",
+      "ca_pem": "REPLACE_CLOUD_SQL_CAS_ROOT_PEM",
+      "terraform": {
+        "project_id": "REPLACE_TARGET_PROJECT",
+        "network": "projects/REPLACE_TARGET_PROJECT/global/networks/REPLACE_VPC",
+        "subnetwork": "projects/REPLACE_TARGET_PROJECT/regions/asia-northeast3/subnetworks/REPLACE_APP_SUBNET"
+      }
+    },
+    "gcp-postgres18-existing": {
+      "revision": "v1",
+      "modes": ["existing", "new"],
+      "clouds": ["gcp"],
+      "server_mode": "prepared",
+      "secret_provider": "gcp",
+      "admin_secret_id": "projects/REPLACE_TARGET_PROJECT/secrets/REPLACE_ADMIN_SECRET",
+      "app_secret_id": "projects/REPLACE_TARGET_PROJECT/secrets/REPLACE_APP_SECRET",
+      "iap_endpoint": {"address": "REPLACE_DB_PRIVATE_IP", "port": 5432}
+    }
+  }
+}
