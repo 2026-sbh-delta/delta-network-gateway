@@ -1,3 +1,4 @@
+mock_provider "aws" {}
 run "fixed_native_scanners" {
   command=apply
   assert {

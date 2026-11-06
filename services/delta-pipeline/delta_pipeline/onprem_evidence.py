@@ -109,8 +109,10 @@ def runner(settings):
                 guard()
                 import sqlalchemy as sa
                 from delta_platform.core.schema import runs
-                with self.store.engine.connect()as conn:
-                    submission=conn.scalar(sa.select(runs.c.submission).where(runs.c.id==self.claim['id']))
+                if hasattr(self.store,'native_submission'):submission=self.store.native_submission(self.claim['id'])
+                else:
+                    with self.store.engine.connect()as conn:
+                        submission=conn.scalar(sa.select(runs.c.submission).where(runs.c.id==self.claim['id']))
                 record=capture({**self.claim,'submission':submission},self)
                 self.progress('runtime_evidence','정리 전 제한 로그 근거 저장 SHA256 '+record['sha256'])
             except Exception:

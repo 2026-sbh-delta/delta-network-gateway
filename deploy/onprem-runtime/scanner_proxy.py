@@ -35,6 +35,7 @@ try:
   data=response.read(120001)
   if len(data)>120000:raise ValueError()
   value={'ok':True,'value':json.loads(data)}
+except urllib.error.HTTPError as error:value={'ok':False,'code':'scanner_request_unavailable','http_status':error.code}
 except Exception:value={'ok':False,'code':'scanner_request_unavailable'}
 raw=base64.b64encode(gzip.compress(json.dumps(value,separators=(',',':')).encode())).decode()
 if len(raw)>23000:raw=base64.b64encode(gzip.compress(b'{"ok":false,"code":"scanner_response_too_large"}')).decode()

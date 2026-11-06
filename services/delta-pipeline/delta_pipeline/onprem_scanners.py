@@ -12,6 +12,8 @@ DAST_INSTANCE='i-0f7ce2c84581c4e35'
 SAST_TARGET={'url':'ssm://delta-cp/sast/v1','mode':'fast','payload_mode':'preset'}
 DAST_TARGET={'url':'ssm://delta-cp/dast/v1','mode':'fast','payload_mode':'preset'}
 
+class ScannerNotFound(RuntimeError):pass
+
 class ScannerRpc:
     def __init__(self,client=None,*,sleep=time.sleep):
         if client is None:
@@ -53,7 +55,9 @@ class ScannerRpc:
             raw=gzip.decompress(base64.b64decode(output))
             if len(raw)>120000:raise ValueError('Scanner response too large')
             value=json.loads(raw)
-            if not value.get('ok'):raise RuntimeError('Scanner request rejected')
+            if not value.get('ok'):
+                if value.get('http_status')==404:raise ScannerNotFound('Scanner run not found')
+                raise RuntimeError('Scanner request rejected')
             return value['value']
         raise RuntimeError('Scanner RPC timed out')
 
@@ -87,5 +91,12 @@ def inspector(settings,rpc=None):
         def request(self,method,run_id,body=None,suffix=''):
             try:return self.http.request(method,'/api/platform/runs/'+str(UUID(str(run_id)))+suffix,body)
             except Exception:raise SandboxError('dast_provider_error','고정 DAST 연결 응답을 확인하지 못했습니다.') from None
+        def stop(self,claim):
+            if claim['input_snapshot']['dast_target']!=self.target:return False
+            try:
+                value=remote.request('dast','POST','/api/platform/runs/'+str(claim['id'])+'/cancel',{})
+                return value.get('run_id')==str(claim['id'])and value.get('stopped')is True
+            except ScannerNotFound:return True
+            except Exception:return False
     remote=rpc or ScannerRpc()
     return NativeInspector()

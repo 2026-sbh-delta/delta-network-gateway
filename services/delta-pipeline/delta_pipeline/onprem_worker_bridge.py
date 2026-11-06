@@ -39,7 +39,8 @@ def execute(request):
     action=request.get('action')
     if action not in ACTIONS or set(request)-{'action','build_id','id','key','binding'}:
         raise ValueError('Unsupported bridge request')
-    settings=Settings();engine=engine_for(settings);store=Store(engine)
+    from delta_pipeline.onprem_independent_store import IndependentStore,catalog,settings as independent_settings
+    settings=independent_settings();store=IndependentStore(catalog(settings));engine=store.engine
     try:
         if action=='catalog':
             result=[]
@@ -64,7 +65,7 @@ def execute(request):
             if (str(job['service_id'])!=str(value['service']['id']) or job['resolved_commit_sha']!=value['build']['resolved_commit_sha']):raise ValueError('Wrong SAST ownership')
             import sqlalchemy as sa
             from delta_platform.core.schema import runs
-            with engine.connect()as conn:source=conn.scalar(sa.select(runs.c.input_snapshot).where(runs.c.id==UUID(request['id'])))
+            source=store.native_source(request['id'])['input_snapshot']
             if source.get('build_id')!=request['build_id'] or source.get('security_target')!=SAST_TARGET:raise ValueError('Wrong SAST binding')
             if job['status']!='succeeded':
                 if action=='sast_report':raise ValueError('SAST not complete')
@@ -87,9 +88,8 @@ def execute(request):
         # Matching service alone is insufficient: retain the exact selected build.
         import sqlalchemy as sa
         from delta_platform.core.schema import runs
-        with engine.connect() as conn:
-            row=conn.execute(sa.select(runs.c.input_snapshot,runs.c.resolved_commit_sha).where(runs.c.id==UUID(identifier))).mappings().one()
-            source=row['input_snapshot']
+        row=store.native_source(identifier)
+        source=row['input_snapshot']
         if not source or source.get('build_id')!=request['build_id']:raise ValueError('Wrong build ownership')
         native=NativeOnpremJob(store,settings,service_id=value['service']['id'],build_id=value['build']['id'],
             security_check_id=source.get('security_check_id'),backend_build_id=(source.get('backend')or{}).get('build_id'),dast_target_override=DAST_TARGET)

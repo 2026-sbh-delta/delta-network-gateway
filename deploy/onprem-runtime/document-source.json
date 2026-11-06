@@ -4,10 +4,11 @@
   "delta_pipeline/model.py": "f6507f4bba79fcdb78b26b2152d7012a324d635c827f1d5cbd2698298a764553",
   "delta_pipeline/clients.py": "463fc5dffd136125e6c8acd308b0e613bce761aa129532f449f9a1c547a1d7f7",
   "delta_pipeline/registered_build.py": "da65c1278470280b5044a95e13810aff2f42f4030121bd007792dd44d0518bc5",
-  "delta_pipeline/onprem.py": "895bde6c0617832796ad6fd1579a20cd3f27edd5ae09dec62297da9c3fbbdbf7",
-  "delta_pipeline/onprem_worker_bridge.py": "c7cfbf94b72df562b3ba518b4bac874fc7018d105ceb88ef3840525aa158a069",
-  "delta_pipeline/onprem_scanners.py": "2fbae252cd844f05859bd3bf6a72b3dca5f148085f0a600c80983a8562a60877",
-  "delta_pipeline/onprem_evidence.py": "102aa032063f0ffb85647df141ccca4965bdf90337afa9d54d81e3633ba3c743",
+  "delta_pipeline/onprem.py": "958f37e3895767d7022b989d7ef52b1cd8025a651b14165f89d9c8571749de76",
+  "delta_pipeline/onprem_worker_bridge.py": "7ef5626bcf915ee9968ec43c3e4ff99bd771014968fd9a0dc80f9223dd71887f",
+  "delta_pipeline/onprem_scanners.py": "7040998b22e40f71e742fb301bd1d564fd44af8111bf8b33d77ce2e73f8ea5ec",
+  "delta_pipeline/onprem_evidence.py": "dac1e97c905d6ca7c2eea255d88c1ea5b08acadfa4366737818c3ade18617b8f",
+  "delta_pipeline/onprem_independent_store.py": "10d8bf244d7abf5cee7e45a6edfcb0967d4c7e25ec96b57458b6920eab2a3f20",
   "delta_ai/diagnostic_contract.py": "a3ae47e8f7b1e1ea513ec47a5db66d5f9e7c0afffabef0a484f358997393463f",
   "delta_ai/secrets_pattern.py": "d8b9fad66636f3d87494db306520a379cc1e347fa5d87a1d9f96b3ea0392a7ac"
 }

@@ -104,6 +104,14 @@ class NativeOnpremJob:
         return self._retry_ready(run_id, key=key, commit=commit, image=image,
                                  codes={'sandbox_health_failed'})
 
+    def _snapshot(self,run_id):
+        if hasattr(self.store,'native_source'):return self.store.native_source(run_id)
+        import sqlalchemy as sa
+        from delta_platform.core.schema import runs
+        with self.store.engine.connect()as conn:
+            return conn.execute(sa.select(runs.c.input_snapshot,runs.c.request_key).where(
+                runs.c.id==UUID(run_id),runs.c.service_id==self.service_id,runs.c.kind==self.kind)).mappings().first()
+
     def resume_ready(self, run_id, *, key, commit, image):
         return self._retry_ready(run_id, key=key, commit=commit, image=image,
                                  codes={'sandbox_health_failed', 'sandbox_provider_error'})
@@ -126,10 +134,7 @@ class NativeOnpremJob:
                 or job.get("resolved_commit_sha") != commit
                 or job.get("current_step") != "sandbox_cleanup"):
             return False
-        with self.store.engine.connect() as conn:
-            row = conn.execute(sa.select(runs.c.input_snapshot, runs.c.request_key).where(
-                runs.c.id == UUID(run_id), runs.c.service_id == self.service_id,
-                runs.c.kind == self.kind)).mappings().first()
+        row=self._snapshot(run_id)
         source = row["input_snapshot"] if row else None
         target = sandbox_target(self.settings, "onprem")
         probe = self.cleanup_probe or OnpremSandboxRunner(self.settings).provider
@@ -151,9 +156,7 @@ class NativeOnpremJob:
         from delta_platform.core.schema import runs
 
         job = self.get(run_id)
-        with self.store.engine.connect() as conn:
-            row = conn.execute(sa.select(runs.c.input_snapshot, runs.c.request_key).where(
-                runs.c.id == UUID(run_id), runs.c.service_id == self.service_id, runs.c.kind == self.kind)).mappings().first()
+        row=self._snapshot(run_id)
         source = row['input_snapshot'] if row else {}
         return bool(row and row['request_key'] == key and not job.get('cancel_requested')
             and job.get('resolved_commit_sha') == commit and source.get('image') == image
@@ -170,9 +173,8 @@ class NativeOnpremJob:
         from delta_platform.core.schema import runs
 
         job = self.get(run_id)
-        with self.store.engine.connect() as conn:
-            source = conn.scalar(sa.select(runs.c.input_snapshot).where(
-                runs.c.id == UUID(run_id), runs.c.service_id == self.service_id, runs.c.kind == self.kind))
+        row=self._snapshot(run_id)
+        source=row['input_snapshot'] if row else None
         target = sandbox_target(self.settings, 'onprem')
         changed = sorted(k for k in set(target) | set((source or {}).get('sandbox_target', {}))
                          if target.get(k) != (source or {}).get('sandbox_target', {}).get(k))
