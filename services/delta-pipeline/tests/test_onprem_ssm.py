@@ -34,3 +34,10 @@ def test_missing_hash_refuses_before_aws_and_upstream_errors_are_opaque(monkeypa
 def test_unsupported_document_parameters_rejected_before_worker_settings():
     from delta_pipeline.onprem_worker_bridge import execute
     with pytest.raises(ValueError):execute({'action':'execute_shell','command':'echo private'})
+
+def test_worker_result_redacts_provider_error_text_before_ssm(monkeypatch,capsys):
+    from delta_pipeline import onprem_worker_bridge as bridge
+    monkeypatch.setattr(bridge,'execute',lambda request:{'status':'failed','error':{'message':'password=PRIVATE Bearer HIDDEN'}})
+    bridge.main({'action':'status'})
+    result=json.loads(gzip.decompress(base64.b64decode(capsys.readouterr().out)))
+    assert 'PRIVATE' not in json.dumps(result) and 'HIDDEN' not in json.dumps(result)

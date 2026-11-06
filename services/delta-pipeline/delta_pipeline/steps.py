@@ -910,7 +910,11 @@ class Steps:
 
     def onprem_wait(self, state: PipelineState) -> dict[str, Any]:
         from delta_pipeline.onprem import wait
-        return wait(self, state)
+        result=wait(self, state)
+        if (state.get('recovery_count') or state.get('manual_count')) and any(
+                node['id']=='stage' and node['state']=='pass' for node in self._board.snapshot()['nodes']):
+            self._board.update('recovery',state='pass',summary='같은 실행의 UID·이미지·HTTP·정리 재검사 완료')
+        return result
 
 def _rows_remaining(step: Mapping[str, Any] | None) -> int | None:
     """스테이징 도구의 data_reset 단계 내용("<Job>: 남은 행 N")에서 N 을 읽는다. 기록이 없으면 확인하지 못한 것이다."""

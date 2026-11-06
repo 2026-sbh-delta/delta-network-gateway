@@ -7,6 +7,7 @@ from uuid import UUID
 from delta_pipeline.onprem import NativeOnpremJob
 from delta_pipeline.clients import ServiceUnavailable
 from delta_pipeline.registered_build import RegisteredBuild
+from delta_ai.diagnostic_contract import scrub
 
 REPO='https://github.com/2026-sbh-delta/delta-sample-app'
 ACTIONS={'catalog','context','start','status','cancel','inspect','retry_ready','resume_ready','observation_ready','absence'}
@@ -69,6 +70,6 @@ def main(request):
     try:out={'ok':True,'value':execute(request)}
     except Exception as error:
         out={'ok':False,'type':type(error).__name__,'code':'native_request_rejected'}
-    raw=json.dumps(out,default=str,separators=(',',':')).encode()
+    raw=json.dumps(scrub(out),default=str,separators=(',',':')).encode()
     if len(raw)>60000:raw=json.dumps({'ok':False,'type':'ValueError','code':'native_result_too_large'}).encode()
     print(base64.b64encode(gzip.compress(raw)).decode())
