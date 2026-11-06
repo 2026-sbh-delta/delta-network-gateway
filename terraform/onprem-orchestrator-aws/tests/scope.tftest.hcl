@@ -1,6 +1,6 @@
 mock_provider "aws" {}
 run "fixed_worker_document" {
-  command = plan
+  command = apply
   assert {
     condition = aws_iam_role_policy.bridge.role == "delta-cp-orchestrator" && startswith(aws_ssm_document.bridge.name,"delta-cp-onprem-bridge-")
     error_message = "Only the fixed role and immutable bridge document are supported."
