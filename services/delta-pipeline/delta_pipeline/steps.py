@@ -28,6 +28,8 @@ CUTOVER_STREAK = 3  # 연속 성공 횟수(에지 캐시·전파 흔들림 배�
 JENKINS_POLL_SECONDS = 1
 BUILD_DEADLINE_SECONDS = 1200
 STAGE_DEADLINE_SECONDS = 900
+# 운영 배포는 VM 생성(과 새 DB 서버면 RDS·Cloud SQL 생성 10~15분)을 포함한다. Jenkinsfile.release 제한과 같다.
+RELEASE_DEADLINE_SECONDS = 3600
 SAST_DEADLINE_SECONDS = 1200
 DAST_DEADLINE_SECONDS = 1800
 FIX_DEADLINE_SECONDS = 300  # 수정 에이전트 제한 240초 + 여유
@@ -140,6 +142,9 @@ class CutoverConfig:
     expect_served_by: str = "gcp"
     scheme: str = "https"  # 서비스 도메인으로 확인할 때 쓰는 방식(원본 인증서가 있으면 https)
     keep_green_seconds: int = 60  # 전환 뒤 green 을 최소한 유지할 시간(호원님 스크립트 기본 60초)
+    # 되돌리기(시연 초기화)에서 green 을 확인할 주소·경로. 비우면 https://<green>, verify_path 를 쓴다.
+    green_origin: str = ""
+    green_verify_path: str = ""
 
     def __post_init__(self) -> None:
         if not re.fullmatch(r"[0-9a-fA-F]{32}", self.zone_id):
@@ -150,6 +155,9 @@ class CutoverConfig:
             raise ValueError("record·green·blue 는 서로 다른 도메인이어야 한다")
         if not re.fullmatch(r"https?://[A-Za-z0-9.\-:\[\]]+", self.blue_origin) or not self.verify_path.startswith("/"):
             raise ValueError("blue_origin 은 http(s)://호스트, verify_path 는 / 로 시작해야 한다")
+        if (self.green_origin and not re.fullmatch(r"https?://[A-Za-z0-9.\-:\[\]]+", self.green_origin)) or (
+                self.green_verify_path and not self.green_verify_path.startswith("/")):
+            raise ValueError("green_origin 은 http(s)://호스트, green_verify_path 는 / 로 시작해야 한다")
         if self.scheme not in ("http", "https") or type(self.keep_green_seconds) is not int or self.keep_green_seconds < 60:
             raise ValueError("scheme 은 http/https, keep_green_seconds 는 60 이상 정수여야 한다")
 
@@ -174,6 +182,7 @@ class Deps:
     staging: StagingClient
     image_repo: str
     sleep: Callable[[float], None]
+    ecr_image_repo: str = ""  # 비우지 않으면 빌드가 같은 manifest를 이 ECR 저장소에도 복사한다(AWS 스테이징·운영용)
     cloudflare: CloudflareClient | None = None
     cutover: CutoverConfig | None = None
     probe: Callable[..., tuple[int, str]] = probe
@@ -310,8 +319,12 @@ class Steps:
     def build_start(self, state: PipelineState) -> dict[str, Any]:
         options, jenkins = self._deps.options, self._deps.build_jenkins
         self._board.update("build", state="running", summary="빌드 에이전트에서 빌드·푸시 중")
-        build = self._ensure_build(jenkins, {"REPO": options.repo, "COMMIT": self._commit(state),
-                                             "IMAGE_REPO": self._deps.image_repo}, self._key(state, "build"))
+        params = {"REPO": options.repo, "COMMIT": self._commit(state), "IMAGE_REPO": self._deps.image_repo}
+        # ECR 사본은 AWS 가 쓸 때만 만든다(AWS 스테이징 또는 AWS 운영 대상). GCP 만 쓰면 복사 시간을 쓰지 않는다
+        uses_aws = options.staging_cloud == "aws" or (self._deps.release_config or {}).get("cloud") == "aws"
+        if self._deps.ecr_image_repo and uses_aws:
+            params["ECR_IMAGE_REPO"] = self._deps.ecr_image_repo
+        build = self._ensure_build(jenkins, params, self._key(state, "build"))
         self._board.add_detail("build", build=build, url=jenkins.console_url(build))
         return {"build": build}
 
@@ -578,6 +591,12 @@ class Steps:
             raise Stopped("현재 묶음의 스테이징 검증 기록이 없다")
         return bundle
 
+    @staticmethod
+    def _target_bundle(bundle: dict[str, Any], cloud: str) -> dict[str, Any]:
+        """운영 대상 클라우드의 사본(AWS=ECR, GCP=AR). digest·묶음 해시는 같고 레지스트리 주소만 다르다."""
+        images = (bundle.get("registry_images") or {}).get(cloud) or bundle["images"]
+        return {**bundle, "images": dict(images), "image_ref": images["frontend"]}
+
     def _release_config(self, state: PipelineState) -> dict[str, Any]:
         try:
             target = self._deps.options.release_target
@@ -635,9 +654,12 @@ class Steps:
             expiry = claims.get("exp")
             if type(expiry) is not int or not self._deps.now() < expiry <= self._deps.now() + 600:
                 raise Stopped("운영 승인 토큰이 만료됐거나 유효 기간이 잘못됐다")
+            target_images = self._target_bundle(bundle, config["cloud"])["images"]
             params = {"TARGET_ID": config["target_id"], "COMMIT": bundle["commit"],
-                      "BUNDLE_SHA256": bundle["bundle_sha256"], "IMAGES_JSON": canonical_json(bundle["images"]),
-                      "APPROVAL": canonical_json(approval)}
+                      "BUNDLE_SHA256": bundle["bundle_sha256"], "IMAGES_JSON": canonical_json(target_images),
+                      "APPROVAL": canonical_json(approval),
+                      # 클라우드별 사본(registry_images)까지 담은 빌드 결과. AWS 대상은 ECR 사본으로 배포한다
+                      "BUNDLE_JSON": canonical_json({**bundle, "schema": 2, "platform": "linux/amd64"})}
             build = jenkins.trigger(params, expected["deployment_id"])
         self._board.add_detail("release", build=build, url=jenkins.console_url(build),
                                deployment_id=expected["deployment_id"], target_id=config["target_id"],
@@ -649,7 +671,7 @@ class Steps:
         if self._deps.release_jenkins is None:
             raise Stopped("운영 Jenkins가 없다")
         try:
-            result = self._finish_job(self._deps.release_jenkins, state["release_build"], STAGE_DEADLINE_SECONDS, "운영 배포")
+            result = self._finish_job(self._deps.release_jenkins, state["release_build"], RELEASE_DEADLINE_SECONDS, "운영 배포")
         except Stopped as exc:
             self._board.update("release", state="fail", summary=str(exc))
             raise
@@ -665,7 +687,8 @@ class Steps:
                 or result.get("environment") != "production"):
             raise Stopped("운영 배포의 대상·verified 실행 기록이 없다")
         try:
-            match_runtime(result, bundle)
+            # 운영 결과는 대상 클라우드 사본으로 실행된다(AWS=ECR). digest·묶음 해시는 같다.
+            match_runtime(result, self._target_bundle(bundle, self._release_config(state)["cloud"]))
             require_postgres18(result)
         except ValueError as exc:
             raise Stopped(str(exc)) from exc

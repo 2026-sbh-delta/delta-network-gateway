@@ -17,17 +17,17 @@ AWS 실행은 추가로 `BUNDLE_JSON` 전체 빌드 결과의 `registry_images.a
 | `DELTA_RELEASE_TARGETS` | `/run/delta/release-targets.json`, target_id를 키로 하는 비밀 없는 인벤토리 |
 | `DELTA_RELEASE_PUBLIC_KEY` | `/run/delta/release-public.pem`, PEM Ed25519 공개 키 |
 | `DELTA_RELEASE_DB` | `/var/jenkins_home/delta-release.sqlite3`, 영속 승인 예약 |
-| `DELTA_RELEASE_KNOWN_HOSTS` | `/run/delta/known_hosts`, 검증된 호스트 키. 검사 우회 금지 |
-| `DELTA_RELEASE_WIF_CONFIG` | `/run/delta/gcp-release.json`, 기존 서버용 WIF 설정. 개인 로그인·프로필 사용 금지 |
+| `DELTA_RELEASE_CONFIG` / `DELTA_DEPLOY_CONFIG` | `/run/delta/release-config.json`, 배포기 설정(S3 state 버킷, 대상 계정 위임, VM·DB 네트워크, DB 프로필). 비밀 값 없음 |
+| `GOOGLE_APPLICATION_CREDENTIALS` | `/run/delta/gcp-release-credentials.json`, GCP `prod-deploy` WIF 설정(키 파일 아님) |
 
-공통 인벤토리는 `target_id`, `cloud`, `environment=production`, `connection`, `os_user`, `compose_project`, `install_dir`(기존 `/opt/delta-compose` 재사용), `frontend_url/port`, `backend_port`, `db_name`, `db_major=18`, `db_secret_ref`, 클라우드 로그 설정을 포함한다. GCP는 `connection=iap`, `project`, `zone`, `vm_name`, `log_driver=gcplogs`, `log_project`를 쓴다. AWS는 `connection=eic`, `region`, `instance_id`, `availability_zone`, `endpoint_id`, `private_ip`, `assume_role_arn`, `log_driver=awslogs`, 기업 `/delta/workload/…` 로그 그룹을 쓴다. 호스트·DB·비밀 참조를 Jenkins 요청으로 덮어쓰지 않는다.
+운영 배포는 동규님 방식이다. `release_deploy.py`가 승인·예약·묶음을 검사한 뒤 `vm_release.py`가 요청을 동규님 `DELTA_DEPLOYMENT` 형식으로 바꿔 `/opt/delta/release/deploy.py`를 별도 프로세스로 실행한다. 배포기는 환경마다 Terraform으로 사설 VM을 만들고(state는 S3 `delta-cp/release/<environment_id>/…`), DB(new/existing, PostgreSQL 18)를 준비하고, VM에서 Docker Compose(awslogs/gcplogs, 하드닝)를 띄운 뒤 VM 안에서 실행 이미지 digest와 `/api/health`를 관측한다. `vm_release`는 그 관측값으로만 결과 계약을 만든다. 기존 VM을 EIC/IAP로 갱신하던 `compose_host.py`·`release_transport.py`는 삭제했다.
 
-원격 연결은 AWS AssumeRole 후 EIC 단기 키·900초 제한 터널 또는 GCP WIF·IAP·OS Login을 사용한다. 같은 호스트 도구를 전달하고 `systemd-run`으로 SSH와 분리해 실행한 뒤 짧은 접속으로 조회한다. SSH 단절·응답 유실은 `unknown`으로 남기며 같은 deployment_id를 조회한다. 원격 launch intent가 이미 있으면 상태를 잃었다고 새 배포를 자동 시작하지 않는다. 기존 `/etc/delta-compose`와 이전 릴리스·로컬 이미지를 삭제하거나 prune하지 않는다.
+인벤토리 항목은 `target_id`, `environment=production`, `cloud`(gcp/aws), `region`, `profile_id`(e2-small/t3.small), `database{profile_id, mode=new|existing}`, 선택 `environment_id`(UUID)다. 호스트·DB·비밀 참조는 인벤토리가 아니라 배포 설정에만 둔다. 파이프라인 `release_config`는 이 항목과 같아야 한다(`config_sha256`). 실패 결과는 `stage`·`code`만 남긴다. 상세·인프라 전제는 [운영 배포기](../release/README.md).
 
-호스트 `compose_host.py`의 `deploy(request,state_dir,*,runner,probe)`, `query(deployment_id,state_dir)`, `render_compose(target,bundle)` 동작은 독립 테스트 계약 확정 후 구현한다. 2026-11-06 현재 기존 Jenkins 시험 27개 통과·0 skip, 별도 호스트 시험 18개는 구현 부재 오류이며 동작 RED로 집계하지 않는다. 에이전트 이미지와 컨트롤러 런타임은 linux/amd64로 실제 빌드·도구 실행을 확인했다. 최종 컨트롤러 이미지·호스트 동작·실제 Jenkins 시작·클라우드 registry 복사·실배포는 아직 검증하지 않았다.
+컨트롤러 이미지는 `deploy/platform/release`를 이름 있는 빌드 컨텍스트로 받는다(`--build-context release=deploy/platform/release`). 2026-11-06 현재 Jenkins·배포기 시험 128개 통과(0 skip). 실제 컨트롤러 이미지 빌드·Jenkins 시작·클라우드 실배포는 아직 검증하지 않았다.
 
 ```sh
-PYTHONDONTWRITEBYTECODE=1 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 services/delta-staging/.venv/bin/python -m pytest -q -c /dev/null --confcutdir=deploy/platform/jenkins/tests deploy/platform/jenkins/tests --tb=line -p no:cacheprovider
+(cd deploy/platform/jenkins && uv run --quiet --with pytest --with pyyaml --with cryptography --with boto3 --with google-auth --with "psycopg[binary]" python -m pytest -q tests ../release/tests -p no:cacheprovider)
 ```
 
 다른 담당의 테스트는 읽기만 한다. Terraform apply, 운영 DB 변경·배포, commit/push/PR은 수행하지 않았다.

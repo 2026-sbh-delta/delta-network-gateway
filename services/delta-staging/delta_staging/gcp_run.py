@@ -196,7 +196,7 @@ class GcpCloudRunStaging:
             self._schema_prepared = True
             report("schema_prepared", "최초 스키마 준비와 초기화 관측 완료")
         else:
-            reset = asyncio.create_task(self._reset_bundle(req))
+            reset = asyncio.create_task(self._reset_bundle(req, observe_logs=False))
         try:
             operation = await self._update_service(req, req.image)
             report("service_updated", self.target.service)
@@ -208,7 +208,6 @@ class GcpCloudRunStaging:
             report("image_digest", json.dumps(observed, sort_keys=True))
             if reset is not None:
                 result = await reset
-            report("data_reset", f"{self.target.reset_job}: 남은 행 0")
             if req.scanner_ip == "auto":
                 await self._wait_reachable(url, self.stable_probes if rule_changed else 1)
             deadline = time.monotonic() + self.health_timeout
@@ -224,11 +223,13 @@ class GcpCloudRunStaging:
             if await self._serving_revision(req.run_id, strict=True) != revision:
                 raise StagingError("헬스 확인 중 serving revision이 바뀌었다")
             safety = await verify_scan_safety(self.safety_check, req, self.target.database_name, revision)
+            report("data_reset", f"{self.target.reset_job}: 남은 행 {safety.remaining_rows}")
             report("healthy", "FE→BE→PostgreSQL18 확인")
             report("pre_dast_zero", "새 revision 전환 후 DAST 직전 행0 관측 확인")
             return Outcome(url, revision, observed["frontend"], revision, scanner_ip,
                            images=images, image_digests=observed, bundle_sha256=bundle_hash(req.commit, observed),
-                           data_reset_remaining=result["remaining_rows"], databaseVersionNum=version,
+                           data_reset_remaining=(result["remaining_rows"] if result["remaining_rows"] is not None
+                                                 else safety.remaining_rows), databaseVersionNum=version,
                            database_version_num=version, s06_verified=True, pre_dast_remaining=safety.remaining_rows)
         finally:
             if reset is not None:
@@ -328,7 +329,7 @@ class GcpCloudRunStaging:
         if execution.get("failedCount", 0) or not execution.get("succeededCount"):
             raise StagingError("스테이징 데이터 초기화가 실패했다(남은 데이터가 있거나 오류). 배포하지 않는다")
 
-    async def _reset_bundle(self, req: DeployRequest) -> dict[str, int]:
+    async def _reset_bundle(self, req: DeployRequest, observe_logs: bool = True) -> dict[str, int | None]:
         if self.target.environment != "staging" or not self.target.reset_job:
             raise StagingError("staging 전용 reset Job이 필요하다")
         job = await self._call("GET", f"{RUN}/{self.job_name}")
@@ -367,6 +368,10 @@ class GcpCloudRunStaging:
                     if c.get("name") == self.target.reset_container_name]
         if len(executed) != 1 or executed[0].get("image") != req.images["backend"]:
             raise StagingError("초기화 execution의 실제 BE 이미지가 요청과 다르다")
+        if not observe_logs:
+            # 실행 성공·실행 이미지만 확인한다. 남은 행 0·PostgreSQL18 은 새 개정판 BE 헬스로 DAST 직전에 관측한다(S06).
+            # Cloud Logging 수집 지연(약 20초)을 스테이징 시간에서 뺀다.
+            return {"remaining_rows": None, "database_version_num": None}
         deadline = time.monotonic() + self.reset_timeout
         log_filter = (f'resource.type="cloud_run_job" AND resource.labels.job_name={json.dumps(self.target.reset_job)} '
                       f'AND resource.labels.location={json.dumps(self.target.region)} '

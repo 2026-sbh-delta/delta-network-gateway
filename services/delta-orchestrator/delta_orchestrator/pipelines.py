@@ -2,19 +2,24 @@
 
 환경 변수: ORCH_STATE_DIR, JENKINS_PLATFORM_PASSWORD, DELTA_SAST_TOKEN, DAST_PLATFORM_TOKEN, DELTA_STAGING_TOKEN(조회),
 DELTA_IMAGE_REPO(선택), DELTA_INTERNAL_ZONE(선택),
-DELTA_CUTOVER(선택, JSON: 서비스 도메인 전환 설정), CLOUDFLARE_API_TOKEN(선택: 해당 zone DNS 편집만)
+DELTA_CUTOVER(선택, JSON: 서비스 도메인 전환 설정), CLOUDFLARE_API_TOKEN(선택: 해당 zone DNS 편집만),
+DELTA_RELEASE_TARGETS(선택, JSON: 운영 대상 인벤토리 {target_id: 항목}), DELTA_RELEASE_SIGNING_KEY_B64(선택: Ed25519 PEM, base64),
+DELTA_ECR_IMAGE_REPO(선택: 빌드 묶음의 ECR 사본 저장소), DELTA_AI_TOKEN(선택: 원인 진단 delta-ai)
 """
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 import threading
+import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from delta_pipeline.clients import Cloudflare, Dast, Jenkins, Sast, Staging
+from delta_pipeline import domain
+from delta_pipeline.clients import Cloudflare, Dast, DeltaAi, Jenkins, Sast, Staging, probe, resolve_cname
 from delta_pipeline.model import Options
 from delta_pipeline.run import BOARD_DIR, Run, latest_unfinished
 from delta_pipeline.steps import CutoverConfig
@@ -26,6 +31,19 @@ RunFactory = Callable[[Options, Path, "str | None"], Run]
 def cutover_config() -> CutoverConfig | None:
     raw = os.environ.get("DELTA_CUTOVER")
     return CutoverConfig(**json.loads(raw)) if raw else None
+
+
+def release_targets() -> dict[str, Any]:
+    """운영 대상 인벤토리(비밀값 없음). 화면의 대상 선택과 승인 설정 해시의 기준이다."""
+    raw = os.environ.get("DELTA_RELEASE_TARGETS")
+    value = json.loads(raw) if raw else {}
+    return value if isinstance(value, dict) else {}
+
+
+def release_signing_key() -> bytes | None:
+    """운영 승인 서명 개인키(Ed25519 PEM). env 파일 한 줄에 넣으려고 base64 로 감싼 값을 푼다."""
+    raw = os.environ.get("DELTA_RELEASE_SIGNING_KEY_B64", "")
+    return base64.b64decode(raw) if raw else None
 
 
 def platform_run(options: Options, store_dir: Path, run_id: str | None) -> Run:
@@ -42,7 +60,15 @@ def platform_run(options: Options, store_dir: Path, run_id: str | None) -> Run:
                # 조회 토큰: 점검을 끝낸 뒤 자기 스테이징 점유를 푸는 데만 쓴다(배포·초기화는 못 한다)
                staging=Staging(f"http://jenkins.{zone}:8091", os.environ.get("DELTA_STAGING_TOKEN", "")),
                image_repo=os.environ.get("DELTA_IMAGE_REPO", IMAGE_REPO), store_dir=store_dir, run_id=run_id,
-               cloudflare=Cloudflare(token) if token else None, cutover=cutover_config() if options.cutover else None)
+               cloudflare=Cloudflare(token) if token else None, cutover=cutover_config() if options.cutover else None,
+               # 운영 배포(환경별 VM 생성)는 사람 승인 서명 뒤 Jenkins delta-release 가 한다
+               release_jenkins=Jenkins(jenkins, "platform", password, job="delta-release") if options.release_target else None,
+               release_signing_key=release_signing_key(),
+               release_config=release_targets().get(options.release_target) if options.release_target else None,
+               ecr_image_repo=os.environ.get("DELTA_ECR_IMAGE_REPO", ""),
+               # 멈춘 실행의 원인 진단(연재님 delta-ai). 판정은 바꾸지 않는다
+               diagnose=DeltaAi(f"http://ai.{zone}:8090", os.environ["DELTA_AI_TOKEN"]).assess
+               if os.environ.get("DELTA_AI_TOKEN") else None)
 
 
 class Pipelines:
@@ -66,11 +92,12 @@ class Pipelines:
     def running(self) -> bool:
         return self._thread is not None and self._thread.is_alive()
 
-    def start(self, repo: str, commit: str, *, cutover: bool = False, branch: str = "") -> str:
+    def start(self, repo: str, commit: str, *, cutover: bool = False, branch: str = "",
+              release_target: str | None = None) -> str:
         with self._lock:
             if self.running():
                 raise RuntimeError("이미 실행 중인 파이프라인이 있습니다(스테이징은 하나뿐)")
-            return self._launch(Options(repo, commit, cutover=cutover, branch=branch))
+            return self._launch(Options(repo, commit, cutover=cutover, branch=branch, release_target=release_target))
 
     def answer(self, run_id: str, value: str) -> bool:
         return bool(self.run and self.run.run_id == run_id and self.run.answer(value))
@@ -92,3 +119,54 @@ class Pipelines:
             built = any(n["id"] == "build" and n["state"] == "pass" for n in saved.get("nodes", ()))
             out.append({k: saved.get(k) for k in ("run_id", "options", "outcome", "started_at")} | {"built": built})
         return out
+
+
+class DomainRevert:
+    """서비스 도메인 되돌리기(시연 초기화). 화면에서 사람이 승인하면 시작한다. 한 번에 하나, 결과는 메모리에만 둔다."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._thread: threading.Thread | None = None
+        self.status: dict[str, Any] = {"state": "idle"}
+
+    def configured(self) -> tuple[CutoverConfig, Cloudflare] | None:
+        cfg, token = cutover_config(), os.environ.get("CLOUDFLARE_API_TOKEN")
+        return (cfg, Cloudflare(token)) if cfg and token else None
+
+    def running(self) -> bool:
+        return self._thread is not None and self._thread.is_alive()
+
+    def view(self) -> dict[str, Any]:
+        found = self.configured()
+        if found is None:
+            return {"configured": False}
+        cfg, cf = found
+        try:
+            target = domain.current_target(cfg, cf)
+        except Exception:  # noqa: BLE001 조회 실패는 화면에 "확인 불가"로만 보인다
+            target = None
+        return {"configured": True, "record": cfg.record, "green": cfg.green, "blue": cfg.blue,
+                "target": target, "revert": self.status}
+
+    def start(self) -> None:
+        found = self.configured()
+        if found is None:
+            raise RuntimeError("서비스 도메인 전환 설정·토큰이 없습니다")
+        with self._lock:
+            if self.running():
+                raise RuntimeError("되돌리기가 이미 진행 중입니다")
+            cfg, cf = found
+            self.status = {"state": "running", "summary": "시작", "started_at": time.time()}
+
+            def report(update: dict[str, Any]) -> None:
+                self.status = {**self.status, **update}
+
+            def work() -> None:
+                try:
+                    domain.revert(cfg, cf, probe=probe, resolve=resolve_cname, now=time.time, sleep=time.sleep,
+                                  report=report)
+                except Exception as exc:  # noqa: BLE001 예상 밖 실패도 화면에 남긴다
+                    report({"state": "fail", "summary": f"되돌리기 중 오류({type(exc).__name__})"})
+
+            self._thread = threading.Thread(target=work, daemon=True)
+            self._thread.start()

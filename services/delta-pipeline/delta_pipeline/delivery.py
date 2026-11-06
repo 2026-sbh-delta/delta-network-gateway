@@ -43,8 +43,17 @@ def validate_bundle(value: Mapping[str, Any], commit: str) -> dict[str, Any]:
         raise ValueError("이미지 묶음의 정규 JSON 해시가 다르다")
     if value.get("image_ref") != images["frontend"] or value.get("image_digest") != digests["frontend"]:
         raise ValueError("frontend 별칭이 이미지 묶음과 다르다")
+    # 클라우드별 사본(AR·ECR). 레지스트리 주소만 다르고 서비스별 digest는 묶음과 같아야 한다.
+    registries = value.get("registry_images") or {"gcp": dict(images)}
+    if (not isinstance(registries, dict)
+            or any(not isinstance(refs, dict) or set(refs) != SERVICES
+                   or any(not isinstance(refs[s], str) or not IMAGE_RE.fullmatch(refs[s])
+                          or refs[s].rsplit("@", 1)[1] != digests[s] for s in SERVICES)
+                   for refs in registries.values())):
+        raise ValueError("클라우드별 이미지 사본의 digest가 묶음과 다르다")
     return {**core, "images": dict(images), "bundle_sha256": digest,
-            "image_ref": images["frontend"], "image_digest": digests["frontend"]}
+            "image_ref": images["frontend"], "image_digest": digests["frontend"],
+            "registry_images": {cloud: dict(refs) for cloud, refs in registries.items()}}
 
 
 def match_runtime(value: Mapping[str, Any], expected: Mapping[str, Any]) -> None:

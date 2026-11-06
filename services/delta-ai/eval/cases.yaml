@@ -52,3 +52,19 @@ cases:
     patch: {evidence: {mapping: {security: {guardduty_enabled: true}}}}
     expect: [needs_human]
     rules: [MAP-SEC-001]
+  # 파이프라인이 멈춘 단계의 원인 진단(deployment_gate). 판정은 파이프라인이 하고 여기서는 항상 사람 확인이다.
+  - name: release-db-connectivity
+    base: deployment-failed.json
+    expect: [needs_human]
+    rules: [DEP-STAGE-001]
+  - name: staging-request-rejected
+    base: deployment-failed.json
+    patch: {evidence: {deployment: {stage: stage, target: gcp, log_tail: "스테이징 배포 실패 (#21 FAILURE) 스테이징 도구 422: 배포 요청 스키마·이미지 묶음·환경 변수 검증 실패"}}}
+    expect: [needs_human]
+    rules: [DEP-STAGE-001]
+  - name: build-push-timeout
+    base: deployment-failed.json
+    patch: {evidence: {deployment: {stage: build, target: null, log_tail: "빌드 결과가 요청한 커밋·digest 와 맞지 않는다; docker push: request canceled while waiting for connection"}}}
+    expect: [needs_human]
+    rules: [DEP-STAGE-001]
+

@@ -30,6 +30,7 @@ from delta_pipeline.model import REPO_PREFIX
 
 from . import live
 from .access import COOKIE, Access, login_page
+from . import pipelines as pipelines_mod
 from .pipelines import Pipelines
 
 STATIC = Path(__file__).parent / "static"
@@ -151,6 +152,9 @@ async def collect() -> dict:
         "nat_ip": os.environ.get("DELTA_NAT_IP"),
         # 도메인 전환 설정·토큰이 모두 있을 때만 화면에 전환 선택을 보인다
         "cutover_configured": bool(os.environ.get("DELTA_CUTOVER") and os.environ.get("CLOUDFLARE_API_TOKEN")),
+        "release_targets": [{"id": k, "cloud": v.get("cloud"), "label": v.get("label") or k}
+                            for k, v in sorted(pipelines_mod.release_targets().items())]
+        if pipelines_mod.release_signing_key() else [],
     }
 
 
@@ -290,6 +294,9 @@ def create_app(pipelines: Pipelines | None = None) -> FastAPI:
         body = await json_body(request)
         repo, commit, cutover = body.get("repo"), body.get("commit"), body.get("cutover", False)
         branch = body.get("branch") or ""
+        release_target = body.get("release_target") or None
+        if release_target is not None and release_target not in pipelines_mod.release_targets():
+            raise HTTPException(400, "등록되지 않은 운영 배포 대상입니다")
         if not isinstance(repo, str) or not isinstance(commit, str) or not isinstance(cutover, bool):
             raise HTTPException(400, "repo와 commit(40자리 SHA)이 필요합니다(cutover는 true/false)")
         if not isinstance(branch, str) or (branch and (not BRANCH_RE.fullmatch(branch) or ".." in branch)):
@@ -300,9 +307,29 @@ def create_app(pipelines: Pipelines | None = None) -> FastAPI:
         if cutover and not (os.environ.get("DELTA_CUTOVER") and os.environ.get("CLOUDFLARE_API_TOKEN")):
             raise HTTPException(400, "서비스 도메인 전환 설정(대상 레코드·운영 진입점)이 아직 없습니다")
         try:
-            return {"run_id": need_pipelines().start(repo, commit, cutover=cutover, branch=branch)}
+            return {"run_id": need_pipelines().start(repo, commit, cutover=cutover, branch=branch,
+                                                     release_target=release_target)}
         except RuntimeError as exc:
             raise HTTPException(409, str(exc))
+
+    # 서비스 도메인 되돌리기(시연 초기화). 이전 실행과 따로, 사람이 화면에서 승인해야 시작한다.
+    domain_revert = pipelines_mod.DomainRevert()
+
+    @app.get("/api/domain")
+    def domain_view():
+        return domain_revert.view()
+
+    @app.post("/api/domain/revert", status_code=202)
+    async def domain_revert_start(request: Request):
+        if (await json_body(request)).get("approve") is not True:
+            raise HTTPException(400, "사람 승인(approve: true)이 필요합니다")
+        if pipelines is not None and pipelines.running():
+            raise HTTPException(409, "파이프라인 실행 중에는 도메인을 되돌리지 않습니다")
+        try:
+            domain_revert.start()
+        except RuntimeError as exc:
+            raise HTTPException(409, str(exc))
+        return domain_revert.status
 
     @app.get("/api/pipeline/runs")
     async def list_runs():

@@ -9,6 +9,7 @@ import threading
 import time
 import uuid
 from collections.abc import Callable, Mapping
+from dataclasses import fields
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +17,7 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.types import Command
 
 from delta_pipeline.clients import ServiceUnavailable
+from delta_pipeline.diagnosis import diagnose
 from delta_pipeline.graph import build_graph
 from delta_pipeline.model import Board, Options
 from delta_pipeline.steps import CloudflareClient, CutoverConfig, DastClient, Deps, JenkinsClient, SastClient, StagingClient
@@ -33,6 +35,11 @@ def latest_unfinished(store_dir: Path) -> tuple[str, Options] | None:
     for path in boards:
         saved = json.loads(path.read_text(encoding="utf-8"))
         if saved["outcome"] is None and "options" in saved:
+            # 다른 버전 오케스트레이터가 같은 상태 폴더에 남긴 실행(모르는 옵션)은 이어 받지 않는다.
+            # 이어 받으면 그 옵션을 버린 채 엉뚱한 환경으로 실행하거나, 시작 자체가 실패한다(11/6 실측).
+            if set(saved["options"]) - {f.name for f in fields(Options)}:
+                LOG.warning("실행 %s: 이 버전이 모르는 옵션이 있어 이어 받지 않는다", saved.get("run_id"))
+                continue
             return saved["run_id"], Options(**saved["options"])
     return None
 
@@ -45,7 +52,8 @@ class Run:
                  probe: Callable[..., tuple[int, str]] | None = None,
                  resolve: Callable[[str], str | None] | None = None, now: Callable[[], float] | None = None,
                  release_jenkins: JenkinsClient | None = None, release_signing_key: bytes | None = None,
-                 release_config: dict[str, Any] | None = None) -> None:
+                 release_config: dict[str, Any] | None = None, ecr_image_repo: str = "",
+                 diagnose: Callable[[dict[str, Any]], dict[str, Any]] | None = None) -> None:
         self.run_id = run_id or uuid.uuid4().hex
         self.options = options
         (store_dir / BOARD_DIR).mkdir(parents=True, exist_ok=True)
@@ -55,7 +63,9 @@ class Run:
                           build_jenkins=build_jenkins, deploy_jenkins=deploy_jenkins, staging=staging,
                           image_repo=image_repo, sleep=sleep, cloudflare=cloudflare, cutover=cutover,
                           release_jenkins=release_jenkins, release_signing_key=release_signing_key, release_config=release_config,
+                          ecr_image_repo=ecr_image_repo,
                           **{k: v for k, v in (("probe", probe), ("resolve", resolve), ("now", now)) if v})
+        self._diagnose = diagnose  # 멈춘 실행의 원인 진단(delta-ai). 없으면 하지 않는다
         self._answer: str | None = None
         self._answered = threading.Event()
 
@@ -83,6 +93,10 @@ class Run:
             self._board.finish("stopped", "내부 오류로 멈췄다. 통과로 보지 않는다")
         finally:
             connection.close()
+        if self._diagnose is not None:
+            # 다음 실행을 막지 않게 따로 돈다. 결과(outcome)는 바꾸지 않는다
+            threading.Thread(target=diagnose, args=(self._board, self.run_id, self.options, self._diagnose),
+                             daemon=True).start()
 
     def _drive(self, graph: Any) -> None:
         config = {"configurable": {"thread_id": self.run_id}}

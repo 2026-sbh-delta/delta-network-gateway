@@ -60,10 +60,17 @@ PYCODE
           unset AWS_PROFILE AWS_DEFAULT_PROFILE
           export AWS_SHARED_CREDENTIALS_FILE=/dev/null AWS_CONFIG_FILE=/dev/null
           python3 /opt/delta/ar-token.py | docker login -u oauth2accesstoken --password-stdin https://asia-northeast3-docker.pkg.dev >/dev/null
+          # FE·BE 는 서로 독립이라 동시에 빌드·푸시한다. 둘 다 성공해야 묶음을 만든다(하나라도 실패면 빌드 실패).
           docker buildx build --platform linux/amd64 --provenance=false --sbom=false \
-            -t "$FRONTEND_IMAGE_REPO:$RUN_ID-frontend" --push --metadata-file meta-frontend.json src/frontend
+            -t "$FRONTEND_IMAGE_REPO:$RUN_ID-frontend" --push --metadata-file meta-frontend.json src/frontend &
+          fe=$!
           docker buildx build --platform linux/amd64 --provenance=false --sbom=false \
-            -t "$BACKEND_IMAGE_REPO:$RUN_ID-backend" --push --metadata-file meta-backend.json src/backend
+            -t "$BACKEND_IMAGE_REPO:$RUN_ID-backend" --push --metadata-file meta-backend.json src/backend &
+          be=$!
+          fe_status=0; be_status=0
+          wait "$fe" || fe_status=$?
+          wait "$be" || be_status=$?
+          [ "$fe_status" -eq 0 ] && [ "$be_status" -eq 0 ] || { echo "FE/BE 빌드 실패(fe=$fe_status be=$be_status)" >&2; exit 1; }
           if [ -n "${ECR_IMAGE_REPO:-}" ]; then
             export ECR_REGISTRY="${ECR_IMAGE_REPO%%/*}"
             export ECR_REGION="$(echo "$ECR_REGISTRY" | cut -d. -f4)"

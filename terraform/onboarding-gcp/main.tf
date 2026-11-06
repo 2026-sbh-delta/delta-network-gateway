@@ -59,3 +59,30 @@ resource "google_service_account_iam_member" "wif" {
   role               = "roles/iam.workloadIdentityUser"
   member             = "principalSet://iam.googleapis.com/${local.pool_name}/attribute.aws_role/${each.value.role}"
 }
+
+# 운영 배포(동규님 방식, 환경별 VM 생성)는 기존 배포 계정 delta-platform-deployer 로 한다.
+# 이 계정의 VM 생성·IAP·DB 비밀값 권한은 platform/deploy/workloads/runtime-gcp 가 만든다(Terraform 통일 때 이 루트로 옮긴다).
+# 여기서는 플랫폼 Jenkins 역할만 이 계정을 쓰도록 허용한다.
+resource "google_service_account_iam_member" "release_deployer" {
+  service_account_id = "projects/${var.project_id}/serviceAccounts/${var.release_deployer_account}"
+  role               = "roles/iam.workloadIdentityUser"
+  member             = "principalSet://iam.googleapis.com/${local.pool_name}/attribute.aws_role/${var.platform_role_prefix}jenkins"
+}
+
+# 운영 배포 런타임 권한·방화벽은 terraform/release-runtime-gcp 로 옮겼다(11/6). 리소스는 지우지 않고 state 소유만 넘긴다.
+removed {
+  from = google_project_iam_member.release_deployer
+  lifecycle { destroy = false }
+}
+removed {
+  from = google_artifact_registry_repository_iam_member.release_app_pull
+  lifecycle { destroy = false }
+}
+removed {
+  from = google_project_iam_member.release_app_logs
+  lifecycle { destroy = false }
+}
+removed {
+  from = google_compute_firewall.release_app_database
+  lifecycle { destroy = false }
+}
