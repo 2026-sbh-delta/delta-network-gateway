@@ -1,6 +1,6 @@
 # Delta network gateway
 
-2026-11-06 온프레미스 실제 DAST·로그 보존 후속: 소스c2f8139/회귀169/Terraform mock2와 후보 이미지 빌드 완료. CP DAST의 온프레미스 연결·namespace 로그 조회 최소 권한은 적용했고 기존 DAST36기록/4792파일 보존을 확인했다. 공용 Worker 교체는 자동 승인 검토에서 팀 영역 사전 합의 근거 부족으로 거부돼 미실행이며, 사용자의 영향 설명 요청을 승인으로 처리하지 않았다. 기존 오케스트레이터와 Worker 런타임은 유지하고 이전 고정문서 호환 경로를 보존한다. 새 실제 DAST→로그→보고서 전체 검증은 아직이다. [범위·부작용·승인 상태](ai-dlc/onprem-dast-evidence.md)
+2026-11-06 온프레미스 실제 DAST·로그 보존 후속: 사용자 선택에 따라 팀 Worker를 보존하고 독립 큐/실행기를 배포했다. core 회귀176개 통과. 독립 AWS 시험에서 실제 SAST→FE/BE 실행→정리 전 두 컨테이너 로그 보존→정리→실제 Claude 실패 진단/보고서를 확인했으나, DAST는 기본 대상 템플릿 미등록 문제로 HTTP422여서 전체 성공 검증은 미완료다. 다른 AWS 계정의 후속 배포2건이 공용 오케스트레이터를 교체한 사실을 감사 기록으로 확인했으며 최신 팀 변경의 보존 통합·배포 조정·실제 화면 검증이 남았다. 소스 da2c15d는 로컬이며 push/main 병합 없음. [실제 결과·충돌 근거·남은 작업](ai-dlc/onprem-dast-evidence.md)
 
 2026-11-06 온프레미스 실행·복구 AWS 연결 완료: 기존 Worker를 고정 SSM 문서/최소 IAM으로 연결하고 실제 새 SAST13파일→온프레미스 실행→제한 자동 복구→사람 재검사→실제 Claude/보고서·화면을 검증했다. 실제2실행은 각 native배포1회·Pod/Secret정리, 기존34/35개board 보존, 시험OFF·정상재시작·보고서인증·최종Terraform No changes 확인. 회귀155+native fixture28+Terraform mock1 통과. DAST 미실행·단일 이미지 sandbox 범위이며 전체 FE/BE/DB/DNS 이전은 별도다. 소스6b8c405 로컬/런타임613c3c64 배포완료, main미병합. [설계·실제 결과·남은 범위](ai-dlc/onprem-runtime.md)
 

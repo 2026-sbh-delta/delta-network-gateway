@@ -1,5 +1,16 @@
 # 온프레미스 실제 DAST·정리 전 로그
 
+## 2026-11-06 최신 검증 상태와 배포 충돌 확인
+
+- 사용자 선택은 **팀 Worker 유지·독립 경로**다. 공유 Worker 교체 승인 대기라는 앞선 기록은 과거 상태다. 실제 shared Worker는 fea4c097 유지, 독립 실행기는 b4739d4a/소스 da2c15d다. private SQLite와 로그 디렉터리를 쓰며 팀 큐에는 기록하지 않는다. 최종 core 회귀176개 통과.
+- 사용자 요청에 따라 이 채팅에서 통합 오케스트레이터를 배포한 뒤, 17:51:33와 18:01:07 KST에 다른 AWS 사용자 계정의 SSM 배포가 공용 오케스트레이터를 다시 교체했다. CloudTrail event와 CommandId를 대조했다. 사용자 본인이 직접 추가 배포했다거나 특정 팀원의 실명으로 단정하지 않는다. 근거: notes/onprem-dast-20261106/replacement-attribution.json.
+- 마지막 확인 공용 이미지5c7b6cd9에는 onprem 모듈이 없다. 그 버전의 domain.py 등 새 팀 변경은 아직 우리 소스와 통합하지 않았다. 최신 팀 코드를 덮어쓰는 재배포를 하지 않는다. 초기 승인된 통합 배포와 다른 계정의 후속 교체를 구분한다.
+- 검증을 위해 같은 AWS 호스트의 127.0.0.1:8081에 delta-onprem-validation/fb8314cf를 분리했다. 전용 /opt/delta/onprem-validation/state를 쓰며 공용 컨테이너는 보존했다. 외부 검증 주소/공개 화면 확인은 아직이다.
+- 실제 시험 daa4646866be4178aff5385838521ec9: fresh SAST15파일·XSS후보1개, 온프레미스 FE/BE 실제 실행·연결 확인까지 진행했다. Native 92a1cebf-1328-46ad-bf99-92ca268ff4f2의 CP DAST 제출은 HTTP422로 실패했다. 실제 Claude 진단·보고서 case-1ed4b35e0df69626dfb5c5ef0113909a는 보존했다. 사람 확인에서 stop하여 active=None으로 종료했다.
+- DAST의 실제 Submission 스키마·SARIF 해시·변환은 통과했다. 실제 서비스 카탈로그에는 local-fixture/staging-aws/staging-gcp만 있고 onprem.register의 기본 platform-sandbox가 없어 KeyError를 재현했다. 네트워크/CA/토큰으로 Kubernetes 서비스 GET200은 확인했지만 이 사실을 브라우저 DAST 성공으로 해석하지 않는다. 팀 DAST 소스/이미지를 수정하지 않았다. 기본 대상 템플릿의 독립 설정 또는 팀 합의 후 공용 수정이 남았다.
+- 정리 전 FE와 BE 로그 모두 available, immutable artifact SHA256 ed4dda08cb9986c33f2914472dafadf763ec596b15e7317abeff82703a39ec51. 정리 뒤 두 Pod와 두 pull Secret 부재를 실제 확인했다. 실패 run의 로그 보존·진단까지 검증한 것이며 DAST 성공 흐름은 미완료다. 근거: notes/onprem-dast-20261106/stopped-validation.json, dast-request-validation.json, dast-transform-validation.json, dast-register-validation.json.
+- 다음: 공용 배포 담당/시간 조정 또는 독립 검증 주소 확정 → 팀 최신 코드 보존 통합 → 온프레미스 전용 DAST 대상 설정 해결 → fresh 전체 실행과 실제 화면·인증 다운로드 검증. 공용 Worker 교체·main 병합·push·팀 Slack/Notion 발송은 하지 않았다. scanner token은 11/07 16:37 KST경 만료하므로 후속 실제 검사 전 확인한다.
+
 2026-11-06 사용자 승인: 실제 DAST와 정리 전 컨테이너 로그 보존을 기존 오케스트레이터에 연결하고 실제 AWS에서 진단/보고서까지 검증한다. 이 요청으로 기존 연결의 후속 설계·구현·배포·시험을 진행한다. Notion ADR 번호는 임의로 만들지 않고 로컬 ADR 제안으로 남긴다.
 
 ## 설계와 성공 기준
