@@ -48,6 +48,12 @@ class DiagnosticClient:
         )
 
     def diagnose(self, body: dict[str, Any]) -> dict[str, Any]:
+        return self._post("/v1/diagnoses", body)
+
+    def propose(self, body):
+        return self._post("/v1/recovery-proposals", body)
+
+    def _post(self, path, body):
         payload = json.dumps(body, ensure_ascii=False, separators=(",", ":")).encode()
         if len(payload) > 64_000:
             raise ServiceUnavailable("진단 요청 크기 제한을 초과했다")
@@ -58,7 +64,7 @@ class DiagnosticClient:
         ):
             raise ServiceUnavailable("진단 API는 HTTPS 또는 로컬 루프백만 허용한다")
         request = urllib.request.Request(
-            self._url + "/v1/diagnoses",
+            self._url + path,
             payload,
             method="POST",
             headers={

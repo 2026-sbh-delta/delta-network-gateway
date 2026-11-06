@@ -28,6 +28,11 @@ def check():
     if os.environ.get('DELTA_LOG_EVIDENCE_ENABLED') == '1':
         import boto3
         result['log_evidence'] = 'sdk-ready'
+    if os.environ.get('DELTA_ONPREM_ENABLED') == '1':
+        from delta_pipeline.onprem_ssm import WorkerRpc
+        builds=WorkerRpc().call('catalog')
+        if not builds:raise ValueError('No registered onprem image')
+        result['onprem']='registered-builds-ready'
     return result
 
 

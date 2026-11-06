@@ -17,16 +17,21 @@
     <div class="controls">
       <select id="runs" aria-label="실행 기록"></select>
       <button class="btn primary" type="button" id="open-start">새 실행</button>
+      <button class="btn" type="button" id="cancel-onprem" hidden>온프레미스 실행 취소</button>
       <button class="btn" type="button" id="open-health">플랫폼 <span id="health-chip">…</span></button>
       <form id="logout" method="post" action="/logout" hidden><button class="btn" type="submit">로그아웃</button></form>
     </div>
   </header>
 
   <form id="start" class="startbar" hidden>
+    <label>실행 환경 <select id="run-cloud"><option value="gcp">GCP 스테이징</option><option value="onprem">온프레미스 실행·복구 검사</option></select></label>
+    <label id="onprem-build-label" hidden>등록된 이미지 <select id="onprem-build"><option value="">조회 중</option></select></label>
+    <span id="onprem-scope" hidden>고정 이미지의 실행·정리·복구를 검사합니다. DAST 미실행은 별도 확인합니다.</span>
     <label>저장소 <input id="run-repo" value="https://github.com/2026-sbh-delta/delta-sample-app" size="42" required></label>
     <button class="btn" type="button" id="run-load">확인</button>
     <label>브랜치 <select id="run-branch" aria-label="브랜치" disabled><option value="">저장소 확인 후 선택</option></select></label>
     <label>커밋 <select id="run-commit" aria-label="커밋" required disabled><option value="">저장소 확인 후 선택</option></select></label>
+    <label id="run-release-label" hidden>운영 배포 <select id="run-release" aria-label="운영 배포 대상"><option value="">스테이징까지만</option></select></label>
     <label id="run-cutover-label" hidden class="toggle"><input type="checkbox" id="run-cutover"> 검증 뒤 서비스 도메인 전환</label>
     <button class="btn primary" type="submit" id="run-submit" disabled>실행</button>
     <span id="run-msg" class="hint"></span>

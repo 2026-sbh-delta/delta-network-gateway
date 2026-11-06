@@ -18,7 +18,7 @@ from uuid import NAMESPACE_URL, uuid4, uuid5
 
 from langgraph.types import interrupt
 
-from delta_pipeline.clients import ServiceUnavailable, evidence_hash, probe, resolve_cname
+from delta_pipeline.clients import ServiceUnavailable, TransientServiceError, evidence_hash, probe, resolve_cname
 from delta_pipeline.delivery import (TARGET_RE, canonical_json, match_runtime, require_postgres18,
                                      sign_approval, validate_bundle, validate_config)
 from delta_pipeline.model import REPO_PREFIX, Board, Options
@@ -29,6 +29,8 @@ CUTOVER_STREAK = 3  # 연속 성공 횟수(에지 캐시·전파 흔들림 배�
 JENKINS_POLL_SECONDS = 1
 BUILD_DEADLINE_SECONDS = 1200
 STAGE_DEADLINE_SECONDS = 900
+# 운영 배포는 VM 생성(과 새 DB 서버면 RDS·Cloud SQL 생성 10~15분)을 포함한다. Jenkinsfile.release 제한과 같다.
+RELEASE_DEADLINE_SECONDS = 3600
 SAST_DEADLINE_SECONDS = 1200
 DAST_DEADLINE_SECONDS = 1800
 FIX_DEADLINE_SECONDS = 300  # 수정 에이전트 제한 240초 + 여유
@@ -69,7 +71,7 @@ class PipelineState(TypedDict, total=False):
     diagnosis_resume: str
     report_failed: bool
     exception_cleanup_done: bool
-    failure_type: str | None
+    failure_type: Annotated[str | None, _first]
     build: int
     image: str
     image_digest: str
@@ -98,10 +100,32 @@ class PipelineState(TypedDict, total=False):
     release_config: dict[str, Any] | None
     release_build: int
     release_result: dict[str, Any] | None
+    mapping_input_hash: str
+    mapping_source: dict[str, Any]
+    assisted_origin: dict[str, Any]
+    assisted_plan: dict[str, Any]
+    assisted_choice: str | None
+    manual_count: int
+    manual_redeploy: bool
+    manual_resume: str
+    recovery_pending: bool
+    recovery_failure: dict[str, Any]
+    recovery_count: int
+    recovery_events: list[dict[str, Any]]
+    recovery_resume: str
+    recovery_previous_run_id: str
+    recovery_previous_key: str
+    onprem_attempt: int
+    failure_code: Annotated[str | None, _first]
+    onprem_run_id: str
+    onprem_evidence_sha256: str
 
 
 class Stopped(Exception):
-    """사람이 중단했거나 판정·서비스 상태 때문에 멈췄다. 뒤 단계로 가지 않는다."""
+    """사람이 중단했거나 판정·서비스 상태 때문에 멈췄다."""
+    def __init__(self, message, *, code=None):
+        super().__init__(message)
+        self.code = code
 
 
 class SastClient(Protocol):
@@ -186,7 +210,12 @@ class Deps:
     sleep: Callable[[float], None]
     diagnostic: Any = None
     evidence: Any = None
+    onprem: Any = None
+    inbox: Any = None
+    notification_sender: Any = None
+    cancelled: Callable[[], bool] = lambda: False
     report_dir: Path | None = None
+    ecr_image_repo: str = ""  # 비우지 않으면 빌드가 같은 manifest를 이 ECR 저장소에도 복사한다(AWS 스테이징·운영용)
     cloudflare: CloudflareClient | None = None
     cutover: CutoverConfig | None = None
     probe: Callable[..., tuple[int, str]] = probe
@@ -204,9 +233,9 @@ def guarded(step: Step) -> Step:
         try:
             return step(state)
         except Stopped as stop:
-            return {"halt": str(stop)}
+            return {"halt": str(stop), "failure_type": "Stopped", "failure_code": stop.code}
         except ServiceUnavailable as exc:
-            return {"halt": f"서비스 응답 없음, 통과로 보지 않는다: {exc}"}
+            return {"halt": f"서비스 응답 없음, 통과로 보지 않는다: {exc}", "failure_type": type(exc).__name__}
     return wrapper
 
 
@@ -249,7 +278,8 @@ class Steps:
     def _key(self, state: PipelineState, name: str) -> str:
         """Jenkins·SAST 작업 키. 2차는 다른 키를 써서 1차 작업을 다시 찾지 않는다."""
         round_ = state.get("round") or 1
-        return f"{self._deps.run_id}-{name}" if round_ == 1 else f"{self._deps.run_id}-r{round_}-{name}"
+        key = f"{self._deps.run_id}-{name}" if round_ == 1 else f"{self._deps.run_id}-r{round_}-{name}"
+        return key + (f"-recovery{state['onprem_attempt']}" if name == "onprem" and state.get("onprem_attempt") else "")
 
     def _ask(self, key: str, node_id: str, what: str, count: int, **extra: Any) -> dict[str, Any]:
         self._board.update(node_id, state="waiting", summary=f"{what}: 사람 확인 필요 (항목 {count}건)")
@@ -264,7 +294,7 @@ class Steps:
         what = gate["what"]
         fixable = gate.get("fix_target") is not None
         options = [FIX, PROCEED, ("stop", "중단")] if fixable else [PROCEED, ("stop", "중단")]
-        answer = interrupt({"node_id": gate["node_id"], "prompt": f"{what} 결과를 보고 다음 단계로 갈지 정합니다.",
+        answer = interrupt({**({"case_id": state["diagnosis_ref"]["case_id"]} if self._deps.options.assistance and state.get("diagnosis_ref") else {}), "node_id": gate["node_id"], "prompt": f"{what} 결과를 보고 다음 단계로 갈지 정합니다.",
                             "options": options})
         if state.get("diagnosis_ref"):
             from delta_pipeline.exception_flow import record_review
@@ -326,8 +356,12 @@ class Steps:
     def build_start(self, state: PipelineState) -> dict[str, Any]:
         options, jenkins = self._deps.options, self._deps.build_jenkins
         self._board.update("build", state="running", summary="빌드 에이전트에서 빌드·푸시 중")
-        build = self._ensure_build(jenkins, {"REPO": options.repo, "COMMIT": self._commit(state),
-                                             "IMAGE_REPO": self._deps.image_repo}, self._key(state, "build"))
+        params = {"REPO": options.repo, "COMMIT": self._commit(state), "IMAGE_REPO": self._deps.image_repo}
+        # ECR 사본은 AWS 가 쓸 때만 만든다(AWS 스테이징 또는 AWS 운영 대상). GCP 만 쓰면 복사 시간을 쓰지 않는다
+        uses_aws = options.staging_cloud == "aws" or (self._deps.release_config or {}).get("cloud") == "aws"
+        if self._deps.ecr_image_repo and uses_aws:
+            params["ECR_IMAGE_REPO"] = self._deps.ecr_image_repo
+        build = self._ensure_build(jenkins, params, self._key(state, "build"))
         self._board.add_detail("build", build=build, url=jenkins.console_url(build))
         return {"build": build}
 
@@ -359,7 +393,10 @@ class Steps:
     def sast_start(self, state: PipelineState) -> dict[str, Any]:
         options, run_id = self._deps.options, self._key(state, "sast")
         self._board.update("sast", state="running", summary="소스 점검 중")
-        self._deps.sast.start(run_id, options.repo, self._commit(state))
+        started = self._deps.sast.start(run_id, options.repo, self._commit(state))
+        if options.execution_cloud == "onprem":
+            from uuid import UUID
+            run_id = str(UUID(started["run_id"]))
         self._board.add_detail("sast", run_id=run_id)
         return {"sast_run_id": run_id}
 
@@ -583,6 +620,8 @@ class Steps:
         raise Stopped("수정안이 제한 시간 안에 만들어지지 않았다")
 
     def _release(self) -> None:
+        if self._deps.options.execution_cloud == 'onprem':
+            return
         """스테이징 점유를 푼다. 실패해도 만료(기본 1시간)로 풀리므로 실행 결과를 바꾸지 않는다."""
         try:
             released = self._deps.staging.release(self._deps.options.staging_cloud, self._deps.run_id)
@@ -607,6 +646,12 @@ class Steps:
                 or state.get("image") != bundle["image_ref"] or state.get("image_digest") != bundle["image_digest"]):
             raise Stopped("현재 묶음의 스테이징 검증 기록이 없다")
         return bundle
+
+    @staticmethod
+    def _target_bundle(bundle: dict[str, Any], cloud: str) -> dict[str, Any]:
+        """운영 대상 클라우드의 사본(AWS=ECR, GCP=AR). digest·묶음 해시는 같고 레지스트리 주소만 다르다."""
+        images = (bundle.get("registry_images") or {}).get(cloud) or bundle["images"]
+        return {**bundle, "images": dict(images), "image_ref": images["frontend"]}
 
     def _release_config(self, state: PipelineState) -> dict[str, Any]:
         try:
@@ -665,9 +710,12 @@ class Steps:
             expiry = claims.get("exp")
             if type(expiry) is not int or not self._deps.now() < expiry <= self._deps.now() + 600:
                 raise Stopped("운영 승인 토큰이 만료됐거나 유효 기간이 잘못됐다")
+            target_images = self._target_bundle(bundle, config["cloud"])["images"]
             params = {"TARGET_ID": config["target_id"], "COMMIT": bundle["commit"],
-                      "BUNDLE_SHA256": bundle["bundle_sha256"], "IMAGES_JSON": canonical_json(bundle["images"]),
-                      "APPROVAL": canonical_json(approval)}
+                      "BUNDLE_SHA256": bundle["bundle_sha256"], "IMAGES_JSON": canonical_json(target_images),
+                      "APPROVAL": canonical_json(approval),
+                      # 클라우드별 사본(registry_images)까지 담은 빌드 결과. AWS 대상은 ECR 사본으로 배포한다
+                      "BUNDLE_JSON": canonical_json({**bundle, "schema": 2, "platform": "linux/amd64"})}
             build = jenkins.trigger(params, expected["deployment_id"])
         self._board.add_detail("release", build=build, url=jenkins.console_url(build),
                                deployment_id=expected["deployment_id"], target_id=config["target_id"],
@@ -679,7 +727,7 @@ class Steps:
         if self._deps.release_jenkins is None:
             raise Stopped("운영 Jenkins가 없다")
         try:
-            result = self._finish_job(self._deps.release_jenkins, state["release_build"], STAGE_DEADLINE_SECONDS, "운영 배포")
+            result = self._finish_job(self._deps.release_jenkins, state["release_build"], RELEASE_DEADLINE_SECONDS, "운영 배포")
         except Stopped as exc:
             self._board.update("release", state="fail", summary=str(exc))
             raise
@@ -695,7 +743,8 @@ class Steps:
                 or result.get("environment") != "production"):
             raise Stopped("운영 배포의 대상·verified 실행 기록이 없다")
         try:
-            match_runtime(result, bundle)
+            # 운영 결과는 대상 클라우드 사본으로 실행된다(AWS=ECR). digest·묶음 해시는 같다.
+            match_runtime(result, self._target_bundle(bundle, self._release_config(state)["cloud"]))
             require_postgres18(result)
         except ValueError as exc:
             raise Stopped(str(exc)) from exc
@@ -854,6 +903,14 @@ class Steps:
         self._board.finish("stopped", str(state.get("halt")))
         return {"halt": state.get("halt")}
 
+
+    def onprem_start(self, state: PipelineState) -> dict[str, Any]:
+        from delta_pipeline.onprem import start
+        return start(self, state)
+
+    def onprem_wait(self, state: PipelineState) -> dict[str, Any]:
+        from delta_pipeline.onprem import wait
+        return wait(self, state)
 
 def _rows_remaining(step: Mapping[str, Any] | None) -> int | None:
     """스테이징 도구의 data_reset 단계 내용("<Job>: 남은 행 N")에서 N 을 읽는다. 기록이 없으면 확인하지 못한 것이다."""

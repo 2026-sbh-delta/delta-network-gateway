@@ -68,6 +68,13 @@ def main(image, expected_image=None):
         env.update(DELTA_DIAGNOSTIC_URL=connection['url'], DELTA_DIAGNOSTIC_TOKEN=connection['token'],
                    DELTA_DIAGNOSTIC_CA_BASE64=connection.get('ca_base64', ''), DELTA_DIAGNOSTICS_REQUIRED='1',
                    DELTA_LOG_EVIDENCE_ENABLED='1')
+        document=globals().get('ONPREM_DOCUMENT')
+        if document:
+            document_hash=globals().get('ONPREM_DOCUMENT_HASH','')
+            if not re.fullmatch(r'delta-cp-onprem-bridge-[a-f0-9]{12}',document) or not re.fullmatch('[a-f0-9]{64}',document_hash):
+                raise ValueError('Invalid pinned onprem document')
+            env.update(DELTA_ONPREM_ENABLED='1',DELTA_ONPREM_DOCUMENT=document,DELTA_ONPREM_DOCUMENT_HASH=document_hash,
+                       DELTA_ONPREM_VERIFICATION=str(globals().get('VERIFICATION_MODE','0')))
         tag = datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%d%H%M%S')
         release = base / ('diagnostics-' + tag)
         release.mkdir(mode=0o700)

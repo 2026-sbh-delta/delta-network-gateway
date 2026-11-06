@@ -42,6 +42,8 @@ def prepare_exception(deps, name, result, target, state):
         else v
         for k, v in result.items()
     }
+    if result.get("failure_code"):
+        result["halt"] = safe_text(str(result.get("halt", "")) + "; 오류 코드: " + str(result["failure_code"]))
     if name.startswith("ask_"):
         return result
     ambiguous = isinstance(target, str) and target in HUMAN_GATES
@@ -139,6 +141,18 @@ def prepare_exception(deps, name, result, target, state):
                 "evidence_id": evidence_id, "source": source,
                 "summary": _bounded_summary(json.dumps(value, ensure_ascii=False), 2400),
             }]
+    if deps.options.execution_cloud == "onprem":
+        stage = next((n["detail"] for n in deps.board.snapshot()["nodes"] if n["id"] == "stage"), {})
+        facts = {k: stage[k] for k in ("platform_run_id", "execution_cloud", "platform_status",
+            "platform_step", "error_code", "cleanup", "runtime_resource", "runtime_revision") if k in stage}
+        if facts:
+            # Only bounded provenance/status fields; no arbitrary provider logs or settings.
+            observations = observations[:MAX_OBSERVATIONS - 1] + [{"evidence_id": "onprem-runtime",
+                "source": "platform-worker", "summary": _bounded_summary(json.dumps(facts, ensure_ascii=False), 2400)}]
+    if state.get("recovery_events"):
+        observations = observations[:MAX_OBSERVATIONS - 1] + [{
+            "evidence_id": "bounded-recovery", "source": "pipeline-recovery",
+            "summary": _bounded_summary(json.dumps(state["recovery_events"], ensure_ascii=False), 2400)}]
     count = state.get("diagnosis_count", 0) + 1
     service = deps.options.repo.rsplit("/", 1)[-1]
     if not isinstance(service, str) or not re.fullmatch(
@@ -243,6 +257,10 @@ class ExceptionFlow:
             "model": report.model,
             "observations": [o.model_dump(mode="json") for o in request.observations],
         }
+        prior=next(n for n in self.deps.board.snapshot()['nodes'] if n['id']=='exception-report').get('detail',{}).get('report')
+        if prior and prior.get('reference',{}).get('case_id')!=ref.case_id:
+            self.deps.board.archive('exception-report')
+            self.deps.board.add_detail('exception-review',recovery_plan=None)
         self.deps.board.add_detail("exception-report", report=data)
         self.deps.board.add_detail("exception-review", diagnostic_report=data)
         self.deps.board.update(

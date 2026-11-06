@@ -1,5 +1,7 @@
 # Delta network gateway
 
+2026-11-06 온프레미스 실행·복구 AWS 연결 진행: 기존 Worker 큐/잠금/정리를 고정 SSM 문서로 연결하고 대상 선택·제한 복구·사람 재검사·이전 보고서 보존을 이식했다. 실제 서버의 후속 운영 배포/ECR 변경도 보존해 통합 중이다. [범위·설계·검증](ai-dlc/onprem-runtime.md)
+
 2026-11-06 사용자 AWS 진단·중앙 로그 근거 릴리스 완료: 실제 새 SAST15파일→GCP FE/BE staging→DAST XSS재현1→자동 로그(실행8/GCP40·미해석19)→실제Claude→보고서·화면을 검증했다. AI319+pipeline/orchestrator144개 통과, 고정3그룹 조회 정책1건 추가/최종No changes, 기존28실행 보존·이번실행stop/lease해제. 전체 DB/DNS 이전·현재runtime의onprem복구 연결은 남아 있다. [설계·실제 검증·남은 범위](ai-dlc/ai-aws-readiness.md)
 
 2026-11-06 진단·보고서 실제 콘솔 통합: 최신 main의 FE/BE 묶음·수정 재검증·운영 release 계약을 보존하고 예외 분석→보고서→사람 확인을 이식했다. 새 실제 SAST/DAST 실행8f177a83과 실제 Claude 분석·공개 인증 다운로드·브라우저 화면·재시작 후 보고서 보존을 확인했다. 회귀136개 통과, 런타임 이미지5a67fb9 배포 완료, 이전 기록27개/설정/로그 보존. 소스는 별도 codex/orchestrator-diagnostics-ui의 로컬 커밋이며 main 병합은 아직이다. [통합·기능·남은 작업](ai-dlc/orchestrator-diagnostics-ui.md)

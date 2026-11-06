@@ -2,14 +2,18 @@
 
 환경 변수: ORCH_STATE_DIR, JENKINS_PLATFORM_PASSWORD, DELTA_SAST_TOKEN, DAST_PLATFORM_TOKEN, DELTA_STAGING_TOKEN(조회),
 DELTA_IMAGE_REPO(선택), DELTA_INTERNAL_ZONE(선택),
-DELTA_CUTOVER(선택, JSON: 서비스 도메인 전환 설정), CLOUDFLARE_API_TOKEN(선택: 해당 zone DNS 편집만)
+DELTA_CUTOVER(선택, JSON: 서비스 도메인 전환 설정), CLOUDFLARE_API_TOKEN(선택: 해당 zone DNS 편집만),
+DELTA_RELEASE_TARGETS(선택, JSON: 운영 대상 인벤토리 {target_id: 항목}), DELTA_RELEASE_SIGNING_KEY_B64(선택: Ed25519 PEM, base64),
+DELTA_ECR_IMAGE_REPO(선택: 빌드 묶음의 ECR 사본 저장소)
 """
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 import threading
+import uuid
 from collections.abc import Callable
 from pathlib import Path
 from dataclasses import replace
@@ -30,6 +34,19 @@ def cutover_config() -> CutoverConfig | None:
     return CutoverConfig(**json.loads(raw)) if raw else None
 
 
+def release_targets() -> dict[str, Any]:
+    """운영 대상 인벤토리(비밀값 없음). 화면의 대상 선택과 승인 설정 해시의 기준이다."""
+    raw = os.environ.get("DELTA_RELEASE_TARGETS")
+    value = json.loads(raw) if raw else {}
+    return value if isinstance(value, dict) else {}
+
+
+def release_signing_key() -> bytes | None:
+    """운영 승인 서명 개인키(Ed25519 PEM). env 파일 한 줄에 넣으려고 base64 로 감싼 값을 푼다."""
+    raw = os.environ.get("DELTA_RELEASE_SIGNING_KEY_B64", "")
+    return base64.b64decode(raw) if raw else None
+
+
 def platform_run(options: Options, store_dir: Path, run_id: str | None) -> Run:
     zone = os.environ.get("DELTA_INTERNAL_ZONE", "cp.internal")
     token = os.environ.get("CLOUDFLARE_API_TOKEN")
@@ -47,6 +64,25 @@ def platform_run(options: Options, store_dir: Path, run_id: str | None) -> Run:
     if os.environ.get("DELTA_LOG_EVIDENCE_ENABLED") == "1":
         from delta_pipeline.cloudwatch_evidence import CloudWatchEvidence
         evidence = CloudWatchEvidence(store_dir / "log-evidence")
+    if options.execution_cloud == 'onprem':
+        if os.environ.get('DELTA_ONPREM_ENABLED')!='1' or not options.onprem_build_id:
+            raise ServiceUnavailable('온프레미스 연결과 등록된 빌드를 확인하세요')
+        from delta_pipeline.onprem_ssm import WorkerRpc,RemoteOnprem
+        from delta_pipeline.registered_build import RegisteredBuild
+        rpc=WorkerRpc();value=rpc.call('context',build_id=options.onprem_build_id)
+        artifact=RegisteredBuild.from_snapshot(value['build'],service=value['service'])
+        artifact.assert_request(options.repo,options.commit)
+        run_id=run_id or uuid.uuid4().hex
+        class NativeSast(Sast):
+            def start(self,key,repo,commit):
+                identifier=str(uuid.uuid5(uuid.NAMESPACE_URL,'delta-onprem/'+key))
+                return super().start(identifier,repo,commit)
+        return Run(options,run_id=run_id,store_dir=store_dir,build_jenkins=artifact,deploy_jenkins=artifact,
+            sast=NativeSast(f'http://sast.{zone}:8790',os.environ.get('DELTA_SAST_TOKEN','')),
+            dast=Dast(f'http://dast.{zone}:8765',os.environ.get('DAST_PLATFORM_TOKEN','')),
+            staging=Staging(f'http://jenkins.{zone}:8091',os.environ.get('DELTA_STAGING_TOKEN','')),
+            image_repo=artifact.image.rsplit('@',1)[0],diagnostic=diagnostic,evidence=evidence,
+            onprem=RemoteOnprem(rpc,artifact.build_id,graph_id=run_id,state_dir=store_dir))
     return Run(options,
                sast=Sast(f"http://sast.{zone}:8790", os.environ.get("DELTA_SAST_TOKEN", "")),
                # Host 가 DAST_INTERNAL_HOSTS(dast.cp.internal:8765)와 맞아야 플랫폼 토큰이 통한다
@@ -57,7 +93,12 @@ def platform_run(options: Options, store_dir: Path, run_id: str | None) -> Run:
                staging=Staging(f"http://jenkins.{zone}:8091", os.environ.get("DELTA_STAGING_TOKEN", "")),
                image_repo=os.environ.get("DELTA_IMAGE_REPO", IMAGE_REPO), store_dir=store_dir, run_id=run_id,
                diagnostic=diagnostic, evidence=evidence,
-               cloudflare=Cloudflare(token) if token else None, cutover=cutover_config() if options.cutover else None)
+               cloudflare=Cloudflare(token) if token else None, cutover=cutover_config() if options.cutover else None,
+               # 운영 배포(환경별 VM 생성)는 사람 승인 서명 뒤 Jenkins delta-release 가 한다
+               release_jenkins=Jenkins(jenkins, "platform", password, job="delta-release") if options.release_target else None,
+               release_signing_key=release_signing_key(),
+               release_config=release_targets().get(options.release_target) if options.release_target else None,
+               ecr_image_repo=os.environ.get("DELTA_ECR_IMAGE_REPO", ""))
 
 
 class Pipelines:
@@ -81,11 +122,12 @@ class Pipelines:
     def running(self) -> bool:
         return self._thread is not None and self._thread.is_alive()
 
-    def start(self, repo: str, commit: str, *, cutover: bool = False, branch: str = "") -> str:
+    def start(self, repo: str, commit: str, *, cutover: bool = False, branch: str = "", execution_cloud='gcp', onprem_build_id=None, assistance=False, release_target=None) -> str:
         with self._lock:
             if self.running():
                 raise RuntimeError("이미 실행 중인 파이프라인이 있습니다(스테이징은 하나뿐)")
-            return self._launch(Options(repo, commit, cutover=cutover, branch=branch))
+            return self._launch(Options(repo, commit, cutover=cutover, branch=branch,
+                execution_cloud=execution_cloud,onprem_build_id=onprem_build_id,assistance=assistance,release_target=release_target))
 
     def answer(self, run_id: str, value: str, case_id: str | None = None) -> bool:
         return bool(self.run and self.run.run_id == run_id and self.run.answer(value, case_id))

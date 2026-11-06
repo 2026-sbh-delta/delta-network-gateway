@@ -46,8 +46,8 @@ class Run:
                  probe: Callable[..., tuple[int, str]] | None = None,
                  resolve: Callable[[str], str | None] | None = None, now: Callable[[], float] | None = None,
                  release_jenkins: JenkinsClient | None = None, release_signing_key: bytes | None = None,
-                 release_config: dict[str, Any] | None = None,
-                 diagnostic: Any = None, report_dir: Path | None = None, evidence: Any = None) -> None:
+                 release_config: dict[str, Any] | None = None, ecr_image_repo: str = "",
+                 diagnostic: Any = None, report_dir: Path | None = None, evidence: Any = None, onprem: Any = None) -> None:
         self.run_id = run_id or uuid.uuid4().hex
         if diagnostic is not None:
             options = replace(options, diagnostics=True)
@@ -55,17 +55,34 @@ class Run:
         (store_dir / BOARD_DIR).mkdir(parents=True, exist_ok=True)
         self._board = Board(store_dir / BOARD_DIR / f"{self.run_id}.json", options, self.run_id)
         self._store_dir = store_dir
+        if options.execution_cloud == 'onprem':
+            self._board.update('stage',label='온프레미스 실행',owner='기존 AWS Worker · k3s')
+            if onprem is not None and hasattr(onprem,'bind_board'):onprem.bind_board(self._board)
+        self._cancelled = threading.Event()
+        if any(n["id"] == "result" and n["detail"].get("cancel_requested") for n in self._board.snapshot()["nodes"]):
+            self._cancelled.set()
+        from delta_pipeline.notifications import Inbox
+        self.inbox = Inbox(store_dir / "notifications") if options.assistance else None
         self._deps = Deps(run_id=self.run_id, options=options, board=self._board, sast=sast, dast=dast,
                           build_jenkins=build_jenkins, deploy_jenkins=deploy_jenkins, staging=staging,
                           image_repo=image_repo, sleep=sleep, cloudflare=cloudflare, cutover=cutover,
-                          diagnostic=diagnostic, evidence=evidence, report_dir=report_dir or store_dir / "reports",
+                          diagnostic=diagnostic, evidence=evidence, onprem=onprem,
+                          cancelled=self._cancelled.is_set, inbox=self.inbox, report_dir=report_dir or store_dir / "reports",
                           release_jenkins=release_jenkins, release_signing_key=release_signing_key, release_config=release_config,
+                          ecr_image_repo=ecr_image_repo,
                           **{k: v for k, v in (("probe", probe), ("resolve", resolve), ("now", now)) if v})
         self._waiting = False
         self._waiting_case = None
         self._answer_lock = threading.Lock()
         self._answer: str | None = None
         self._answered = threading.Event()
+
+    def cancel(self):
+        if self.options.execution_cloud != "onprem":
+            return False
+        self._board.add_detail("result", cancel_requested=True)
+        self._cancelled.set()
+        return True
 
     def snapshot(self) -> dict[str, Any]:
         return self._board.snapshot()
@@ -128,6 +145,8 @@ class Run:
         deadline = time.time() + DECISION_DEADLINE_SECONDS
         try:
             while time.time() < deadline:
+                if self._cancelled.is_set():
+                    return "stop"
                 if self._answered.wait(timeout=DECISION_POLL_SECONDS):
                     return self._answer or "stop"
             raise TimeoutError("사람 확인 시간이 지났다")

@@ -29,11 +29,11 @@
     // 조치 루프(1-B): DAST 재현 → 사람이 '수정 적용' → 수정안 PR → 그 커밋으로 빌드부터 2차(재검증)
     T("fix", "AI 수정 · PR", 690, -150, { icon: "spark", ai: true, tool: "delta-dast 수정 에이전트", desc: "DAST 가 재현하자마자 SAST 코드 경로와 재현 증거로 수정안을 만들어 둡니다. 사람이 DAST 승인 단계에서 '수정 적용'을 고르면 수정 브랜치·PR 을 올리고, 그 커밋으로 빌드부터 다시 돌아 같은 항목을 재검증합니다(1회)." }),
     // 운영 반영
-    T("prod_deploy", "운영 배포", 1580, 116, { icon: "cloud", mock: true, tool: "운영 배포 도구 · 승인 토큰", desc: "검증한 같은 digest 를 GCP 운영에 배포합니다. 서명한 승인 토큰이 있어야 진행합니다. (2단계)" }),
-    T("prod_verify", "운영 검증", 1850, 116, { icon: "check", mock: true, tool: "운영 원본 직접 확인", desc: "GCP 운영 진입점이 서비스 도메인 요청에 정상 응답하는지 봅니다. (2단계)" }),
-    T("cutover", "서비스 도메인 전환", 2120, 116, { icon: "shift", mock: true, tool: "Cloudflare DNS 전용 CNAME", desc: "사람 승인 뒤 CNAME 을 AWS → GCP 로 바꾸고, 공개 DNS·실제 응답으로 확인한 뒤 TTL 만큼 AWS 를 유지합니다. 실패하면 되돌립니다." }),
-    { id: "end", label: "이전 완료", x: 2400, y: 140, w: 120, h: 50, kind: "pill", icon: "flag", mock: true },
+    T("release", "운영 배포 · 검증", 1580, 116, { icon: "cloud", tool: "Jenkins delta-release · 환경별 VM", desc: "사람이 승인하면(서명 토큰) 검증한 같은 FE·BE digest 로 운영 VM 을 새로 만들고 DB 를 준비해 Compose 로 띄운 뒤, 실제 실행 이미지·헬스·PostgreSQL 18 을 확인합니다." }),
+    T("cutover", "서비스 도메인 전환", 1850, 116, { icon: "shift", mock: true, tool: "Cloudflare DNS 전용 CNAME", desc: "사람 승인 뒤 CNAME 을 AWS → GCP 로 바꾸고, 공개 DNS·실제 응답으로 확인한 뒤 TTL 만큼 AWS 를 유지합니다. 실패하면 되돌립니다." }),
+    { id: "end", label: "이전 완료", x: 2130, y: 140, w: 120, h: 50, kind: "pill", icon: "flag", mock: true },
     // 추후: 인프라 갈래
+    T("recovery", "장애 복구·재검사", 960, 730, {icon:"shift",mock:true,tool:"그래프 · 기존 Worker",desc:"동일 작업 조회 또는 정리 확인 뒤 같은 이미지 재배포를 최대 2회 수행합니다."}),
     T("exception-analysis", "예외 분석", 150, 730, { icon: "search", ai: true, mock: true, tool: "delta-ai 진단 API", desc: "실패·모호한 결과의 원인 후보를 분석합니다. 실행이나 승인을 결정하지 않습니다." }),
     T("exception-report", "분석 보고서", 420, 730, { icon: "doc", mock: true, tool: "오케스트레이터 보고서 저장소", desc: "관측 근거와 분석 결과를 저장하고 무결성을 검증합니다." }),
     T("exception-review", "실패 보고서 확인", 690, 730, { icon: "pause", mock: true, tool: "사람 확인", desc: "실패한 작업을 재실행하지 않고 보고서를 확인한 뒤 종료합니다." }),
@@ -49,12 +49,12 @@
     ["start", "prepare"], ["prepare", "build"], ["prepare", "sast"], ["build", "stage"], ["sast", "stage", { label: "합류" }],
     ["stage", "dast"], ["dast", "result", { label: "재현 없음·승인" }],
     ["dast", "fix", { from: "top", to: "right", label: "재현 · 수정 적용" }], ["fix", "build", { from: "left", to: "top", label: "2차" }],
-    ["result", "prod_deploy"], ["prod_deploy", "prod_verify"], ["prod_verify", "cutover"], ["cutover", "end"],
+    ["result", "release"], ["release", "cutover"], ["cutover", "end"],
     ["dast", "exception-analysis", { from: "bottom", to: "top", label: "진단" }],
     ["exception-analysis", "exception-report"], ["exception-report", "exception-review"],
     ["start", "read_aws", { from: "bottom", to: "left", mock: true }], ["read_aws", "map", { mock: true }], ["map", "gen_plan", { mock: true }],
     ["gen_plan", "infra_approve", { mock: true }], ["infra_approve", "apply", { mock: true }], ["apply", "db_dump", { mock: true }],
-    ["db_dump", "prod_deploy", { from: "top", to: "bottom", mock: true }],
+    ["db_dump", "release", { from: "top", to: "bottom", mock: true }],
   ];
   const ICONS = {
     play: "M5.5 3.2 L12.8 8 L5.5 12.8 Z", box: "M2.5 5 L8 2 L13.5 5 V11 L8 14 L2.5 11 Z M2.5 5 L8 8 L13.5 5 M8 8 V14",
@@ -299,7 +299,7 @@
         ${n.desc ? `<p class="desc">${esc(n.desc)}</p>` : ""}
         ${real ? `<dl class="kv"><dt>소요</dt><dd class="mono">${esc(dur)}</dd>${data && data.summary ? `<dt>결과</dt><dd>${esc(data.summary)}</dd>` : ""}</dl>` : ""}
         ${data?.detail?.diagnostic_report ? `<h3>분석 보고서</h3>${special("exception-report", {report: data.detail.diagnostic_report})}` : ""}
-        ${ask}
+        ${data?.detail?.recovery_plan ? `<h3>복구 제안 · 사람 확인 필요</h3><p>${esc(data.detail.recovery_plan.proposal.explanation)}</p>` : ""}${ask}
       </div>`;
     $("#p-rest").innerHTML = `
       ${real && data ? `<div class="p-sec"><h3>세부${data.round > 1 ? ` · ${esc(data.round)}차` : ""}</h3>${special(id, data.detail) || '<span class="hint">—</span>'}${past}</div>` : ""}
@@ -311,7 +311,7 @@
     if (!b || !board) return;
     b.disabled = true;
     const r = await fetch(`/api/pipeline/runs/${encodeURIComponent(board.run_id)}/answer`, { method: "POST",
-      headers: { "Content-Type": "application/json" }, body: JSON.stringify({ value: b.dataset.answer }) });
+      headers: { "Content-Type": "application/json" }, body: JSON.stringify({ value: b.dataset.answer, case_id: board.nodes.find(n => n.decision)?.decision?.case_id || undefined }) });
     if (!r.ok) { const j = await r.json().catch(() => ({})); alert(j.detail || "답을 보내지 못했습니다"); }
     await loadRun();
   });
@@ -716,6 +716,10 @@
       const chip = $("#health-chip");
       chip.textContent = `${up}/${total} 정상`; chip.className = up === total ? "ok" : "bad";
       $("#run-cutover-label").hidden = !s.cutover_configured;
+      const rel = $("#run-release"), picked = rel.value, releases = s.release_targets || [];
+      rel.innerHTML = `<option value="">스테이징까지만</option>` + releases.map((t) => `<option value="${esc(t.id)}">${esc(t.label)} (${esc((t.cloud || "").toUpperCase())})</option>`).join("");
+      if (releases.some((t) => t.id === picked)) rel.value = picked;
+      $("#run-release-label").hidden = !releases.length;
       if (!s.cutover_configured) $("#run-cutover").checked = false;
       const svc = s.services.map((x) => `<div><b>${esc(x.label)}</b><span>${esc(x.role)}</span><span>${x.state === "up" ? "정상" : esc(x.state)}${x.placeholder ? " · 임시 서버" : ""}${x.ms != null ? " · " + esc(x.ms) + "ms" : ""}</span></div>`).join("");
       const targets = ((s.staging || {}).targets || []).map((t) => `<dt>${esc((t.cloud || "").toUpperCase())} 스테이징</dt><dd class="mono">${esc(t.url || t.error || "—")}</dd>`).join("");
@@ -770,6 +774,26 @@
       $("#run-msg").textContent = "불러오지 못했습니다(연결 오류). [확인]을 다시 누르세요";
     }
   }
+  let onpremBuilds=[];
+  $("#run-cloud").addEventListener("change",async()=>{
+    const onprem=$("#run-cloud").value==="onprem";
+    $("#onprem-build-label").hidden=!onprem; $("#onprem-scope").hidden=!onprem;
+    $("#run-cutover").checked=false;
+    if(!onprem){clearRefs();return;}
+    $("#run-submit").disabled=true;
+    const r=await fetch("/api/onprem/builds"); const value=await r.json();
+    onpremBuilds=value.builds||[];
+    const select=$("#onprem-build");select.replaceChildren(new Option("등록된 이미지를 선택하세요",""));
+    for(const item of onpremBuilds)select.add(new Option(item.service.name+" · "+item.build.resolved_commit_sha.slice(0,7),item.build.id));
+    $("#run-msg").textContent=r.ok?"등록된 단일 이미지 실행 검사":"온프레미스 이미지 조회 실패";
+  });
+  $("#onprem-build").addEventListener("change",()=>{
+    const item=onpremBuilds.find(x=>x.build.id===$("#onprem-build").value);
+    if(!item)return;
+    $("#run-repo").value=item.service.repository_url;
+    $("#run-commit").replaceChildren(new Option(item.build.resolved_commit_sha,item.build.resolved_commit_sha));
+    $("#run-commit").disabled=false;$("#run-submit").disabled=false;
+  });
   $("#run-load").addEventListener("click", () => loadRefs(lastBuiltBranch()));
   $("#run-repo").addEventListener("input", () => { clearRefs(); $("#run-msg").textContent = ""; });
   // 주소 칸에서 Enter 는 실행이 아니라 [확인]
@@ -785,14 +809,15 @@
     ev.preventDefault();
     if (!/^[0-9a-f]{40}$/.test($("#run-commit").value)) { $("#run-msg").textContent = "커밋 목록을 불러온 뒤 커밋을 고르세요"; return; }
     const r = await fetch("/api/pipeline/runs", { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ repo: $("#run-repo").value.trim().replace(/\.git$|\/$/g, ""), commit: $("#run-commit").value, branch: $("#run-branch").value || "", cutover: $("#run-cutover").checked }) });
+      body: JSON.stringify({ repo: $("#run-repo").value.trim().replace(/\.git$|\/$/g, ""), commit: $("#run-commit").value, branch: $("#run-branch").value || "", cutover: $("#run-cutover").checked, release_target: $("#run-cloud").value === "onprem" ? null : ($("#run-release").value || null), ...($("#run-cloud").value === "onprem" ? {execution_cloud:"onprem",assistance:true,onprem_build_id:$("#onprem-build").value} : {}) }) });
     const body = await r.json().catch(() => ({}));
     $("#run-msg").textContent = r.ok ? "시작했습니다" : "거부: " + (body.detail || r.status);
     if (r.ok) { current = body.run_id; sel = null; lastKey = ""; followOn(true); $("#start").hidden = true; await loadRuns(); await loadRun(); }
   });
 
+  $("#cancel-onprem").onclick=async()=>{if(board)await fetch(`/api/pipeline/runs/${encodeURIComponent(board.run_id)}/cancel`,{method:"POST"});};
   async function poll() {
-    try { await loadRuns(); await loadRun(); } catch (e) { /* 다음 주기에 다시 */ }
+    try { await loadRuns(); await loadRun(); $("#cancel-onprem").hidden=!(board?.options?.execution_cloud==="onprem" && !board.outcome); } catch (e) { /* 다음 주기에 다시 */ }
     setTimeout(poll, board && !board.outcome ? 2000 : 8000);
   }
   new ResizeObserver(() => { lastKey = ""; }).observe(stageEl);

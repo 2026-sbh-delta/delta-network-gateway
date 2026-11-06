@@ -13,6 +13,9 @@ from langgraph.graph import END, START, StateGraph
 
 from delta_pipeline.steps import Deps, PipelineState, Steps, branch, guarded
 from delta_pipeline.exception_flow import ExceptionFlow, HUMAN_GATES, prepare_exception
+from delta_pipeline.recovery import RecoveryFlow, capture
+from delta_pipeline.assistance import Assistance
+from delta_pipeline.evidence import EvidenceCollector
 
 HALTED = "halted"
 BRANCHES = ("build_start", "sast_start")
@@ -95,6 +98,14 @@ def build_graph(deps: Deps, checkpointer: Any) -> Any:
         bodies |= {"ask_cutover": steps.ask_cutover, "cutover_check": steps.cutover_check,
                    "cutover_switch": steps.cutover_switch, "cutover_verify": steps.cutover_verify}
     routes = step_routes(deps.options.cutover, release)
+    if deps.options.execution_cloud == 'onprem':
+        bodies.pop('stage_start'); bodies.pop('stage_wait'); bodies.pop('dast_start'); bodies.pop('dast_wait')
+        for node in ('stage_start','stage_wait','dast_start','dast_wait'): routes.pop(node)
+        bodies.update(onprem_start=steps.onprem_start,onprem_wait=steps.onprem_wait)
+        routes['join']=(route_gate('ask_sast','onprem_start'),('ask_sast','onprem_start',HALTED))
+        routes['ask_sast']=(after_step('onprem_start'),('onprem_start',HALTED))
+        routes['onprem_start']=(after_step('onprem_wait'),('onprem_wait',HALTED))
+        routes['onprem_wait']=(route_gate('ask_dast','done'),('ask_dast','done',HALTED))
     graph = StateGraph(PipelineState)
     def diagnosed(name, body, route):
         execute = guarded(body)
@@ -102,6 +113,9 @@ def build_graph(deps: Deps, checkpointer: Any) -> Any:
             return execute
         def run(state):
             result = execute(state)
+            recovery = capture(deps, name, state, result)
+            if recovery is not None:
+                return recovery
             merged = {**state, **result}
             target = route(merged)
             if target == HALTED and state.get("halt") and not result.get("halt"):
@@ -111,8 +125,10 @@ def build_graph(deps: Deps, checkpointer: Any) -> Any:
 
     def diagnostic_route(route):
         def run(state):
+            if deps.options.recovery and state.get('recovery_pending'):
+                return 'recover_execution'
             if deps.options.diagnostics and state.get("diagnosis_pending"):
-                return "exception_cleanup" if state.get("halt") else "diagnose_exception"
+                return "exception_cleanup" if state.get("halt") else ('collect_exception_evidence' if deps.options.assistance else 'diagnose_exception')
             return route(state)
         return run
 
@@ -120,7 +136,14 @@ def build_graph(deps: Deps, checkpointer: Any) -> Any:
         route, targets = routes[name]
         graph.add_node(name, diagnosed(name, body, route))
         graph.add_conditional_edges(name, diagnostic_route(route), list(targets) +
-                                    (["exception_cleanup", "diagnose_exception"] if deps.options.diagnostics else []))
+            (["exception_cleanup", "diagnose_exception"] if deps.options.diagnostics else []) +
+            (['collect_exception_evidence'] if deps.options.assistance else []) +
+            (['recover_execution'] if deps.options.recovery else []))
+    if deps.options.recovery:
+        graph.add_node('recover_execution',RecoveryFlow(deps,steps).prepare)
+        graph.add_conditional_edges('recover_execution',lambda state:
+            ('collect_exception_evidence' if deps.options.assistance else 'diagnose_exception') if state.get('halt') else state['recovery_resume'],
+            ['diagnose_exception','onprem_start','onprem_wait',*(['collect_exception_evidence'] if deps.options.assistance else [])])
     # 병렬 갈래: 갈래 안에서는 멈춰도 합류(join)까지 간 뒤 한 곳에서 판단한다(동시 전이 충돌을 피한다)
     graph.add_node("build_start", guarded(steps.build_start))
     graph.add_node("build_wait", guarded(branch(steps.build_wait)))
@@ -141,15 +164,33 @@ def build_graph(deps: Deps, checkpointer: Any) -> Any:
         graph.add_node("save_diagnostic_report", flow.save)
         graph.add_node("review_failed_execution", guarded(flow.review_failure))
         graph.add_node("exception_finish", flow.finish)
-        graph.add_edge("exception_cleanup", "diagnose_exception")
+        if deps.options.assistance:
+            assistant=Assistance(deps,steps)
+            graph.add_node('collect_exception_evidence',EvidenceCollector(deps).collect)
+            graph.add_edge('exception_cleanup','collect_exception_evidence')
+            graph.add_edge('collect_exception_evidence','diagnose_exception')
+            graph.add_node('plan_assistance',assistant.plan)
+            graph.add_node('review_assistance',guarded(assistant.review))
+            graph.add_node('revalidate_assistance',assistant.revalidate)
+            graph.add_edge('plan_assistance','review_assistance')
+            graph.add_conditional_edges('review_assistance',lambda state:
+                'revalidate_assistance' if state.get('assisted_choice') in (state.get('assisted_plan') or {}).get('allowed',[]) else 'exception_finish',
+                ['revalidate_assistance','exception_finish'])
+            graph.add_conditional_edges('revalidate_assistance',lambda state:
+                'collect_exception_evidence' if state.get('diagnosis_pending') else state['manual_resume'],
+                ['collect_exception_evidence','onprem_start','onprem_wait'])
+        else:
+            graph.add_edge("exception_cleanup", "diagnose_exception")
         graph.add_edge("diagnose_exception", "save_diagnostic_report")
         def after_report(state):
             if state.get("report_failed"):
                 return HALTED
+            if deps.options.assistance and state.get('halt'):
+                return 'plan_assistance'
             resume = state.get("diagnosis_resume")
             return resume if resume in HUMAN_GATES else "review_failed_execution"
         graph.add_conditional_edges("save_diagnostic_report", after_report,
-                                    [HALTED, "review_failed_execution", *HUMAN_GATES])
+                                    [HALTED, "review_failed_execution", *HUMAN_GATES, *(['plan_assistance'] if deps.options.assistance else [])])
         graph.add_conditional_edges("review_failed_execution",
                                    lambda state: HALTED if state.get("report_failed") else "exception_finish",
                                    [HALTED, "exception_finish"])

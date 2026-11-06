@@ -27,6 +27,28 @@ class Options:
     diagnostics: bool = False
     staging_cloud: str = "gcp"
     release_target: str | None = None  # 신뢰된 인벤토리에 등록된 단일 target_id
+    execution_cloud: str = "gcp"
+    recovery: bool = False
+    recovery_limit: int = 2
+    assistance: bool = False
+    onprem_build_id: str | None = None
+
+    def __post_init__(self):
+        if type(self.assistance) is not bool:
+            raise ValueError("assistance는 bool이어야 합니다")
+        if self.assistance:
+            object.__setattr__(self, "recovery", True)
+        if type(self.recovery) is not bool or type(self.recovery_limit) is not int or not 1 <= self.recovery_limit <= 2:
+            raise ValueError("복구는 명시적 bool, 한도는 1~2 정수여야 합니다")
+        if self.recovery and self.execution_cloud != "onprem":
+            raise ValueError("자동 복구는 온프레미스 시험 그래프에서만 지원합니다")
+        if self.recovery:
+            object.__setattr__(self, "diagnostics", True)
+        if self.execution_cloud not in ("gcp", "onprem"):
+            raise ValueError("지원하지 않는 실행 대상입니다")
+        if self.execution_cloud == "onprem" and (self.cutover or self.release_target):
+            raise ValueError("온프레미스 샌드박스 검사는 DNS 전환과 별도입니다")
+
 
 
 @dataclass
@@ -44,7 +66,7 @@ class Node:
     history: list[dict[str, Any]] = field(default_factory=list)  # 이전 회차의 상태·요약·세부
 
 
-def initial_nodes(cutover: bool = False, release: bool = False, diagnostics: bool = False) -> list[Node]:
+def initial_nodes(cutover: bool = False, release: bool = False, diagnostics: bool = False, recovery: bool = False) -> list[Node]:
     """웹 갈래(명세 v1.1 6-2)의 최소 연결 노드. 판정은 그래프 분기(코드)가 한다."""
     return [
         Node("prepare", "입력 확인", "오케스트레이터"),
@@ -55,6 +77,7 @@ def initial_nodes(cutover: bool = False, release: bool = False, diagnostics: boo
         Node("fix", "수정", "delta-dast · 수정 에이전트"),
         *([Node("release", "운영 배포", "Jenkins · 사람 승인")] if release else []),
         *([Node("cutover", "서비스 도메인 전환", "Cloudflare · 사람 승인")] if cutover else []),
+        *([Node("recovery", "제한된 장애 복구", "그래프 · 기존 Worker")] if recovery else []),
         *([Node("exception-analysis", "예외 분석", "delta-ai"),
            Node("exception-report", "분석 보고서", "오케스트레이터"),
            Node("exception-review", "실패 보고서 확인", "사람")] if diagnostics else []),
@@ -71,13 +94,13 @@ class Board:
     def __init__(self, path: Path, options: Options, run_id: str) -> None:
         self._path, self._options, self._run_id = path, options, run_id
         self._lock = threading.Lock()
-        self._nodes = {node.id: node for node in initial_nodes(options.cutover, options.release_target is not None, options.diagnostics)}
+        self._nodes = {node.id: node for node in initial_nodes(options.cutover, options.release_target is not None, options.diagnostics, options.recovery)}
         self._outcome: str | None = None
         self._started_at = time.time()
         if path.is_file():
             saved = json.loads(path.read_text(encoding="utf-8"))
             self._nodes = {item["id"]: Node(**item) for item in saved["nodes"]}
-            for node in initial_nodes(options.cutover, options.release_target is not None, options.diagnostics):
+            for node in initial_nodes(options.cutover, options.release_target is not None, options.diagnostics, options.recovery):
                 self._nodes.setdefault(node.id, node)
             self._outcome, self._started_at = saved["outcome"], saved["started_at"]
         else:
@@ -95,6 +118,12 @@ class Board:
     def snapshot(self) -> dict[str, Any]:
         with self._lock:
             return self._payload()
+
+    def archive(self, node_id):
+        with self._lock:
+            node=self._nodes[node_id]
+            node.history.append({k:v for k,v in asdict(node).items() if k!='history'})
+            self._save()
 
     def update(self, node_id: str, **fields: Any) -> None:
         with self._lock:
