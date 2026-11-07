@@ -8,6 +8,7 @@ export default defineConfig({
     "workflow-planning.spec.ts",
     "deployment.spec.ts",
     "application-flow.spec.ts",
+    "deployed-environments.spec.ts",
     "observability.spec.ts",
     "presentation.spec.ts",
     "release.spec.ts",

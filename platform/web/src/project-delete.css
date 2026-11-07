@@ -17,7 +17,7 @@
   flex-shrink: 0;
   color: #ad4141;
   border-color: #e9caca;
-  font-size: 0.8rem;
+  font-size: var(--text-small);
 }
 .project-delete-trigger:hover {
   color: #8a2424;
@@ -44,7 +44,7 @@
 }
 .delete-project-eyebrow {
   color: #8c6470;
-  font-size: 0.75rem;
+  font-size: var(--text-small);
 }
 .project-delete-dialog h2 {
   margin: 12px 0 16px;
@@ -63,12 +63,12 @@
   font-size: 0.88rem;
 }
 .delete-project-boundary {
-  color: #6b788e;
+  color: var(--muted);
 }
 .project-delete-dialog label {
   display: block;
   margin: 24px 0 8px;
-  font-size: 0.83rem;
+  font-size: var(--text-small);
 }
 .project-delete-dialog input {
   width: 100%;

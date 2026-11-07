@@ -15,7 +15,13 @@ export type Environment = {
   cloud: "aws" | "gcp" | "onprem";
   region: string;
   version: string | null;
+  account_id?: string | null;
+  gcp_project?: string | null;
+  instances?: { id: string; name: string; zone?: string | null }[];
+  database_profile_id?: string | null;
+  service_url?: string | null;
   runtime_registered?: boolean;
+  runtime_status?: string | null;
 };
 export type Observability = {
   // Optional public read contract; absent in the current API.

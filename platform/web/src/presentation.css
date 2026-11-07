@@ -1,11 +1,7 @@
 /* Shared result states remain in style.css; this file defines the presentation shell. */
 :root {
-  color: #1d2a40;
-  background: #f5f7fb;
-  --accent: #345ee8;
-  --ink: #162339;
-  --muted: #63718a;
-  --border: #e1e7f0;
+  color: var(--ink);
+  background: var(--canvas);
 }
 button,
 input,
@@ -31,7 +27,7 @@ a:focus-visible,
 input:focus-visible,
 select:focus-visible,
 summary:focus-visible {
-  outline: 3px solid #7799ff;
+  outline: 3px solid var(--focus);
   outline-offset: 4px;
 }
 button svg {
@@ -54,8 +50,8 @@ small {
   color: var(--muted);
 }
 .eyebrow {
-  color: #677b9c;
-  font-size: 0.7rem;
+  color: var(--muted);
+  font-size: var(--text-small);
   letter-spacing: 0.13em;
 }
 h1 {
@@ -94,7 +90,7 @@ h2 {
 }
 .shell-brand small {
   display: block;
-  font-size: 0.54rem;
+  font-size: var(--text-small);
   letter-spacing: 0.16em;
   font-weight: 500;
   color: #95a7c3;
@@ -115,7 +111,7 @@ h2 {
 }
 .sidebar-context label {
   margin: 0;
-  font-size: 0.72rem;
+  font-size: var(--text-small);
   color: #9caecb;
   gap: 8px;
 }
@@ -128,7 +124,7 @@ h2 {
   border: 1px solid #31415b;
   border-radius: 8px;
   padding: 11px 9px;
-  font-size: 0.83rem;
+  font-size: var(--text-small);
 }
 .sidebar-context select option {
   color: #ecf1fb;
@@ -155,7 +151,7 @@ h2 {
   .sidebar-context select option {
     padding: 10px;
     border-radius: 5px;
-    font-size: 0.83rem;
+    font-size: var(--text-small);
     overflow-wrap: anywhere;
   }
   .sidebar-context select option:hover,
@@ -170,7 +166,7 @@ h2 {
 }
 .sidebar-label {
   padding: 0 26px 12px;
-  font-size: 0.63rem;
+  font-size: var(--text-small);
   letter-spacing: 0.14em;
   color: #899bb8;
 }
@@ -202,8 +198,8 @@ h2 {
 .sidebar-nav button small {
   margin-left: auto;
   color: inherit;
-  opacity: 0.7;
-  font-size: 0.68rem;
+  opacity: 1;
+  font-size: var(--text-small);
 }
 .sidebar-bottom {
   margin-top: auto;
@@ -214,7 +210,7 @@ h2 {
 }
 .sidebar-guide > span {
   display: block;
-  font-size: 0.68rem;
+  font-size: var(--text-small);
   color: #91a5c7;
   margin-bottom: 10px;
 }
@@ -225,7 +221,7 @@ h2 {
   line-height: 1.75;
 }
 .sidebar-guide p {
-  font-size: 0.75rem;
+  font-size: var(--text-small);
   color: #99abc6;
   margin: 10px 0 0;
 }
@@ -243,7 +239,7 @@ h2 {
 }
 .shell-account strong {
   display: block;
-  font-size: 0.77rem;
+  font-size: var(--text-small);
   font-weight: 500;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -252,13 +248,13 @@ h2 {
 .shell-account small {
   display: block;
   color: #93a6c4;
-  font-size: 0.65rem;
+  font-size: var(--text-small);
 }
 .shell-account button {
   color: #c2cde0;
   background: none;
   border: 0;
-  font-size: 0.66rem;
+  font-size: var(--text-small);
   padding: 6px 0;
 }
 .account-avatar {
@@ -269,15 +265,15 @@ h2 {
   height: 28px;
   display: grid;
   place-items: center;
-  font-size: 0.74rem;
+  font-size: var(--text-small);
   flex-shrink: 0;
 }
 .shell-body {
   min-width: 0;
 }
 .shell-topbar {
-  height: 72px;
-  padding: 0 40px;
+  min-height: 76px;
+  padding: 12px 40px;
   display: flex;
   align-items: center;
   gap: 16px;
@@ -288,8 +284,10 @@ h2 {
   display: flex;
   align-items: center;
   gap: 13px;
-  font-size: 0.8rem;
-  color: #7b89a0;
+  min-width: 0;
+  flex-wrap: wrap;
+  font-size: var(--text-small);
+  color: var(--muted);
 }
 .breadcrumbs strong {
   color: #34425b;
@@ -298,7 +296,7 @@ h2 {
 .shell-context-label {
   margin-left: auto;
   padding: 5px 12px;
-  font-size: 0.74rem;
+  font-size: var(--text-small);
   border: 1px solid var(--border);
   border-radius: 6px;
   color: var(--muted);
@@ -331,25 +329,28 @@ h2 {
 .drawer-trigger {
   display: grid;
   place-items: center;
+  min-width: 44px;
+  flex-shrink: 0;
   padding: 9px;
   border: 0;
   background: #f1f4fa;
 }
 .shell-footer {
   display: flex;
+  flex-wrap: wrap;
   gap: 16px;
   align-items: center;
   max-width: 1440px;
   margin: auto;
   padding: 0 40px 28px;
-  color: #7b89a0;
-  font-size: 0.72rem;
+  color: var(--muted);
+  font-size: var(--text-small);
   border: 0;
 }
 .shell-footer strong {
-  font-size: 0.67rem;
+  font-size: var(--text-small);
   letter-spacing: 0.13em;
-  color: #74839c;
+  color: var(--muted);
 }
 .page-heading,
 .detail-heading {
@@ -366,12 +367,13 @@ h2 {
 }
 .panel {
   border-color: var(--border);
-  padding: 26px;
-  box-shadow: 0 2px 5px #172b4d03;
+  min-width: 0;
+  padding: 28px;
+  box-shadow: 0 4px 16px #172b4d08;
   border-radius: 12px;
 }
 .panel-top button {
-  font-size: 0.82rem;
+  font-size: var(--text-small);
 }
 .workspace-journey {
   display: grid;
@@ -384,7 +386,7 @@ h2 {
   background: linear-gradient(115deg, #eef3ff 0%, #f8faff 64%);
 }
 .journey-copy .eyebrow {
-  color: #4f6fc4;
+  color: #3a5fa9;
 }
 .journey-copy h2 {
   font-size: 1.65rem;
@@ -393,8 +395,8 @@ h2 {
   line-height: 1.45;
 }
 .journey-copy p {
-  font-size: 0.86rem;
-  color: #687c9c;
+  font-size: var(--text-small);
+  color: var(--muted);
   margin: 0;
 }
 .journey-steps {
@@ -414,9 +416,12 @@ h2 {
   background: #ffffffd9;
   padding: 15px 18px;
 }
+.journey-steps li > div {
+  min-width: 0;
+}
 .journey-steps li > span {
-  font-size: 0.76rem;
-  color: #6280cd;
+  font-size: var(--text-small);
+  color: #3a5fa9;
   font-variant-numeric: tabular-nums;
 }
 .journey-steps strong {
@@ -425,8 +430,8 @@ h2 {
   color: #2b3f65;
 }
 .journey-steps small {
-  font-size: 0.72rem;
-  color: #7988a2;
+  font-size: var(--text-small);
+  color: var(--muted);
 }
 .journey-steps svg {
   margin-left: auto;
@@ -449,8 +454,9 @@ h2 {
   box-shadow: 0 3px 12px #375db509;
 }
 .service-icon {
+  flex-shrink: 0;
   background: #eef2ff;
-  color: #4f6cd1;
+  color: #345acb;
   border-radius: 10px;
 }
 .service-text strong {
@@ -458,14 +464,14 @@ h2 {
   color: #273750;
 }
 .service-text small {
-  color: #7e8ba1;
+  color: var(--muted);
 }
 .ref {
-  color: #687893;
+  color: var(--muted);
   background: #f3f5f9;
   padding: 4px 10px;
   border-radius: 5px;
-  font-size: 0.73rem;
+  font-size: var(--text-small);
 }
 .arrow {
   color: #8798b6;
@@ -475,12 +481,12 @@ h2 {
   color: #526da9;
 }
 .back {
-  color: #687c9a;
+  color: var(--muted);
   margin-bottom: 20px;
 }
 .detail-heading a {
-  color: #7585a0;
-  font-size: 0.84rem;
+  color: var(--muted);
+  font-size: var(--text-small);
   overflow-wrap: anywhere;
 }
 .service-overview {
@@ -503,6 +509,7 @@ h2 {
 .overview-facts > div {
   padding: 12px 0;
   display: flex;
+  flex-wrap: wrap;
   gap: 15px;
   justify-content: space-between;
   border-bottom: 1px solid var(--border);
@@ -516,6 +523,7 @@ h2 {
 }
 .section-heading {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   margin: 32px 0 16px;
@@ -525,8 +533,8 @@ h2 {
   margin: 0;
 }
 .section-heading span {
-  font-size: 0.8rem;
-  color: #7a89a2;
+  font-size: var(--text-small);
+  color: var(--muted);
 }
 .next-actions {
   display: grid;
@@ -542,6 +550,7 @@ h2 {
   text-align: left;
   padding: 24px;
   min-height: 210px;
+  min-width: 0;
   border-color: var(--border);
   border-radius: 12px;
 }
@@ -555,15 +564,15 @@ h2 {
   font-size: 1.08rem;
 }
 .next-action > span:not(.action-index):not(.action-arrow) {
-  font-size: 0.82rem;
+  font-size: var(--text-small);
   color: var(--muted);
 }
 .action-index {
   position: absolute;
   top: 24px;
   right: 22px;
-  color: #94a3be;
-  font-size: 0.75rem;
+  color: var(--muted);
+  font-size: var(--text-small);
 }
 .action-arrow {
   margin-top: auto;
@@ -571,8 +580,8 @@ h2 {
   align-self: flex-end;
 }
 .overview-note {
-  font-size: 0.78rem;
-  color: #71829d;
+  font-size: var(--text-small);
+  color: var(--muted);
   margin: 22px 0;
 }
 .work-stage-heading {
@@ -582,7 +591,7 @@ h2 {
   margin: 24px 0 18px;
 }
 .work-stage-heading > span {
-  color: #4d6ece;
+  color: #345bb8;
   background: #e9efff;
   border: 1px solid #d9e2fb;
   border-radius: 8px;
@@ -590,19 +599,19 @@ h2 {
   height: 36px;
   display: grid;
   place-items: center;
-  font-size: 0.85rem;
+  font-size: var(--text-small);
 }
 .work-stage-heading h2 {
   margin: 0;
 }
 .work-stage-heading p {
   color: var(--muted);
-  font-size: 0.8rem;
+  font-size: var(--text-small);
   margin: 2px 0 0;
 }
 .technical-details summary {
-  color: #5e7293;
-  font-size: 0.85rem;
+  color: var(--muted);
+  font-size: var(--text-small);
   font-weight: 600;
   cursor: pointer;
 }
@@ -624,9 +633,9 @@ h2 {
 .build-tabs button {
   background: transparent;
   border-color: transparent;
-  color: #71819b;
+  color: var(--muted);
   padding: 10px 18px;
-  font-size: 0.87rem;
+  font-size: var(--text-small);
 }
 .build-tabs button[aria-pressed="true"] {
   color: #345bd3;
@@ -635,9 +644,9 @@ h2 {
   font-weight: 650;
 }
 .build-tabs button span {
-  font-size: 0.72rem;
+  font-size: var(--text-small);
   margin-right: 9px;
-  opacity: 0.7;
+  opacity: 1;
 }
 .build-result {
   border-color: #dce5f5;
@@ -699,7 +708,7 @@ h2 {
   padding: 0;
   border: 0;
   margin: 0;
-  width: min(300px, 86vw);
+  width: min(320px, 86vw);
   max-width: none;
   height: 100dvh;
   max-height: none;
@@ -729,8 +738,8 @@ h2 {
   position: absolute;
   right: 10px;
   top: 10px;
-  width: 32px;
-  height: 32px;
+  width: 44px;
+  height: 44px;
   border: 0;
   padding: 0;
   background: #22324b;
@@ -757,12 +766,12 @@ h2 {
 }
 @media (max-width: 700px) {
   .shell-topbar {
-    padding: 0 18px;
-    height: 64px;
+    padding: 10px 18px;
+    min-height: 64px;
     gap: 12px;
   }
   .breadcrumbs {
-    font-size: 0.76rem;
+    font-size: var(--text-small);
     gap: 9px;
   }
   .breadcrumbs > span:first-child,
@@ -775,7 +784,7 @@ h2 {
   }
   .shell-footer {
     padding: 0 18px 24px;
-    font-size: 0.66rem;
+    font-size: var(--text-small);
     gap: 10px;
   }
   .page-heading,
@@ -787,7 +796,7 @@ h2 {
     font-size: 1.9rem;
   }
   .page-heading p {
-    font-size: 0.85rem;
+    font-size: var(--text-small);
   }
   .workspace-journey {
     grid-template-columns: 1fr;
@@ -805,7 +814,7 @@ h2 {
     gap: 12px;
   }
   .journey-steps small {
-    font-size: 0.69rem;
+    font-size: var(--text-small);
   }
   .panel {
     padding: 20px;
@@ -833,6 +842,7 @@ h2 {
   }
   .service-overview {
     gap: 16px;
+    padding: 20px;
   }
   .next-action {
     min-height: 150px;
@@ -854,7 +864,7 @@ h2 {
   }
   .build-tabs button {
     padding: 10px 11px;
-    font-size: 0.8rem;
+    font-size: var(--text-small);
   }
   .build-tabs button span {
     margin-right: 5px;

@@ -98,6 +98,11 @@ export function AppShell({
   const firstRender = useRef(true);
   const section = sections.find((s) => s.view === route.view)!;
   const service = services.find((s) => s.id === route.serviceId);
+  const sectionTitle =
+    service?.application?.status === "succeeded" &&
+    (route.view === "overview" || route.view === "build")
+      ? "배포 환경"
+      : section.title;
   function closeDrawer() {
     dialog.current?.close();
   }
@@ -254,7 +259,7 @@ export function AppShell({
           <div className="breadcrumbs">
             <span>워크스페이스</span>
             <span aria-hidden="true">/</span>
-            <strong>{section.title}</strong>
+            <strong>{sectionTitle}</strong>
           </div>
           <span className="shell-context-label">
             {service?.name ?? "공통 작업 공간"}
