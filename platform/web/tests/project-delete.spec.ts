@@ -124,6 +124,7 @@ for (const width of [1440, 390])
         exact: true,
       }),
     ).toBeVisible();
+    await page.getByRole("button", { name: "메뉴 열기" }).click();
     await expect(
       page
         .getByRole("combobox", { name: "작업 서비스 선택" })

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # 노트북에서 실행한다: 서비스 이미지를 빌드해 그 서비스 전용 ECR에 올리고, SSM으로 그 인스턴스의 컨테이너만 교체한다.
-# 사용: AWS_PROFILE=sb deploy/platform/deploy.sh sast dast jenkins jenkins-agent orchestrator diff dashboard
+# 사용: AWS_PROFILE=sb deploy/platform/deploy.sh sast dast jenkins jenkins-agent orchestrator diff
 #       TAG=<기존 태그> deploy/platform/deploy.sh dast   (빌드 없이 그 태그로 롤백)
 set -euo pipefail
 export AWS_PROFILE="${AWS_PROFILE:-sb}"
@@ -8,7 +8,7 @@ export AWS_PAGER=""
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo="$(cd "$here/../.." && pwd)"
 tf="$repo/terraform/platform-aws"
-[ "$#" -gt 0 ] || { echo "사용: deploy.sh <서비스...> (sast dast jenkins jenkins-agent orchestrator diff dashboard)" >&2; exit 2; }
+[ "$#" -gt 0 ] || { echo "사용: deploy.sh <서비스...> (sast dast jenkins jenkins-agent orchestrator diff)" >&2; exit 2; }
 
 outputs="$(terraform -chdir="$tf" output -json)"
 out() { python3 -c "import json,sys; d=json.loads(sys.argv[1]); print(eval('d'+sys.argv[2]))" "$outputs" "$1"; }
@@ -40,7 +40,7 @@ ensure_secret() {
 # 예전 shared/staging_token은 스테이징 API가 더 이상 받지 않는다.
 for s in shared/sast_token dast/admin_password dast/session_secret dast/platform_token \
          jenkins/admin_password jenkins/platform_password jenkins/staging_read_token jenkins/staging_write_token \
-         orchestrator/admin_password orchestrator/session_secret dashboard/db_password; do
+         orchestrator/admin_password orchestrator/session_secret; do
   ensure_secret "${prefix}$s"
 done
 # 스테이징 도구 설정(비밀값 아님): 로컬 staging.json이 있으면 올린다.
@@ -84,7 +84,6 @@ port_of() {
     diff) echo 8095 ;;
     sast) echo 8790 ;;
     dast) echo 8765 ;;
-    dashboard) echo 8088 ;;
   esac
 }
 
@@ -123,7 +122,6 @@ build_spec() {
     diff) echo "linux/arm64 deploy/platform/placeholder Dockerfile" ;;   # 개발 전 임시 서버
     jenkins) echo "linux/amd64 deploy/platform/jenkins controller/Dockerfile" ;;
     jenkins-agent) echo "linux/amd64 deploy/platform/jenkins agent/Dockerfile" ;;
-    dashboard) echo "linux/arm64 . platform/Dockerfile" ;;   # 플랫폼 웹·API(빌드 경로는 저장소 루트)
     *) return 1 ;;
   esac
 }
@@ -191,9 +189,6 @@ for svc in "$@"; do
       # 화면에 보여 줄 공개 주소 묶음(JSON)은 공백·따옴표 때문에 base64로 넘긴다.
       urls_b64="$(python3 -c "import json,sys; print(__import__('base64').b64encode(json.dumps(json.loads(sys.argv[1])['app_urls']['value']).encode()).decode())" "$outputs")"
       env_args="$env_args PUBLIC_ORIGIN=$(app_url orchestrator) PUBLIC_URLS_B64=$urls_b64 NAT_IP=$(out "['nat_egress_ip']['value']")" ;;
-    dashboard)
-      orch_url="$(app_url orchestrator)"
-      env_args="$env_args PUBLIC_ORIGIN=$(app_url dashboard) ORCH_PUBLIC_HOST=${orch_url#https://}" ;;
     diff)
       script="remote-placeholder.sh"
       env_args="$env_args SERVICE=$svc PORT=$(port_of "$svc")" ;;
