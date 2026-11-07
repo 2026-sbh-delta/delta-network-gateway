@@ -22,6 +22,8 @@ locals {
     sast          = { port = 8790, instance_type = var.sast_instance_type, volume_gb = 30, llm = true, arch = "arm64" }
     dast          = { port = 8765, instance_type = var.dast_instance_type, volume_gb = 40, llm = true, arch = "arm64" }
     diff          = { port = 8095, instance_type = var.small_instance_type, volume_gb = 20, llm = true, arch = "arm64" }
+    # 대시보드 개편 시험용(플랫폼 웹·API + PostgreSQL 한 대). 로그인 없이 쓰고, 접근은 CloudFront 함수가 IP로 막는다.
+    dashboard = { port = 8088, instance_type = var.small_instance_type, volume_gb = 20, llm = false, arch = "arm64" }
   }
 
   # 서비스 사이 연결. 여기 적은 것만 열린다(그 밖은 모두 차단).
@@ -33,10 +35,11 @@ locals {
     { from = "jenkins-agent", to = "jenkins", port = 8080 },
     { from = "jenkins", to = "sast", port = 8790 },
     { from = "dast", to = "sast", port = 8790 },
-    { from = "dast", to = "jenkins", port = 8091 },         # 스테이징 도구(주소 조회)
-    { from = "orchestrator", to = "jenkins", port = 8091 }, # 스테이징 도구(배포 상태)
-    { from = "diff", to = "sast", port = 8790 },            # 통합 시험(연재님 실패 진단 연결). 시연 전 제거
-    { from = "diff", to = "dast", port = 8765 },            # 같은 시험. 토큰 없이 결과 조회(GET)만 된다. 시연 전 제거
+    { from = "dast", to = "jenkins", port = 8091 },           # 스테이징 도구(주소 조회)
+    { from = "orchestrator", to = "jenkins", port = 8091 },   # 스테이징 도구(배포 상태)
+    { from = "diff", to = "sast", port = 8790 },              # 통합 시험(연재님 실패 진단 연결). 시연 전 제거
+    { from = "diff", to = "dast", port = 8765 },              # 같은 시험. 토큰 없이 결과 조회(GET)만 된다. 시연 전 제거
+    { from = "dashboard", to = "orchestrator", port = 8080 }, # 파이프라인 화면(실행 기록 조회·승인 전달)
   ]
   link_map = { for l in local.links : "${l.from}>${l.to}:${l.port}" => l }
 
@@ -49,6 +52,7 @@ locals {
     orchestrator = { priority = 5, health_path = "/healthz", paths = [] }
     dast         = { priority = 10, health_path = "/healthz", paths = [] }
     jenkins      = { priority = 20, health_path = "/login", paths = ["/github-webhook/*"] }
+    dashboard    = { priority = 30, health_path = "/health/live", paths = [] }
   }
 }
 

@@ -21,7 +21,14 @@ import "./style.css";
 import "./presentation.css";
 import "./dashboard.css";
 import "./release.css";
+import "./theme.css";
 import { ApplicationPanel } from "./ApplicationPanel";
+import {
+  LatestRunCard,
+  PipelinePanel,
+  RunStatus,
+  useLatestRun,
+} from "./PipelinePanel";
 import {
   AppShell,
   Icon,
@@ -884,13 +891,17 @@ function Workspace({
     }
   }
   function openService(id: string) {
-    navigate(route.view, id);
+    navigate(route.view === "pipeline" ? "overview" : route.view, id);
   }
+  const latestRun = useLatestRun();
   return (
     <AppShell
       route={route}
       navigate={navigate}
       services={services}
+      status={
+        <RunStatus board={latestRun} onOpen={() => navigate("pipeline")} />
+      }
       account={
         <>
           <div className="account-avatar">
@@ -929,7 +940,9 @@ function Workspace({
           }}
         />
       )}
-      {route.view === "monitoring" && route.serviceId ? (
+      {route.view === "pipeline" ? (
+        <PipelinePanel />
+      ) : route.view === "monitoring" && route.serviceId ? (
         <ObservabilityPanel key={route.serviceId} serviceId={route.serviceId} />
       ) : route.serviceId ? (
         <Detail
@@ -944,49 +957,22 @@ function Workspace({
         <>
           <div className="page-heading">
             <div>
-              <div className="eyebrow">YOUR CLOUD, YOUR NEXT MOVE</div>
               <h1>내 서비스</h1>
-              <p>
-                {route.view === "overview"
-                  ? "서비스를 준비하고, 다음 환경으로 이어가세요."
-                  : `${sections.find((s) => s.view === route.view)?.title}를 진행할 서비스를 선택하세요.`}
-              </p>
+              {route.view !== "overview" && (
+                <p>
+                  {`${sections.find((s) => s.view === route.view)?.title}를 진행할 서비스를 선택하세요.`}
+                </p>
+              )}
             </div>
             <button className="primary" onClick={() => setRegister(true)}>
               + 서비스 등록
             </button>
           </div>
-          {route.view === "overview" && (
-            <section
-              className="workspace-journey"
-              aria-label="서비스 작업 흐름"
-            >
-              <div className="journey-copy">
-                <span className="eyebrow">ONE WORKSPACE</span>
-                <h2>
-                  준비부터 이전까지.
-                  <br />
-                  모든 단계를 한곳에서.
-                </h2>
-                <p>
-                  검사 결과를 확인하고,
-                  <br />
-                  다음 환경을 계획하세요.
-                </p>
-              </div>
-              <ol className="journey-steps">
-                {sections.slice(1).map((item, i) => (
-                  <li key={item.view}>
-                    <span>0{i + 1}</span>
-                    <div>
-                      <strong>{item.title}</strong>
-                      <small>{item.description}</small>
-                    </div>
-                    <Icon name={item.view} />
-                  </li>
-                ))}
-              </ol>
-            </section>
+          {route.view === "overview" && latestRun && (
+            <LatestRunCard
+              board={latestRun}
+              onOpen={() => navigate("pipeline")}
+            />
           )}
           {register && (
             <Register

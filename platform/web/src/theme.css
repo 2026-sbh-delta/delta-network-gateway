@@ -1,0 +1,231 @@
+/* Light theme tokens and the desktop shell (persistent white sidebar). Loaded last so it wins. */
+:root {
+  --bg: #f6f8fb;
+  --surface: #ffffff;
+  --ink: #162339;
+  --ink-2: #34425b;
+  --muted: #63718a;
+  --border: #e1e7f0;
+  --line: #d5dce8;
+  --accent: #345ee8;
+  --st-pending: #a3aec2;
+  --st-running: #345ee8;
+  --st-pass: #1f9d61;
+  --st-waiting: #e08a00;
+  --st-fail: #d93b3b;
+  --lane-web: #c92f45;
+  --lane-infra: #7b4fb0;
+  --flow: #7c3aed;
+  color: var(--ink);
+  background: var(--bg);
+  color-scheme: light;
+}
+body {
+  background: var(--bg);
+}
+
+.app-shell {
+  display: grid;
+  grid-template-columns: 248px minmax(0, 1fr);
+}
+.shell-sidebar {
+  position: sticky;
+  top: 0;
+  height: 100dvh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  color: var(--ink-2);
+}
+.drawer-trigger,
+.workspace-drawer {
+  display: none;
+}
+.shell-sidebar .shell-brand {
+  color: var(--ink);
+  padding: 24px 22px;
+}
+.shell-sidebar .shell-brand:hover {
+  background: #f3f6fb;
+}
+.shell-sidebar .shell-brand small {
+  color: var(--muted);
+}
+.shell-sidebar .brand-symbol {
+  background: var(--accent);
+  color: #fff;
+}
+.shell-sidebar .sidebar-context {
+  margin: 0 16px 22px;
+}
+.shell-sidebar .sidebar-context label {
+  color: var(--muted);
+}
+.shell-sidebar .sidebar-context select,
+.shell-sidebar .sidebar-context select option {
+  color-scheme: light;
+  color: var(--ink);
+  background: #fff;
+  border-color: var(--border);
+}
+.shell-sidebar .sidebar-label {
+  color: var(--muted);
+  padding: 0 24px 10px;
+}
+.shell-sidebar .sidebar-nav {
+  padding: 0 12px;
+  gap: 4px;
+}
+.shell-sidebar .sidebar-nav button {
+  color: var(--ink-2);
+  padding: 11px 12px;
+  border-radius: 9px;
+}
+.shell-sidebar .sidebar-nav button:hover {
+  background: #f3f6fb;
+  color: var(--ink);
+}
+.shell-sidebar .sidebar-nav button[aria-current="page"] {
+  background: #eef2fd;
+  color: var(--accent);
+  font-weight: 600;
+  box-shadow: none;
+}
+.shell-sidebar .sidebar-guide {
+  display: none;
+}
+.shell-sidebar .shell-account {
+  border-top-color: var(--border);
+}
+.shell-sidebar .shell-account small,
+.shell-sidebar .shell-account button {
+  color: var(--muted);
+}
+.shell-sidebar .account-avatar {
+  background: #eef2fd;
+  color: var(--accent);
+}
+.shell-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  height: 64px;
+}
+.shell-topbar .shell-context-label {
+  margin-left: 0;
+}
+.shell-topbar .pl-topstatus {
+  margin-left: auto;
+}
+
+/* Base palette: replace the earlier teal accents with the shared blue tokens. */
+a {
+  color: var(--accent);
+}
+.state-ok {
+  --state-color: var(--st-pass);
+}
+.state-stale {
+  --state-color: var(--st-waiting);
+}
+.state-error,
+.state-blocked {
+  --state-color: var(--st-fail);
+}
+.panel,
+.workspace-journey {
+  background: var(--surface);
+  border-color: var(--border);
+}
+
+/* Plain look: no marketing copy, no decorative chrome. */
+.eyebrow,
+.shell-footer,
+.shell-brand small {
+  display: none;
+}
+.shell-sidebar .shell-brand {
+  font-size: 1.05rem;
+  letter-spacing: 0;
+  padding: 20px 22px 18px;
+}
+.shell-sidebar .brand-symbol {
+  width: auto;
+  height: auto;
+  background: none;
+  color: var(--accent);
+  font-size: 1.3rem;
+  border-radius: 0;
+}
+.panel,
+.workspace-journey,
+.page-heading .primary,
+button {
+  border-radius: 6px;
+}
+.panel {
+  box-shadow: none;
+}
+.primary {
+  box-shadow: none;
+}
+
+/* Desktop-first; narrow windows only need to stay usable: the sidebar becomes a top menu row. */
+@media (max-width: 900px) {
+  .app-shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .shell-sidebar {
+    position: static;
+    height: auto;
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: wrap;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .shell-sidebar .sidebar-context {
+    margin: 0 12px;
+  }
+  .shell-sidebar .sidebar-nav {
+    display: flex;
+    flex-wrap: wrap;
+    padding: 6px 12px;
+  }
+  .shell-sidebar .sidebar-bottom {
+    margin: 0 0 0 auto;
+    padding: 8px 12px;
+  }
+  .shell-sidebar .shell-account {
+    border-top: 0;
+    padding-top: 0;
+  }
+}
+
+/* Pipeline view: the editor gets the whole area; the menu shrinks to an icon rail (as in Langflow). */
+.app-shell.rail {
+  grid-template-columns: 60px minmax(0, 1fr);
+}
+.app-shell.rail .nav-text,
+.app-shell.rail .sidebar-context,
+.app-shell.rail .sidebar-bottom {
+  display: none;
+}
+.app-shell.rail .shell-brand {
+  justify-content: center;
+  padding: 18px 0;
+}
+.app-shell.rail .sidebar-nav {
+  padding: 0 8px;
+}
+.app-shell.rail .sidebar-nav button {
+  justify-content: center;
+  padding: 10px 0;
+}
+.presentation-workspace.flow-workspace {
+  max-width: none;
+  min-height: 0;
+  padding: 0;
+}
