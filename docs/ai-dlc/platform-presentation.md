@@ -367,3 +367,33 @@ Runbook / Rollback:
 - readonly SSM 점검은 실제 현재 API와 Worker/DB의 ID/상태/시작 시각, 설정 해시, `/health/ready` 및 HTTPS index/자산 해시를 기준으로 한다. API UI 복구에 Worker/DB stop, 데이터 복원, 스키마 migration이나 인프라 Apply를 사용하지 않는다.
 - 실제 rollback 명령은 위 VM의 SSM에서 `python3 /opt/delta-platform/releases/ui-readability-3767fd32-da04d7835aef-7dd098217f49/operate-ui.py rollback /opt/delta-platform/releases/ui-readability-3767fd32-da04d7835aef-7dd098217f49`다. 현재 API/Compose가 이번 릴리스와 일치할 때만 이전 API와 Compose를 복원하며 Worker/DB 보존 및 readiness를 다시 확인한다. 적용 후 운영 rollback을 실행하지 않았으므로 실제 rollback 완료로 기록하지 않는다.
 - 이후 전체 배포는 main에 없는 운영 소스를 먼저 통합해야 한다. 기본 release workflow가 현재 Worker/백엔드/추가 UI를 이전 코드로 교체하지 않도록 이 릴리스의 보존 범위와 현재 소스를 확인한다.
+
+
+### U3: 마이그레이션 안내와 보안 카드 숨김 (2026-11-07 KST)
+
+- 사용자 `GuardDuty 보안 기능 대응 포함해서 UI에서 숨겨`는 기존 승인된 UI 안내 제거 작업의 후속 범위 지시다. 앞서 지정한 마이그레이션 상세 화면을 기준으로 GuardDuty/Wazuh 카드 전체와 대상별 배포 주소/사설망 안내를 화면 표시에서 제외한다.
+- Ideation: 해당 화면을 보는 서비스 운영자가 이전 대상과 결과에 집중하도록 부가 안내를 숨긴다. 성공 기준은 데스크톱/모바일에서 지정 카드와 주소 안내가 보이지 않고 기존 이전 선택/실행 기록/차분 조회/단계 결과를 사용할 수 있는 것이다. 백엔드 보안 기능, 탐지 설정, 저장된 데이터와 실제 이전 실행은 범위 밖이다.
+- Inception / Design: 별도 운영 모듈의 안정된 `data-delta-rds-evidence` marker에 CSS 표시 규칙을 적용한다. 운영 JS의 마이그레이션 주소 문단 한 곳만 AST로 확인해 제외하고 다른 바이트를 보존한다. 정식 웹 소스에도 같은 CSS를 추가한다. 사용자 지시를 기존 U1/U2 UI 변경의 후속 구현 승인으로 적용한다.
+- Implementation Plan: 현재 HTTPS 자산/읽기 응답과 컨테이너 정보를 보존하고, 작은 프론트 변경을 만든 뒤 실제 운영 번들의 변경 전후를 1440px/390px에서 비교한다. 기존 readonly 웹 bind의 host 디렉터리에 정적 파일을 준비하고 index를 원자적으로 바꾼다. API/Worker/DB 컨테이너 재생성은 필요하지 않다.
+- 초기 구현 상태: 소스 CSS와 제한된 정적 패치 생성기를 구현했고 `npm run build` 및 대상 CSS/TSX 형식 검사를 실행해 통과했다. 기존 Workload SSO 갱신도 성공했다. 운영 적용과 Git 게시/PR은 아직 실행하지 않았다. 실제 브라우저 검증 결과는 후속 기록으로 갱신한다.
+
+
+U3 Construction 검증 (2026-11-07 KST):
+
+- `npm run build`: TypeScript/Vite 통과. `node --check deploy/scripts/hide-ui-notices.mjs`와 대상 파일 Prettier 검사, `git diff --check`도 통과했다.
+- `node deploy/scripts/hide-ui-notices.mjs .runtime/ui-hide-20261107/baseline .runtime/ui-hide-20261107/patched`: 현재 운영 주소 문단 템플릿 1개만 제외하고 나머지 JS를 역변환으로 대조했다. 원래 7개 정적 자산을 모두 보존하고 CSS 1개와 JS 1개를 추가하며 index만 수정한다. 실제 모듈/보안 기능은 유지하고 카드 표시만 숨긴다.
+- `PLAYWRIGHT_BROWSERS_PATH=/private/tmp/delta-ui-playwright npx --no-install playwright test --config=../.runtime/ui-hide-20261107/playwright.config.mjs --output=../.runtime/ui-hide-20261107/test-results-complete`: 2 passed(1.6초). 운영 응답 fixture와 동일 운영 번들의 변경 전후를 1440px/390px에서 비교했다. 카드와 Wazuh 버튼, 대상별 주소 링크/사설망 안내가 UI에서 숨겨지고 기존 단계/보고서 텍스트와 대상 선택/시작 버튼 활성 조건이 동일하며 쓰기 요청 0개임을 확인했다.
+- 초기 검사 실패는 실제 클래스/역할을 잘못 지정한 선택자와 innerText/textContent 줄바꿈 비교 때문이었다. 실제 DOM을 읽어 검사 선택자와 비교 방식을 수정한 뒤 위 결과를 얻었다. 해당 실패를 PASS로 재분류하지 않는다.
+- 사전 읽기에서 기존 계획 `b793774f-be4a-4774-b3bf-95d7bbe808e5`의 실행 조회는 HTTP409 `plan_target_changed`(환경 연결 변경)를 반환했다. 그 응답도 변경 전후 동일하게 유지했으며 이번 표시 수정으로 차분 보호 규칙이나 계획을 변경하지 않는다.
+- 운영 적용은 아직이며, API/Worker/DB ID와 시작 시각, 이미지/환경/기존 mount 및 기존 env 파일 해시를 보호한 상태에서 index를 원자적으로 교체할 준비를 마쳤다. 이전 index 복구 도구와 backup을 릴리스 디렉터리에 보관한다.
+
+
+U3 Operation 실제 결과 (2026-11-07 19:16:43 KST):
+
+- `ssm send-command --cli-input-json file://.runtime/ui-hide-20261107/apply-request.json` 및 `get-command-invocation`: SSM `6f793ef7-cb35-4f0b-bd9c-fbfa7a3e6c18` Success/종료 0. 기존 readonly 웹 bind의 host 디렉터리에서 새 자산을 먼저 준비한 뒤 index만 원자적으로 교체했다.
+- 릴리스는 `/opt/delta-platform/releases/ui-hide-20261107-4d12f69972eb`다. 비공개 배포 파일 `s3://delta-platform-artifacts-616723161368/releases/ui-hide-20261107-4d12f69972eb/release.tar.gz`의 SHA256은 `3746ff1d7ff2b63f0af7beea5d1adc1f97c11b972cfe17924863437c38435c83`이다. 원래 index와 적용 스크립트/manifest/적용 결과를 같은 디렉터리에 보존했다.
+- API `4d8238d6b56e`, Worker `40042b070149`, DB `2c20a93d56b8`의 ID/시작 시각/이미지/환경/mount와 기존 env 파일 해시가 적용 전후 동일하다. 재시작 0회이며 보안 서비스 설정, API 코드, 이미지, DB/마이그레이션과 Terraform/IAM을 변경하지 않았다.
+- `capture-live.py .runtime/ui-hide-20261107/after`와 해시/응답 대조: 실제 HTTPS readiness ready, 새 HTML/JS/CSS 3개가 시험한 bytes와 일치, 기존 자산 7개가 모두 동일한 bytes/HTTP200, 서비스 ID/완료 상태 및 환경 3개의 전체 응답이 유지됐다.
+- CUA native Chrome에서 정확한 운영 migration 경로를 새로고침했다. GuardDuty 카드/Wazuh 실행 버튼과 대상별 주소 안내가 접근성 화면에서 제외됐고 기존 AWS 출발/GCP/온프레미스 선택, 전체 이전 계획, 실제 환경 차이 표 및 파이프라인 결과가 계속 표시되는 것을 확인했다. 실제 화면 스크린샷도 열어 확인했다. 이번에는 운영 상세 화면 표시를 실제로 확인했으며 과거 U2의 연결 장애 기록과 구분한다.
+- 최종 소스의 정적 패치 생성기를 새 출력 경로로 다시 실행해 배포한 manifest와 모든 변경 파일이 동일함을 확인했다. Git 게시/PR/병합 상태는 실제 Git 이력을 따른다.
+- Rollback은 SSM에서 `python3 /opt/delta-platform/releases/ui-hide-20261107-4d12f69972eb/apply.py /opt/delta-platform/releases/ui-hide-20261107-4d12f69972eb rollback`을 실행해 이전 index만 복원한다. 현재 컨테이너와 UI 해시가 이번 릴리스에 일치해야 하며 API/Worker/DB 재시작이나 데이터 복원이 필요 없다. 실제 rollback은 실행하지 않았다.

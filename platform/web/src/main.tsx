@@ -23,6 +23,7 @@ import "./dashboard.css";
 import "./release.css";
 import "./migration-diff.css";
 import "./theme.css";
+import "./ui-visibility.css";
 import { ApplicationPanel } from "./ApplicationPanel";
 import {
   LatestRunCard,

@@ -1,5 +1,7 @@
 # Delta network gateway
 
+2026-11-07 19:16:43 KST 마이그레이션 UI 숨김 반영 완료: GuardDuty/Wazuh 카드 전체와 대상별 배포 주소/사설망 안내를 프론트에서 숨겼다. 실제 Chrome 새로고침과 접근성 화면에서 숨김 및 기존 대상 선택/차분 표/파이프라인 표시를 확인했고, 데스크톱/모바일 변경 전후 검사 2개와 빌드/형식 검사를 통과했다. API/Worker/DB 재시작 0회, 기존 자산 7개와 서비스/환경 응답을 보존했다. [범위와 실제 검증](ai-dlc/platform-presentation.md#u3-마이그레이션-안내와-보안-카드-숨김-2026-11-07-kst)
+
 2026-11-07 17:38 KST platform 프론트 UI 배포 완료: main `3767fd32`의 UI 변경만 기존 운영 번들에 반영했다. 주소 안내 제거/글자 크기/대비/반응형을 적용하고 운영 HTTPS readiness, 변경 파일 3개 해시, 기존 자산 6개와 서비스/환경 보존을 확인했다. API 이미지/환경 변수/기존 Wazuh 연결을 유지한 API 컨테이너 1회 재생성만 수행했고 Worker/DB는 재시작하지 않았다. main CI 20개 및 운영 번들 기반 로컬 4개 검사를 통과했다. Chrome 연결 장애로 배포 후 화면 캡처는 완료하지 못했다. [실제 배포와 복구 절차](ai-dlc/platform-presentation.md#operation-ui-배포-승인과-운영-기능-보존-2026-11-07-kst)
 
 2026-11-07 15:21 KST ANF 기본 차단 제거 완료: 사용자 전체 범위 명시 승인으로 SID `9000000` 한 줄만 제거했다. 나머지6개 규칙과 Firewall/Endpoint/경로/DNS/ALB 설정을 보존했고 AWS ALB 두 IP의 외부 HTTPS200, Primary2/Secondary2 READY/정책 IN_SYNC 및 중앙 최종 실제 Plan No changes/종료0을 확인했다. managed89개 ID/출력22개 유지, Terraform mock76개/Python22개 통과. 443 이외의 미등록 통신도 이 규칙으로 차단하지 않는다. demo DNS는 GCP를 유지한다. Git 게시와 원격 CI 상태는 Git 이력과 실행 결과를 따른다. [승인과 실제 결과](ai-dlc/anf-board-reactivation.md#2026-11-07-후속-공통-기본-차단-규칙-제거)

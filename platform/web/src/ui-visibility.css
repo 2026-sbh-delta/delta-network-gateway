@@ -1,0 +1,4 @@
+/* The deployed evidence module uses this stable marker for its whole card. */
+#workspace-content [data-delta-rds-evidence] {
+  display: none;
+}
