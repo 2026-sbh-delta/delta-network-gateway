@@ -53,6 +53,6 @@
 - 새 이미지 digest는 `sha256:135df51d81d83fe7e8a5b21a8abc4b8d4f9bc064e2f4d0c399fa04ad3e90b120`이다.
 - 이전 컨테이너는 `delta-orchestrator-before-parallel-diff-e0c3d3a5964b`로 정지 보존했다. 상태 사본은 호스트 `/opt/delta/parallel-diff/e0c3d3a5964b/state-before`에 있다.
 - 호스트 `/opt/delta/parallel-diff/e0c3d3a5964b/rollback.py`는 현재 이미지와 미완료 실행을 확인한 뒤 이전 컨테이너를 복구한다. 배포 검증 중 이 스크립트는 설치만 했다.
-- 실제 검증 실행 `dfc73e0513544f5342262ba27cf63fb133d68b45009712a441ae0e2181101836`은 기존 성공한 수정 커밋 `45a6aee5`를 사용했다. 운영 배포와 DNS 전환 옵션은 껐다. 빌드·SAST·스테이징 통과 후 DAST 후보 0건을 실제 delta-ai가 분석했고, 사람 확인 대기에 도달했다. 후속 검증 결과는 해당 실행 기록을 따른다.
+- 실제 검증 실행 `dfc73e0513544f5342262ba27cf63fb133d68b45009712a441ae0e2181101836`은 기존 성공한 수정 커밋 `45a6aee5`를 사용했다. 운영 배포와 DNS 전환 옵션은 껐다. 빌드·SAST·스테이징 통과 후 DAST 후보 0건을 실제 delta-ai가 분석했다. 사용자가 DAST 미실행과 Diff의 미확정 항목을 이번 연결 검증에 한해 승인했고, 실행은 `unresolved`·결과 `warn`으로 종료됐다. 보안 검증 완료로 처리하지 않았다. Diff는 `needs_human`과 `review=approved`를 보존했다. 서브넷 8개·TGW 전용 두 서브넷 0개, `stage.detail.lease=released`, 활성 실행 0개와 실제 스테이징 점유 API의 빈 목록을 확인했다.
 
-DNS는 별도 세션이 담당한다. 이 배포는 기존 `DELTA_CUTOVER` 값을 그대로 보존했다.
+DNS는 별도 세션이 담당한다. 이 배포는 기존 `DELTA_CUTOVER` 값을 그대로 보존했다. 이후 읽기 전용 재확인에서 사용자 도메인 `demo.delta.mungji.com`의 런타임과 SSM 설정 v10이 일치했고, DNS·HTTPS200/GCP 응답을 확인했다. AWS 원본 HTTPS는 연결되지 않아 양방향 전환·복귀 확인은 남아 있다. 운영 배포는 대기하며, 이번 연결 검증은 DNS를 변경하지 않았다. 다른 세션의 재배포 설정 보존 스크립트 작업은 완료를 단정하지 않는다.
