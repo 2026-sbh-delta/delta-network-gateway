@@ -112,9 +112,14 @@ def test_pipeline_api_needs_login_runs_and_takes_a_human_answer(monkeypatch, tmp
         for bad in ("", "main"):
             assert client.post("/api/pipeline/runs", json={"repo": REPO, "commit": bad}, headers={"Origin": PUBLIC}).status_code == 400
         assert client.get("/api/pipeline/runs").json()["runs"] == []
-        r = client.post("/api/pipeline/runs", json=start, headers={"Origin": PUBLIC})
+        bad_project = {**start, "project_id": "not-a-project"}
+        assert client.post("/api/pipeline/runs", json=bad_project, headers={"Origin": PUBLIC}).status_code == 400
+        # 실행을 시작한 플랫폼 프로젝트는 실행 기록에 남아 목록에서 보인다(실행 동작에는 쓰지 않는다)
+        project = "61b078c3-f956-4b9b-b394-6c43324dc2af"
+        r = client.post("/api/pipeline/runs", json={**start, "project_id": project}, headers={"Origin": PUBLIC})
         assert r.status_code == 202
         run_id = r.json()["run_id"]
+        assert client.get("/api/pipeline/runs").json()["runs"][0]["options"]["project_id"] == project
         assert client.post("/api/pipeline/runs", json=start, headers={"Origin": PUBLIC}).status_code == 409
 
         def wait(cond):

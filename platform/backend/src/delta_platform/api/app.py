@@ -511,7 +511,19 @@ def create_app(settings=None, engine=None, *, dashboard=None, pipeline=None):
 
     @protected.get("/pipeline/runs")
     def pipeline_runs():
-        return pipeline.runs()
+        data = pipeline.runs()
+        # Name the project each run was started from; runs from deleted projects keep only the id.
+        names = {}
+        for run in data.get("runs", []):
+            project = (run.get("options") or {}).get("project_id")
+            if project and project not in names:
+                try:
+                    names[project] = store.service(UUID(project))["name"]
+                except (Problem, ValueError):
+                    names[project] = None
+            if project and names.get(project):
+                run["project"] = {"id": project, "name": names[project]}
+        return data
 
     @protected.get("/pipeline/options")
     def pipeline_options(branch: Annotated[str | None, Query(max_length=100)] = None):
@@ -520,7 +532,10 @@ def create_app(settings=None, engine=None, *, dashboard=None, pipeline=None):
     @protected.post("/pipeline/runs", status_code=202)
     def pipeline_start(body: PipelineStartInput, request: Request):
         key = request_key(request.headers.get("idempotency-key"))
-        return pipeline.start({"repo": settings.pipeline_repository, **body.model_dump()}, key=key)
+        start = body.model_dump(mode="json", exclude_none=True)
+        if body.project_id:
+            store.service(UUID(body.project_id))  # only a registered project can be named
+        return pipeline.start({"repo": settings.pipeline_repository, **start}, key=key)
 
     @protected.get("/pipeline/runs/{run_id}")
     def pipeline_run(run_id: str):

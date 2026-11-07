@@ -190,6 +190,12 @@ def test_start_run_uses_fixed_repository_and_passes_reasons(engine):
             ).status_code
             == 422
         )
+        # A run can only be tied to a registered project.
+        unknown = body | {"project_id": "00000000-0000-4000-8000-000000000000"}
+        missing = client.post(
+            "/api/v1/pipeline/runs", json=unknown, headers={"Idempotency-Key": "k-4"}
+        )
+        assert missing.status_code == 404
         fake.busy = True
         busy = client.post("/api/v1/pipeline/runs", json=body, headers={"Idempotency-Key": "k-3"})
         assert busy.status_code == 409 and "이미 실행 중" in busy.json()["error"]["message"]

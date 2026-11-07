@@ -42,6 +42,10 @@ class PipelineStartInput(StrictInput):
     commit: str = Field(pattern=r"^[0-9a-f]{40}$")
     cutover: bool = False
     release_target: str | None = Field(default=None, max_length=64)
+    # The platform project the run was started from (display only).
+    project_id: str | None = Field(
+        default=None, pattern=r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    )
 
 
 class PipelineAnswerInput(StrictInput):

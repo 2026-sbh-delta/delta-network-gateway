@@ -34,6 +34,7 @@ export type RunSummary = {
   options: Record<string, unknown>;
   outcome: string | null;
   started_at: number;
+  project?: { id: string; name: string }; // the platform project the run was started from
 };
 
 // "off" = not part of this run (option turned off); "mock" = not built yet.

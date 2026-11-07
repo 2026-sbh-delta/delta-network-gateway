@@ -61,7 +61,8 @@ function runLabel(r: RunSummary) {
   const state = r.outcome
     ? (OUTCOME[r.outcome]?.label ?? r.outcome)
     : "진행 중";
-  return `${when(r.started_at)} · ${branch} @ ${short(r.options.commit)} · ${state}`;
+  const project = r.project?.name ?? "프로젝트 없음";
+  return `${project} · ${when(r.started_at)} · ${branch} @ ${short(r.options.commit)} · ${state}`;
 }
 
 export function StatePill({ state }: { state: StageState }) {

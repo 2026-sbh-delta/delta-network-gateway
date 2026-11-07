@@ -460,6 +460,7 @@ export function DeploymentPanel({ serviceId }: { serviceId: string }) {
       commit: pipelineCommit,
       cutover: !!pipeline?.cutover_configured,
       release_target: gcpRelease.id,
+      project_id: serviceId,
     };
     const serialized = JSON.stringify(run);
     if (pipelineKey.current?.body !== serialized)
