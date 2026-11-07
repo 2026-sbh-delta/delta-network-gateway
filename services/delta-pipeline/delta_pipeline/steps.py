@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import re
 import time
@@ -286,7 +287,9 @@ class Steps:
         """Jenkins·SAST 작업 키. 2차는 다른 키를 써서 1차 작업을 다시 찾지 않는다."""
         round_ = state.get("round") or 1
         key = f"{self._deps.run_id}-{name}" if round_ == 1 else f"{self._deps.run_id}-r{round_}-{name}"
-        return key + (f"-recovery{state['onprem_attempt']}" if name == "onprem" and state.get("onprem_attempt") else "")
+        key += f"-recovery{state['onprem_attempt']}" if name == "onprem" and state.get("onprem_attempt") else ""
+        # Bound external IDs without losing step, round or recovery identity.
+        return hashlib.sha256(key.encode()).hexdigest() if len(key) > 64 else key
 
     def _ask(self, key: str, node_id: str, what: str, count: int, **extra: Any) -> dict[str, Any]:
         self._board.update(node_id, state="waiting", summary=f"{what}: 사람 확인 필요 (항목 {count}건)")
@@ -400,7 +403,11 @@ class Steps:
     def sast_start(self, state: PipelineState) -> dict[str, Any]:
         options, run_id = self._deps.options, self._key(state, "sast")
         self._board.update("sast", state="running", summary="소스 점검 중")
-        started = self._deps.sast.start(run_id, options.repo, self._commit(state))
+        try:
+            started = self._deps.sast.start(run_id, options.repo, self._commit(state))
+        except ServiceUnavailable as exc:
+            self._board.update("sast", state="fail", summary=str(exc))
+            raise
         if options.execution_cloud == "onprem":
             from uuid import UUID
             run_id = str(UUID(started["run_id"]))
