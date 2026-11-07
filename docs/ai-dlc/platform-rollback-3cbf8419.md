@@ -29,5 +29,12 @@
 
 ## Operation (2026-11-07 KST)
 
-- 호환 코드 운영 배포는 아직 실행하지 않았다. 기존 운영 서비스는 `/health/ready` 응답을 확인했다.
-- 배포 및 롤백 검증 결과는 실행 후 기록한다. DB downgrade, revision stamp, 운영 데이터 복원은 실행하지 않는다.
+- 사용자가 PR #79의 main 병합과 운영 배포를 요청했다. head `c8980f454ccba6caff7d3a5ebfa424765ea75102`의 검사 20개 통과와 병합 가능 상태를 재확인한 후 squash 병합했다. main은 `2862e9235ed20e194624f0d088cbf2f52c60a3be`다.
+- 직전 Release `42373243650`의 SSM 명령 `99bb1137-162e-440d-a581-517ee9e84494` 실패 로그에서 `read-runtime.py`의 `Invalid or conflicting component runtime parameter`를 확인했다. PR #79는 확인된 선택 키의 병합을 지원한다.
+- 2026-11-07 배포 전 HTTPS `/health/ready`는 HTTP 200이었다. SSM 읽기 전용 명령 `2a1fabdc-c151-49a3-9521-b89678406b9d`에서 revision `0013`, services 2, runs 8, run_events 68, reservations 0, data_migrate 1을 확인했다. 읽기 전용 명령 `bed0e877-ce6b-41d5-8a46-2411369c9115`에서 대기 또는 실행 중인 작업은 없었고, 기존 API와 Worker는 서로 다른 이미지 digest로 실행 중이었다.
+- 기존 서비스에는 Wazuh 시작 wrapper가 설치되어 있다. DB downgrade, revision stamp, 운영 데이터 복원은 이번 배포에서 수행하지 않았다.
+- 2026-11-07 `gh workflow run platform-release.yml --repo 2026-sbh-delta/delta-network-gateway --ref main` 실행. 병합 커밋 `2862e923`을 대상으로 한 [Release 42376126370](https://github.com/2026-sbh-delta/delta-network-gateway/actions/runs/42376126370)은 사전 검사 20개와 운영 배포에 성공했다. 게시된 플랫폼 이미지 digest는 `sha256:d2372d2e202c3113601436a083be37dc01841dc27c94f3e07783799518a61133`이고, SSM 배포 명령 `cb1f720e-f1a8-4090-a306-25d6d899083b`는 `Success`다.
+- 2026-11-07 22:24 KST 배포 명령이 DB 백업 `database/2026/11/07/132414-database-iydxZwiL.dump`을 생성했다. `aws s3api head-object`로 객체 크기 72281바이트와 AES256 암호화를 확인했다. 백업 복원 시험은 실행하지 않았다.
+- SSM 읽기 전용 명령 `093281c0-e77f-4c6b-a262-29e5a4582086`: API는 Wazuh overlay 이미지로 healthy, Worker는 게시된 `d2372d2e` 이미지로 running, DB는 기존 `a78d9af3` 이미지로 healthy다. 서비스와 백업 타이머는 active이고 로컬 readiness는 HTTP 200이다. revision `0013`, services 2, runs 8, run_events 68, reservations 0, data_migrate 1은 배포 전과 같다.
+- 2026-11-07 `curl` 확인: CloudFront와 사용자 도메인의 `/health/ready` 및 사용자 도메인 `/`은 모두 HTTP 200이다. 미인증 서비스 API는 HTTP 401이다. SSM 명령 `868eab3e-7c4b-4c10-b75d-f8ed87e04bdd`로 Wazuh 자산 무결성과 인증 검사를 실행해 통과했고, `c04fae00-26b1-468a-a428-4f3f426f5c40`으로 최근 Worker 로그에서 오류 문구 0건을 확인했다. 실제 새 작업 실행과 인증된 사용자 로그인 검증은 수행하지 않았다.
+- Release 진행 중 별도 PR #80, #81, #82가 main에 병합되어 원격 main이 `9cd12f5458b4dc8c6f2ac70d363bd37ecdf03e9a`로 진행됐다. 운영에 검증된 Release는 `2862e923` 기준이며 이후 병합된 플랫폼 변경의 운영 배포 여부는 이 검증에서 확인하지 않았다.
