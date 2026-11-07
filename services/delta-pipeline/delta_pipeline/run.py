@@ -22,7 +22,8 @@ from delta_pipeline.graph import build_graph
 from delta_pipeline.model import Board, Options
 from delta_pipeline.steps import CloudflareClient, CutoverConfig, DastClient, Deps, JenkinsClient, SastClient, StagingClient
 
-DECISION_DEADLINE_SECONDS = 1800
+# Human reviews may span a meeting; no answer still stops the run.
+DECISION_DEADLINE_SECONDS = 3 * 60 * 60
 DECISION_POLL_SECONDS = 0.5
 CHECKPOINT_FILE = "checkpoints.sqlite"
 BOARD_DIR = "runs"

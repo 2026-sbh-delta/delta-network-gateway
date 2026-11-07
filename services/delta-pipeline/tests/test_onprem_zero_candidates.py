@@ -1,4 +1,4 @@
-"""Native zero-candidate results follow the same scope rule as CSP staging."""
+"""Native zero-candidate results require an explicit human scope review."""
 from types import SimpleNamespace
 from uuid import UUID
 
@@ -32,13 +32,13 @@ def fixture(tmp_path):
     return Steps(deps), state, value
 
 
-def test_evidenced_zero_candidates_skip_without_human_timeout(tmp_path):
+def test_evidenced_zero_candidates_require_human_confirmation(tmp_path):
     steps, state, _ = fixture(tmp_path)
     result = onprem.wait(steps, state)
-    assert result.get('gates', {}).get('dast') == 'pass'
-    assert not result.get('pending_gate')
+    assert result.get('gates', {}).get('dast') != 'pass'
+    assert result['pending_gate']['key'] == 'dast'
     node = next(n for n in steps._board.snapshot()['nodes'] if n['id']=='dast')
-    assert node['state'] == 'skipped'
+    assert node['state'] == 'waiting'
     assert node['detail']['dast_check'] == 'not_run'
     assert node['detail']['deployment_approved'] is False
 
@@ -64,9 +64,10 @@ def test_missing_or_failed_evidence_is_not_a_zero_candidate_exception(tmp_path, 
     assert onprem.wait(steps,state).get('pending_gate')
 
 
-def test_full_onprem_graph_finishes_without_requesting_approval_for_zero_targets(tmp_path):
+def test_full_onprem_graph_requires_review_and_honors_stop_for_zero_targets(tmp_path):
     from fakes import FakeSast, FakeStaging, build_jenkins, deploy_jenkins, IMAGE_REPO
-    from test_flow import _execute
+    import threading
+    import time
     from delta_pipeline.run import Run
 
     _, _, value = fixture(tmp_path)
@@ -89,9 +90,28 @@ def test_full_onprem_graph_finishes_without_requesting_approval_for_zero_targets
         execution_cloud='onprem', assistance=True), sast=Source(targets=0), dast=object(),
         build_jenkins=build_jenkins(), deploy_jenkins=deploy_jenkins(), staging=FakeStaging(),
         image_repo=IMAGE_REPO, store_dir=tmp_path/'graph', onprem=Native(), sleep=lambda _:None)
-    snapshot = _execute(run)
-    assert snapshot['outcome'] == 'verified'
+    thread = threading.Thread(target=run.execute, daemon=True)
+    thread.start()
+    try:
+        deadline = time.monotonic() + 5
+        confirmed = False
+        while thread.is_alive() and time.monotonic() < deadline:
+            decisions = [n['decision'] for n in run.snapshot()['nodes'] if n.get('decision')]
+            if decisions:
+                decision = decisions[0]
+                confirmed = run.answer('stop', case_id=decision.get('case_id'), decision_id=decision['id'])
+                if confirmed:
+                    break
+            time.sleep(0.01)
+        assert confirmed, 'Zero-candidate scan must pause for human confirmation'
+        thread.join(timeout=5)
+        assert not thread.is_alive()
+        snapshot = run.snapshot()
+    finally:
+        run.cancel()
+        thread.join(timeout=2)
+    assert snapshot['outcome'] == 'stopped'
     dast = next(n for n in snapshot['nodes'] if n['id']=='dast')
-    assert dast['state'] == 'skipped'
+    assert dast['state'] == 'fail'
     assert dast['detail']['dast_check'] == 'not_run'
     assert not any(n.get('decision') for n in snapshot['nodes'])
