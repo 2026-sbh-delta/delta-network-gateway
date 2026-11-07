@@ -115,12 +115,12 @@ test("단계별 화면은 서비스를 보존하고 새로고침·뒤로가기�
   await page.getByRole("button", { name: "메뉴 열기" }).click();
   await page.getByRole("button", { name: "이전 계획", exact: true }).click();
   await expect(
-    page.getByRole("region", { name: "최초 배포 및 이전" }),
+    page.getByRole("region", { name: "이관 환경 선택" }),
   ).toBeVisible();
   await expect(page.locator(".build-panel")).toHaveCount(0);
   await page.reload();
   await expect(
-    page.getByRole("region", { name: "최초 배포 및 이전" }),
+    page.getByRole("region", { name: "이관 환경 선택" }),
   ).toBeVisible();
   await page.getByRole("button", { name: "메뉴 열기" }).click();
   await expect(

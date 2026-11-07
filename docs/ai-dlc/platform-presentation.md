@@ -448,3 +448,29 @@ Operation:
 - 후속 전체 릴리스 전에는 별도 운영 추가 기능을 정식 소스와 통합해야 한다. 이번 작업은 저장된 상태/데이터/IAM/Terraform/고객 VM을 바꾸지 않았다. GCP와 온프렘은 사용자 지시대로 중지 상태를 보존한다.
 - 최종 `platform/backend/.venv/bin/python .validation/csp-environment-repair-20261108/verify-release.py` 실행에서 errors=[]: readiness/HTML/세션/환경/파이프라인과 세 관측 API 모두 200, 계정/프로젝트/상태 점/로고 유지, 기존 서비스 2개와 대상 환경 3개 보존을 확인했다. AWS 5개 지표와 인프라/trace는 ok, 로그는 no_data다. GCP와 온프렘의 응답 데이터는 VM 전원 상태 검증으로 해석하지 않는다.
 - 게시 직전 PR #100을 main에 fast-forward로 보존했다. 이후 같은 격리 DB 명령을 재실행해 300 passed, 1 deselected (15.94s)를 확인했다. 원격 CI와 Git 게시 결과는 실행 이력을 따른다.
+
+## 이관 페이지의 CSP 선택과 파이프라인 연결 (2026-11-08 KST)
+
+- Ideation 승인: 사용자가 지정 이관 페이지에 첨부한 대상 선택/요약/시작 버튼 영역만 남기고 기존 개요와 같은 CSP 로고/배경을 적용하도록 요청했다. 추가 답변으로 기존 GCP 파이프라인과 선택적 온프렘 플랫폼 배포 경로 유지, AWS의 `현재 환경` 표시를 명시 승인했다.
+- Inception/Design: 본문을 `MigrationLauncher`로 분리하고 기존 출발 환경/이미지 선택/계획 이력/차분/기존 분석 패널을 이관 페이지에서 제거한다. AWS/GCP/On-Premise 순서와 주황/파랑/회색 배경, 로컬 SVG 로고를 사용한다. 등록된 출발 CSP는 선택할 수 없으며 등록 정보가 AWS이면 현재 환경으로 표시한다.
+- Implementation Plan: 기존 서비스/카탈로그/환경/빌드/파이프라인 옵션 API로 기본값을 읽는다. GCP는 등록 브랜치 최신 커밋의 기존 보안 파이프라인, 함께 고른 온프렘은 기존 성공 빌드의 플랫폼 계획/실행으로 연결한다. GCP 단독은 기존 이미지 빌드를 요구하지 않는다. 새 API와 모든 CSP 단독 실행 확장은 범위 밖이다.
+- Acceptance Criteria: 카드 선택/자동 사양과 호스트/실행 요약, 중복 제출 방지와 실패 표시, 생성된 run_id 화면으로 이동을 브라우저 대역으로 검증한다. 온프렘 접수 실패에도 이미 생성된 GCP 실행 화면으로 이동하며 해당 경고를 표시한다. 읽기 전용 진입은 실제 실행 API를 호출하지 않아야 한다. 데스크톱/모바일 레이아웃을 확인한다.
+- 현재 단계: Construction 구현/Test/Review 및 로컬 검증 완료. 사용자가 현재 main에서 커밋과 푸시 후 빌드를 요청했다. 실제 게시와 빌드 상태는 Git 이력과 실행 결과를 따른다. 운영 배포는 이번 요청에 포함되지 않으며 고객 파이프라인이나 중지된 GCP/온프렘 서버를 실제로 실행하지 않았다.
+- 추가 사용자 지시: 사양 입력은 제거하고 기존 선택값을 기본으로 사용한다. 읽기 전용 운영 카탈로그에서 GCP `e2-micro`(공유 코어, 1024MB), 온프렘 `small`(작게, 500m, 512MB)을 확인했다. 해당 ID를 우선 선택하고 없는 카탈로그에서는 첫 유효 사양을 사용한다.
+- 표시 문구는 사용자 후속 요청에 따라 `이관 대상 CSP 선택`으로 변경하고 제목 24px, CSP 이름 20px, 런타임/리전과 요약 16px 및 짙은 글자색으로 가독성을 높인다.
+- 최종 사용자 지시: 온프렘 등록 호스트도 카탈로그의 기존 첫 기본 호스트를 자동 적용하고 선택란을 제거한다. 체크박스를 없애고 카드 자체를 `aria-pressed`가 있는 버튼으로 구현해 클릭/Space/Enter로 선택과 해제를 지원한다. AWS는 현재 환경으로 비활성화하고 선택 카드는 강조선과 `선택됨`으로 구분한다. 사양/호스트 입력과 체크박스가 남지 않아야 한다.
+
+검증 기록 (2026-11-08 KST):
+
+| 명령 또는 확인 | 실제 결과 |
+| --- | --- |
+| `cd platform/web && npm run build` | TypeScript와 Vite 빌드 통과. 최종 자산 index-D9pc7PoQ.js/index-PVzH434Y.css |
+| `cd platform/web && npm run format:check` | Prettier 검사 통과 |
+| `PLAYWRIGHT_BUILT_ASSETS=1 npx playwright test --config=playwright.fixture.config.ts --output=test-results/migration-final-cards` | **57 passed (39.5s)**. 카드 클릭/키보드 토글, 기본 사양/호스트 요청, 읽기 전용 진입, 중복 실행 방지, 오류/재시도와 성공 후 실행 화면 이동 포함 |
+| `node --input-type=module -`로 5173 로컬 더미 API/UI Playwright 확인 | 실제 로컬 화면에서 입력/선택란 없음, AWS 비활성, 카드 선택과 더미 파이프라인 `localdemo2` 이동, pageErrors=[]와 모바일 가로 넘침 없음 |
+| 1440px/390px 캡처 시각 검토 | 로고/배경/제목/선택 표시와 모바일 세로 카드 확인. ignored `.validation/migration-launcher/preview-desktop.png`, `preview-mobile.png` |
+| `git diff --check` | 공백 오류 없음 |
+
+- 최초 브라우저 실행은 설치된 Playwright에 맞는 Chromium 실행 파일이 없어 테스트 본문이 실행되지 않았다. Chromium 설치 후 재실행했다. 중간 회귀의 셀렉터/기존 화면 이름 기대값을 새 UI에 맞춘 뒤 위 최종 전체 실행이 통과했다.
+- 로컬 API는 `.validation/local-ui-preview/preview_integrations.py`로 카탈로그/빌드/파이프라인/온프렘 접수를 대역 처리한다. 기본 프론트/실제 환경 목록 API/더미 DB를 유지하며 실제 클라우드 연결과 Worker 실행은 하지 않는다. 로컬 실행은 API 재시작 시 사라진다.
+- Operation: 운영 반영 전 기존 웹 번들을 보존하고 프론트 변경 범위만 검토한다. 롤백 대상은 이전 웹 번들이며 DB migration, Terraform Plan/Apply, IAM 변경은 필요하지 않다. 이번 작업에서 운영 번들 교체와 고객 파이프라인 실행은 하지 않았다.

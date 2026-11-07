@@ -31,6 +31,7 @@ import {
   ReleaseEvidence,
 } from "./PipelineEvidence";
 import "./pipeline.css";
+import { pipelineHandoffWarning } from "./pipeline-handoff";
 
 type Selection = StageId | GateId;
 
@@ -1433,6 +1434,11 @@ export function PipelinePanel({ runId: linked }: { runId?: string | null }) {
 
   return (
     <div className={`flow-page${live && !showPanel ? " with-activity" : ""}`}>
+      {pipelineHandoffWarning(runId) && (
+        <p className="pipeline-handoff-warning" role="alert">
+          {pipelineHandoffWarning(runId)}
+        </p>
+      )}
       {board ? (
         <FlowCanvas
           board={board}

@@ -165,9 +165,17 @@ async function fixture(
     backendBuilds?: (typeof imageBuild)[];
     completeOnExecute?: boolean;
     pipelineRepo?: string;
+    builds?: (typeof imageBuild)[];
+    pipelineFailure?: boolean;
+    companionFailure?: boolean;
+    pipelineDelayMs?: number;
+    catalog?: typeof options;
+    invalidRun?: boolean;
   } = {},
 ) {
   let pipelineBody: Record<string, unknown> | null = null;
+  let pipelineCount = 0;
+  const pipelineKeys: (string | undefined)[] = [];
   let loggedIn = false;
   const fixtureService = {
     ...service,
@@ -218,7 +226,10 @@ async function fixture(
         },
       });
     if (path === "/deployment-options")
-      return route.fulfill({ status: 200, json: { items: options } });
+      return route.fulfill({
+        status: 200,
+        json: { items: extra.catalog ?? options },
+      });
     if (path === "/services" && method === "GET")
       return route.fulfill({
         status: 200,
@@ -242,7 +253,7 @@ async function fixture(
     if (path === `/services/${service.id}/builds`)
       return route.fulfill({
         status: 200,
-        json: { items: [imageBuild], next_cursor: null },
+        json: { items: extra.builds ?? [imageBuild], next_cursor: null },
       });
     if (path === "/services/svc-backend/builds") {
       backendBuildRequests++;
@@ -273,6 +284,16 @@ async function fixture(
       method === "POST"
     ) {
       createBody = req.postDataJSON();
+      if (extra.companionFailure)
+        return route.fulfill({
+          status: 503,
+          json: {
+            error: {
+              code: "unavailable",
+              message: "온프렘 연결을 확인하세요.",
+            },
+          },
+        });
       const body = createBody as {
         targets: typeof currentPlan.input_snapshot.targets;
       };
@@ -323,7 +344,26 @@ async function fixture(
       });
     if (path === "/pipeline/runs" && method === "POST") {
       pipelineBody = req.postDataJSON();
-      return route.fulfill({ status: 202, json: { run_id: "run123" } });
+      pipelineCount++;
+      pipelineKeys.push(req.headers()["idempotency-key"]);
+      if (extra.pipelineDelayMs)
+        await new Promise((resolve) =>
+          setTimeout(resolve, extra.pipelineDelayMs),
+        );
+      if (extra.pipelineFailure)
+        return route.fulfill({
+          status: 503,
+          json: {
+            error: {
+              code: "unavailable",
+              message: "파이프라인 연결을 확인하세요.",
+            },
+          },
+        });
+      return route.fulfill({
+        status: 202,
+        json: extra.invalidRun ? {} : { run_id: "run123" },
+      });
     }
     return route.fulfill({
       status: 404,
@@ -347,6 +387,12 @@ async function fixture(
     },
     get pipelineBody() {
       return pipelineBody;
+    },
+    get pipelineCount() {
+      return pipelineCount;
+    },
+    get pipelineKeys() {
+      return pipelineKeys;
     },
     get backendBuildRequests() {
       return backendBuildRequests;
@@ -440,7 +486,7 @@ test("등록 때 선택한 최초 대상을 계획 화면에 미리 선택한다
   await expect(panel.getByLabel("GCP 사양")).toHaveValue("g-small");
 });
 
-test("활성 환경은 이전 출발점으로 표시하고 제거 중·제거된 환경은 숨긴다", async ({
+test("활성 환경은 이전 출발점으로 표시하고 제거 중 또는 제거된 환경은 숨긴다", async ({
   page,
 }) => {
   await fixture(page, false, true, {
@@ -464,7 +510,7 @@ test("활성 환경은 이전 출발점으로 표시하고 제거 중·제거된
       },
     ],
   });
-  await page.goto("/#/migration/svc-deploy");
+  await page.goto("/#/overview/svc-deploy");
   const panel = page.getByRole("region", { name: "최초 배포 및 이전" });
   await expect(panel.getByRole("radio", { name: /이전/ })).toBeChecked();
   await expect(panel.getByRole("radio", { name: /최초 배포/ })).toBeDisabled();
@@ -519,7 +565,7 @@ test("같은 프로젝트와 저장소의 다른 서비스에서 선택한 빌�
     services: [backendService, alternateBackend],
     backendBuilds: [matchingBackendBuild, otherCommitBuild],
   });
-  await page.goto("/#/migration/svc-deploy");
+  await page.goto("/#/overview/svc-deploy");
   const panel = page.getByRole("region", { name: "최초 배포 및 이전" });
   const backendServicePicker = panel.getByLabel("백엔드 서비스 (선택)");
   await expect(backendServicePicker).toHaveValue("");
@@ -604,19 +650,37 @@ test("GCP 이전은 보안 파이프라인으로 시작하고 온프레미스만
   const state = await fixture(page, false, true, {
     envs: environments,
     pipelineRepo: "https://github.com/example/orders.git",
+    catalog: options.map((option) =>
+      option.cloud === "onprem"
+        ? {
+            ...option,
+            profiles: [
+              { ...option.profiles[0], id: "medium", label: "보통" },
+              {
+                ...option.profiles[0],
+                id: "small",
+                label: "작게",
+                cpu: "500m",
+                memory_mb: 512,
+              },
+            ],
+          }
+        : option,
+    ),
   });
   await page.goto("/#/migration/svc-deploy");
-  const panel = page.getByRole("region", { name: "최초 배포 및 이전" });
-  await panel.getByLabel("검증된 이미지").selectOption("build-1");
+  const panel = page.getByRole("region", { name: "이관 환경 선택" });
   const targetSet = panel.getByRole("group", {
-    name: "이전 대상 환경 1~2개를 선택하세요",
+    name: "이관 대상 CSP 선택",
   });
-  await targetSet.getByLabel("GCP").check();
-  await targetSet.getByLabel("온프레미스").check();
-  await panel.getByLabel("온프레미스 등록 호스트").selectOption("host-1");
-  await expect(panel).toContainText("GCP · 보안 파이프라인");
-  await expect(panel).toContainText("온프레미스 · 플랫폼 배포 함께 실행");
-  await expect(panel).toContainText("실행 커밋 ccccccc · main 최신");
+  await targetSet.getByRole("button", { name: "GCP", exact: true }).click();
+  await targetSet
+    .getByRole("button", { name: "On-Premise", exact: true })
+    .click();
+  await expect(panel).toContainText("GCP 보안 파이프라인");
+  await expect(panel).toContainText("On-Premise 플랫폼 배포 함께 실행");
+  await expect(panel).toContainText("실행 커밋 ccccccc / main 최신");
+  await expect(panel.getByRole("combobox", { name: /사양/ })).toHaveCount(0);
   await panel.getByRole("button", { name: "파이프라인 시작" }).click();
   await expect(page).toHaveURL(/#\/pipeline\/run123$/);
   expect(state.pipelineBody).toEqual({
@@ -631,6 +695,13 @@ test("GCP 이전은 보안 파이프라인으로 시작하고 온프레미스만
       (t) => t.cloud,
     ),
   ).toEqual(["onprem"]);
+  expect(
+    (state.createBody as { targets: { profile_id: string }[] }).targets[0]
+      .profile_id,
+  ).toBe("small");
+  expect(
+    (state.createBody as { targets: { host_id: string }[] }).targets[0].host_id,
+  ).toBe("host-1");
   expect(state.executeCount).toBe(1);
 });
 
@@ -641,7 +712,7 @@ test("보안 파이프라인 저장소가 아니면 GCP 이전도 플랫폼 계�
     envs: environments,
     pipelineRepo: "https://github.com/example/other",
   });
-  await page.goto("/#/migration/svc-deploy");
+  await page.goto("/#/overview/svc-deploy");
   const panel = page.getByRole("region", { name: "최초 배포 및 이전" });
   await panel.getByLabel("검증된 이미지").selectOption("build-1");
   await panel
@@ -652,4 +723,218 @@ test("보안 파이프라인 저장소가 아니면 GCP 이전도 플랫폼 계�
   await expect(
     panel.getByRole("button", { name: "배포 계획 만들기" }),
   ).toBeEnabled();
+});
+
+test("이관 본문에는 CSP 카드와 요약 및 시작만 표시하고 AWS는 현재 환경으로 고정한다", async ({
+  page,
+}, info) => {
+  const state = await fixture(page, false, true, {
+    envs: [...environments],
+    pipelineRepo: service.repository_url,
+    deploymentTarget: {
+      cloud: "aws",
+      region: "ap-northeast-2",
+      profile_id: "small",
+    },
+  });
+  await page.goto("/#/migration/svc-deploy");
+  const panel = page.getByRole("region", { name: "이관 환경 선택" });
+  await expect(panel.locator(".migration-cloud-choice")).toHaveCount(3);
+  await expect(panel.getByRole("checkbox")).toHaveCount(0);
+  await expect(panel.getByRole("combobox")).toHaveCount(0);
+  await expect(panel.locator("article strong")).toHaveText([
+    "AWS",
+    "GCP",
+    "On-Premise",
+  ]);
+  await expect(
+    panel.getByRole("button", { name: "AWS", exact: true }),
+  ).toBeDisabled();
+  await expect(
+    panel.getByRole("button", { name: "AWS", exact: true }),
+  ).toHaveAttribute("aria-pressed", "false");
+  await expect(
+    panel
+      .getByRole("article", { name: "AWS 이관 환경" })
+      .getByText("현재 환경"),
+  ).toBeVisible();
+  await expect(
+    panel.getByRole("combobox", { name: "검증된 이미지" }),
+  ).toHaveCount(0);
+  await expect(panel.getByRole("radio")).toHaveCount(0);
+  await expect(page.getByText("계획과 실행 결과")).toHaveCount(0);
+  await expect(
+    page.getByRole("region", { name: "환경 차이와 AI 제안" }),
+  ).toHaveCount(0);
+  for (const [cloud, background] of [
+    ["aws", "rgb(255, 243, 224)"],
+    ["gcp", "rgb(234, 242, 255)"],
+    ["onprem", "rgb(241, 243, 245)"],
+  ]) {
+    const card = panel.locator(`.cloud-${cloud}`);
+    await expect(card).toHaveCSS("background-color", background);
+    await expect(card).toHaveCSS("border-top-width", "0px");
+    await expect(card.locator("img")).toHaveAttribute(
+      "src",
+      `/cloud-logos/${cloud}.svg`,
+    );
+    await expect
+      .poll(() =>
+        card
+          .locator("img")
+          .evaluate(
+            (image: HTMLImageElement) =>
+              image.complete && image.naturalWidth > 0,
+          ),
+      )
+      .toBe(true);
+  }
+  const start = panel.getByRole("button", { name: "파이프라인 시작" });
+  await expect(start).toBeDisabled();
+  await panel.getByRole("button", { name: "On-Premise", exact: true }).click();
+  const onpremCard = panel.getByRole("button", {
+    name: "On-Premise",
+    exact: true,
+  });
+  await expect(onpremCard).toHaveAttribute("aria-pressed", "true");
+  await onpremCard.press("Space");
+  await expect(onpremCard).toHaveAttribute("aria-pressed", "false");
+  await onpremCard.press("Enter");
+  await expect(onpremCard).toHaveAttribute("aria-pressed", "true");
+  await expect(start).toBeDisabled();
+  await panel.getByRole("button", { name: "GCP", exact: true }).click();
+  await expect(start).toBeEnabled();
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.screenshot({
+    path: info.outputPath("migration-desktop.png"),
+    fullPage: true,
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await page.screenshot({
+    path: info.outputPath("migration-mobile.png"),
+    fullPage: true,
+  });
+  expect(state.pipelineCount).toBe(0);
+  expect(state.createBody).toBeNull();
+  expect(state.executeCount).toBe(0);
+});
+
+test("GCP 단독 이관은 기존 이미지 없이 시작하고 생성된 파이프라인으로 이동한다", async ({
+  page,
+}) => {
+  const state = await fixture(page, false, true, {
+    envs: environments,
+    pipelineRepo: service.repository_url,
+    builds: [],
+  });
+  await page.goto("/#/migration/svc-deploy");
+  const panel = page.getByRole("region", { name: "이관 환경 선택" });
+  await panel.getByRole("button", { name: "GCP", exact: true }).click();
+  await panel.getByRole("button", { name: "On-Premise", exact: true }).click();
+  await expect(
+    panel.getByRole("button", { name: "파이프라인 시작" }),
+  ).toBeDisabled();
+  await expect(panel).toContainText(
+    "On-Premise 배포에 사용할 성공한 빌드가 필요합니다.",
+  );
+  await panel.getByRole("button", { name: "On-Premise", exact: true }).click();
+  await panel.getByRole("button", { name: "파이프라인 시작" }).click();
+  await expect(page).toHaveURL(/#\/pipeline\/run123$/);
+  await expect(page.locator(".flow-page")).toBeVisible();
+  expect(state.pipelineCount).toBe(1);
+  expect(state.createBody).toBeNull();
+  expect(state.executeCount).toBe(0);
+});
+
+test("시작 중 선택을 잠그고 중복 클릭은 한 실행으로만 접수한다", async ({
+  page,
+}) => {
+  const state = await fixture(page, false, true, {
+    envs: environments,
+    pipelineRepo: service.repository_url,
+    pipelineDelayMs: 500,
+  });
+  await page.goto("/#/migration/svc-deploy");
+  const panel = page.getByRole("region", { name: "이관 환경 선택" });
+  await panel.getByRole("button", { name: "GCP", exact: true }).click();
+  await panel
+    .getByRole("button", { name: "파이프라인 시작" })
+    .evaluate((button: HTMLButtonElement) => {
+      button.click();
+      button.click();
+    });
+  await expect(
+    panel.getByRole("button", { name: "GCP", exact: true }),
+  ).toBeDisabled();
+  await expect(panel.getByRole("button", { name: "시작 중…" })).toBeDisabled();
+  await expect(page).toHaveURL(/#\/pipeline\/run123$/);
+  expect(state.pipelineCount).toBe(1);
+});
+
+test("온프렘 접수 실패에도 생성된 GCP 실행으로 이동하고 실패를 표시한다", async ({
+  page,
+}) => {
+  const state = await fixture(page, false, true, {
+    envs: environments,
+    pipelineRepo: service.repository_url,
+    companionFailure: true,
+  });
+  await page.goto("/#/migration/svc-deploy");
+  const panel = page.getByRole("region", { name: "이관 환경 선택" });
+  await panel.getByRole("button", { name: "GCP", exact: true }).click();
+  await panel.getByRole("button", { name: "On-Premise", exact: true }).click();
+  await panel.getByRole("button", { name: "파이프라인 시작" }).click();
+  await expect(page).toHaveURL(/#\/pipeline\/run123$/);
+  await expect(page.getByRole("alert")).toContainText(
+    "On-Premise 배포를 접수하지 못했습니다",
+  );
+  expect(state.pipelineCount).toBe(1);
+  expect(state.executeCount).toBe(0);
+});
+
+test("시작 응답 오류는 같은 요청 키로만 재시도하고 실패하면 이관 화면을 유지한다", async ({
+  page,
+}) => {
+  const state = await fixture(page, false, true, {
+    envs: environments,
+    pipelineRepo: service.repository_url,
+    pipelineFailure: true,
+  });
+  await page.goto("/#/migration/svc-deploy");
+  const panel = page.getByRole("region", { name: "이관 환경 선택" });
+  await panel.getByRole("button", { name: "GCP", exact: true }).click();
+  await panel.getByRole("button", { name: "파이프라인 시작" }).click();
+  await expect(panel.getByRole("alert")).toContainText(
+    "파이프라인 연결을 확인하세요",
+  );
+  await expect(page).toHaveURL(/#\/migration\/svc-deploy$/);
+  expect(state.pipelineCount).toBe(2);
+  expect(new Set(state.pipelineKeys).size).toBe(1);
+  expect(state.pipelineKeys[0]).toBeTruthy();
+  expect(state.executeCount).toBe(0);
+});
+
+test("실행 ID가 없는 응답으로는 파이프라인 화면으로 이동하지 않는다", async ({
+  page,
+}) => {
+  const state = await fixture(page, false, true, {
+    envs: environments,
+    pipelineRepo: service.repository_url,
+    invalidRun: true,
+  });
+  await page.goto("/#/migration/svc-deploy");
+  const panel = page.getByRole("region", { name: "이관 환경 선택" });
+  await panel.getByRole("button", { name: "GCP", exact: true }).click();
+  await panel.getByRole("button", { name: "파이프라인 시작" }).click();
+  await expect(panel.getByRole("alert")).toContainText(
+    "실행 기록을 확인할 수 없습니다.",
+  );
+  await expect(page).toHaveURL(/#\/migration\/svc-deploy$/);
+  expect(state.pipelineCount).toBe(1);
+  expect(state.executeCount).toBe(0);
 });

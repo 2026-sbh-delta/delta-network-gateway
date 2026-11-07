@@ -361,51 +361,18 @@ test("SAST 완료와 GCP DAST 미실행을 분리하고 온프레미스에 결�
   await expect(dc.getByText("검사 미실행", { exact: true })).toHaveCount(4);
 });
 
-test("대상·계획에 맞는 차이와 diff만 표시하고 승인 후에도 미지원은 남는다", async ({
-  page,
-}, info) => {
-  await boundary(page);
-  await page.goto("/#/migration/notes-fe");
-  await page.getByText("기존 분석·검토 계획 보기").click();
-  const comparison = page.getByRole("region", { name: "환경 차이와 AI 제안" });
-  await expect(
-    comparison.getByText("위협 탐지", { exact: true }),
-  ).toBeVisible();
-  await comparison.getByText("설정 변경 · network-policy.yaml").click();
-  await expect(comparison.locator(".diff-add")).toContainText("restricted");
-  await page.evaluate(() => window.scrollTo(0, 0));
-  await page.screenshot({
-    path: info.outputPath("environment-diff.png"),
-    fullPage: true,
-  });
-  await comparison.getByRole("button", { name: /온프레미스/ }).click();
-  await expect(comparison.getByText("위협 탐지", { exact: true })).toHaveCount(
-    0,
-  );
-  await expect(comparison.getByText("분석 결과 대기")).toBeVisible();
-  await comparison.getByRole("button", { name: /GCP/ }).click();
-  await page.getByRole("button", { name: "계획 승인", exact: true }).click();
-  await expect(page.getByText("계획 승인됨", { exact: true })).toBeVisible();
-  await expect(comparison.getByText("미지원", { exact: true })).toBeVisible();
-  await page.setViewportSize({ width: 390, height: 844 });
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= innerWidth,
-    ),
-  ).toBeTruthy();
-});
-
-test("변경된 계획의 AI 결과를 숨기고 기존 API의 단일 서비스도 지원한다", async ({
+test("이관 페이지는 실행 선택만 표시하고 단일 서비스의 개요도 유지한다", async ({
   page,
 }) => {
   await boundary(page, { wrongAssessment: true, unlinked: true });
   await page.goto("/#/migration/notes-fe");
-  await page.getByText("기존 분석·검토 계획 보기").click();
-  const comparison = page.getByRole("region", { name: "환경 차이와 AI 제안" });
-  await expect(comparison.getByText("상세 결과 미연결")).toBeVisible();
-  await expect(comparison.getByText("위협 탐지", { exact: true })).toHaveCount(
-    0,
-  );
+  await expect(
+    page.getByRole("region", { name: "이관 환경 선택" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: "환경 차이와 AI 제안" }),
+  ).toHaveCount(0);
+  await expect(page.getByText(/기존 분석.검토 계획 보기/)).toHaveCount(0);
   await page.goto("/#/overview/notes-fe");
   await expect(page.getByText(/FE·BE 배포 묶음 미연결/)).toBeVisible();
   await expect(page.getByText("DB 구성 확인 필요")).toBeVisible();
@@ -509,29 +476,18 @@ test("빌드 연결이 없는 최신 실패 뒤에 이전 성공을 재사용하
   await expect(gcp.getByText("검사 완료", { exact: true })).toHaveCount(0);
 });
 
-test("출발 환경이 없는 배포 계획에 작성 폼의 AWS 선택을 섞지 않는다", async ({
+test("출발 환경이 없는 이관 페이지에서 과거 비교 계획을 출발점으로 사용하지 않는다", async ({
   page,
 }) => {
   await boundary(page);
-  const deployment = {
-    ...workflow,
-    kind: "deployment",
-    input_snapshot: { ...workflow.input_snapshot, source: null },
-  };
-  await page.route("**/api/v1/workflows/workflow-1", (route) =>
-    route.fulfill({ json: deployment }),
+  await page.route("**/api/v1/services/notes-fe/environments", (route) =>
+    route.fulfill({ json: { items: [] } }),
   );
   await page.goto("/#/migration/notes-fe");
-  await page.getByText("기존 분석·검토 계획 보기").click();
-  const comparison = page.getByRole("region", { name: "환경 차이와 AI 제안" });
   await expect(
-    comparison
-      .locator(".release-compare-route")
-      .getByText("출발 환경 없음", { exact: true }),
+    page.getByRole("region", { name: "이관 환경 선택" }),
   ).toBeVisible();
   await expect(
-    comparison
-      .locator(".release-compare-route")
-      .getByText("AWS 운영", { exact: true }),
+    page.getByRole("region", { name: "환경 차이와 AI 제안" }),
   ).toHaveCount(0);
 });

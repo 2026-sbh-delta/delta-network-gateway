@@ -34,8 +34,7 @@ import {
 import { DeleteProjectDialog } from "./DeleteProjectDialog";
 import { BuildPanel } from "./BuildPanel";
 import { ObservabilityPanel } from "./ObservabilityPanel";
-import { WorkflowPlanningPanel } from "./WorkflowPlanningPanel";
-import { MigrationDiffComparison } from "./MigrationDiffComparison";
+import { MigrationLauncher } from "./MigrationLauncher";
 import { DeploymentPanel } from "./DeploymentPanel";
 import { DeployedEnvironments } from "./DeployedEnvironments";
 
@@ -646,14 +645,7 @@ function Detail({
               </>
             )}
           {view === "migration" && (
-            <>
-              <DeploymentPanel key={`${id}-deployment`} serviceId={id} />
-              <MigrationDiffComparison key={id} serviceId={id} />
-              <details className="panel technical-details">
-                <summary>기존 분석·검토 계획 보기</summary>
-                <WorkflowPlanningPanel key={`${id}-workflows`} serviceId={id} />
-              </details>
-            </>
+            <MigrationLauncher key={id} service={service} />
           )}
           {view === "build" && !service.application && (
             <>
