@@ -474,3 +474,10 @@ Operation:
 - 최초 브라우저 실행은 설치된 Playwright에 맞는 Chromium 실행 파일이 없어 테스트 본문이 실행되지 않았다. Chromium 설치 후 재실행했다. 중간 회귀의 셀렉터/기존 화면 이름 기대값을 새 UI에 맞춘 뒤 위 최종 전체 실행이 통과했다.
 - 로컬 API는 `.validation/local-ui-preview/preview_integrations.py`로 카탈로그/빌드/파이프라인/온프렘 접수를 대역 처리한다. 기본 프론트/실제 환경 목록 API/더미 DB를 유지하며 실제 클라우드 연결과 Worker 실행은 하지 않는다. 로컬 실행은 API 재시작 시 사라진다.
 - Operation: 운영 반영 전 기존 웹 번들을 보존하고 프론트 변경 범위만 검토한다. 롤백 대상은 이전 웹 번들이며 DB migration, Terraform Plan/Apply, IAM 변경은 필요하지 않다. 이번 작업에서 운영 번들 교체와 고객 파이프라인 실행은 하지 않았다.
+
+### 게시와 CI 탐색 회귀 수정 (2026-11-08 KST)
+
+- 사용자 요청으로 서명 검증된 `ac1947a7b6521b22ddbe15fece30876e131ee386`을 main에 푸시하고 `cd platform/web && npm run build`를 재실행해 성공했다. 원격 Platform checks [42394315384](https://github.com/2026-sbh-delta/delta-network-gateway/actions/runs/42394315384)는 프론트 빌드까지 성공했지만 Browser 단계에서 70 passed/1 failed였다.
+- 실패 원인: 데스크톱 서랍 탐색 테스트 한 곳에 이전 `최초 배포 및 이전` 영역 기대값이 남아 있었다. 서랍은 경로 렌더링이 끝나기 전에 닫힐 수 있어 이전 개요의 같은 이름 영역을 잠깐 확인하며 로컬에서 잘못 통과할 여지가 있었다. 현재 이관 URL과 `이관 환경 선택` 영역, 이전 영역의 부재를 확인해 전환 완료를 검증한다. 테스트를 건너뛰거나 제한 시간을 늘리지 않았다.
+- `cd platform/web && npm run format:check`: 통과. `PLAYWRIGHT_BUILT_ASSETS=1 npx playwright test --config=playwright.fixture.config.ts presentation.spec.ts --repeat-each=3 --output=test-results/ci-migration-navigation`: **15 passed (14.0s)**. 데스크톱/모바일 서랍, 새로고침/뒤로가기와 오류 탐색을 3회씩 검증했다. `git diff --check` 통과.
+- 현재 main에서 테스트와 기록만 수정해 게시한다. 제품 동작, 운영 데이터와 클라우드 자원을 변경하지 않는다. 최종 원격 CI는 수정 커밋의 Platform checks 결과를 따른다.

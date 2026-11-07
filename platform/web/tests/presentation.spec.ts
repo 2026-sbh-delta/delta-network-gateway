@@ -216,9 +216,13 @@ for (const viewport of [
       .getByRole("button", { name: "이전 계획", exact: true })
       .click();
     await expect(drawer).not.toBeVisible();
+    await expect(page).toHaveURL(/#\/migration\/presentation-orders$/);
+    await expect(
+      page.getByRole("region", { name: "이관 환경 선택" }),
+    ).toBeVisible();
     await expect(
       page.getByRole("region", { name: "최초 배포 및 이전" }),
-    ).toBeVisible();
+    ).toHaveCount(0);
     await expect(page.locator("#workspace-content")).toBeFocused();
     expect(
       await page.evaluate(
