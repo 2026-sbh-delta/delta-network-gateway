@@ -103,6 +103,12 @@ if gcp_cfg="$(terraform -chdir="$gcp_tf" output -json credential_configs 2>/dev/
   fi
 fi
 
+# 병렬 워크로드 차분 요청(비밀값 아님, 저장소 파일): 오케스트레이터가 웹 검사와 함께 Diff 를 부른다.
+if [ -f "$here/diff-request.json" ]; then
+  aws ssm put-parameter --region "$region" --name "${prefix}orchestrator/diff_request" --type String \
+    --value "$(cat "$here/diff-request.json")" --overwrite >/dev/null
+fi
+
 # 서비스 도메인 전환 설정은 SSM의 운영 설정을 보존하고, 없을 때만 Terraform 출력으로 초기화한다.
 # 동시 배포가 먼저 만든 값도 보존한다. Cloudflare 토큰은 사람이 SSM에 넣는다.
 if cutover_cfg="$(terraform -chdir="$repo/terraform/service-domain" output -raw cutover_config 2>/dev/null)" && [ "${cutover_cfg#\{}" != "$cutover_cfg" ]; then
