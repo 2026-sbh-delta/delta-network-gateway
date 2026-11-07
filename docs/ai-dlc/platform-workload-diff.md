@@ -42,6 +42,17 @@ Trivy는 현재 파이프라인에서 호출되지 않는다. 예전 수동 수�
 
 새 미승인 계획 `b4e50d0d-8d57-4be7-ab09-1f740cc6c80b`에서 실제 Diff `321273fe-e59f-4060-be50-60e79b591d7b`를 실행했다. 2026-11-07 운영 Chrome의 기존 마이그레이션 화면에서 Service 2행·Deployment 2행·관측 범위 1행, `needs_human` 및 미승인을 확인했다. 기존 대상별 파이프라인이 같은 화면에 보였고 표의 넘치는 셀은 0개였다. 새 계획의 배포 액션은 0건이었다.
 
-재현 빌드는 `platform/web`에서 `npm ci`, `npm run format:check`, `npm run build`를 실행하고 잠금 파일에 포함된 esbuild로 `src/migration-diff-entry.tsx`를 `--bundle --minify --format=esm --target=es2022 --define:process.env.NODE_ENV='"production"'`으로 번들링한다. `platform-migration-web.Dockerfile`은 기준 HTML 해시가 다르면 빌드를 중단한다. 배포된 원본 마이그레이션 소스가 제공되면 같은 비교 컴포넌트를 그 소스에 직접 연결할 수 있다.
+이 운영 이미지 보완은 `bba3dcf`에서 재현할 수 있다. `platform/web`에서 `npm ci`, `npm run format:check`, `npm run build`를 실행하고 잠금 파일에 포함된 esbuild로 `src/migration-diff-entry.tsx`를 `--bundle --minify --format=esm --target=es2022 --define:process.env.NODE_ENV='"production"'`으로 번들링한다. `platform-migration-web.Dockerfile`은 기준 HTML 해시가 다르면 빌드를 중단한다.
 
 표 스타일만 되돌릴 때는 `delta-platform-api-1-before-workload-diff-ca8af287a0f8`을 사용한다. 웹을 되돌릴 때의 컨테이너는 `delta-platform-api-1-before-workload-diff-c263ebec80fe`다. 관측본만 되돌릴 때는 `delta-platform-api-1-before-workload-diff-24d9fceee6b1`을 사용한다. 배포 전의 활성 작업과 이미지 해시를 확인한 뒤 위 롤백 절차를 따른다.
+
+
+## 정식 플랫폼 빌드
+
+`platform/Dockerfile`은 `npm run build`의 Vite 산출물을 이미지에 복사한다. 기존 정식 산출물에는 접힌 ‘기존 분석·검토 계획’의 일반 비교 기능이 들어 있었고, 운영 이미지에 나중에 추가한 온프레미스→AWS 전용 비교 표는 빠져 있었다. PR #69에서 같은 비교 컴포넌트와 스타일을 마이그레이션 경로에 직접 연결했다. 정식 빌드가 비교 화면을 포함하므로 운영 이미지에 별도로 적용했던 HTML 보완 단계가 필요 없다.
+
+정식 빌드의 화면은 플랫폼 DB에 저장된 실행을 세션 인증 GET으로 조회한다. 기존 비교 결과의 조회는 이미지 안의 온프레미스 관측본에 의존하지 않는다. 환경 연결이 변경되면 계획 검증 규칙을 적용한다. 새 차분을 계산할 때는 유효한 온프레미스 조회 경로나 최신 관측본이 필요하다.
+
+2026-11-07 `npm run build`의 수정 전 산출물을 제공한 브라우저에서 온프레미스→AWS 비교 계획 선택이 없어 회귀 테스트가 실패했다. 수정 후 `npm run format:check`, `npm run build`, `PLAYWRIGHT_BUILT_ASSETS=1 npx playwright test --config=playwright.fixture.config.ts workflow-planning.spec.ts deployment.spec.ts`가 통과했다. 브라우저 11개 검사에서 새로고침 후 저장된 차분 표시, 다른 계획 해시의 결과 격리, 화면 조회 중 쓰기 요청 0건을 검증했다.
+
+정식 릴리스와 같은 `docker buildx build --platform linux/arm64 --load -f platform/Dockerfile`로 로컬 이미지를 빌드했다. 이미지의 `/app/web/dist` 파일 3개의 SHA-256이 브라우저 검사에 사용한 산출물과 모두 일치했고, 이미지에서 Diff 조회 모듈을 불러올 수 있었다.

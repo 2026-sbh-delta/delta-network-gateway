@@ -21,6 +21,7 @@ import "./style.css";
 import "./presentation.css";
 import "./dashboard.css";
 import "./release.css";
+import "./migration-diff.css";
 import { ApplicationPanel } from "./ApplicationPanel";
 import {
   AppShell,
@@ -33,6 +34,7 @@ import { DeleteProjectDialog } from "./DeleteProjectDialog";
 import { BuildPanel } from "./BuildPanel";
 import { ObservabilityPanel } from "./ObservabilityPanel";
 import { WorkflowPlanningPanel } from "./WorkflowPlanningPanel";
+import { MigrationDiffComparison } from "./MigrationDiffComparison";
 import { DeploymentPanel } from "./DeploymentPanel";
 
 const labels = {
@@ -622,6 +624,7 @@ function Detail({
           {view === "migration" && (
             <>
               <DeploymentPanel key={`${id}-deployment`} serviceId={id} />
+              <MigrationDiffComparison key={id} serviceId={id} />
               <details className="panel technical-details">
                 <summary>기존 분석·검토 계획 보기</summary>
                 <WorkflowPlanningPanel key={`${id}-workflows`} serviceId={id} />

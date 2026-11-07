@@ -9,9 +9,9 @@
   padding: 0.45rem;
 }
 
-.migration-panel [data-migration-workload-diff] .release-table th,
-.migration-panel [data-migration-workload-diff] .release-table td,
-.migration-panel [data-migration-workload-diff] .release-table small {
+[data-migration-workload-diff] .release-table th,
+[data-migration-workload-diff] .release-table td,
+[data-migration-workload-diff] .release-table small {
   overflow-wrap: anywhere;
   white-space: normal;
 }
