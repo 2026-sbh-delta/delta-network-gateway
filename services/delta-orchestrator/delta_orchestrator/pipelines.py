@@ -5,6 +5,8 @@ DELTA_IMAGE_REPO(선택), DELTA_INTERNAL_ZONE(선택),
 DELTA_CUTOVER(선택, JSON: 서비스 도메인 전환 설정), CLOUDFLARE_API_TOKEN(선택: 해당 zone DNS 편집만),
 DELTA_RELEASE_TARGETS(선택, JSON: 운영 대상 인벤토리 {target_id: 항목}), DELTA_RELEASE_SIGNING_KEY_B64(선택: Ed25519 PEM, base64),
 DELTA_ECR_IMAGE_REPO(선택: 빌드 묶음의 ECR 사본 저장소), DELTA_AI_TOKEN(선택: 원인 진단 delta-ai)
+DELTA_DIFF_REQUIRED(워크로드 차분 활성화), DELTA_DIFF_REQUEST_FILE(운영자 입력),
+DELTA_DIFF_CONNECTION_PARAMETER 또는 DELTA_DIFF_URL/DELTA_DIFF_TOKEN(차분 서비스 연결).
 """
 
 from __future__ import annotations
@@ -23,9 +25,10 @@ from dataclasses import replace
 from typing import Any
 
 from delta_pipeline.diagnostic_client import DiagnosticClient
+from delta_pipeline.diff_client import DiffClient, DiffInput, DiffJob
 from delta_pipeline import domain
 from delta_pipeline.clients import Cloudflare, Dast, DeltaAi, Jenkins, Sast, Staging, ServiceUnavailable, probe, resolve_cname
-from delta_pipeline.model import Options
+from delta_pipeline.model import Options, REPO_PREFIX
 from delta_pipeline.run import BOARD_DIR, Run, unfinished_runs
 from delta_pipeline.steps import CutoverConfig
 
@@ -49,6 +52,33 @@ def release_signing_key() -> bytes | None:
     """운영 승인 서명 개인키(Ed25519 PEM). env 파일 한 줄에 넣으려고 base64 로 감싼 값을 푼다."""
     raw = os.environ.get("DELTA_RELEASE_SIGNING_KEY_B64", "")
     return base64.b64decode(raw) if raw else None
+
+
+def diff_required() -> bool:
+    return os.environ.get("DELTA_DIFF_REQUIRED") == "1"
+
+
+def diff_input() -> DiffInput:
+    return DiffInput.from_file(os.environ.get("DELTA_DIFF_REQUEST_FILE", ""))
+
+
+def diff_client() -> DiffClient:
+    parameter = os.environ.get("DELTA_DIFF_CONNECTION_PARAMETER")
+    if parameter:
+        if parameter != "/delta-cp/shared/diff_connection":
+            raise ValueError("고정된 차분 연결 파라미터가 필요합니다")
+        import boto3
+        from botocore.config import Config
+
+        client = boto3.client("ssm", region_name=os.environ.get("AWS_REGION", "ap-northeast-2"),
+                              config=Config(connect_timeout=3, read_timeout=5, retries={"total_max_attempts": 1}))
+        secret = client.get_parameter(Name=parameter, WithDecryption=True)["Parameter"]["Value"]
+        connection = json.loads(secret)
+        url, token, ca = connection["url"], connection["token"], connection.get("ca_base64")
+    else:
+        url, token, ca = (os.environ.get(key) for key in ("DELTA_DIFF_URL", "DELTA_DIFF_TOKEN", "DELTA_DIFF_CA_BASE64"))
+    return DiffClient(url or "", token or "", ca,
+                      allow_private_http=os.environ.get("DELTA_DIFF_ALLOW_PRIVATE_HTTP") == "1")
 
 
 def platform_run(options: Options, store_dir: Path, run_id: str | None) -> Run:
@@ -83,6 +113,17 @@ def platform_run(options: Options, store_dir: Path, run_id: str | None) -> Run:
             staging=Staging(f'http://jenkins.{zone}:8091',os.environ.get('DELTA_STAGING_TOKEN','')),
             image_repo=artifact.image.rsplit('@',1)[0],diagnostic=diagnostic,evidence=evidence,
             onprem=RemoteOnprem(rpc,artifact.build_id,graph_id=run_id,state_dir=store_dir))
+    diff = None
+    if options.diff_request_hash is not None:
+        run_id = run_id or uuid.uuid4().hex
+        try:
+            request = diff_input()
+            if (diagnostic is not None and request.fingerprint == options.diff_request_hash
+                    and options.repo == REPO_PREFIX + request.service_id):
+                diff = DiffJob(diff_client(), request, run_id)
+        except Exception:
+            # The graph stops and records a diagnostic without exposing a token, file or AWS error.
+            pass
     return Run(options,
                sast=Sast(f"http://sast.{zone}:8790", os.environ.get("DELTA_SAST_TOKEN", "")),
                # Host 가 DAST_INTERNAL_HOSTS(dast.cp.internal:8765)와 맞아야 플랫폼 토큰이 통한다
@@ -93,6 +134,7 @@ def platform_run(options: Options, store_dir: Path, run_id: str | None) -> Run:
                staging=Staging(f"http://jenkins.{zone}:8091", os.environ.get("DELTA_STAGING_TOKEN", "")),
                image_repo=os.environ.get("DELTA_IMAGE_REPO", IMAGE_REPO), store_dir=store_dir, run_id=run_id,
                diagnostic=diagnostic, evidence=evidence,
+               diff=diff, require_diff_cutover=diff_required(),
                cloudflare=Cloudflare(token) if token else None, cutover=cutover_config() if options.cutover else None,
                # 운영 배포(환경별 VM 생성)는 사람 승인 서명 뒤 Jenkins delta-release 가 한다
                release_jenkins=Jenkins(jenkins, "platform", password, job="delta-release") if options.release_target else None,
@@ -148,10 +190,17 @@ class Pipelines:
         with self._lock:
             options = Options(repo, commit, cutover=cutover, branch=branch, execution_cloud=execution_cloud,
                               onprem_build_id=onprem_build_id, assistance=assistance, release_target=release_target)
+            if execution_cloud == "gcp" and diff_required():
+                request = diff_input()
+                if repo == REPO_PREFIX + request.service_id:
+                    options = replace(options, diff_request_hash=request.fingerprint)
+                elif cutover:
+                    raise RuntimeError("이 서비스에 고정된 Diff 입력이 없어 도메인 전환을 할 수 없습니다")
             run_id = hashlib.sha256(("platform:" + request_key).encode()).hexdigest() if request_key else None
             if run_id and (old := self.get(run_id)):
                 expected = asdict(options)
                 actual = dict(old["options"])
+                actual.setdefault("diff_request_hash", None)
                 expected.pop("diagnostics", None)
                 actual.pop("diagnostics", None)
                 if actual != expected:
