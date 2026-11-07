@@ -164,8 +164,10 @@ async function fixture(
     services?: (typeof service)[];
     backendBuilds?: (typeof imageBuild)[];
     completeOnExecute?: boolean;
+    pipelineRepo?: string;
   } = {},
 ) {
+  let pipelineBody: Record<string, unknown> | null = null;
   let loggedIn = false;
   const fixtureService = {
     ...service,
@@ -305,6 +307,24 @@ async function fixture(
       }
       return route.fulfill({ status: 202, json: currentPlan });
     }
+    if (path === "/pipeline/options" && extra.pipelineRepo)
+      return route.fulfill({
+        status: 200,
+        json: {
+          repo: extra.pipelineRepo,
+          branch: "main",
+          branches: ["main"],
+          commits: [],
+          release_targets: [
+            { id: "a-corp-gcp-prod", cloud: "gcp", label: "A기업 GCP 운영" },
+          ],
+          cutover_configured: true,
+        },
+      });
+    if (path === "/pipeline/runs" && method === "POST") {
+      pipelineBody = req.postDataJSON();
+      return route.fulfill({ status: 202, json: { run_id: "run123" } });
+    }
     return route.fulfill({
       status: 404,
       json: { error: { code: "not_found", message: path } },
@@ -324,6 +344,9 @@ async function fixture(
     },
     get executeCount() {
       return executeCount;
+    },
+    get pipelineBody() {
+      return pipelineBody;
     },
     get backendBuildRequests() {
       return backendBuildRequests;
@@ -573,4 +596,58 @@ test("대상 하나의 배포 실패를 전체 성공으로 표시하지 않는�
   await expect(
     panel.getByText("대상 앱 배포 결과입니다.", { exact: false }),
   ).toBeVisible();
+});
+
+test("GCP 이전은 보안 파이프라인으로 시작하고 온프레미스만 플랫폼 계획으로 실행한 뒤 파이프라인 화면으로 넘어간다", async ({
+  page,
+}) => {
+  const state = await fixture(page, false, true, {
+    envs: environments,
+    pipelineRepo: "https://github.com/example/orders.git",
+  });
+  await page.goto("/#/migration/svc-deploy");
+  const panel = page.getByRole("region", { name: "최초 배포 및 이전" });
+  await panel.getByLabel("검증된 이미지").selectOption("build-1");
+  const targetSet = panel.getByRole("group", {
+    name: "이전 대상 환경 1~2개를 선택하세요",
+  });
+  await targetSet.getByLabel("GCP").check();
+  await targetSet.getByLabel("온프레미스").check();
+  await panel.getByLabel("온프레미스 등록 호스트").selectOption("host-1");
+  await expect(panel).toContainText("GCP · 보안 파이프라인");
+  await expect(panel).toContainText("온프레미스 · 플랫폼 배포 함께 실행");
+  await panel.getByRole("button", { name: "파이프라인 시작" }).click();
+  await expect(page).toHaveURL(/#\/pipeline\/run123$/);
+  expect(state.pipelineBody).toEqual({
+    branch: "main",
+    commit: "a".repeat(40),
+    cutover: true,
+    release_target: "a-corp-gcp-prod",
+  });
+  expect(
+    (state.createBody as { targets: { cloud: string }[] }).targets.map(
+      (t) => t.cloud,
+    ),
+  ).toEqual(["onprem"]);
+  expect(state.executeCount).toBe(1);
+});
+
+test("보안 파이프라인 저장소가 아니면 GCP 이전도 플랫폼 계획으로 진행한다", async ({
+  page,
+}) => {
+  await fixture(page, false, true, {
+    envs: environments,
+    pipelineRepo: "https://github.com/example/other",
+  });
+  await page.goto("/#/migration/svc-deploy");
+  const panel = page.getByRole("region", { name: "최초 배포 및 이전" });
+  await panel.getByLabel("검증된 이미지").selectOption("build-1");
+  await panel
+    .getByRole("group", { name: "이전 대상 환경 1~2개를 선택하세요" })
+    .getByLabel("GCP")
+    .check();
+  await expect(panel).toContainText("보안 파이프라인 대상 저장소가 아닙니다");
+  await expect(
+    panel.getByRole("button", { name: "배포 계획 만들기" }),
+  ).toBeEnabled();
 });

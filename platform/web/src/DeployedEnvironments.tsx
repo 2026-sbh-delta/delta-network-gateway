@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { message } from "./api";
+import { api, message } from "./api";
 import type { View } from "./AppShell";
 import { cloudName } from "./application-model";
 import { observabilityApi, type Environment } from "./observability-api";
@@ -15,6 +15,25 @@ export function DeployedEnvironments({
   const [environments, setEnvironments] = useState<Environment[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  // A pipeline still running (started from the migration screen) gets a way back from here.
+  const [liveRun, setLiveRun] = useState("");
+
+  useEffect(() => {
+    const controller = new AbortController();
+    api<{ runs: { run_id: string; outcome: string | null }[] }>(
+      "/pipeline/runs",
+      undefined,
+      undefined,
+      controller.signal,
+    )
+      .then((data) => {
+        const run = data.runs[0];
+        if (!controller.signal.aborted && run && !run.outcome)
+          setLiveRun(run.run_id);
+      })
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, [serviceId]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -61,6 +80,15 @@ export function DeployedEnvironments({
           </p>
         </div>
         <div className="deployment-actions">
+          {liveRun && (
+            <button
+              onClick={() => {
+                location.hash = `/pipeline/${encodeURIComponent(liveRun)}`;
+              }}
+            >
+              파이프라인 진행 중 →
+            </button>
+          )}
           <button onClick={() => onNavigate("migration")}>
             마이그레이션 보기
           </button>

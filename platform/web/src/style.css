@@ -725,6 +725,25 @@ footer {
   padding: 0 6px;
   font-weight: 650;
 }
+.pipeline-handoff {
+  display: grid;
+  gap: 2px;
+  max-width: 680px;
+  padding: 12px 14px;
+  border: 1px solid #c7d4f7;
+  border-radius: 9px;
+  background: #eef3ff;
+  font-size: var(--text-small);
+  color: var(--muted);
+}
+.pipeline-handoff strong {
+  color: var(--accent);
+}
+.pipeline-link {
+  justify-self: start;
+  color: var(--accent);
+  font-weight: 650;
+}
 .choice-row {
   display: flex;
   flex-wrap: wrap;

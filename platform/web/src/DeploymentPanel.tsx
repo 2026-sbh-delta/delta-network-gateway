@@ -34,6 +34,16 @@ const targetStatus: Record<string, string> = {
   succeeded: "앱 배포 완료",
   failed: "배포 실패",
 };
+// The security pipeline (build → SAST → staging → DAST → diff → GCP release → cutover) owns the
+// GCP migration target: its release uses the same GCP deployment, so the platform plan skips GCP.
+type PipelineOptions = {
+  repo: string;
+  release_targets: { id: string; cloud?: string; label: string }[];
+  cutover_configured: boolean;
+};
+const sameRepo = (a: string, b: string) =>
+  a.toLowerCase().replace(/(\.git)?\/*$/, "") ===
+  b.toLowerCase().replace(/(\.git)?\/*$/, "");
 const readyBuild = (run: Run) =>
   run.kind === "image_build" &&
   run.status === "succeeded" &&
@@ -85,7 +95,28 @@ export function DeploymentPanel({ serviceId }: { serviceId: string }) {
   const [reload, setReload] = useState(0);
   const createKey = useRef<{ body: string; key: string } | null>(null);
   const executeKey = useRef("");
+  const pipelineKey = useRef<{ body: string; key: string } | null>(null);
+  const [pipelineRun, setPipelineRun] = useState("");
+  const [service, setService] = useState<Service | null>(null);
+  const [pipeline, setPipeline] = useState<PipelineOptions | null>(null);
   const buildsReady = useMemo(() => builds.filter(readyBuild), [builds]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setPipeline(null);
+    api<PipelineOptions>(
+      "/pipeline/options",
+      undefined,
+      undefined,
+      controller.signal,
+    )
+      .then((data) => {
+        if (!controller.signal.aborted) setPipeline(data);
+      })
+      // Without the pipeline link the panel keeps the platform-only plan flow.
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, [serviceId]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -161,6 +192,7 @@ export function DeploymentPanel({ serviceId }: { serviceId: string }) {
                 candidate.repository_url === service.repository_url,
             )
           : [];
+        setService(service);
         setOptions(catalog.items);
         setEnvironments(active);
         setBuilds(buildPage.items);
@@ -353,6 +385,7 @@ export function DeploymentPanel({ serviceId }: { serviceId: string }) {
   }
   async function createPlan(event: React.FormEvent) {
     event.preventDefault();
+    if (usePipeline) return startPipeline();
     const body = {
       kind,
       build_id: buildId,
@@ -411,9 +444,76 @@ export function DeploymentPanel({ serviceId }: { serviceId: string }) {
       setBusy(false);
     }
   }
+  // GCP goes through the security pipeline; any other target (on-premises) still runs as a
+  // platform plan, approved by the same click. Then the pipeline graph takes over the screen.
+  async function startPipeline() {
+    if (!service || !chosenBuild?.resolved_commit_sha || !gcpRelease) return;
+    const run = {
+      branch: service.source_ref,
+      commit: chosenBuild.resolved_commit_sha,
+      cutover: !!pipeline?.cutover_configured,
+      release_target: gcpRelease.id,
+    };
+    const serialized = JSON.stringify(run);
+    if (pipelineKey.current?.body !== serialized)
+      pipelineKey.current = { body: serialized, key: crypto.randomUUID() };
+    setBusy(true);
+    setError("");
+    setNotice("");
+    let runId = "";
+    try {
+      runId = (
+        await api<{ run_id: string }>(
+          "/pipeline/runs",
+          run,
+          pipelineKey.current.key,
+        )
+      ).run_id;
+      pipelineKey.current = null;
+      if (platformTargets.length > 0) {
+        const plan = await api<DeploymentPlan>(
+          `/services/${serviceId}/deployment-plans`,
+          {
+            kind,
+            build_id: buildId,
+            ...(backendBuildId ? { backend_build_id: backendBuildId } : {}),
+            source_environment_id: sourceId,
+            targets: platformTargets,
+          },
+          crypto.randomUUID(),
+        );
+        await api<DeploymentPlan>(
+          `/deployment-plans/${plan.id}/execute`,
+          { input_hash: plan.input_hash },
+          crypto.randomUUID(),
+        );
+      }
+      location.hash = `/pipeline/${encodeURIComponent(runId)}`;
+    } catch (e) {
+      setError(
+        runId
+          ? `파이프라인은 시작했지만 ${platformTargets.map((t) => cloudName[t.cloud]).join("·")} 배포를 접수하지 못했습니다: ${message(e)}`
+          : message(e),
+      );
+      if (runId) setPipelineRun(runId);
+    } finally {
+      setBusy(false);
+    }
+  }
 
   const source = environments.find((item) => item.id === sourceId);
   const chosenBuild = buildsReady.find((item) => item.id === buildId);
+  const gcpRelease = pipeline?.release_targets.find((t) => t.cloud === "gcp");
+  const pipelineRepo =
+    !!pipeline && !!service && sameRepo(pipeline.repo, service.repository_url);
+  const usePipeline =
+    kind === "migration" &&
+    targets.some((t) => t.cloud === "gcp") &&
+    pipelineRepo &&
+    !!gcpRelease;
+  const platformTargets = usePipeline
+    ? targets.filter((t) => t.cloud !== "gcp")
+    : targets;
   const canCreate =
     !!chosenBuild &&
     targets.length === (kind === "deployment" ? 1 : targets.length) &&
@@ -707,9 +807,48 @@ export function DeploymentPanel({ serviceId }: { serviceId: string }) {
                 </p>
               )}
             </fieldset>
+            {usePipeline && (
+              <div className="pipeline-handoff">
+                <strong>GCP · 보안 파이프라인</strong>
+                <span>
+                  빌드 → SAST → 스테이징 → DAST·AI 수정 → 차분 → 운영 배포 승인
+                  → 도메인 전환
+                </span>
+                {platformTargets.length > 0 && (
+                  <span>
+                    {platformTargets.map((t) => cloudName[t.cloud]).join("·")} ·
+                    플랫폼 배포 함께 실행
+                  </span>
+                )}
+              </div>
+            )}
+            {kind === "migration" &&
+              targets.some((t) => t.cloud === "gcp") &&
+              pipeline &&
+              !pipelineRepo && (
+                <p className="notice">
+                  보안 파이프라인 대상 저장소가 아닙니다 ·{" "}
+                  {pipeline.repo.replace("https://github.com/", "")}만 연결 ·
+                  플랫폼 배포 계획으로 진행
+                </p>
+              )}
             <button className="primary" disabled={busy || !canCreate}>
-              {busy ? "계획 만드는 중…" : "배포 계획 만들기"}
+              {usePipeline
+                ? busy
+                  ? "시작 중…"
+                  : "파이프라인 시작"
+                : busy
+                  ? "계획 만드는 중…"
+                  : "배포 계획 만들기"}
             </button>
+            {pipelineRun && (
+              <a
+                className="pipeline-link"
+                href={`#/pipeline/${encodeURIComponent(pipelineRun)}`}
+              >
+                파이프라인 화면 열기 →
+              </a>
+            )}
           </form>
           {plans.length > 0 && (
             <div className="deployment-history">

@@ -934,7 +934,7 @@ function Workspace({
         />
       )}
       {route.view === "pipeline" ? (
-        <PipelinePanel />
+        <PipelinePanel runId={route.serviceId} />
       ) : route.view === "monitoring" && route.serviceId ? (
         <ObservabilityPanel key={route.serviceId} serviceId={route.serviceId} />
       ) : route.serviceId ? (
