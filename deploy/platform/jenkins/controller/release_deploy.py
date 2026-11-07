@@ -4,11 +4,13 @@
 실패 결과에는 비밀·명령 출력 없이 stage·code만 남긴다.
 """
 import base64
+import ipaddress
 import json
 import os
 from pathlib import Path
 import re
 import sqlite3
+import sys
 import time
 
 from cryptography.exceptions import InvalidSignature
@@ -39,6 +41,10 @@ def verify_and_reserve(request, token, public_key_pem, db_path, *, now):
         expected = {"deployment_id": dep, "commit_sha": request["commit_sha"],
                     "bundle_sha256": bundle["bundle_sha256"], "target_id": target["target_id"],
                     "environment": "production", "config_sha256": request["config_sha256"]}
+        if "terraform_mapping" in request:
+            expected["mapping_sha256"] = canonical_hash(request["terraform_mapping"])
+        elif isinstance(claims, dict) and "mapping_sha256" in claims:
+            raise ValueError("Terraform 매핑이 누락됐다")
         if (not isinstance(claims, dict) or any(claims.get(k) != v for k, v in expected.items())
                 or type(claims.get("exp")) is not int or not now < claims["exp"] <= now + 600
                 or not isinstance(claims.get("nonce"), str) or not claims["nonce"].strip()):
@@ -86,7 +92,23 @@ def save_result(path: Path, result: dict) -> None:
     temp.replace(path)
 
 
-def main():
+def terraform_mapping(raw):
+    if not raw or len(raw) > 1024:
+        raise ValueError("Terraform 매핑 크기가 올바르지 않다")
+    value = json.loads(raw)
+    keys = {"profile_id", "mapped_profile_id", "subnet_name", "subnet_cidr", "state_serial", "diff_request_sha256"}
+    if (not isinstance(value, dict) or set(value) != keys
+            or value["profile_id"] != "e2-small"
+            or value["mapped_profile_id"] not in ("e2-micro", "e2-small")
+            or not re.fullmatch(r"[a-z][a-z0-9-]{0,62}", value["subnet_name"])
+            or str(ipaddress.IPv4Network(value["subnet_cidr"])) != value["subnet_cidr"]
+            or type(value["state_serial"]) is not int or value["state_serial"] < 0
+            or not re.fullmatch(r"[0-9a-f]{64}", value["diff_request_sha256"])):
+        raise ValueError("Terraform 매핑 값이 올바르지 않다")
+    return value
+
+
+def main(phase="deploy"):
     result, stage = {"state": "rejected"}, "inventory"
     try:
         # 환경 파라미터로 VM/DB/비밀 참조를 받지 않는다. 서버 소유 공개 인벤토리만 사용한다.
@@ -115,22 +137,55 @@ def main():
         request = {"deployment_id": os.environ.get("DEPLOYMENT_ID") or os.environ["RUN_ID"],
                    "commit_sha": os.environ["COMMIT"], "bundle": bundle, "target": target,
                    "config_sha256": canonical_hash(target)}
+        mapped = "terraform_mapping" in target
+        if mapped != (phase in ("plan", "apply")) or mapped != (os.environ.get("JOB_NAME") == "delta-mapped-release"):
+            raise ValueError("대상과 Terraform Jenkins 단계가 일치하지 않는다")
+        if mapped:
+            request["terraform_mapping"] = terraform_mapping(os.environ.get("TERRAFORM_MAPPING"))
+        started = int(time.time())
+        approval_time = started
+        if phase == "apply":
+            approved = os.environ["DELTA_APPROVED_PLAN_SHA256"]
+            receipt = json.loads(Path(".mapped-terraform/approval.json").read_text())
+            approval_time = receipt["started"]
+            if (type(approval_time) is not int or not 0 <= started - approval_time <= 1800
+                    or receipt["request_sha256"] != canonical_hash(request)
+                    or receipt["plan_sha256"] != approved):
+                raise ValueError("Plan 승인 시각·배포 요청·해시가 일치하지 않는다")
         public = Path(os.environ.get("DELTA_RELEASE_PUBLIC_KEY", "/run/delta/release-public.pem")).read_bytes()
         result = verify_and_reserve(request, json.loads(os.environ["APPROVAL"]), public,
                                     Path(os.environ.get("DELTA_RELEASE_DB", "/var/jenkins_home/delta-release.sqlite3")),
-                                    now=int(time.time()))
+                                    now=approval_time)
         # 같은 deployment_id 의 검증 완료 결과가 남아 있으면 다시 배포하지 않고 그 결과를 돌려준다(응답 유실·재요청).
         # 예약이 identity(요청 전체)를 대조했으므로 같은 요청임이 보장된다. 그 밖(실패·미확인)은 다시 실행한다:
         # 배포기는 같은 환경을 create/no-op 으로만 다룬다.
         stored = results_dir() / f"{request['deployment_id']}.json"
         previous = json.loads(stored.read_text()) if stored.is_file() else None
         stage = "deploy"
-        if previous and previous.get("state") == "verified":
+        if phase == "plan":
+            from vm_release import execute
+
+            result = execute(request, phase=phase)
+            if result.get("state") == "planned":
+                digest = result["plan_sha256"]
+                if not re.fullmatch(r"[0-9a-f]{64}", digest):
+                    raise ValueError("잘못된 Plan 해시")
+                save_result(Path(".mapped-terraform/approval.json"), {
+                    "started": started, "request_sha256": canonical_hash(request), "plan_sha256": digest,
+                })
+                Path(".mapped-terraform/plan.sha256").write_text(digest)
+                Path("terraform-plan.json").write_text(json.dumps(result, ensure_ascii=False, indent=2))
+                return 0
+        elif previous and previous.get("state") == "verified" and (
+            phase == "deploy" or previous.get("terraform") == {
+                "mapping_sha256": canonical_hash(request["terraform_mapping"]), "plan_sha256": approved,
+            }
+        ):
             result = previous
         else:
             # import도 승인·예약 뒤에 한다. 배포기는 이 시점 전 클라우드에 접속하지 않는다.
             from vm_release import execute
-            result = execute(request)
+            result = execute(request, phase=phase) if phase == "apply" else execute(request)
             save_result(stored, result)
         if result.get("state") == "verified":
             stage = "verify"
@@ -160,4 +215,6 @@ def main():
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    if len(sys.argv) > 2 or len(sys.argv) == 2 and sys.argv[1] not in ("plan", "apply"):
+        raise SystemExit(2)
+    raise SystemExit(main(*sys.argv[1:]))

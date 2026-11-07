@@ -99,9 +99,62 @@
           ],
           "default": null,
           "title": "Region"
+        },
+        "existing_subnets": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/ExistingSubnet"
+              },
+              "maxItems": 20,
+              "minItems": 1,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Existing Subnets"
         }
       },
       "title": "DiffTarget",
+      "type": "object"
+    },
+    "ExistingSubnet": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "cidr": {
+          "title": "Cidr",
+          "type": "string"
+        },
+        "tier": {
+          "anyOf": [
+            {
+              "enum": [
+                "public",
+                "private"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tier"
+        }
+      },
+      "required": [
+        "name",
+        "cidr"
+      ],
+      "title": "ExistingSubnet",
       "type": "object"
     },
     "StateRef": {
@@ -148,7 +201,8 @@
       "default": {
         "provider": "gcp",
         "manifests": null,
-        "region": null
+        "region": null,
+        "existing_subnets": null
       }
     },
     "accepted_gaps": {

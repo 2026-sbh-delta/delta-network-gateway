@@ -124,6 +124,8 @@ def platform_run(options: Options, store_dir: Path, run_id: str | None) -> Run:
         except Exception:
             # The graph stops and records a diagnostic without exposing a token, file or AWS error.
             pass
+    release_config = release_targets().get(options.release_target) if options.release_target else None
+    release_job = "delta-mapped-release" if release_config and "terraform_mapping" in release_config else "delta-release"
     return Run(options,
                sast=Sast(f"http://sast.{zone}:8790", os.environ.get("DELTA_SAST_TOKEN", "")),
                # Host 가 DAST_INTERNAL_HOSTS(dast.cp.internal:8765)와 맞아야 플랫폼 토큰이 통한다
@@ -137,9 +139,9 @@ def platform_run(options: Options, store_dir: Path, run_id: str | None) -> Run:
                diff=diff, require_diff_cutover=diff_required(),
                cloudflare=Cloudflare(token) if token else None, cutover=cutover_config() if options.cutover else None,
                # 운영 배포(환경별 VM 생성)는 사람 승인 서명 뒤 Jenkins delta-release 가 한다
-               release_jenkins=Jenkins(jenkins, "platform", password, job="delta-release") if options.release_target else None,
+               release_jenkins=Jenkins(jenkins, "platform", password, job=release_job) if options.release_target else None,
                release_signing_key=release_signing_key(),
-               release_config=release_targets().get(options.release_target) if options.release_target else None,
+               release_config=release_config,
                ecr_image_repo=os.environ.get("DELTA_ECR_IMAGE_REPO", ""),
                # 멈춘 실행의 원인 진단(연재님 delta-ai). 판정은 바꾸지 않는다
                diagnose=DeltaAi(f"http://ai.{zone}:8090", os.environ["DELTA_AI_TOKEN"]).assess
@@ -191,12 +193,18 @@ class Pipelines:
             options = Options(repo, commit, cutover=cutover, branch=branch, execution_cloud=execution_cloud,
                               onprem_build_id=onprem_build_id, assistance=assistance, release_target=release_target,
                               project_id=project_id)
-            if execution_cloud == "gcp" and diff_required():
+            target = release_targets().get(release_target) if release_target else None
+            mapped = target is not None and "terraform_mapping" in target
+            if mapped and execution_cloud != "gcp":
+                raise RuntimeError("차분 기반 배포는 AWS→GCP 실행이 필요합니다")
+            if execution_cloud == "gcp" and (diff_required() or mapped):
                 request = diff_input()
                 if repo == REPO_PREFIX + request.service_id:
+                    if mapped and not request.target.existing_subnets:
+                        raise RuntimeError("차분 기반 배포에 GCP 기존 서브넷 목록이 필요합니다")
                     options = replace(options, diff_request_hash=request.fingerprint)
-                elif cutover:
-                    raise RuntimeError("이 서비스에 고정된 Diff 입력이 없어 도메인 전환을 할 수 없습니다")
+                elif cutover or mapped:
+                    raise RuntimeError("이 서비스에 고정된 Diff 입력이 없습니다")
             run_id = hashlib.sha256(("platform:" + request_key).encode()).hexdigest() if request_key else None
             if run_id and (old := self.get(run_id)):
                 expected = asdict(options)
@@ -408,7 +416,8 @@ class DemoReset:
             # A run that went through the AI fix keeps only the fixed rebuild, so build main here.
             bundle, repo = self.build_main()
         self._repo = repo
-        target_id, config = next(((k, v) for k, v in release_targets().items() if v.get("cloud") == "gcp"),
+        target_id, config = next(((k, v) for k, v in release_targets().items()
+                                  if v.get("cloud") == "gcp" and "terraform_mapping" not in v),
                                  (None, None))
         if target_id is None:
             raise RuntimeError("GCP 운영 대상이 없습니다")

@@ -7,6 +7,18 @@
     "profile_id": "e2-small",
     "database": {"profile_id": "gcp-postgres18", "mode": "new"}
   },
+  "a-corp-gcp-mapped": {
+    "target_id": "a-corp-gcp-mapped",
+    "environment": "production",
+    "cloud": "gcp",
+    "region": "asia-northeast3",
+    "profile_id": "e2-small",
+    "database": {"profile_id": "gcp-postgres18-existing", "mode": "existing"},
+    "terraform_mapping": {
+      "source_compute": "REPLACE_AWS_VM_NAME: t3.small",
+      "source_subnet": "REPLACE_AWS_SUBNET_NAME"
+    }
+  },
   "a-corp-aws-prod": {
     "target_id": "a-corp-aws-prod",
     "environment": "production",

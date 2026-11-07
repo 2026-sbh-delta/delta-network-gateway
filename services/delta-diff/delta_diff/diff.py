@@ -67,6 +67,8 @@ def _mapping_input(
                 "target_provider": req.target.provider,
                 "region": req.target.region,
                 "source_region": req.source.region,
+                "network_mode": "reuse" if req.target.existing_subnets else "create",
+                "existing_subnets": req.target.existing_subnets,
                 "target_kubernetes": target_inventory,
                 "accepted_gaps": req.accepted_gaps,
                 "scc_tier": req.scc_tier,

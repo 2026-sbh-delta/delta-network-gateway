@@ -25,7 +25,7 @@ from uuid import NAMESPACE_URL, UUID, uuid5
 from delivery_contract import bundle_from_images, canonical_hash
 
 TARGET_KEYS = {"target_id", "environment", "cloud", "region", "profile_id", "database"}
-OPTIONAL_KEYS = {"environment_id"}
+OPTIONAL_KEYS = {"environment_id", "terraform_mapping"}
 CLOUDS = ("aws", "gcp")  # 온프렘(K3s) 경로는 배포기에 이식돼 있으나 컨트롤러에 kubectl·kubeconfig가 없어 받지 않는다.
 # Delta Notes(게시판) 템플릿: FE 3000, BE 8080, 둘 다 /healthz. 스테이징(ECS·Cloud Run)과 같다.
 COMPONENTS = (("frontend", 3000), ("backend", 8080))
@@ -69,6 +69,12 @@ def validate_target(target):
             or not isinstance(database["profile_id"], str) or not ID_RE.fullmatch(database["profile_id"])
             or database["mode"] not in ("new", "existing")):
         raise ValueError("운영 DB 선택이 올바르지 않다")
+    if "terraform_mapping" in target:
+        selectors = target["terraform_mapping"]
+        if (target["cloud"] != "gcp" or database["mode"] != "existing"
+                or not isinstance(selectors, dict) or set(selectors) != {"source_compute", "source_subnet"}
+                or any(not isinstance(value, str) or not 1 <= len(value) <= 256 for value in selectors.values())):
+            raise ValueError("차분 배포는 기존 DB와 GCP VM 매핑 선택이 필요하다")
     if "environment_id" in target:
         value = target["environment_id"]
         if not isinstance(value, str) or str(UUID(value)) != value:
@@ -95,15 +101,19 @@ def deployment_request(request, config):
     if images != bundle["images"]:
         raise ValueError("대상 클라우드 이미지가 승인 묶음과 다르다")
     profile = config["databases"][target["database"]["profile_id"]]
+    mapping = request.get("terraform_mapping")
+    profile_id = mapping["profile_id"] if mapping else target["profile_id"]
     return {
         "schema_version": 1,
         **identities(request),
         "deployment_id": request["deployment_id"],
+        **({"terraform_mapping": mapping} if mapping else {}),
         "plan_hash": canonical_hash({"deployment_id": request["deployment_id"],
                                      "bundle_sha256": bundle["bundle_sha256"],
-                                     "config_sha256": request["config_sha256"]}),
+                                     "config_sha256": request["config_sha256"],
+                                     **({"mapping_sha256": canonical_hash(mapping)} if mapping else {})}),
         "commit_sha": commit,
-        "target": {"cloud": cloud, "region": target["region"], "profile_id": target["profile_id"]},
+        "target": {"cloud": cloud, "region": target["region"], "profile_id": profile_id},
         "connection": config["connections"][cloud]["identity"],
         "components": [
             {"name": name, "image": images[name], "image_digest": bundle["image_digests"][name],
@@ -118,7 +128,8 @@ def deployment_request(request, config):
 def child_env(config, config_path, data, encoded, directory):
     # 승인 토큰·Jenkins 파라미터는 배포기에 넘기지 않는다.
     env = {k: v for k, v in os.environ.items()
-           if k not in ("APPROVAL", "IMAGES_JSON", "BUNDLE_JSON", "BUNDLE_SHA256")}
+           if k not in ("APPROVAL", "IMAGES_JSON", "BUNDLE_JSON", "BUNDLE_SHA256", "TERRAFORM_MAPPING",
+                        "DELTA_MAPPED_PHASE", "DELTA_MAPPED_DIR", "DELTA_APPROVED_PLAN_SHA256")}
     env.update(DELTA_RUN_ID=data["run_id"], DELTA_DEPLOYMENT=encoded, DELTA_DEPLOY_CONFIG=str(config_path),
                PYTHONDONTWRITEBYTECODE="1", AWS_PAGER="")
     if data["target"]["cloud"] == "gcp":
@@ -169,13 +180,20 @@ def to_contract(request, data, deployed):
         instance = deployed["environment"]["instances"][0]
     except (KeyError, IndexError, TypeError, ValueError):
         return failure(base, "failed", "verify", "observation_mismatch")
+    if "terraform_mapping" in request:
+        proof = deployed.get("terraform")
+        if (not isinstance(proof, dict) or set(proof) != {"mapping_sha256", "plan_sha256"}
+                or proof["mapping_sha256"] != canonical_hash(request["terraform_mapping"])
+                or proof["plan_sha256"] != os.environ.get("DELTA_APPROVED_PLAN_SHA256")):
+            return failure(base, "failed", "verify", "terraform_plan_mismatch")
+        contract["terraform"] = proof
     return {**contract, **base, "state": "verified", "database_version_num": version,
             "environment_id": data["environment_id"],
             "instance": {k: str(instance.get(k, "")) for k in ("id", "name", "zone")},
             "service_url": str(deployed.get("service_url", ""))}
 
 
-def execute(request, *, runner=subprocess.run):
+def execute(request, *, phase="deploy", runner=subprocess.run):
     """execute(request) -> result. 배포기는 별도 프로세스로 돌리고 stdout/stderr는 버린다."""
     target = request["target"]
     validate_target(target)
@@ -191,14 +209,21 @@ def execute(request, *, runner=subprocess.run):
     encoded = base64.b64encode(json.dumps(data).encode()).decode()
     with tempfile.TemporaryDirectory(prefix="delta-release-") as directory:
         os.chmod(directory, 0o700)
+        env = child_env(config, config_path, data, encoded, directory)
+        if "terraform_mapping" in data:
+            env.update(DELTA_MAPPED_PHASE=phase, DELTA_MAPPED_DIR=str(Path.cwd() / ".mapped-terraform"))
+            if phase == "apply":
+                env["DELTA_APPROVED_PLAN_SHA256"] = os.environ["DELTA_APPROVED_PLAN_SHA256"]
         try:
             runner([python(), str(release_dir() / "deploy.py")], cwd=directory, check=False,
                    capture_output=True, text=True, timeout=3300,
-                   env=child_env(config, config_path, data, encoded, directory))
+                   env=env)
         except subprocess.TimeoutExpired:
             return failure(base, "unknown", "deploy", "deployer_timeout")
         try:
             deployed = json.loads((Path(directory) / "result.json").read_text())
         except (OSError, ValueError):
             return failure(base, "unknown", "deploy", "deployer_no_result")
+    if phase == "plan" and deployed.get("state") == "planned":
+        return deployed
     return to_contract(request, data, deployed)

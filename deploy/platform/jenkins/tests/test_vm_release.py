@@ -272,3 +272,45 @@ def test_same_deployment_id_returns_stored_verified_result_without_redeploy(rele
     assert release_module.main() == 0
     assert len(calls) == 1
     assert (main_env / "results" / "deployment-a.json").is_file()
+
+
+def test_mapped_apply_requires_approved_plan_from_same_request(release_module, release_request, main_env, monkeypatch):
+    from pathlib import Path
+
+    key = Ed25519PrivateKey.generate()
+    (main_env / "release-public.pem").write_bytes(key.public_key().public_bytes(
+        serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo))
+    target = release_request["target"]
+    target["database"]["mode"] = "existing"
+    target["terraform_mapping"] = {"source_compute": "web: t3.small", "source_subnet": "private"}
+    (main_env / "release-targets.json").write_text(json.dumps({"fixture-gcp": target}))
+    mapping = {"profile_id": "e2-small", "mapped_profile_id": "e2-small", "subnet_name": "app",
+               "subnet_cidr": "10.32.2.0/24", "state_serial": 12, "diff_request_sha256": "d" * 64}
+    release_request.update(config_sha256=canonical_hash(target), terraform_mapping=mapping)
+    monkeypatch.setenv("JOB_NAME", "delta-mapped-release")
+    monkeypatch.setenv("TERRAFORM_MAPPING", json.dumps(mapping))
+    monkeypatch.setenv("APPROVAL", json.dumps(sign(release_request, key, mapping_sha256=canonical_hash(mapping))))
+
+    phases = []
+    digest = "a" * 64
+
+    def execute(request, *, phase):
+        phases.append(phase)
+        if phase == "plan":
+            Path(".mapped-terraform").mkdir()
+            return {"state": "planned", "plan_sha256": digest}
+        return {**request["bundle"], "state": "verified", "target_id": "fixture-gcp",
+                "deployment_id": request["deployment_id"], "config_sha256": request["config_sha256"],
+                "environment": "production", "database_version_num": 180003,
+                "terraform": {"mapping_sha256": canonical_hash(mapping), "plan_sha256": digest}}
+
+    monkeypatch.setattr(sys.modules["vm_release"], "execute", execute)
+    assert release_module.main("plan") == 0
+    monkeypatch.setenv("DELTA_APPROVED_PLAN_SHA256", "b" * 64)
+    assert release_module.main("apply") == 1
+    assert phases == ["plan"]
+    monkeypatch.setenv("DELTA_APPROVED_PLAN_SHA256", digest)
+    assert release_module.main("apply") == 0
+    assert release_module.main("apply") == 0
+    assert phases == ["plan", "apply"]
+    assert json.loads((main_env / "result.json").read_text())["terraform"]["plan_sha256"] == digest
