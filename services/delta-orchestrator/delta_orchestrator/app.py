@@ -359,7 +359,7 @@ def create_app(pipelines: Pipelines | None = None, *, case_review_client_factory
     @app.post('/api/pipeline/runs/{run_id}/cancel')
     async def cancel_onprem(run_id:str):
         p=need_pipelines()
-        if not p.run or p.run.run_id!=run_id or not p.running() or not p.run.cancel():
+        if not p.cancel(run_id):
             raise HTTPException(409,'취소 가능한 온프레미스 실행이 아닙니다')
         return {'ok':True}
 
@@ -385,7 +385,8 @@ def create_app(pipelines: Pipelines | None = None, *, case_review_client_factory
     @app.get("/api/pipeline/runs")
     async def list_runs():
         p = need_pipelines()
-        return {"runs": p.list(), "active": p.run.run_id if p.running() and p.run else None}
+        active = p.active_ids()
+        return {"runs": p.list(), "active": next(iter(active), None), "active_runs": active}
 
     @app.get("/api/pipeline/runs/{run_id}")
     async def get_run(run_id: str):
@@ -438,7 +439,7 @@ def create_app(pipelines: Pipelines | None = None, *, case_review_client_factory
 
     @app.get("/api/pipeline/capabilities")
     async def pipeline_capabilities():
-        return {"submission_idempotency": True, "decision_identity": True, "release_resources": True, "release_cleanup": True}
+        return {"submission_idempotency": True, "decision_identity": True, "release_resources": True, "release_cleanup": True, "parallel_environments": True}
 
     @app.api_route("/api/pipeline/runs/{run_id}/cleanup", methods=["GET", "POST"])
     async def cleanup_run(run_id: str, request: Request):

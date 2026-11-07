@@ -1,4 +1,4 @@
-"""delta-pipeline 실행을 이 서버 안에서 돌린다. 한 번에 하나(스테이징은 하나뿐), 재시작하면 끝나지 못한 실행을 이어 간다.
+"""delta-pipeline 실행을 이 서버 안에서 돌린다. 환경별 한 번에 하나(GCP·온프레미스 병렬), 재시작하면 끝나지 못한 실행을 이어 간다.
 
 환경 변수: ORCH_STATE_DIR, JENKINS_PLATFORM_PASSWORD, DELTA_SAST_TOKEN, DAST_PLATFORM_TOKEN, DELTA_STAGING_TOKEN(조회),
 DELTA_IMAGE_REPO(선택), DELTA_INTERNAL_ZONE(선택),
@@ -26,7 +26,7 @@ from delta_pipeline.diagnostic_client import DiagnosticClient
 from delta_pipeline import domain
 from delta_pipeline.clients import Cloudflare, Dast, DeltaAi, Jenkins, Sast, Staging, ServiceUnavailable, probe, resolve_cname
 from delta_pipeline.model import Options
-from delta_pipeline.run import BOARD_DIR, Run, latest_unfinished
+from delta_pipeline.run import BOARD_DIR, Run, unfinished_runs
 from delta_pipeline.steps import CutoverConfig
 
 IMAGE_REPO = "asia-northeast3-docker.pkg.dev/term2-delta/delta-lab-staging/delta-sample-app"
@@ -109,21 +109,40 @@ class Pipelines:
         self.store_dir = Path(store_dir)
         self.store_dir.mkdir(parents=True, exist_ok=True)
         self._factory = factory
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self.run: Run | None = None
         self._thread: threading.Thread | None = None
-        saved = latest_unfinished(self.store_dir) if (self.store_dir / BOARD_DIR).exists() else None
-        if saved:
-            self._launch(saved[1], saved[0])
+        self._runs: dict[str, Run] = {}
+        self._threads: dict[str, threading.Thread] = {}
+        saved = unfinished_runs(self.store_dir) if (self.store_dir / BOARD_DIR).exists() else []
+        for run_id, options in saved:
+            # Resume one unfinished execution per environment; never replay two
+            # jobs against the same staging resources.
+            if not self.running(options.execution_cloud):
+                self._launch(options, run_id)
 
     def _launch(self, options: Options, run_id: str | None = None) -> str:
-        self.run = self._factory(options, self.store_dir, run_id)
-        self._thread = threading.Thread(target=self.run.execute, daemon=True)
-        self._thread.start()
-        return self.run.run_id
+        run = self._factory(options, self.store_dir, run_id)
+        thread = threading.Thread(target=run.execute, daemon=True)
+        self._runs[run.run_id], self._threads[run.run_id] = run, thread
+        self.run, self._thread = run, thread  # Compatibility for older callers.
+        thread.start()
+        return run.run_id
 
-    def running(self) -> bool:
-        return self._thread is not None and self._thread.is_alive()
+    def active_ids(self) -> list[str]:
+        with self._lock:
+            return [rid for rid, thread in self._threads.items() if thread.is_alive()]
+
+    def running(self, cloud: str | None = None) -> bool:
+        with self._lock:
+            return any(self._threads[rid].is_alive() and
+                       (cloud is None or run.options.execution_cloud == cloud)
+                       for rid, run in self._runs.items())
+
+    def cancel(self, run_id: str) -> bool:
+        with self._lock:
+            run = self._runs.get(run_id)
+            return bool(run and self._threads[run_id].is_alive() and run.cancel())
 
     def start(self, repo: str, commit: str, *, cutover: bool = False, branch: str = "", execution_cloud='gcp', onprem_build_id=None, assistance=False, release_target=None, request_key=None) -> str:
         with self._lock:
@@ -138,18 +157,23 @@ class Pipelines:
                 if actual != expected:
                     raise RuntimeError("같은 요청 키에 다른 실행 입력을 사용할 수 없습니다")
                 return run_id
-            if self.running():
-                raise RuntimeError("이미 실행 중인 파이프라인이 있습니다(스테이징은 하나뿐)")
+            if self.running(execution_cloud):
+                raise RuntimeError("해당 환경에 이미 실행 중인 파이프라인이 있습니다")
             return self._launch(options, run_id)
 
     def answer(self, run_id: str, value: str, case_id: str | None = None, *, decision_id: str | None = None) -> bool:
-        if decision_id is not None:
-            return bool(self.run and self.run.run_id == run_id and self.run.answer(value, case_id, decision_id=decision_id))
-        return bool(self.run and self.run.run_id == run_id and self.run.answer(value, case_id))
+        with self._lock:
+            run = self._runs.get(run_id)
+            if not run:
+                return False
+            if decision_id is not None:
+                return bool(run.answer(value, case_id, decision_id=decision_id))
+            return bool(run.answer(value, case_id))
 
     def get(self, run_id: str) -> dict[str, Any] | None:
-        if self.run and self.run.run_id == run_id:
-            return self.run.snapshot()
+        run = getattr(self, "_runs", {}).get(run_id)
+        if run is not None:
+            return run.snapshot()
         path = self.store_dir / BOARD_DIR / f"{run_id}.json"
         if not run_id.isalnum() or not path.is_file():
             return None

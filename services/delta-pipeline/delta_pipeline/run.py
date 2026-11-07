@@ -30,9 +30,10 @@ BOARD_DIR = "runs"
 LOG = logging.getLogger(__name__)
 
 
-def latest_unfinished(store_dir: Path) -> tuple[str, Options] | None:
+def unfinished_runs(store_dir: Path) -> list[tuple[str, Options]]:
     """강제 종료로 끝나지 못한 가장 최근 실행을 찾는다."""
     boards = sorted((store_dir / BOARD_DIR).glob("*.json"), key=lambda path: path.stat().st_mtime, reverse=True)
+    unfinished = []
     for path in boards:
         saved = json.loads(path.read_text(encoding="utf-8"))
         if saved["outcome"] is None and "options" in saved:
@@ -41,8 +42,12 @@ def latest_unfinished(store_dir: Path) -> tuple[str, Options] | None:
             if set(saved["options"]) - {f.name for f in fields(Options)}:
                 LOG.warning("실행 %s: 이 버전이 모르는 옵션이 있어 이어 받지 않는다", saved.get("run_id"))
                 continue
-            return saved["run_id"], Options(**saved["options"])
-    return None
+            unfinished.append((saved["run_id"], Options(**saved["options"])))
+    return unfinished
+
+
+def latest_unfinished(store_dir: Path) -> tuple[str, Options] | None:
+    return next(iter(unfinished_runs(store_dir)), None)
 
 
 class Run:

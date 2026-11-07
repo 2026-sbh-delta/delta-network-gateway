@@ -39,7 +39,19 @@ def _json(request: urllib.request.Request, *, timeout: float, opener: Any = urll
             body = response.read()
     except urllib.error.HTTPError as exc:
         error = NotFound if exc.code == HTTP_NOT_FOUND else ServiceUnavailable
-        raise error(f"HTTP {exc.code}: {request.full_url}") from exc
+        validation = ""
+        if exc.code == 422:
+            # Do not expose response input/context: they may contain credentials.
+            try:
+                details = json.loads(exc.read(16384)).get("detail", [])
+                fields = sorted({part for item in details if isinstance(item, dict)
+                                 for part in item.get("loc", []) if isinstance(part, str)
+                                 and part in {"run_id", "repo", "commit", "mode"}})
+                if fields:
+                    validation = " (요청 형식 오류: " + ", ".join(fields) + ")"
+            except (ValueError, TypeError, AttributeError):
+                pass
+        raise error(f"HTTP {exc.code}{validation}: {request.full_url}") from exc
     except (urllib.error.URLError, TimeoutError, OSError) as exc:
         raise ServiceUnavailable(f"{type(exc).__name__}: {request.full_url}") from exc
     try:

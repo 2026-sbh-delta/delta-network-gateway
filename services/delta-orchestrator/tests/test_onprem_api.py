@@ -11,7 +11,7 @@ def test_onprem_selection_is_authenticated_validated_and_bound(monkeypatch):
     monkeypatch.setenv('ORCH_SESSION_SECRET','s'*40)
     monkeypatch.delenv('DELTA_ONPREM_ENABLED',raising=False)
     calls=[]
-    p=SimpleNamespace(start=lambda *args,**kw:calls.append((args,kw)) or 'run1',run=None,running=lambda:False)
+    p=SimpleNamespace(start=lambda *args,**kw:calls.append((args,kw)) or 'run1',run=None,running=lambda:False,cancel=lambda run_id:False)
     with TestClient(create_app(p),base_url=origin) as client:
         assert client.get('/api/onprem/builds').status_code==401
         client.cookies.set(COOKIE,Access.from_env().issue())
