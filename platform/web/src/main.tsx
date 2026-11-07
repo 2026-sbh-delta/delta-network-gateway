@@ -872,7 +872,9 @@ function Workspace({
             <strong>{session.login_id}</strong>
             <small>공통 작업 공간</small>
           </div>
-          <button onClick={logout}>로그아웃</button>
+          {!session.presentation_mode && (
+            <button onClick={logout}>로그아웃</button>
+          )}
         </>
       }
     >
@@ -1058,7 +1060,9 @@ function App() {
   const [session, save] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const presentationMode = useRef(false);
   function login(s: Session | null) {
+    if (s) presentationMode.current = !!s.presentation_mode;
     setSession(s);
     save(s);
   }
@@ -1075,7 +1079,10 @@ function App() {
   }
   useEffect(() => {
     load();
-    const expired = () => login(null);
+    const expired = () => {
+      if (presentationMode.current) void load();
+      else login(null);
+    };
     window.addEventListener("session-expired", expired);
     return () => window.removeEventListener("session-expired", expired);
   }, []);

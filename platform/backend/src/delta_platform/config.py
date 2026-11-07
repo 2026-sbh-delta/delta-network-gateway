@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     login_id: str
     password_hash: SecretStr
     public_origin: str
+    presentation_mode: bool = False
     local_mode: bool = False
     session_hours: int = 8
     web_dist: Path | None = None
