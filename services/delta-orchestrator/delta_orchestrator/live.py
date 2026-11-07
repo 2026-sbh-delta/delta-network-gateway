@@ -171,6 +171,25 @@ async def dast_view(client: httpx.AsyncClient, board: dict[str, Any], prefix: st
     return _relink(keep, lambda path: prefix + "/artifacts/" + path.rsplit("/", 1)[-1])
 
 
+async def dast_fix(client: httpx.AsyncClient, board: dict[str, Any]) -> dict[str, Any]:
+    """재현된 항목에 DAST 가 만든 수정안(패치·바뀐 파일·코드 흐름). 승인 화면에서 수정 전·후 코드를 보여 준다(읽기만)."""
+    run_id = dast_run(board)
+    results = (_node(board, "dast").get("detail") or {}).get("results") or []
+    finding = next((r.get("finding_id") for r in results if r.get("status") in ("REPRODUCED", "BLOCKED")), None)
+    if not isinstance(finding, str) or not re.fullmatch(r"[A-Za-z0-9._-]{1,128}", finding):
+        raise LiveError(404, "수정안을 만들 재현 항목이 없습니다")
+    token = os.environ.get("DAST_PLATFORM_TOKEN", "")
+    try:
+        r = await client.get(f"{_dast_base()}/api/runs/{run_id}/findings/{finding}/fix",
+                             headers={"Authorization": f"Bearer {token}"}, timeout=10)
+    except httpx.HTTPError as exc:
+        raise LiveError(502, f"DAST 에 닿지 못했습니다({type(exc).__name__})") from None
+    if r.status_code != 200:
+        raise LiveError(502, f"DAST 응답 {r.status_code}")
+    data = r.json()
+    return {"finding_id": finding, **{k: data.get(k) for k in ("status", "summary", "changes", "files", "patch", "trace")}}
+
+
 async def dast_artifact(client: httpx.AsyncClient, board: dict[str, Any], name: str) -> bytes:
     run_id = dast_run(board)
     if not ARTIFACT.fullmatch(name):

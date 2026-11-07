@@ -57,6 +57,8 @@ locals {
     orchestrator = ["jenkins/platform_password", "jenkins/staging_read_token", "dast/platform_token", "jenkins/release_targets"]
     # DAST: 스테이징 조회 토큰 하나(변경 토큰·Jenkins 경로 전체는 못 읽음)
     dast = ["jenkins/staging_read_token"]
+    # 대시보드: 오케스트레이터 관리자 로그인(실행 기록 조회·승인 전달 중계)
+    dashboard = ["orchestrator/admin_password"]
   }
 
   extra_policies = {

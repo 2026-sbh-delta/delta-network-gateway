@@ -22,6 +22,7 @@ import "./presentation.css";
 import "./dashboard.css";
 import "./release.css";
 import "./migration-diff.css";
+import { PipelinePanel } from "./PipelinePanel";
 import { ApplicationPanel } from "./ApplicationPanel";
 import {
   AppShell,
@@ -932,7 +933,9 @@ function Workspace({
           }}
         />
       )}
-      {route.view === "monitoring" && route.serviceId ? (
+      {route.view === "pipeline" ? (
+        <PipelinePanel />
+      ) : route.view === "monitoring" && route.serviceId ? (
         <ObservabilityPanel key={route.serviceId} serviceId={route.serviceId} />
       ) : route.serviceId ? (
         <Detail
@@ -978,16 +981,19 @@ function Workspace({
                 </p>
               </div>
               <ol className="journey-steps">
-                {sections.slice(1).map((item, i) => (
-                  <li key={item.view}>
-                    <span>0{i + 1}</span>
-                    <div>
-                      <strong>{item.title}</strong>
-                      <small>{item.description}</small>
-                    </div>
-                    <Icon name={item.view} />
-                  </li>
-                ))}
+                {sections
+                  .slice(1)
+                  .filter((item) => item.view !== "pipeline")
+                  .map((item, i) => (
+                    <li key={item.view}>
+                      <span>0{i + 1}</span>
+                      <div>
+                        <strong>{item.title}</strong>
+                        <small>{item.description}</small>
+                      </div>
+                      <Icon name={item.view} />
+                    </li>
+                  ))}
               </ol>
             </section>
           )}

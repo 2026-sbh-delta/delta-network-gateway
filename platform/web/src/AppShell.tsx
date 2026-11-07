@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { Service } from "./api";
 
-export type View = "overview" | "build" | "migration" | "monitoring";
+export type View =
+  "overview" | "build" | "migration" | "monitoring" | "pipeline";
 export type WorkspaceRoute = { view: View; serviceId: string | null };
 export const sections: { view: View; title: string; description: string }[] = [
   {
@@ -24,10 +25,15 @@ export const sections: { view: View; title: string; description: string }[] = [
     title: "모니터링",
     description: "실행 환경의 상태와 지표",
   },
+  {
+    view: "pipeline",
+    title: "파이프라인",
+    description: "웹 검증·차분 분석·운영 반영",
+  },
 ];
 function readRoute(): WorkspaceRoute {
   const match = location.hash.match(
-    /^#\/(overview|build|migration|monitoring)(?:\/([^/]+))?$/,
+    /^#\/(overview|build|migration|monitoring|pipeline)(?:\/([^/]+))?$/,
   );
   if (!match) return { view: "overview", serviceId: null };
   try {
@@ -55,6 +61,8 @@ export function useWorkspaceRoute() {
 export function Icon({ name }: { name: View | "menu" | "arrow" }) {
   const paths = {
     overview: "M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z",
+    pipeline:
+      "M5 6a2 2 0 1 0 0 .1 M5 18a2 2 0 1 0 0 .1 M19 12a2 2 0 1 0 0 .1 M7 6h4l4 6M7 18h4l4-6",
     build: "m8 5-6 7 6 7 M16 5l6 7-6 7 M14 3l-4 18",
     migration: "M3 7h16m-5-5 5 5-5 5 M21 17H5m5-5-5 5 5 5",
     monitoring: "M3 3v18h18 M5 14l4-5 4 7 6-11",
@@ -269,7 +277,7 @@ export function AppShell({
           id="workspace-content"
           ref={main}
           tabIndex={-1}
-          className="workspace presentation-workspace"
+          className={`workspace presentation-workspace${route.view === "pipeline" ? " flow-workspace" : ""}`}
         >
           {children}
         </main>

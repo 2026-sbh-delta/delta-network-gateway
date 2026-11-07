@@ -25,6 +25,11 @@ class Settings(BaseSettings):
     public_origin: str
     presentation_mode: bool = False
     local_mode: bool = False
+    # 파이프라인 화면: 오케스트레이터 실행 기록을 서버가 대신 읽는다(관리자 비밀번호는 서버에만 둔다).
+    orchestrator_url: str = ""
+    orchestrator_public_host: str = ""
+    orchestrator_password: SecretStr = SecretStr("")
+    pipeline_repository: str = "https://github.com/2026-sbh-delta/delta-sample-app"
     session_hours: int = 8
     web_dist: Path | None = None
     build_provider: Literal["jenkins", "codebuild"] = "jenkins"
