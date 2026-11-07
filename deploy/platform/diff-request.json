@@ -1,0 +1,1 @@
+{"service_id": "delta-sample-app", "source": {"provider": "aws", "region": "ap-northeast-2", "state": {"bucket": "sbh-delta-workload-tf-616723161368", "key": "delta/lab/workload-client/terraform.tfstate"}}, "target": {"provider": "gcp", "region": "asia-northeast3"}}
