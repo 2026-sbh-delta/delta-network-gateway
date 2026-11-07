@@ -1,6 +1,6 @@
 # Delta network gateway
 
-2026-11-07 최신 배포 환경 상세 기준 UI 구현/검증: 사용자가 지정한 `Migration verification 85df8a6`의 실제 화면/운영 번들/조회 API를 기준으로 환경 카드와 완료 상태 전환을 복구하고 정확한 주소 안내를 제거했다. 가독성 개선과 최종 빌드/형식 검사, 로컬 fixture 회귀 46개 및 1440px/390px 캡처 확인을 완료했다. 사용자 승인으로 구현 `090c51d3`을 푸시하고 [PR #73](https://github.com/2026-sbh-delta/delta-network-gateway/pull/73)을 main 대상으로 게시했으며 squash 병합 경로를 사용한다. 최종 원격 CI/병합 상태는 PR과 main 이력을 따른다. 운영 번들 전체 원본 복구나 운영 배포/자원 변경은 포함하지 않는다. [검증과 게시 기록](ai-dlc/platform-presentation.md#pr-게시와-main-squash-병합-경로-2026-11-07-kst)
+2026-11-07 17:38 KST platform 프론트 UI 배포 완료: main `3767fd32`의 UI 변경만 기존 운영 번들에 반영했다. 주소 안내 제거/글자 크기/대비/반응형을 적용하고 운영 HTTPS readiness, 변경 파일 3개 해시, 기존 자산 6개와 서비스/환경 보존을 확인했다. API 이미지/환경 변수/기존 Wazuh 연결을 유지한 API 컨테이너 1회 재생성만 수행했고 Worker/DB는 재시작하지 않았다. main CI 20개 및 운영 번들 기반 로컬 4개 검사를 통과했다. Chrome 연결 장애로 배포 후 화면 캡처는 완료하지 못했다. [실제 배포와 복구 절차](ai-dlc/platform-presentation.md#operation-ui-배포-승인과-운영-기능-보존-2026-11-07-kst)
 
 2026-11-07 15:21 KST ANF 기본 차단 제거 완료: 사용자 전체 범위 명시 승인으로 SID `9000000` 한 줄만 제거했다. 나머지6개 규칙과 Firewall/Endpoint/경로/DNS/ALB 설정을 보존했고 AWS ALB 두 IP의 외부 HTTPS200, Primary2/Secondary2 READY/정책 IN_SYNC 및 중앙 최종 실제 Plan No changes/종료0을 확인했다. managed89개 ID/출력22개 유지, Terraform mock76개/Python22개 통과. 443 이외의 미등록 통신도 이 규칙으로 차단하지 않는다. demo DNS는 GCP를 유지한다. Git 게시와 원격 CI 상태는 Git 이력과 실행 결과를 따른다. [승인과 실제 결과](ai-dlc/anf-board-reactivation.md#2026-11-07-후속-공통-기본-차단-규칙-제거)
 
