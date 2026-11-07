@@ -16,6 +16,9 @@ from delta_platform.core.store import Store
 
 WORKSPACE_ID = UUID("496562be-f67b-5f7e-a16b-929fd347b9ad")
 FIELDS = ("id", "name", "cloud", "region", "version")
+STORED_METADATA_FIELDS = frozenset(
+    {"deployment_run_id", "service_url", "database", "runtime_status", "database_profile_id"}
+)
 
 
 class Instance(BaseModel):
@@ -58,6 +61,23 @@ class EnvironmentInput(BaseModel):
         return self
 
 
+def public_environment(row):
+    binding = row["binding"]
+    database = binding.get("database") or {}
+    return {
+        **{field: row[field] for field in FIELDS},
+        "account_id": binding.get("account_id"),
+        "gcp_project": binding.get("gcp_project"),
+        "instances": [
+            {key: instance[key] for key in ("id", "name", "zone") if key in instance}
+            for instance in binding.get("instances", [])
+        ],
+        "database_profile_id": binding.get("database_profile_id") or database.get("profile_id"),
+        "runtime_registered": bool(binding.get("runtime")),
+        "runtime_status": binding.get("runtime_status", "active"),
+    }
+
+
 class EnvironmentStore:
     def __init__(self, engine):
         self.engine = engine
@@ -71,16 +91,7 @@ class EnvironmentStore:
                 .order_by(environments.c.created_at)
                 .limit(20)
             ).mappings()
-            return {
-                "items": [
-                    {
-                        **{f: row[f] for f in FIELDS},
-                        "runtime_registered": bool(row["binding"].get("runtime")),
-                        "runtime_status": row["binding"].get("runtime_status", "active"),
-                    }
-                    for row in rows
-                ]
-            }
+            return {"items": [public_environment(row) for row in rows]}
 
     def get(self, service_id, environment_id):
         Store(self.engine).service(service_id)

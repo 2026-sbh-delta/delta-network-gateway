@@ -29,6 +29,17 @@
 .deployment-action-icon {
   flex-shrink: 0;
 }
+.deployment-environment-card .release-state {
+  align-items: center;
+  gap: 7px;
+}
+.deployment-state-indicator {
+  width: 7px;
+  height: 7px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: currentColor;
+}
 .deployment-environment-cards {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

@@ -7,6 +7,30 @@ import "./deployed-environments.css";
 
 const cloudLabel = { ...cloudName, onprem: "On-Premise" };
 const cloudOrder = { aws: 0, gcp: 1, onprem: 2 };
+const runtimeStates: Record<string, { label: string; tone: string }> = {
+  active: { label: "활성화", tone: "good" },
+  removing: { label: "앱 정리 중", tone: "" },
+  removed: { label: "앱 삭제됨", tone: "" },
+  deploying: { label: "배포 중", tone: "" },
+  failed: { label: "배포 실패", tone: "bad" },
+  stopped: { label: "중지됨", tone: "" },
+  inactive: { label: "비활성화", tone: "" },
+};
+
+function DeploymentState({ status }: { status?: string | null }) {
+  const state = runtimeStates[status ?? ""] ?? {
+    label: "상태 확인 필요",
+    tone: "",
+  };
+  return (
+    <span className={`release-state ${state.tone}`}>
+      {status === "active" && (
+        <span className="deployment-state-indicator" aria-hidden="true" />
+      )}
+      {state.label}
+    </span>
+  );
+}
 
 /*!
  * Font Awesome Free 6.7.2 by @fontawesome - https://fontawesome.com
@@ -169,13 +193,7 @@ export function DeployedEnvironments({
                 />
                 {cloudLabel[environment.cloud]}
               </h3>
-              <span className="release-state">
-                {environment.runtime_status === "removed"
-                  ? "앱 삭제됨"
-                  : environment.runtime_status === "removing"
-                    ? "앱 정리 중"
-                    : "배포 등록됨"}
-              </span>
+              <DeploymentState status={environment.runtime_status} />
             </div>
             <dl>
               <div>

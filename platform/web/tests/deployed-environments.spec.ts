@@ -69,6 +69,7 @@ async function fixture(
     environmentError?: boolean;
     empty?: boolean;
     removed?: boolean;
+    runtimeStatus?: string | null;
   } = {},
 ) {
   let status = options.running ? "running" : "succeeded";
@@ -118,7 +119,9 @@ async function fixture(
                 ...environment,
                 runtime_status: options.removed
                   ? ["active", "removing", "removed"][index]
-                  : environment.runtime_status,
+                  : options.runtimeStatus !== undefined
+                    ? options.runtimeStatus
+                    : environment.runtime_status,
               })),
         },
       });
@@ -252,11 +255,32 @@ test("환경 미연결을 표시하면서 기존 이동 버튼은 유지한다",
   ).toBeEnabled();
 });
 
-test("배포 등록과 앱 정리 중 및 삭제 상태를 구분한다", async ({ page }) => {
+test("활성화와 앱 정리 중 및 삭제 상태를 구분한다", async ({ page }) => {
   await fixture(page, { removed: true });
   await page.goto(`/#/overview/${service.id}`);
   const panel = page.getByRole("region", { name: "배포 환경", exact: true });
-  await expect(panel.getByText("배포 등록됨", { exact: true })).toHaveCount(1);
+  await expect(panel.getByText("활성화", { exact: true })).toHaveCount(1);
+  await expect(panel.locator(".release-state.good")).toHaveText("활성화");
+  await expect(panel.locator(".deployment-state-indicator")).toHaveCount(1);
   await expect(panel.getByText("앱 정리 중", { exact: true })).toHaveCount(1);
   await expect(panel.getByText("앱 삭제됨", { exact: true })).toHaveCount(1);
 });
+
+for (const status of [null, "unknown", "stopped", "failed"]) {
+  test(`${status} 상태를 활성화로 표시하지 않는다`, async ({ page }) => {
+    await fixture(page, { runtimeStatus: status });
+    await page.goto(`/#/overview/${service.id}`);
+    const panel = page.getByRole("region", { name: "배포 환경", exact: true });
+    await expect(panel.getByRole("article")).toHaveCount(3);
+    await expect(panel.getByText("활성화", { exact: true })).toHaveCount(0);
+    await expect(panel.locator(".release-state.good")).toHaveCount(0);
+    await expect(panel.locator(".deployment-state-indicator")).toHaveCount(0);
+    const label =
+      status === "stopped"
+        ? "중지됨"
+        : status === "failed"
+          ? "배포 실패"
+          : "상태 확인 필요";
+    await expect(panel.getByText(label, { exact: true })).toHaveCount(3);
+  });
+}
