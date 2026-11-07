@@ -36,14 +36,19 @@ class Idle:
         return self.busy
 
 
-def test_picks_the_latest_build_that_was_not_replaced_by_a_fix(tmp_path):
+def test_picks_the_unfixed_build_of_the_current_main_commit(tmp_path):
     (tmp_path / mod.BOARD_DIR).mkdir()
     now = time.time()
-    board(tmp_path, "old", "a" * 40, "a" * 40, "1", now - 300)
-    board(tmp_path, "fixed", "b" * 40, "c" * 40, "2", now - 100)  # 수정 후 재빌드: 커밋이 바뀜
-    board(tmp_path, "onprem", "d" * 40, "d" * 40, "3", now - 50, cloud="onprem")
-    found, repo = mod.DemoReset(Idle(tmp_path), mod.DomainRevert()).vulnerable_bundle()
-    assert found["commit"] == "a" * 40 and repo == REPO
+    board(tmp_path, "main", "a" * 40, "a" * 40, "1", now - 300)
+    board(tmp_path, "fixed", "a" * 40, "c" * 40, "2", now - 100)  # 수정 후 재빌드: 커밋이 바뀜
+    board(tmp_path, "older", "b" * 40, "b" * 40, "4", now - 80)  # 예전 커밋(취약 게시판 이전)
+    board(tmp_path, "onprem", "a" * 40, "a" * 40, "3", now - 50, cloud="onprem")
+    reset = mod.DemoReset(Idle(tmp_path), mod.DomainRevert())
+    found, repo = reset.vulnerable_bundle(head=lambda repo, branch: "a" * 40)
+    assert found["commit"] == "a" * 40 and found["image_digests"]["frontend"] == "sha256:" + "1" * 64
+    assert repo == REPO
+    with pytest.raises(RuntimeError, match="main 현재 커밋"):
+        reset.vulnerable_bundle(head=lambda repo, branch: "f" * 40)
 
 
 def test_does_not_start_while_a_pipeline_runs(tmp_path):

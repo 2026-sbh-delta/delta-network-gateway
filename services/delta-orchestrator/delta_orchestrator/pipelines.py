@@ -320,26 +320,44 @@ class DemoReset:
         self.status = {**self.status, "steps": [{**s, **update} if s["id"] == key else s
                                                   for s in self.status["steps"]]}
 
-    def vulnerable_bundle(self) -> tuple[dict[str, Any], str]:
-        """가장 최근에 수정 없이 main 그대로 빌드된 묶음(빌드 노드의 커밋이 요청 커밋과 같은 실행)."""
+    @staticmethod
+    def branch_head(repo: str, branch: str) -> str:
+        """공개 저장소 브랜치의 현재 커밋. 시연 앱의 main 은 취약 버전 그대로다(AI 수정은 PR 로만 간다)."""
+        import urllib.request
+
+        name = repo.removeprefix("https://github.com/").removesuffix(".git").strip("/")
+        request = urllib.request.Request(f"https://api.github.com/repos/{name}/commits/{branch}",
+                                         headers={"Accept": "application/vnd.github+json"})
+        with urllib.request.urlopen(request, timeout=10) as response:
+            return json.load(response)["sha"]
+
+    def vulnerable_bundle(self, head: Callable[[str, str], str] | None = None) -> tuple[dict[str, Any], str]:
+        """main 현재 커밋을 수정 없이 빌드한 가장 최근 묶음. 예전 커밋 빌드는 고르지 않는다."""
         from delta_pipeline.delivery import validate_bundle
 
+        head = head or self.branch_head
+        heads: dict[tuple[str, str], str] = {}
         boards = sorted((self._pipelines.store_dir / BOARD_DIR).glob("*.json"),
                         key=lambda p: p.stat().st_mtime, reverse=True)
         for path in boards:
             saved = json.loads(path.read_text(encoding="utf-8"))
             options = saved.get("options") or {}
-            if options.get("execution_cloud", "gcp") != "gcp":
+            if options.get("execution_cloud", "gcp") != "gcp" or not options.get("repo"):
                 continue
             build = next((n for n in saved.get("nodes", ()) if n.get("id") == "build"), {})
             bundle = (build.get("detail") or {}).get("bundle")
             if build.get("state") != "pass" or not bundle or bundle.get("commit") != options.get("commit"):
                 continue
+            key = (options["repo"], options.get("branch") or "main")
+            if key not in heads:
+                heads[key] = head(*key)
+            if options["commit"] != heads[key]:
+                continue
             try:
                 return validate_bundle(bundle, options["commit"]), options["repo"]
             except (ValueError, KeyError):
                 continue
-        raise RuntimeError("수정 전 main 빌드 기록이 없습니다")
+        raise RuntimeError("main 현재 커밋을 수정 없이 빌드한 기록이 없습니다. 파이프라인을 한 번 돌려 빌드를 남기세요")
 
     def _redeploy(self) -> str:
         from delta_pipeline.clients import evidence_hash

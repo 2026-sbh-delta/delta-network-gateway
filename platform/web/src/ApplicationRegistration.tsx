@@ -131,7 +131,7 @@ export function ApplicationRegistration({
                   name="name"
                   required
                   maxLength={80}
-                  defaultValue="Delta Notes"
+                  defaultValue="A기업 게시판"
                 />
               </label>
               <label>
