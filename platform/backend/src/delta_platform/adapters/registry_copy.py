@@ -1,4 +1,4 @@
-"""Copy a pinned ECR manifest to Artifact Registry without rebuilding it."""
+"""Copy a pinned approved ECR or Artifact Registry image without rebuilding it."""
 
 import base64
 import hashlib
@@ -31,20 +31,26 @@ class RegistryCopy:
             raise SandboxError("sandbox_image_invalid", "허용한 ECR 저장소가 아닙니다.")
         source, digest = image.rsplit("@", 1)
         host, repo = source.split("/", 1)
-        ecr = self.ecr or boto3.client("ecr", region_name=host.split(".")[3])
-        data = ecr.get_authorization_token(registryIds=[host.split(".")[0]])["authorizationData"][0]
-        if data["proxyEndpoint"] != "https://" + host:
-            raise SandboxError("sandbox_image_invalid", "ECR 인증 대상이 다릅니다.")
-        # Credentials are scoped to requests for their own exact registry only.
-        source_headers = {
-            "Authorization": "Basic " + data["authorizationToken"],
-            "Accept": ", ".join(MEDIA),
-        }
-        dest_host, dest_repo = self.target.repository.split("/", 1)
-        base = f"https://{dest_host}/v2/{dest_repo}"
         credentials = self.google_session.credentials
         credentials.refresh(google.auth.transport.requests.Request())
         auth = base64.b64encode(("oauth2accesstoken:" + credentials.token).encode()).decode()
+        artifact_source = host.endswith("-docker.pkg.dev")
+        if artifact_source:
+            ecr = None
+            source_headers = {"Authorization": "Basic " + auth, "Accept": ", ".join(MEDIA)}
+        else:
+            ecr = self.ecr or boto3.client("ecr", region_name=host.split(".")[3])
+            data = ecr.get_authorization_token(registryIds=[host.split(".")[0]])[
+                "authorizationData"
+            ][0]
+            if data["proxyEndpoint"] != "https://" + host:
+                raise SandboxError("sandbox_image_invalid", "ECR 인증 대상이 다릅니다.")
+            source_headers = {
+                "Authorization": "Basic " + data["authorizationToken"],
+                "Accept": ", ".join(MEDIA),
+            }
+        dest_host, dest_repo = self.target.repository.split("/", 1)
+        base = f"https://{dest_host}/v2/{dest_repo}"
         dest_headers = {"Authorization": "Basic " + auth}
 
         def request(method, url, *, headers, **kwargs):
@@ -79,20 +85,58 @@ class RegistryCopy:
                 continue
             if exists.status_code not in (200, 404):
                 exists.raise_for_status()
-            # ECR issues a presigned download URL; never send registry auth to that host.
-            download = ecr.get_download_url_for_layer(
-                repositoryName=repo, layerDigest=blob_digest, registryId=host.split(".")[0]
-            )["downloadUrl"]
-            parsed = urlsplit(download)
-            if (
-                parsed.scheme != "https"
-                or not parsed.hostname.endswith(".amazonaws.com")
-                or parsed.username
-            ):
-                raise SandboxError("sandbox_image_invalid", "ECR 다운로드 주소가 잘못됐습니다.")
+            if artifact_source:
+                download = f"https://{host}/v2/{repo}/blobs/{blob_digest}"
+                download_headers = source_headers
+            else:
+                # Never send registry credentials to an ECR presigned S3 URL.
+                download = ecr.get_download_url_for_layer(
+                    repositoryName=repo, layerDigest=blob_digest, registryId=host.split(".")[0]
+                )["downloadUrl"]
+                parsed = urlsplit(download)
+                if (
+                    parsed.scheme != "https"
+                    or not parsed.hostname
+                    or not parsed.hostname.endswith(".amazonaws.com")
+                    or parsed.username
+                ):
+                    raise SandboxError("sandbox_image_invalid", "ECR 다운로드 주소가 잘못됐습니다.")
+                download_headers = {}
             with tempfile.TemporaryFile() as datafile:
                 received, checksum = 0, hashlib.sha256()
-                with request("GET", download, headers={}, stream=True) as stream:
+                stream = request("GET", download, headers=download_headers, stream=True)
+                redirects = 0
+                while artifact_source and stream.status_code in (301, 302, 303, 307, 308):
+                    location = stream.headers.get("Location", "")
+                    stream.close()
+                    # Registry blob downloads may first redirect to a relative URL.
+                    # Resolve it before validating the destination; never forward
+                    # registry credentials to the signed storage download.
+                    destination = urljoin(download, location)
+                    parsed = urlsplit(destination)
+                    if (
+                        not location
+                        or redirects >= 5
+                        or parsed.scheme != "https"
+                        or not parsed.hostname
+                        or not (
+                            parsed.netloc == host
+                            or parsed.hostname == "storage.googleapis.com"
+                            or parsed.hostname.endswith(".storage.googleapis.com")
+                        )
+                        or parsed.username is not None
+                        or parsed.password is not None
+                        or parsed.port not in (None, 443)
+                        or parsed.fragment
+                    ):
+                        raise SandboxError(
+                            "sandbox_image_invalid", "Artifact Registry 다운로드 목적지가 다릅니다."
+                        )
+                    download = destination
+                    download_headers = source_headers if parsed.netloc == host else {}
+                    redirects += 1
+                    stream = request("GET", download, headers=download_headers, stream=True)
+                with stream:
                     stream.raise_for_status()
                     for chunk in stream.iter_content(1024 * 1024):
                         guard()
