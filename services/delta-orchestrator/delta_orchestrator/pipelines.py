@@ -342,13 +342,15 @@ class DemoReset:
         for path in boards:
             saved = json.loads(path.read_text(encoding="utf-8"))
             options = saved.get("options") or {}
-            if options.get("execution_cloud", "gcp") != "gcp" or not options.get("repo"):
+            # 시연 앱은 main 이 취약 버전이다. 다른 브랜치(작업 브랜치)의 빌드는 고르지 않는다.
+            if (options.get("execution_cloud", "gcp") != "gcp" or not options.get("repo")
+                    or (options.get("branch") or "main") != "main"):
                 continue
             build = next((n for n in saved.get("nodes", ()) if n.get("id") == "build"), {})
             bundle = (build.get("detail") or {}).get("bundle")
             if build.get("state") != "pass" or not bundle or bundle.get("commit") != options.get("commit"):
                 continue
-            key = (options["repo"], options.get("branch") or "main")
+            key = (options["repo"], "main")
             if key not in heads:
                 heads[key] = head(*key)
             if options["commit"] != heads[key]:

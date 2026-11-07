@@ -870,7 +870,8 @@
   font-weight: 600;
   white-space: nowrap;
 }
-.g-match {
+.g-match,
+.g-exact {
   color: var(--st-pass);
   background: #e8f6ee;
 }
@@ -2026,4 +2027,126 @@
   box-shadow:
     0 0 0 1px #16a34a,
     0 8px 24px #16a34a26;
+}
+
+/* AWS → GCP mapping: grouped by resource, each row wraps instead of overflowing the panel. */
+.mp-head {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 12px 14px;
+  border: 1px solid #ececf0;
+  border-radius: 12px;
+  background: #fafafb;
+}
+.mp-bar {
+  display: flex;
+  gap: 2px;
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+}
+.mp-bar i {
+  display: block;
+}
+.mp-bar i.g-exact {
+  background: var(--st-pass);
+}
+.mp-bar i.g-approximate {
+  background: var(--st-running);
+}
+.mp-bar i.g-gap {
+  background: var(--st-fail);
+}
+.mp-bar i.g-unknown {
+  background: var(--st-waiting);
+}
+.mp-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.mp-group {
+  margin-bottom: 12px;
+}
+.mp-group h5 {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  margin: 0 0 6px;
+  font-size: 12px;
+  color: var(--ink-2);
+  letter-spacing: 0.02em;
+}
+.mp-group h5 small {
+  color: #a1a1aa;
+  font-weight: 500;
+}
+.mp-row {
+  margin-bottom: 6px;
+  border: 1px solid #ececf0;
+  border-left: 3px solid #d4d4d8;
+  border-radius: 8px;
+  background: #fff;
+}
+.mp-row.g-exact {
+  border-left-color: var(--st-pass);
+  background: #fff;
+}
+.mp-row.g-approximate {
+  border-left-color: var(--st-running);
+  background: #fff;
+}
+.mp-row.g-gap {
+  border-left-color: var(--st-fail);
+  background: #fff;
+}
+.mp-row.g-unknown {
+  border-left-color: var(--st-waiting);
+  background: #fff;
+}
+.mp-row summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+  list-style: none;
+  font-size: 12.5px;
+}
+.mp-row summary::-webkit-details-marker {
+  display: none;
+}
+.mp-src {
+  grid-column: 1;
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+.mp-arrow {
+  display: none;
+}
+.mp-dst {
+  grid-column: 1;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.mp-dst::before {
+  content: "→ ";
+  color: #a1a1aa;
+  font-weight: 400;
+}
+.mp-dst.none {
+  color: var(--st-fail);
+}
+.mp-row summary .grade {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: center;
+}
+.mp-row ul {
+  margin: 0;
+  padding: 0 10px 8px 26px;
+  color: var(--ink-2);
+  font-size: 12px;
+  line-height: 1.5;
 }
