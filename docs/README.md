@@ -1,6 +1,6 @@
 # Delta network gateway
 
-2026-11-07 운영 플랫폼의 ‘환경 차이와 AI 제안’에 실제 워크로드 차분을 연결했다. 미승인 온프레미스→AWS 계획에서 등록 Deployment 2개·Service 2개와 관측 범위 1행, 판정 `needs_human`을 확인했다. 기존 화면·설정을 유지했고 고객 앱 배포·DNS 변경은 실행하지 않았다. [설계·실측·롤백](ai-dlc/platform-workload-diff.md)
+2026-11-07 운영 플랫폼의 기존 마이그레이션 화면에 ‘환경 차이와 AI 제안’ 표를 연결했다. 현재 미승인 온프레미스→AWS 계획에서 Deployment 2행·Service 2행·관측 범위 1행과 `needs_human` 판정을 실제 브라우저에서 확인했다. 고객 앱 배포·DNS 변경은 실행하지 않았다. [빌드 출처·검증·롤백](ai-dlc/platform-workload-diff.md)
 
 2026-11-07 IAM 수집 누락과 앱 이전 Lambda 범위 제외를 수정하고 실제 시연 Diff API·오케스트레이터 연결을 검증했다. RDS·S3 검사와 SCC 미확인은 유지하고 고객 앱 운영 배포·DNS 전환은 실행하지 않는다. [설계·검증·적용 상태](ai-dlc/diff-iam-scope.md)
 

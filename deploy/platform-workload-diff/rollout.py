@@ -1,4 +1,4 @@
-"""Deploy only the two approved API images, preserving all other runtime config."""
+"""Deploy approved platform and orchestrator images with automatic rollback."""
 
 import copy
 import fcntl
@@ -32,6 +32,21 @@ BASES = {
         "delta-platform-api-1",
         "delta-platform",
         "59f7086b8867ad226ab05af28479bc1e668dc346152a824b1569c0805f47a46d",
+    ),
+    "platform_migration_web": (
+        "delta-platform-api-1",
+        "delta-platform",
+        "7fdb663c01768f714ad83076e45034b57828273591e07f8d7a6d9508c2ec3624",
+    ),
+    "platform_migration_snapshot": (
+        "delta-platform-api-1",
+        "delta-platform",
+        "bfb81ab739cd18f7f8d89611935e683d768e3fde4f2fe4a09ae01e532b80c9df",
+    ),
+    "platform_migration_style": (
+        "delta-platform-api-1",
+        "delta-platform",
+        "93f6aac65aec6c7fc6b4b4cb8a5209b8d4fbb07e5edb299cd0724f9ed50253b6",
     ),
 }
 ROOT = Path("/opt/delta/platform-workload-diff")
@@ -193,9 +208,63 @@ def main(mode, image, release):
             if status != 200 or json.loads(body).get("active_runs") or not active_state:
                 raise RuntimeError("orchestrator has an active or unreadable run")
 
-    def web_hash(container):
-        code = "import hashlib,pathlib; p=pathlib.Path('/app/web/dist'); print(hashlib.sha256(b''.join(hashlib.sha256(x.read_bytes()).digest() for x in sorted(p.rglob('*')) if x.is_file())).hexdigest())"
-        return docker("exec", container, "python", "-c", code)
+    def web_manifest(container):
+        code = r"""import hashlib, json, pathlib, re
+p = pathlib.Path('/app/web/dist')
+files = {str(x.relative_to(p)): hashlib.sha256(x.read_bytes()).hexdigest()
+         for x in p.rglob('*') if x.is_file()}
+html = (p / 'index.html').read_bytes()
+patterns = {
+    'script': rb'<script type="module" src="/(assets/migration-diff-([a-f0-9]{16})\.js)"></script>\n',
+    'style': rb'<link rel="stylesheet" href="/(assets/migration-diff-([a-f0-9]{16})\.css)">\n',
+}
+additions = {}
+for kind, pattern in patterns.items():
+    matches = re.findall(pattern, html)
+    if len(matches) == 1:
+        path, fingerprint = (x.decode() for x in matches[0])
+        if files.get(path, '').startswith(fingerprint):
+            additions[kind] = {
+                'asset': path,
+                'clean_index': hashlib.sha256(re.sub(pattern, b'', html)).hexdigest(),
+            }
+print(json.dumps({'files': files, 'additions': additions}))"""
+        return json.loads(docker("exec", container, "python", "-c", code))
+
+    def verify_web(container, port, previous):
+        if previous is None:
+            return
+        current = web_manifest(container)
+        kind = {
+            "platform_migration_web": "script",
+            "platform_migration_style": "style",
+        }.get(mode)
+        if kind is None:
+            if current != previous:
+                raise RuntimeError("operating web assets would change")
+            return
+        addition = current["additions"].get(kind, {})
+        asset = addition.get("asset")
+        expected = dict(previous["files"])
+        if (
+            not asset
+            or asset in expected
+            or addition["clean_index"] != expected["index.html"]
+        ):
+            raise RuntimeError(
+                "comparison web entry did not match the expected addition"
+            )
+        expected["index.html"] = current["files"]["index.html"]
+        expected[asset] = current["files"][asset]
+        if current["files"] != expected:
+            raise RuntimeError("other operating web assets would change")
+        status, html = get(port, "/")
+        if (
+            status != 200
+            or ("/" + asset).encode() not in html
+            or get(port, "/" + asset)[0] != 200
+        ):
+            raise RuntimeError("comparison web entry is not being served")
 
     candidate, next_name, backup = (
         f"{service}-{s}-{release}"
@@ -207,15 +276,14 @@ def main(mode, image, release):
     if mode == "orchestrator":
         state.mkdir(mode=0o750)
         os.chown(state, 10001, 10001)
-    old_web = web_hash(service) if mode != "orchestrator" else None
+    old_web = web_manifest(service) if mode != "orchestrator" else None
     next_id = None
     stopped = committed = False
     try:
         create(old, candidate, image, mode, release, state, candidate=True)
         docker("start", candidate)
         ready(mode, 18080 if mode == "orchestrator" else 18088, env)
-        if old_web and web_hash(candidate) != old_web:
-            raise RuntimeError("operating web assets would change")
+        verify_web(candidate, 18088, old_web)
         docker("rm", "-f", candidate)
         print("isolated_candidate=passed", flush=True)
         next_id = create(old, next_name, image, mode, release, state)
@@ -234,7 +302,7 @@ def main(mode, image, release):
         new = inspect(service)
         assert new["Config"]["Env"] == old["Config"]["Env"]
         assert new["Config"]["Image"] == image and new["Id"] == next_id
-        assert not old_web or web_hash(service) == old_web
+        verify_web(service, 8088, old_web)
         committed = True
         print(
             json.dumps(
@@ -244,6 +312,8 @@ def main(mode, image, release):
                     "backup": backup,
                     "web_assets_preserved": bool(old_web),
                     "configuration_preserved": True,
+                    "comparison_web_entry_added": mode == "platform_migration_web",
+                    "comparison_style_added": mode == "platform_migration_style",
                 }
             ),
             flush=True,
