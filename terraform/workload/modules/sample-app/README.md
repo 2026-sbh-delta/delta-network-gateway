@@ -19,6 +19,11 @@
 | instance_az_id | string | 필수 | 앱 EC2/DB primary/NAT를 둘 물리 AZ ID |
 | workload_subnets | map(object) | 필수 | 두 기존 workload 서브넷의 ID/RT/실제 AZ 이름 |
 | config | object | `{}` 내부 기본값 사용 | 아래 앱 설정 |
+| internet_firewall_endpoints | map(string) | `{}` | 물리 AZ ID별 READY Secondary Endpoint ID. 비어 있으면 기존 public IGW default 유지 |
+| remote_service_cidrs | set(string) | `[]` | frontend의 명시적 원격 peer IPv4 CIDR, default route 금지 |
+| remote_service_ports | set(number) | `[3000]` | peer와 양방향으로 허용할 TCP 서비스 포트 |
+
+`internet_firewall_endpoints`의 각 키는 public subnet의 물리 AZ ID이고 값은 같은 AZ의 실제 Secondary Endpoint ID다. 두 AZ를 모두 제공해야 한다. 다른 VPC의 Primary Endpoint ID를 넣지 않는다.
 
 ### workload_subnets 내부 속성
 
@@ -54,6 +59,7 @@ map(string)의 각 키는 기존 두 AZ ID, 값은 겹치지 않는 정규화된
 | 속성명 | 역할 |
 | --- | --- |
 | deployment | 아래 비밀값 없는 배포/관리 인벤토리. 비밀번호를 반환하지 않음 |
+| inspection_network | 기존 internet_gateway_id와 public_subnets(AZ별 id/cidr/route_table_id). runtime 자원과 분리한 인터넷 검사 연결 정보 |
 
 ### deployment 내부 속성
 

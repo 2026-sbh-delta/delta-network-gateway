@@ -14,6 +14,7 @@ cleanup() {
 trap cleanup EXIT
 
 python3 -m unittest discover -s "$module_dir/tests" -p 'test_*.py'
+python3 -m unittest discover -s "$module_dir/scripts" -p 'test_*.py'
 "$terraform_bin" -chdir="$module_dir" fmt -check -recursive
 cp "$module_dir/"*.tf "$validation_dir/"
 cp "$module_dir/.terraform.lock.hcl" "$validation_dir/"

@@ -115,3 +115,35 @@ run "reject_native_legacy_migration_flag" {
   variables { config = { retain_legacy_backend = true } }
   expect_failures = [var.config]
 }
+
+run "internet_endpoints_keep_public_alb_nat_and_local_flows" {
+  command = plan
+  override_resource {
+    target          = aws_nat_gateway.app
+    values          = { id = "nat-00000000000000001" }
+    override_during = plan
+  }
+  override_resource {
+    target          = aws_security_group.app["alb"]
+    values          = { id = "sg-00000000000000004" }
+    override_during = plan
+  }
+  variables { internet_firewall_endpoints = { apne2-az1 = "vpce-00000000000000031", apne2-az2 = "vpce-00000000000000032" } }
+  assert {
+    condition     = aws_route.public["apne2-az1"].vpc_endpoint_id == "vpce-00000000000000031" && aws_route.public["apne2-az2"].vpc_endpoint_id == "vpce-00000000000000032" && aws_route.app_egress.nat_gateway_id == aws_nat_gateway.app.id && !aws_lb.app.internal && aws_vpc_security_group_ingress_rule.service["frontend"].referenced_security_group_id == aws_security_group.app["alb"].id
+    error_message = "Keep ALB/NAT and local SG flows while public defaults use same-AZ shared endpoints."
+  }
+}
+run "remote_service_is_explicit_and_bidirectional" {
+  command = plan
+  variables { remote_service_cidrs = ["10.32.1.20/32"] }
+  assert {
+    condition     = length(aws_vpc_security_group_ingress_rule.remote_service) == 1 && length(aws_vpc_security_group_egress_rule.remote_service) == 1 && aws_vpc_security_group_ingress_rule.remote_service["10.32.1.20/32/3000"].from_port == 3000 && aws_vpc_security_group_ingress_rule.remote_service["10.32.1.20/32/3000"].cidr_ipv4 == "10.32.1.20/32"
+    error_message = "Remote service access must be confined to an explicit peer and service port."
+  }
+}
+run "reject_remote_world_access" {
+  command = plan
+  variables { remote_service_cidrs = ["0.0.0.0/0"] }
+  expect_failures = [var.remote_service_cidrs]
+}

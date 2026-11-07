@@ -233,6 +233,46 @@ variable "application_enabled" {
   default     = false
 }
 
+variable "internet_inspection" {
+  description = "Opt-in shared Network Firewall for this existing VPC only; bypass prepares endpoints without switching public routes."
+  type = object({
+    mode            = string
+    firewall_arn    = string
+    expected_vpc_id = string
+    primary_az_ids  = set(string)
+    subnet_cidrs    = map(string)
+  })
+  default = null
+  validation {
+    condition = var.internet_inspection == null ? true : (
+      contains(["bypass", "enabled"], var.internet_inspection.mode) &&
+      can(regex("^vpc-[0-9a-f]{17}$", var.internet_inspection.expected_vpc_id)) &&
+      can(regex("^arn:aws:network-firewall:[a-z0-9-]+:[0-9]{12}:firewall/[a-zA-Z0-9_-]+$", var.internet_inspection.firewall_arn))
+    )
+    error_message = "Internet inspection requires bypass/enabled, a full expected VPC ID, and a shared firewall ARN."
+  }
+}
+
+variable "application_remote_cidrs" {
+  description = "Explicit remote service peers allowed to the app frontend; no SG change when empty."
+  type        = set(string)
+  default     = []
+  validation {
+    condition     = alltrue([for cidr in var.application_remote_cidrs : try(cidrnetmask(cidr) != "" && cidrhost(cidr, 0) == split("/", cidr)[0] && cidr != "0.0.0.0/0", false)])
+    error_message = "Application peers must be canonical, non-default IPv4 CIDRs."
+  }
+}
+
+variable "application_remote_ports" {
+  description = "Explicit remote frontend TCP service ports."
+  type        = set(number)
+  default     = [3000]
+  validation {
+    condition     = length(var.application_remote_ports) > 0 && alltrue([for port in var.application_remote_ports : floor(port) == port && port >= 1 && port <= 65535])
+    error_message = "Remote application TCP ports must be integers in 1..65535."
+  }
+}
+
 variable "application" {
   description = "Optional sample app configuration. Existing network resources and backend remain unchanged."
   type = object({
