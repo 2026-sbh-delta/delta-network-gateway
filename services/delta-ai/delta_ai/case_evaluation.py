@@ -8,7 +8,6 @@ from pydantic import Field, model_validator
 
 from delta_ai.cases import CaseReview, IncidentCase, digest, observation_signature, select_cases
 from delta_ai.diagnostic_contract import SafeModel
-from delta_ai.diagnostics import diagnose
 
 
 class EvaluationCandidate(SafeModel):
@@ -28,8 +27,8 @@ class EvaluationDataset(SafeModel):
         return self
 
 
-def export_candidate(store, case_id: str):
-    # Local CLI only. No model-generated labels are inferred here.
+def export_candidate(store, case_id: str, *, revision: str | None = None):
+    # CLI and authenticated console share the same independently authored labels.
     with store.connection() as db:
         row = db.execute("""SELECT c.*,r.payload AS review FROM case_versions c
             JOIN case_reviews r ON r.revision=c.revision WHERE c.case_id=?
@@ -37,6 +36,9 @@ def export_candidate(store, case_id: str):
         latest = db.execute("SELECT MAX(sequence) FROM case_versions WHERE case_id=?", (case_id,)).fetchone()[0]
     if row is None or row["sequence"] != latest:
         raise ValueError("최신 사례 검토가 필요하다")
+    if revision is not None and row["revision"] != revision:
+        from delta_ai.cases import CaseConflict
+        raise CaseConflict("최신 사례 버전을 확인해야 한다")
     review = CaseReview.model_validate_json(row["review"])
     if review.decision != "approved" or not review.required_terms:
         raise ValueError("승인 및 사람이 작성한 기대 확인 항목이 필요하다")
@@ -45,6 +47,9 @@ def export_candidate(store, case_id: str):
 
 
 async def evaluate(dataset, *, llm, store):
+    # Console export only needs the dataset contract, not model/knowledge resources.
+    from delta_ai.diagnostics import diagnose
+
     held_out_ids = {c.case.request.case_id for c in dataset.candidates}
     held_out_signatures = {observation_signature(c.case.request) for c in dataset.candidates}
     # Materialize before the first LLM call; concurrent reviews cannot change this evaluation.

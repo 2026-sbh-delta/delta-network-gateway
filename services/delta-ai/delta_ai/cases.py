@@ -99,6 +99,13 @@ class CaseReview(SafeModel):
     forbidden_terms: tuple[Annotated[str, Field(min_length=1, max_length=200)], ...] = Field(default=(), max_length=20)
 
 
+    @model_validator(mode="after")
+    def meaningful_review(self):
+        if not self.reason.strip() or any(not term.strip() for term in (*self.required_terms, *self.forbidden_terms)):
+            raise ValueError("검토 근거와 기대 항목에는 공백만 사용할 수 없다")
+        return self
+
+
 class CaseConflict(ValueError):
     pass
 
@@ -193,6 +200,24 @@ class CaseStore:
                 WHERE c.sequence=(SELECT MAX(sequence) FROM case_versions WHERE case_id=c.case_id)
                 ORDER BY c.case_id LIMIT ? OFFSET ?""", (limit, offset)).fetchall()
         return [dict(row) for row in rows]
+
+    def detail(self, case_id: str):
+        with self.connection() as db:
+            row = db.execute("""SELECT c.*,r.payload AS review FROM case_versions c
+                LEFT JOIN case_reviews r ON r.revision=c.revision
+                WHERE c.case_id=? ORDER BY c.sequence DESC LIMIT 1""", (case_id,)).fetchone()
+            if row is None:
+                return None
+            versions = db.execute("""SELECT sequence,revision,created_at,
+                json_extract(payload,'$.resolution.outcome') AS outcome
+                FROM case_versions WHERE case_id=? ORDER BY sequence DESC LIMIT 21""", (case_id,)).fetchall()
+            events = db.execute("""SELECT e.revision,e.payload,e.created_at FROM case_review_events e
+                JOIN case_versions c ON c.revision=e.revision WHERE c.case_id=?
+                ORDER BY e.id DESC LIMIT 21""", (case_id,)).fetchall()
+        return {**dict(row), "versions": [dict(v) for v in versions[:20]],
+                "review_events": [{"revision": e["revision"], "created_at": e["created_at"],
+                                   "review": json.loads(e["payload"])} for e in events[:20]],
+                "versions_truncated": len(versions) > 20, "review_events_truncated": len(events) > 20}
 
     def approved(self, request: DiagnosisRequest):
         if request.context is None:

@@ -8,9 +8,19 @@ pull_image
   printf 'DELTA_STAGING_TOKEN=%s\n' "$(secret jenkins/staging_read_token)"
   printf 'DELTA_SAST_TOKEN=%s\n' "$(secret shared/sast_token)"
   printf 'DAST_PLATFORM_TOKEN=%s\n' "$(secret dast/platform_token)"
-  # 멈춘 실행의 원인 진단(delta-ai). 없으면 진단하지 않는다.
-  ai_token="$(secret ai/api_token 2>/dev/null || true)"
-  [ -n "$ai_token" ] && printf 'DELTA_AI_TOKEN=%s\n' "$ai_token"
+  # 장애 원인 진단(연재님 delta-ai 진단 호스트): 연결값 JSON(url·token·ca_base64) 하나. 있으면 진단을 필수로 켜고
+  # 같은 실행의 중앙 로그를 근거로 붙인다. 사례 검토 화면 토큰은 진단 토큰과 다른 값이다.
+  diag="$(secret orchestrator/diagnostic_ai_connection 2>/dev/null || true)"
+  if [ -n "$diag" ]; then
+    printf '%s' "$diag" | python3 -c 'import json,sys; c=json.load(sys.stdin); print("DELTA_DIAGNOSTIC_URL="+c["url"]); print("DELTA_DIAGNOSTIC_TOKEN="+c["token"]); print("DELTA_DIAGNOSTIC_CA_BASE64="+c.get("ca_base64",""))'
+    printf 'DELTA_DIAGNOSTICS_REQUIRED=1\nDELTA_LOG_EVIDENCE_ENABLED=1\n'
+  fi
+  review="$(secret orchestrator/case_review_token 2>/dev/null || true)"
+  [ -n "$review" ] && printf 'DELTA_CASE_REVIEW_TOKEN=%s\n' "$review"
+  # 온프렘 실행(선택): 고정 SSM 문서 이름·해시. enabled 일 때만 켠다.
+  onprem="$(param orchestrator/onprem_connection)"
+  case "$onprem" in "{"*) printf '%s' "$onprem" | python3 -c 'import json,sys; c=json.load(sys.stdin)
+if c.get("enabled"): print("DELTA_ONPREM_ENABLED=1"); print("DELTA_ONPREM_DOCUMENT="+c["document"]); print("DELTA_ONPREM_DOCUMENT_HASH="+c["document_hash"]); print("DELTA_ONPREM_VERIFICATION=0")' ;; esac
   # 서비스 도메인 전환(선택). 토큰은 해당 zone 의 DNS 편집 권한만. 없으면 전환을 켠 실행이 시작 단계에서 멈춘다.
   cf_token="$(secret orchestrator/cloudflare_token 2>/dev/null || true)"
   [ -n "$cf_token" ] && printf 'CLOUDFLARE_API_TOKEN=%s\n' "$cf_token"

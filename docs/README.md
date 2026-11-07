@@ -190,3 +190,5 @@ GCP `term2-delta`와 AWS 중앙 TGW 사이에 총4개 IPsec/BGP 터널을 적용
 중앙 실행 CIDR/AZ와 GCP 중앙/업무 CIDR은 기존 AWS/GCP Subnet과 비중복을 확인했고 GCP VPN 계약을 등록/적용했다. 추가 계정이나 온프레미스를 연결할 때는 각 Prefix와 기존 경로의 중복을 별도로 확인한다.
 
 RAM 오류 진단은 두 Association의 실제 성공 확인으로 종료했다. 관리 계정 프로필 로그인은 더 이상 요청하지 않는다. Organizations는 이번 작업에서 변경하지 않는다. Destroy의 최신 실행 결과는 [워크로드 통합 기록](ai-dlc/aws-workload-consolidation.md)을 따른다. 실제 `terraform.tfvars`, `backend.hcl`, state/Plan, 검증 로그와 Provider 캐시는 커밋 대상에서 제외한다.
+
+- 콘솔 사례 검토·승인·평가셋 추출(2026-11-06): 기존 관리자 화면과 전용 검토 권한의 연결을 로컬 구현했다. 최종 회귀562개·로컬 브라우저6시나리오 통과. 기존 AWS AI/콘솔에 배포·분리 권한/프록시 연결·실제 화면 승인/평가셋 다운로드/취소·재시작 검증 완료, 기존45실행/118파일 보존. main 병합은 별도다. [설계·검증 상태](ai-dlc/case-review-console.md)
