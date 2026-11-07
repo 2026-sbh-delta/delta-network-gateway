@@ -19,10 +19,12 @@ from uuid import NAMESPACE_URL, uuid4, uuid5
 
 from langgraph.types import interrupt
 
+from delta_ai.diagnostic_contract import safe_text
 from delta_pipeline.clients import ServiceUnavailable, TransientServiceError, evidence_hash, probe, resolve_cname
 from delta_pipeline.delivery import (TARGET_RE, canonical_json, match_runtime, require_postgres18,
                                      sign_approval, validate_bundle, validate_config)
 from delta_pipeline.model import REPO_PREFIX, Board, Options
+from delta_pipeline.diff_client import DiffJob
 
 POLL_SECONDS = 1  # 내부 서비스 조회(SAST·DAST·도메인 확인). 끝난 뒤 최대 1초 안에 다음 단계로 간다
 CUTOVER_GRACE_SECONDS = 120  # TTL 이 지난 뒤에도 blue 가 확인되지 않으면 이 시간 뒤 되돌린다
@@ -104,6 +106,7 @@ class PipelineState(TypedDict, total=False):
     release_result: dict[str, Any] | None
     mapping_input_hash: str
     mapping_source: dict[str, Any]
+    diff_started: bool
     assisted_origin: dict[str, Any]
     assisted_plan: dict[str, Any]
     assisted_choice: str | None
@@ -232,6 +235,8 @@ class Deps:
     release_jenkins: JenkinsClient | None = None
     release_signing_key: bytes | None = field(default=None, repr=False)
     release_config: dict[str, Any] | None = None
+    diff: DiffJob | None = None
+    require_diff_cutover: bool = False
 
 
 def guarded(step: Step) -> Step:
@@ -344,7 +349,64 @@ class Steps:
             except (ValueError, TypeError) as exc:
                 self._board.update("prepare", state="fail", summary="운영 인벤토리를 확인할 수 없다")
                 raise Stopped("운영 인벤토리를 확인할 수 없다") from exc
-        return {"halt": None, "release_config": config}
+        if options.diff_request_hash is not None:
+            job = self._diff_job()
+            self._board.update("map", state="running", summary="웹 검사와 병렬로 워크로드 차분 요청")
+            job.start()
+        return {"halt": None, "release_config": config, "diff_started": options.diff_request_hash is not None}
+
+    def _diff_job(self) -> DiffJob:
+        job = self._deps.diff
+        if job is None or job.config.fingerprint != self._deps.options.diff_request_hash:
+            self._board.update("map", state="fail", summary="실행에 고정된 Diff 입력 또는 연결이 없습니다")
+            raise Stopped("실행에 고정된 Diff 입력 또는 연결이 없습니다")
+        return job
+
+    def infrastructure_diff(self, _: PipelineState) -> dict[str, Any]:
+        job = self._diff_job()
+        try:
+            result = job.result()
+        except ServiceUnavailable as exc:
+            self._board.update("map", state="fail", summary=safe_text(str(exc)))
+            raise
+        assessment = result.assessment
+        mapping = assessment.mapping
+        assert mapping is not None  # validated by DiffJob
+        visible = sorted(mapping.rows, key=lambda row: row.grade not in ("gap", "unknown"))[:100]
+        rows = [{"source": safe_text(r.source)[:250], "target": safe_text(r.target or "")[:250],
+                 "grade": r.grade, "resource": r.resource,
+                 "differences": [safe_text(value)[:250] for value in r.differences[:3]]} for r in visible]
+        self._board.add_detail("map", verdict=assessment.verdict, state_serial=result.source.serial,
+                               row_count=len(mapping.rows), rows=rows,
+                               reasons=[safe_text(reason)[:250] for reason in assessment.reasons[:10]])
+        if assessment.verdict == "fix":
+            self._board.update("map", state="fail", summary="워크로드 차분에서 수정이 필요한 항목 발견")
+            raise Stopped("워크로드 차분에서 수정이 필요한 항목 발견")
+        decision = (self._ask("diff", "map", "워크로드 차분", sum(c.state != "green" for c in assessment.checks))
+                    if assessment.verdict == "needs_human" else self._pass("diff", "map", "워크로드 차분 통과"))
+        return {**decision, "mapping_input_hash": job.config.fingerprint,
+                "mapping_source": {"serial": result.source.serial}}
+
+    def ask_mapping(self, state: PipelineState) -> dict[str, Any]:
+        job = self._diff_job()
+        if state.get("mapping_input_hash") != job.config.fingerprint or (state.get("pending_gate") or {}).get("key") != "diff":
+            raise Stopped("차분 검토 중 Diff 입력이 변경되었습니다")
+        answer = interrupt({"node_id": "map", "prompt": "워크로드 차분의 미확정 항목을 확인하고 계속할지 결정합니다.",
+                            "options": [PROCEED, ("stop", "중단")]})
+        if answer != "approve":
+            self._board.update("map", state="fail", summary="워크로드 차분에서 사람이 중단했습니다")
+            raise Stopped("워크로드 차분에서 사람이 중단했습니다")
+        self._board.add_detail("map", review="approved")
+        self._board.update("map", state="warn", summary="차분 미확정 항목을 사람이 확인했습니다")
+        return {"gates": {"diff": "approved"}, "pending_gate": None}
+
+    def _require_diff(self, state: PipelineState) -> None:
+        expected = self._deps.options.diff_request_hash
+        if expected is None and not (self._deps.require_diff_cutover and self._deps.options.cutover):
+            return
+        if (not expected or state.get("mapping_input_hash") != expected
+                or (state.get("gates") or {}).get("diff") not in PASSING_GATE_RECORDS):
+            raise Stopped("현재 실행의 Diff 통과 또는 사람 확인이 없어 운영 반영을 중단했습니다")
 
     # ── Jenkins 공통 ────────────────────────────────────
     def _ensure_build(self, jenkins: JenkinsClient, params: Mapping[str, str], run_key: str) -> int:
@@ -693,6 +755,7 @@ class Steps:
         return config
 
     def ask_release(self, state: PipelineState) -> dict[str, Any]:
+        self._require_diff(state)
         bundle = self._production_bundle(state)
         config = self._release_config(state)
         if self._deps.release_jenkins is None or self._deps.release_signing_key is None:
@@ -718,6 +781,7 @@ class Steps:
         return {"release_approval": approval, "gates": {"release_approval": "approved"}}
 
     def release_start(self, state: PipelineState) -> dict[str, Any]:
+        self._require_diff(state)
         bundle = self._production_bundle(state)
         config = self._release_config(state)
         approval = state.get("release_approval") or {}
@@ -804,6 +868,7 @@ class Steps:
         return self._deps.cutover, self._deps.cloudflare
 
     def ask_cutover(self, state: PipelineState) -> dict[str, Any]:
+        self._require_diff(state)
         self._require_release(state)
         cfg = self._deps.cutover
         target = f"{cfg.record}: {cfg.green} → {cfg.blue}" if cfg else "설정 없음"
@@ -817,6 +882,7 @@ class Steps:
 
     def cutover_check(self, state: PipelineState) -> dict[str, Any]:
         """DNS 를 바꾸기 전에 blue 원본이 서비스 도메인 요청에 정상 응답하는지 본다. 실패하면 DNS 를 건드리지 않는다."""
+        self._require_diff(state)
         assert_gates_passed(state.get("gates") or {}, ("sast", "dast", "cutover_approval"))
         self._require_release(state)
         cfg, _ = self._cutover()
@@ -833,6 +899,7 @@ class Steps:
         레코드는 미리 만든 DNS 전용 CNAME 이어야 한다. 현재 값이 green 일 때만 바꾸고, 바꾼 뒤 다시 읽어 확인한다.
         green 은 기존 TTL(자동이면 300초)과 최소 유지 시간 중 긴 쪽만큼 그대로 둔다.
         """
+        self._require_diff(state)
         self._require_release(state)
         cfg, cf = self._cutover()
         record = self._read(lambda: cf.find_record(cfg.zone_id, cfg.record))

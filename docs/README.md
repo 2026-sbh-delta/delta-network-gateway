@@ -4,6 +4,12 @@
 
 2026-11-07 15:21 KST ANF 기본 차단 제거 완료: 사용자 전체 범위 명시 승인으로 SID `9000000` 한 줄만 제거했다. 나머지6개 규칙과 Firewall/Endpoint/경로/DNS/ALB 설정을 보존했고 AWS ALB 두 IP의 외부 HTTPS200, Primary2/Secondary2 READY/정책 IN_SYNC 및 중앙 최종 실제 Plan No changes/종료0을 확인했다. managed89개 ID/출력22개 유지, Terraform mock76개/Python22개 통과. 443 이외의 미등록 통신도 이 규칙으로 차단하지 않는다. demo DNS는 GCP를 유지한다. Git 게시와 원격 CI 상태는 Git 이력과 실행 결과를 따른다. [승인과 실제 결과](ai-dlc/anf-board-reactivation.md#2026-11-07-후속-공통-기본-차단-규칙-제거)
 
+2026-11-07 운영 플랫폼의 기존 마이그레이션 화면에 ‘환경 차이와 AI 제안’ 표를 연결했다. 현재 미승인 온프레미스→AWS 계획에서 Deployment 2행·Service 2행·관측 범위 1행과 `needs_human` 판정을 실제 브라우저에서 확인했다. 같은 표를 PR #69의 정식 플랫폼 웹 빌드에 연결하고 재빌드 산출물에서 저장된 결과를 확인했다. 고객 앱 배포·DNS 변경은 실행하지 않았다. [빌드 출처·검증·롤백](ai-dlc/platform-workload-diff.md)
+
+2026-11-07 IAM 수집 누락과 앱 이전 Lambda 범위 제외를 수정하고 실제 시연 Diff API·오케스트레이터 연결을 검증했다. RDS·S3 검사와 SCC 미확인은 유지하고 고객 앱 운영 배포·DNS 전환은 실행하지 않는다. [설계·검증·적용 상태](ai-dlc/diff-iam-scope.md)
+
+2026-11-07 워크로드 차분 병렬 연결을 실제 시연 오케스트레이터에 배포했다. 기존 웹 검사·수정 재검증과 병렬로 Diff를 호출하고, 판정 보류는 사람 확인을 거친 뒤 운영 배포와 도메인 전환으로 넘어간다. 실패는 기존 delta-ai 진단으로 보낸다. 실제 연결 검증은 사람 승인 뒤 `unresolved`로 종료했고 스테이징 점유 해제를 확인했다. DAST 미실행을 보안 통과로 보지 않는다. 운영 배포는 대기하며 기존 컨테이너와 상태 사본을 복구용으로 보존했다. [설정·검증·승인 범위](ai-dlc/parallel-workload-diff.md)
+
 2026-11-07 서비스 도메인 설정 보존 수정과 검증 완료. `deploy/platform/deploy.sh`가 기존 SSM 전환 설정을 보존하고 최초 배포에서만 Terraform 출력으로 초기화한다. 배포 진입점 회귀와 기존 SSM 검사22개가 통과했고, 실제 SSM에서 이전 도메인 출력으로 초기화를 시도해 사용자 도메인 설정 v10과 토큰 v4의 보존을 확인했다. PR과 main의 전용 CI가 배포 테스트를 실행한다. Git 게시와 CI 결과는 PR 및 실행 이력을 따른다. [설계와 검증 기록](ai-dlc/cutover-config-preservation.md)
 
 2026-11-07 AWS ANF 재개 완료: `delta-board-vpc`만 인터넷 입출구와 GCP 양방향 검사를 enabled로 전환했다. Primary2/Secondary2 READY/IN_SYNC, ALB 두 IP 및 사설 양방향 HTTP200/NAT HTTPS200/RDS TLS1.3과 미허용8081의 실제 blocked/drop을 확인했다. FLOW/ALERT 원본21건과 플랫폼 중앙 원문이 일치했고 BGP4개 UP/기존 광고 유지 및 두 최종 실제 Plan No changes/종료0을 확인했다. Terraform mock131개/Python38개 통과. DNS/ALB와 기존 자원 ID를 보존했고 임시 probe/규칙/키/터널을 정리했다. 당시 앱은 inactive/disabled였고 공개 앱은 HTTP502였다. 이후 상태는 위 후속 검증을 따른다. Git 게시와 원격 CI 상태는 Git 이력과 실행 결과를 따른다. [승인과 실제 결과](ai-dlc/anf-board-reactivation.md)를 따르며 별도 GCP 작업의 설정과 문서를 보존한다.

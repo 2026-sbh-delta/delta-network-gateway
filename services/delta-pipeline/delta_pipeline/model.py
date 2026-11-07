@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import threading
 import time
 from copy import deepcopy
@@ -32,6 +33,7 @@ class Options:
     recovery_limit: int = 2
     assistance: bool = False
     onprem_build_id: str | None = None
+    diff_request_hash: str | None = None
 
     def __post_init__(self):
         if type(self.assistance) is not bool:
@@ -48,6 +50,10 @@ class Options:
             raise ValueError("지원하지 않는 실행 대상입니다")
         if self.execution_cloud == "onprem" and (self.cutover or self.release_target):
             raise ValueError("온프레미스 샌드박스 검사는 DNS 전환과 별도입니다")
+        if self.diff_request_hash is not None and (
+            self.execution_cloud != "gcp" or not re.fullmatch(r"[0-9a-f]{64}", self.diff_request_hash)
+        ):
+            raise ValueError("워크로드 차분은 고정된 AWS → GCP 실행 입력이 필요합니다")
 
 
 
@@ -66,7 +72,8 @@ class Node:
     history: list[dict[str, Any]] = field(default_factory=list)  # 이전 회차의 상태·요약·세부
 
 
-def initial_nodes(cutover: bool = False, release: bool = False, diagnostics: bool = False, recovery: bool = False) -> list[Node]:
+def initial_nodes(cutover: bool = False, release: bool = False, diagnostics: bool = False,
+                  recovery: bool = False, diff: bool = False) -> list[Node]:
     """웹 갈래(명세 v1.1 6-2)의 최소 연결 노드. 판정은 그래프 분기(코드)가 한다."""
     return [
         Node("prepare", "입력 확인", "오케스트레이터"),
@@ -75,6 +82,7 @@ def initial_nodes(cutover: bool = False, release: bool = False, diagnostics: boo
         Node("stage", "스테이징 배포", "Jenkins · 스테이징 도구"),
         Node("dast", "DAST", "delta-dast · Chrome"),
         Node("fix", "수정", "delta-dast · 수정 에이전트"),
+        *([Node("map", "워크로드 차분", "delta-diff · delta-ai")] if diff else []),
         *([Node("release", "운영 배포", "Jenkins · 사람 승인")] if release else []),
         *([Node("cutover", "서비스 도메인 전환", "Cloudflare · 사람 승인")] if cutover else []),
         *([Node("recovery", "제한된 장애 복구", "그래프 · 기존 Worker")] if recovery else []),
@@ -94,13 +102,15 @@ class Board:
     def __init__(self, path: Path, options: Options, run_id: str) -> None:
         self._path, self._options, self._run_id = path, options, run_id
         self._lock = threading.Lock()
-        self._nodes = {node.id: node for node in initial_nodes(options.cutover, options.release_target is not None, options.diagnostics, options.recovery)}
+        configured = initial_nodes(options.cutover, options.release_target is not None, options.diagnostics,
+                                   options.recovery, options.diff_request_hash is not None)
+        self._nodes = {node.id: node for node in configured}
         self._outcome: str | None = None
         self._started_at = time.time()
         if path.is_file():
             saved = json.loads(path.read_text(encoding="utf-8"))
             self._nodes = {item["id"]: Node(**item) for item in saved["nodes"]}
-            for node in initial_nodes(options.cutover, options.release_target is not None, options.diagnostics, options.recovery):
+            for node in configured:
                 self._nodes.setdefault(node.id, node)
             self._outcome, self._started_at = saved["outcome"], saved["started_at"]
         else:

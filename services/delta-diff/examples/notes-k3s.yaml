@@ -1,0 +1,40 @@
+# Mapping input only. Namespace, image digest, credentials, RBAC and exposure need operator review before deployment.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: notes-db
+  namespace: delta-notes
+spec:
+  replicas: 1
+  serviceName: notes-db
+  selector:
+    matchLabels: {app: notes-db}
+  template:
+    metadata:
+      labels: {app: notes-db}
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          resources:
+            requests: {cpu: 250m, memory: 256Mi}
+          ports: [{containerPort: 5432}]
+          volumeMounts: [{name: data, mountPath: /var/lib/postgresql/data}]
+          envFrom: [{secretRef: {name: notes-db}}]
+  volumeClaimTemplates:
+    - metadata: {name: data}
+      spec:
+        storageClassName: local-path
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests: {storage: 20Gi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: notes-db
+  namespace: delta-notes
+spec:
+  clusterIP: None
+  selector: {app: notes-db}
+  ports: [{port: 5432, targetPort: 5432}]
