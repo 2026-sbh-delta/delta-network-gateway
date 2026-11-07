@@ -265,6 +265,22 @@ variable "inspection_mode" {
   }
 }
 
+variable "preserve_vpn_direct_routes" {
+  description = "Retain Spoke BGP propagation during inspection; reviewed static inspection prefixes take precedence. Audit new/more-specific advertisements before switching."
+  type        = bool
+  default     = false
+}
+
+variable "isolated_inspection_spokes" {
+  description = "Spoke keys with dedicated outbound inspection route tables; prevents VPN route advertisements from reflecting remote static prefixes. Prepared in bypass, associated in enabled."
+  type        = set(string)
+  default     = []
+  validation {
+    condition     = length(setsubtract(var.isolated_inspection_spokes, toset(keys(var.spoke_attachments)))) == 0
+    error_message = "Isolated inspection spokes must reference registered spoke keys."
+  }
+}
+
 variable "firewall_protection" {
   description = "Deletion, subnet and policy-association protections; disable the required protection in a separate apply before teardown or topology changes."
   type = object({

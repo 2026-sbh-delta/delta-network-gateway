@@ -106,3 +106,64 @@ run "enabled_gcp_vpn_keeps_original_inspection" {
     error_message = "The existing enabled mode must retain inspection and prevent direct VPN propagation."
   }
 }
+
+run "enabled_inspection_can_preserve_bgp_for_staged_rollback" {
+  command = plan
+  variables {
+    inspection_mode            = "enabled"
+    preserve_vpn_direct_routes = true
+    vpn_networks               = { gcp = { cidrs = ["10.31.0.2/32", "10.32.1.0/24", "10.32.2.0/24", "10.32.3.0/24"], kind = "gcp" } }
+  }
+  assert {
+    condition     = length(aws_ec2_transit_gateway_route_table_propagation.vpn_direct) == 2 && length(aws_ec2_transit_gateway_route_table_propagation.vpn) == 2
+    error_message = "Both VPN attachments must retain BGP in both tables for staged rollback."
+  }
+  assert {
+    condition     = length(aws_ec2_transit_gateway_route.before_inspection) == 5 && length(aws_route.to_firewall) == 10 && alltrue([for route in aws_ec2_transit_gateway_route.before_inspection : route.transit_gateway_attachment_id == aws_ec2_transit_gateway_vpc_attachment.inspection.id])
+    error_message = "All four learned GCP prefixes and the workload must use inspection, never a fixed VPN attachment."
+  }
+}
+
+override_resource {
+  target          = aws_ec2_transit_gateway_route_table.isolated_inspection["client"]
+  values          = { id = "tgw-rtb-00000000000000041" }
+  override_during = plan
+}
+
+run "scoped_bypass_prepares_without_changing_vpn_or_spoke_associations" {
+  command = plan
+  variables {
+    inspection_mode            = "bypass"
+    preserve_vpn_direct_routes = true
+    isolated_inspection_spokes = ["client"]
+    vpn_networks               = { gcp = { cidrs = ["10.31.0.2/32", "10.32.1.0/24", "10.32.2.0/24", "10.32.3.0/24"], kind = "gcp" } }
+  }
+  assert {
+    condition     = length(aws_ec2_transit_gateway_route.isolated_inspection) == 4 && aws_ec2_transit_gateway_route_table_association.spoke["client"].transit_gateway_route_table_id == aws_ec2_transit_gateway_route_table.spoke.id && length(aws_ec2_transit_gateway_route.before_inspection) == 1
+    error_message = "Prepare outbound remote static routes in an unbound table; live VPN/spoke associations must stay unchanged."
+  }
+}
+
+run "scoped_enabled_does_not_reflect_remote_static_prefixes_to_vpn" {
+  command = plan
+  variables {
+    inspection_mode            = "enabled"
+    preserve_vpn_direct_routes = true
+    isolated_inspection_spokes = ["client"]
+    vpn_networks               = { gcp = { cidrs = ["10.31.0.2/32", "10.32.1.0/24", "10.32.2.0/24", "10.32.3.0/24"], kind = "gcp" } }
+  }
+  assert {
+    condition     = keys(aws_ec2_transit_gateway_route.before_inspection) == ["10.10.0.0/16"] && aws_ec2_transit_gateway_route_table_association.spoke["client"].transit_gateway_route_table_id == "tgw-rtb-00000000000000041" && alltrue([for association in aws_ec2_transit_gateway_route_table_association.vpn : association.transit_gateway_route_table_id == aws_ec2_transit_gateway_route_table.spoke.id])
+    error_message = "Only the selected VPC uses the outbound table; VPN keeps the shared table with no remote static routes."
+  }
+  assert {
+    condition     = length(aws_ec2_transit_gateway_route_table_propagation.vpn_direct) == 2 && length(aws_ec2_transit_gateway_route_table_propagation.vpn) == 2 && alltrue([for route in aws_ec2_transit_gateway_route.isolated_inspection : route.transit_gateway_attachment_id == aws_ec2_transit_gateway_vpc_attachment.inspection.id])
+    error_message = "Keep both HA BGP paths while every selected outbound destination goes through inspection."
+  }
+}
+
+run "reject_unregistered_isolated_spoke" {
+  command = plan
+  variables { isolated_inspection_spokes = ["unknown"] }
+  expect_failures = [var.isolated_inspection_spokes]
+}

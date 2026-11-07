@@ -67,6 +67,8 @@ RAM 조직 공유 활성화는 조직 관리 계정에서 수행하며 `AWSServi
 | `suricata_rules` | `map(object)` | `{}` | 허용 추적보다 먼저 평가할 선택적 추가 규칙 |
 | `stateful_rule_capacity` | `number` | `1000` | Rule Group capacity, 변경 시 교체에 주의 |
 | `inspection_mode` | `string` | `enabled` | `enabled`: 검사, `bypass`: ANF를 유지한 직접 경로, `disabled`: 직접 경로와 엔드포인트 제거. 직접 모드의 VPN은 Spoke RT에 BGP 전파 |
+| `preserve_vpn_direct_routes` | `bool` | `false` | enabled에서도 Spoke BGP 전파 유지. 광고 필터가 아니며 대상 분리는 아래 `isolated_inspection_spokes`와 실제 RT/광고로 확인 |
+| `isolated_inspection_spokes` | `set(string)` | `[]` | 대상 spoke key별 송신 검사 RT 분리. VPN RT에 원격 정적 대역을 넣어 BGP로 되광고하지 않도록 함 |
 | `firewall_protection` | `object` | 내부 속성 모두 `true` | 삭제/Subnet/정책 연결 변경 보호 |
 | `log_retention_days` | `number` | `30` | 지원되는 유한 CloudWatch Logs 보존 일수 |
 | `retain_logs_on_destroy` | `bool` | `true` | 해체 시 로그 그룹 보존, 재관리 시 import 필요 |
@@ -198,6 +200,7 @@ GCP 네트워크는 interface 0/1의 서로 다른 공인 IP와 동일 Cloud Rou
 | `inspection_attachment_id` | appliance mode Inspection Attachment ID |
 | `firewall_arn` | 공유할 Firewall 자체 ARN, disabled에서는 null |
 | `inspection_mode` | 적용할 검사/우회/비용 중단 모드 |
+| `isolated_inspection_route_table_ids` | 대상 spoke key별 준비한 전용 송신 검사 RT ID. VPN에는 연결하지 않음 |
 | `inspection_route_targets` | 정적 Spoke Route의 기대 다음 홉. 직접 모드의 VPN 목적지는 BGP 경로이므로 맵에서 제외 |
 | `primary_endpoint_ids_by_az_id` | Inspection VPC의 AZ ID별 Primary Endpoint IDs, disabled에서는 빈 맵 |
 | `tgw_ram_share_arn` | TGW RAM Share ARN |
@@ -285,7 +288,9 @@ backend는 부분 설정이며 `encrypt=true`, `use_lockfile=true`, 기대하는
 | TGW Inspected | 업무 VPC CIDR | 해당 업무 VPC Attachment |
 | TGW Inspected | 원격 VPN 광고 Prefix | 해당 VPN에서 BGP로 학습한 Attachment |
 
-업무 VPC와 VPN Attachment는 Spoke, Inspection Attachment는 Inspected에만 Association한다. Spoke에는 목적지 VPC/VPN으로 직접 가는 Route 또는 Propagation을 만들지 않는다. AWS VPC는 정적 Route이며 VPN Propagation은 Inspected에만 둔다. 중앙 VPC에는 IGW/NAT나 인터넷 기본 경로가 없다. `EXTERNAL_NET`의 전체 IPv4 값은 규칙 변수이며 인터넷 Route가 아니다.
+위 표는 기본 전체 검사 모드다. 이 모드의 업무 VPC/VPN Attachment는 Spoke, Inspection Attachment는 Inspected에 연결한다. Spoke에는 직접 Route/Propagation을 두지 않고 AWS VPC는 정적 Route, VPN Propagation은 Inspected에 둔다. 중앙 VPC에는 IGW/NAT나 인터넷 기본 경로가 없다. `EXTERNAL_NET`의 전체 IPv4 값은 규칙 변수이며 인터넷 Route가 아니다.
+
+현재 `delta-board-vpc`는 `preserve_vpn_direct_routes=true`, `isolated_inspection_spokes=["aws_client"]`를 사용한다. board만 전용 송신 RT에 연결해 GCP 정적4경로를 Inspection으로 보낸다. 두 VPN은 기존 공유 Spoke RT에 남고 GCP BGP 전파를 유지하며 AWS board 반환 정적 경로만 Inspection으로 보낸다. Inspected RT는 두 VPN의 BGP/ECMP를 유지한다. VPN 연결 RT의 경로가 원격 광고에 영향을 주므로 GCP 정적 prefix를 그 RT에 넣어 되광고하지 않는다. 플래그만으로 광고가 필터링되는 것은 아니다. [대상 한정 전환과 복귀](RUNBOOK.md#delta-board-vpc-인터넷과-gcp-검사-재개), [실제 검증](../../docs/ai-dlc/anf-board-reactivation.md)을 따른다.
 
 GCP에서 Account B Backend로 가는 실제 요청/응답의 단계별 설명과 ALB 경로는 [연결 문서](CONNECTIONS.md#왕복-경로를-추적하기)에 있다. appliance mode 설정만으로 소비자 VPC Route나 원격 BGP가 자동 완성되지는 않는다.
 
