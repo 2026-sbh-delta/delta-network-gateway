@@ -54,15 +54,16 @@ class OrchestratorRelay:
             raise Problem("pipeline_unavailable", "파이프라인 기록에 연결하지 못했습니다.", 502)
         self.cookie = f"{COOKIE}={jar[COOKIE].value}"
 
-    def _send(self, method, path, body=None, params=None, key=None):
+    def _send(self, method, path, body=None, params=None, key=None, timeout=None):
         headers = {"Host": self.host, "Cookie": self.cookie}
         if key:
             headers["Idempotency-Key"] = key
+        extra = {"timeout": timeout} if timeout else {}
         return self.client.request(
-            method, f"{self.base}{path}", json=body, params=params, headers=headers
+            method, f"{self.base}{path}", json=body, params=params, headers=headers, **extra
         )
 
-    def request(self, method, path, body=None, params=None, key=None):
+    def request(self, method, path, body=None, params=None, key=None, timeout=None):
         if not self.configured:
             raise Problem(
                 "pipeline_unconfigured", "파이프라인 기록 연결이 설정되지 않았습니다.", 503
@@ -71,10 +72,10 @@ class OrchestratorRelay:
             with self.lock:
                 if not self.cookie:
                     self._login()
-                response = self._send(method, path, body, params, key)
+                response = self._send(method, path, body, params, key, timeout)
                 if response.status_code == 401:
                     self._login()
-                    response = self._send(method, path, body, params, key)
+                    response = self._send(method, path, body, params, key, timeout)
         except httpx.HTTPError:
             raise Problem(
                 "pipeline_unavailable", "파이프라인 기록에 연결하지 못했습니다.", 502
@@ -110,7 +111,8 @@ class OrchestratorRelay:
         }
 
     def start(self, body, key=None):
-        return self.request("POST", "/api/pipeline/runs", body, key=key).json()
+        # Starting checks the repository and the diff request before answering; allow a minute.
+        return self.request("POST", "/api/pipeline/runs", body, key=key, timeout=60).json()
 
     def run(self, run_id):
         if not RUN_ID.match(run_id):
