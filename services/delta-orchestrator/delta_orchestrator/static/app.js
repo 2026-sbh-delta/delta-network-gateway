@@ -1,5 +1,5 @@
 // 파이프라인 그래프 화면. 실행 기록(/api/pipeline/runs)을 그대로 그리고, 승인 대기면 오른쪽 패널에서 답한다.
-// 아직 없는 단계(수정 루프·인프라 갈래·운영 반영)는 점선 "추후" 노드로 함께 보여 전체 흐름을 한눈에 본다.
+// 아직 없는 단계(수정 루프·인프라 적용·운영 반영)는 점선 "추후" 노드로 함께 보여 전체 흐름을 한눈에 본다.
 (() => {
   const NS = "http://www.w3.org/2000/svg";
   const $ = (s) => document.querySelector(s);
@@ -14,7 +14,7 @@
   const GROUPS = [
     { label: "진단·보고서", code: "관측 → 원인 후보 → 사람 확인", x: -40, y: 680, w: 1000, h: 190 },
     { label: "웹 갈래", code: "build ∥ sast → stage → dast", x: -40, y: -200, w: 1520, h: 560 },
-    { label: "인프라 갈래 · 추후", code: "차분 에이전트", x: -40, y: 410, w: 1820, h: 200 },
+    { label: "인프라 검토 · 적용은 추후", code: "차분 에이전트", x: -40, y: 410, w: 1820, h: 200 },
     { label: "운영 반영", code: "운영 배포 → 도메인 전환", x: 1530, y: 40, w: 1110, h: 300 },
   ];
   const T = (id, label, x, y, o = {}) => ({ id, label, x, y, w: 210, h: 98, kind: "task", ...o });
@@ -38,7 +38,7 @@
     T("exception-report", "분석 보고서", 420, 730, { icon: "doc", mock: true, tool: "오케스트레이터 보고서 저장소", desc: "관측 근거와 분석 결과를 저장하고 무결성을 검증합니다." }),
     T("exception-review", "실패 보고서 확인", 690, 730, { icon: "pause", mock: true, tool: "사람 확인", desc: "실패한 작업을 재실행하지 않고 보고서를 확인한 뒤 종료합니다." }),
     T("read_aws", "AWS 구성 읽기", 150, 470, { icon: "doc", mock: true, tool: "S3 Terraform 코드·state", desc: "A 기업 AWS Terraform 코드와 state 를 조회 역할로 읽습니다. (3단계)" }),
-    T("map", "차분 매핑", 420, 470, { icon: "spark", ai: true, mock: true, tool: "차분 에이전트", desc: "AWS 자원·보안 설정(GuardDuty·WAF·ANF)을 GCP 대응과 등급(일치·근사·공백)으로 매핑합니다. (3단계)" }),
+    T("map", "매핑 · 가격 비교", 420, 470, { icon: "spark", ai: true, mock: true, tool: "delta-ai · 가격 참고", desc: "선택한 Terraform 추출 요청으로 실제 매핑을 호출하고 서버별 월 예상 비용과 차액을 이 실행에 저장합니다. 가격 비교는 참고 자료이며 인프라 적용은 별도입니다." }),
     T("gen_plan", "GCP 구성 · plan", 690, 470, { icon: "doc", mock: true, tool: "Terraform plan", desc: "매핑으로 GCP 구성을 만들고 plan 을 저장합니다. (3단계)" }),
     T("infra_approve", "인프라 승인", 960, 470, { icon: "pause", mock: true, tool: "interrupt()", desc: "매핑 표와 plan, 공백 항목을 승인합니다. (3단계)" }),
     T("apply", "GCP 적용", 1230, 470, { icon: "layers", mock: true, tool: "Terraform apply", desc: "plan 을 적용하고 다시 plan 해 변경이 없는지 확인합니다. (3단계)" }),
@@ -52,6 +52,7 @@
     ["result", "release"], ["release", "cutover"], ["cutover", "end"],
     ["dast", "exception-analysis", { from: "bottom", to: "top", label: "진단" }],
     ["exception-analysis", "exception-report"], ["exception-report", "exception-review"],
+    ["prepare", "map", { from: "bottom", to: "top", label: "가격 비교 선택 시" }],
     ["start", "read_aws", { from: "bottom", to: "left", mock: true }], ["read_aws", "map", { mock: true }], ["map", "gen_plan", { mock: true }],
     ["gen_plan", "infra_approve", { mock: true }], ["infra_approve", "apply", { mock: true }], ["apply", "db_dump", { mock: true }],
     ["db_dump", "release", { from: "top", to: "bottom", mock: true }],
@@ -204,12 +205,12 @@
     const opt = board.options || {};
     const image = ((nodeOf("build") || {}).detail || {}).image || "";
     const digest = image.includes("@") ? image.split("@")[1].slice(0, 19) + "…" : "—";
-    const outcome = OUTCOME[board.outcome] || "진행 중";
+    const outcome = opt.mapping_only && board.outcome === "verified" ? "가격 비교 완료" : OUTCOME[board.outcome] || "진행 중";
     $("#title").textContent = `◈ ${(opt.repo || "").split("/").pop() || "파이프라인"} · ${outcome}`;
     $("#meta").innerHTML = `<span class="mono">${esc(board.run_id.slice(0, 8))}</span> · 커밋 <span class="mono">${esc((opt.commit || "").slice(0, 7))}</span> · 이미지 <span class="mono">${esc(digest)}</span> · 시작 ${esc(clock(board.started_at))}`;
     const web = ["prepare", "build", "sast", "stage", "dast", "result"].map((id) => [id, stateOf(id)]);
     const wait = web.find(([, s]) => s === "waiting"), fail = web.find(([, s]) => s === "fail"), run = web.find(([, s]) => s === "running");
-    const webChip = wait ? branchChip("웹", "t-wait", byId[wait[0]].label + " 승인 대기") : fail ? branchChip("웹", "t-bad", byId[fail[0]].label + " 실패")
+    const webChip = opt.mapping_only ? "" : wait ? branchChip("웹", "t-wait", byId[wait[0]].label + " 승인 대기") : fail ? branchChip("웹", "t-bad", byId[fail[0]].label + " 실패")
       : run ? branchChip("웹", "t-run", byId[run[0]].label) : board.outcome === "verified" ? branchChip("웹", "t-ok", "검증 완료") : board.outcome === "unresolved" ? branchChip("웹", "t-wait", "연결 확인 · 보안 미해결")
       : branchChip("웹", "", board.outcome ? "멈춤" : "대기");
     const cut = nodeOf("cutover");
@@ -219,7 +220,14 @@
     const fixChip = !fix ? branchChip("수정 루프", "t-mock", "이 실행에는 없음")
       : branchChip("수정 루프", fix.state === "pass" ? "t-ok" : fix.state === "fail" ? "t-bad" : fix.state === "running" ? "t-run" : "",
         fix.state === "pass" ? ((nodeOf("dast") || {}).round > 1 ? "2차 재검증" : "수정 PR") : fix.state === "pending" ? "재현 시 선택" : STATE[fix.state]);
-    $("#branches").innerHTML = webChip + fixChip + branchChip("인프라", "t-mock", "추후(3단계)") + rollChip;
+    const mapping = nodeOf("map");
+    const cost = mapping?.detail?.mapping?.cost;
+    const money = (n) => typeof n === "number" && Number.isFinite(n) ? `$${n.toFixed(2)}` : "산정 불가";
+    const costText = ["pass", "warn"].includes(mapping?.state) ? `${money(cost?.source_total)} → ${money(cost?.target_total)} / 월`
+      : mapping?.state === "fail" ? "호출 실패" : STATE[mapping?.state] || "";
+    const costChip = mapping ? `<button type="button" class="mapping-chip" id="show-mapping" aria-label="가격 비교 상세 보기">${branchChip("VM 예상 비용", mapping.state === "fail" ? "t-bad" : mapping.state === "warn" ? "t-wait" : "", costText)}</button>` : "";
+    $("#branches").innerHTML = webChip + fixChip + costChip + branchChip("인프라 적용", "t-mock", "추후(3단계)") + rollChip;
+    if (mapping) $("#show-mapping").onclick = () => { sel = "map"; paint(); };
   }
 
   function autoTarget() {
@@ -249,6 +257,7 @@
   }
   function special(id, d) {
     d = d || {};
+    if (id === "map") return window.DeltaMapping.render(d);
     if (id === "exception-report") {
       const r = d.report || {}, ref = r.reference;
       const links = ref && board ? ["json", "md"].map((f) => `<a href="/api/pipeline/runs/${encodeURIComponent(board.run_id)}/reports/${encodeURIComponent(ref.case_id)}/${f}">${f.toUpperCase()} 다운로드</a>`).join(" · ") : "";
@@ -311,7 +320,7 @@
     $("#p-head").innerHTML = `
       <div class="p-sec">
         <div class="eyebrow"><span>${sel ? "선택한 단계" : "현재 단계 · 자동으로 따라갑니다"}</span>${sel ? '<button type="button" id="unsel">자동으로</button>' : ""}</div>
-        <div class="p-title"><h2>${esc(n.label)}</h2><span class="state s-${st}">${real ? STATE[st] : "추후"}</span>${n.ai ? '<span class="state s-running">AI</span>' : ""}</div>
+        <div class="p-title"><h2>${esc(n.label)}</h2><span class="state s-${st}">${real ? (id === "map" && st === "warn" ? "매핑 확인 필요" : STATE[st]) : "추후"}</span>${n.ai ? '<span class="state s-running">AI</span>' : ""}</div>
         ${n.tool ? `<div class="tool">${esc(onpremMeta(n).tool||n.tool)}</div>` : ""}
         ${n.desc ? `<p class="desc">${esc(onpremMeta(n).desc||n.desc)}</p>` : ""}
         ${real ? `<dl class="kv"><dt>소요</dt><dd class="mono">${esc(dur)}</dd>${data && data.summary ? `<dt>결과</dt><dd>${esc(data.summary)}</dd>` : ""}</dl>` : ""}
@@ -717,7 +726,7 @@
     const box = $("#runs");
     const want = current || (runs.some((r) => r.run_id === requestedRun) ? requestedRun : null) || data.active || (runs[0] && runs[0].run_id);
     box.innerHTML = runs.map((r) => {
-      const o = { verified: "검증 완료", unresolved: "보안 미해결", stopped: "멈춤" }[r.outcome] || "진행 중";
+      const o = r.options?.mapping_only && r.outcome === "verified" ? "가격 비교 완료" : { verified: "검증 완료", unresolved: "보안 미해결", stopped: "멈춤" }[r.outcome] || "진행 중";
       return `<option value="${esc(r.run_id)}">${esc(clock(r.started_at))} · ${esc(((r.options || {}).commit || "").slice(0, 7))} · ${esc(o)}</option>`;
     }).join("") || "<option value=''>실행 기록 없음</option>";
     if (want) box.value = want;
@@ -828,11 +837,19 @@
   $("#start").addEventListener("submit", async (ev) => {
     ev.preventDefault();
     if (!/^[0-9a-f]{40}$/.test($("#run-commit").value)) { $("#run-msg").textContent = "커밋 목록을 불러온 뒤 커밋을 고르세요"; return; }
+    let mappingRequest;
+    try { mappingRequest = await window.DeltaMapping.readRequest($("#run-mapping").files[0]); }
+    catch (error) { $("#run-msg").textContent = error.message; return; }
+    const mappingOnly = $("#run-mapping-only").checked;
+    if (mappingOnly && (!mappingRequest || $("#run-cloud").value === "onprem")) {
+      $("#run-msg").textContent = "가격 비교만 실행하려면 일반 실행에서 추출 JSON을 선택하세요";
+      return;
+    }
     const r = await fetch("/api/pipeline/runs", { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ repo: $("#run-repo").value.trim().replace(/\.git$|\/$/g, ""), commit: $("#run-commit").value, branch: $("#run-branch").value || "", cutover: $("#run-cutover").checked, release_target: $("#run-cloud").value === "onprem" ? null : ($("#run-release").value || null), ...($("#run-cloud").value === "onprem" ? {execution_cloud:"onprem",assistance:true,onprem_build_id:$("#onprem-build").value} : {}) }) });
+      body: JSON.stringify({ ...(mappingRequest ? {mapping_request:mappingRequest} : {}), ...(mappingOnly ? {mapping_only:true} : {}), repo: $("#run-repo").value.trim().replace(/\.git$|\/$/g, ""), commit: $("#run-commit").value, branch: $("#run-branch").value || "", cutover: !mappingOnly && $("#run-cutover").checked, release_target: mappingOnly || $("#run-cloud").value === "onprem" ? null : ($("#run-release").value || null), ...($("#run-cloud").value === "onprem" ? {execution_cloud:"onprem",assistance:true,onprem_build_id:$("#onprem-build").value} : {}) }) });
     const body = await r.json().catch(() => ({}));
     $("#run-msg").textContent = r.ok ? "시작했습니다" : "거부: " + (body.detail || r.status);
-    if (r.ok) { current = body.run_id; sel = null; lastKey = ""; followOn(true); $("#start").hidden = true; await loadRuns(); await loadRun(); }
+    if (r.ok) { current = body.run_id; sel = mappingRequest ? "map" : null; lastKey = ""; followOn(true); $("#start").hidden = true; await loadRuns(); await loadRun(); }
   });
 
   $("#cancel-onprem").onclick=async()=>{if(board)await fetch(`/api/pipeline/runs/${encodeURIComponent(board.run_id)}/cancel`,{method:"POST"});};

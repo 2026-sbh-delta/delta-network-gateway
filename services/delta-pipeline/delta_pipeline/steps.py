@@ -215,6 +215,7 @@ class Deps:
     staging: StagingClient
     image_repo: str
     sleep: Callable[[float], None]
+    mapping_assess: Callable[[dict[str, Any]], dict[str, Any]] | None = None
     diagnostic: Any = None
     evidence: Any = None
     onprem: Any = None

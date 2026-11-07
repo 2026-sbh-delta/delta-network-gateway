@@ -344,3 +344,20 @@ dialog.case-workspace { width: min(1180px, calc(100vw - 32px)); max-height: calc
   .case-columns { grid-template-rows: minmax(0, 1fr); }
   .case-browser, .case-detail { min-height: 0; }
 }
+
+/* Stored cloud estimates share the pipeline panel and remain horizontally readable. */
+.mapping-result { min-width: 0; overflow-wrap: anywhere; }
+.mapping-basis { color: var(--muted); font-size: 12px; line-height: 1.7; }
+.mapping-scroll { max-width: 100%; overflow-x: auto; margin: 12px 0; }
+.mapping-cost { min-width: 620px; font-variant-numeric: tabular-nums; }
+.mapping-cost caption { text-align: left; font-size: 12px; padding: 0 0 12px; color: var(--muted); }
+.mapping-cost td { white-space: nowrap; }.mapping-cost th { text-align: left; }
+.mapping-cost small { display: block; max-width: 200px; font-size: 10px; font-weight: normal; color: var(--muted); }
+.mapping-cost tfoot { font-weight: 700; border-top: 1px solid var(--line); }
+.mapping-error { color: var(--bad); }.mapping-result details summary { cursor: pointer; }
+.mapping-chip { background: none; padding: 0; border: 0; color: inherit; cursor: pointer; }
+.mapping-chip:focus-visible { outline: 2px solid var(--ok); outline-offset: 3px; }
+.startbar .mapping-upload { display: grid; gap: 5px; }.mapping-upload small { color: var(--muted); font-size: 10px; }
+.mapping-upload input { max-width: 260px; }
+@media (min-width: 1250px) { main:has(.mapping-result) { grid-template-columns: minmax(0, 1fr) 720px; } }
+@media (max-width: 900px) { main:has(.mapping-result) { grid-template-columns: minmax(0, 1fr); } }

@@ -1,5 +1,7 @@
 # Delta network gateway
 
+2026-11-07 클라우드 가격 비교 연결: 선택한 Terraform 추출 요청으로 실제 delta-ai 매핑 호출 → 실행별 결과 저장 → 기존 조회 API → UI 비교표를 연결했다. 상단 비용 버튼·서버별 월 예상 비용/합계/증감·기준일/제외 비용과 산정 불가를 표시한다. 인프라 Apply와 실시간 가격 조회는 포함하지 않는다. 운영 배포·게시와 로컬 검증 결과는 [사용 방법과 검증 기록](ai-dlc/cloud-cost-display.md)을 따른다.
+
 2026-11-07 AWS ANF 재개 완료: `delta-board-vpc`만 인터넷 입출구와 GCP 양방향 검사를 enabled로 전환했다. Primary2/Secondary2 READY/IN_SYNC, ALB 두 IP 및 사설 양방향 HTTP200/NAT HTTPS200/RDS TLS1.3과 미허용8081의 실제 blocked/drop을 확인했다. FLOW/ALERT 원본21건과 플랫폼 중앙 원문이 일치했고 BGP4개 UP/기존 광고 유지 및 두 최종 실제 Plan No changes/종료0을 확인했다. Terraform mock131개/Python38개 통과. DNS/ALB와 기존 자원 ID를 보존했고 임시 probe/규칙/키/터널을 정리했다. 앱은 inactive/disabled를 유지하므로 공개 앱은 기존 HTTP502다. Git 게시와 원격 CI 상태는 Git 이력과 실행 결과를 따른다. [승인과 실제 결과](ai-dlc/anf-board-reactivation.md)를 따르며 별도 GCP 작업의 설정과 문서를 보존한다.
 
 2026-11-07 GCP Cloud NGFW 검사 재개 완료: 사용자 요청으로 `disabled -> bypass -> enabled`를 적용했다. endpoint1/association2 ACTIVE, 두 사설 검사 규칙과 모든 심각도 ALERT, BGP4개 UP 및 기존 ID57개 보존을 확인했다. 양방향 TCP3000 HTTP200과 실제 Threat8건을 포함한 원본12건의 Security/플랫폼 수신까지 대조했고 최종 실제 Plan은 No changes/종료0, 잠금도 없다. Terraform mock14개/Python10개가 통과했다. 공개 앱 L7/IPS 차단과 앱 재시작은 포함하지 않았으며 AWS 모드와 경로는 별도 작업이다. endpoint 비용은 USD1.75/h와 검사량 요금이다. [적용과 실제 검증](ai-dlc/gcp-central-network.md#2026-11-07-operation-gcp-cloud-ngfw-검사-재개)

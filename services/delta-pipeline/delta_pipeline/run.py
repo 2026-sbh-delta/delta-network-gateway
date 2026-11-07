@@ -55,6 +55,7 @@ class Run:
                  release_jenkins: JenkinsClient | None = None, release_signing_key: bytes | None = None,
                  release_config: dict[str, Any] | None = None, ecr_image_repo: str = "",
                  diagnostic: Any = None, report_dir: Path | None = None, evidence: Any = None, onprem: Any = None,
+                 mapping_assess: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
                  diagnose: Callable[[dict[str, Any]], dict[str, Any]] | None = None) -> None:
         self.run_id = run_id or uuid.uuid4().hex
         if diagnostic is not None:
@@ -74,7 +75,7 @@ class Run:
         self._deps = Deps(run_id=self.run_id, options=options, board=self._board, sast=sast, dast=dast,
                           build_jenkins=build_jenkins, deploy_jenkins=deploy_jenkins, staging=staging,
                           image_repo=image_repo, sleep=sleep, cloudflare=cloudflare, cutover=cutover,
-                          diagnostic=diagnostic, evidence=evidence, onprem=onprem,
+                          diagnostic=diagnostic, evidence=evidence, onprem=onprem, mapping_assess=mapping_assess,
                           cancelled=self._cancelled.is_set, inbox=self.inbox, report_dir=report_dir or store_dir / "reports",
                           release_jenkins=release_jenkins, release_signing_key=release_signing_key, release_config=release_config,
                           ecr_image_repo=ecr_image_repo,
