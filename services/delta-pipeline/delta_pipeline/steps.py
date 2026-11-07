@@ -315,6 +315,8 @@ class Steps:
         if answer != "approve":
             self._board.update(gate["node_id"], state="fail", summary=f"{what}: 사람이 중단")
             raise Stopped(f"{what}에서 사람이 중단했다")
+        if gate.get("zero_candidate_scope"):
+            self._board.add_detail("dast", scope_acknowledged=True)
         self._board.update(gate["node_id"], state="pass", summary=f"{what}: 사람 승인 후 진행 (항목 {gate['count']}건)")
         return {"gates": {gate["key"]: "approved"}, "pending_gate": None}
 
@@ -503,12 +505,23 @@ class Steps:
                 "stage_verified_bundle": state.get("bundle_sha256")}
 
     # ── DAST ────────────────────────────────────────────
+    def _ask_empty_dast(self, state: PipelineState) -> dict[str, Any]:
+        self._board.add_detail("dast", dast_check="not_run", results=[],
+            coverage="sast_candidates_only", reason="no_supported_candidates",
+            scope_acknowledged=False, deployment_approved=False,
+            zero_candidate_scope={"commit": self._commit(state),
+                "sast_run_id": state.get("sast_run_id"),
+                "bundle_sha256": state.get("bundle_sha256"),
+                "runtime_revision": state.get("staging_revision")})
+        return self._ask("dast", "dast", "DAST 미실행·대상 환경 검사 범위 확인", 0,
+                         zero_candidate_scope=True)
+
     def dast_start(self, state: PipelineState) -> dict[str, Any]:
         previous = state.get("first_dast_run_id")
         if not state.get("dast_targets") and not previous:
-            # 명세 7-1: 범위 정상 + 후보 0건은 정상적인 0건. 2차는 1차 재현 항목(7-3)을 SAST 결과와 관계없이 다시 본다.
-            self._board.update("dast", state="skipped", summary="SAST 가 넘긴 점검 대상이 없다")
-            return {"dast_run_id": None, "gates": {"dast": "pass"}}
+            # No scanner execution is a scope exception, not an automatic security pass.
+            # Reverification still checks earlier findings even if SAST now has none.
+            return {"dast_run_id": None} | self._ask_empty_dast(state)
         self._board.update("dast", state="running", summary="수정 후 재검증: 1차 재현 항목을 다시 점검 중" if previous
                            else "스테이징을 실제 브라우저로 점검 중")
         report = self._read(lambda: self._deps.sast.sarif(state["sast_run_id"]))
@@ -561,7 +574,7 @@ class Steps:
             if (state.get("dast_targets") or state.get("first_dast_run_id") or results
                     or view.get("finding_ids") or view.get("eligible_count")):
                 return self._ask("dast", "dast", "DAST 후보가 있지만 실행 근거 없음", 1)
-            return self._pass("dast", "dast", "점검할 후보가 없다(DAST 가 확인)")
+            return self._ask_empty_dast(state)
         if status != "done":
             # interrupted(점검 서버 재시작)·cancelled·error 는 통과가 아니다
             self._board.update("dast", state="fail", summary=f"점검이 끝나지 않았다: {status}")

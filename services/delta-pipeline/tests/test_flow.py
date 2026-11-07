@@ -124,13 +124,42 @@ def test_fix_that_cannot_be_made_stops_without_a_second_round(tmp_path):
     assert len(build.params) == 1 and dast.prs == []
 
 
-def test_no_dast_targets_skips_dast_without_failing(tmp_path):
+@pytest.mark.parametrize("answer,outcome", [("approve", "unresolved"), ("stop", "stopped")])
+def test_no_dast_targets_require_review_before_continuing(tmp_path, answer, outcome):
     dast = FakeDast()
+    run = _run(tmp_path, sast=FakeSast(targets=0), dast=dast)
+    thread = threading.Thread(target=run.execute, daemon=True)
+    thread.start()
+    try:
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            node = _node(run.snapshot(), "dast")
+            if node.get("decision") or not thread.is_alive():
+                break
+            time.sleep(0.01)
+        assert node.get("decision"), "Zero-target GCP run must wait for human confirmation"
+        assert run.snapshot()["outcome"] is None
+        assert node["detail"]["dast_check"] == "not_run"
+        assert node["detail"]["scope_acknowledged"] is False
+        assert dast.started == []
+    finally:
+        if thread.is_alive():
+            run.answer(answer)
+        thread.join(timeout=3)
+    snapshot = run.snapshot()
+    assert snapshot["outcome"] == outcome
+    detail = _node(snapshot, "dast")["detail"]
+    assert detail["dast_check"] == "not_run"
+    assert detail["scope_acknowledged"] is (answer == "approve")
 
-    snapshot = _execute(_run(tmp_path, sast=FakeSast(targets=0), dast=dast))
 
-    assert snapshot["outcome"] == "verified"
-    assert _states(snapshot)["dast"] == "skipped" and dast.started == []
+def test_scanner_reported_empty_skip_also_requires_confirmation(tmp_path):
+    from delta_pipeline.steps import Steps
+    run = _run(tmp_path)
+    steps = Steps(run._deps)
+    result = steps._dast_gate({"status": "skipped", "results": [], "eligible_count": 0},
+                             {"dast_targets": 0, "commit": COMMIT})
+    assert result["pending_gate"]["key"] == "dast"
 
 
 def test_secret_needs_a_person_before_staging(tmp_path):

@@ -42,14 +42,15 @@ class _Sast:
         return {}
 
     def scan(self, run_id):
-        return {"state": "done", "commit": COMMIT, "summary": {"dast_targets": 1, "counts": {"secrets": 0}}}
+        return {"state": "done", "commit": COMMIT, "summary": {"dast_targets": 1, "counts": {"secrets": 0},
+                "scope": {"commit": COMMIT, "files": 1}}}
 
     def sarif(self, run_id):
         return {"version": "2.1.0"}
 
 
 class _Dast:
-    def submit(self, run_id, binding, report):
+    def submit(self, run_id, binding, report, reverify_of=None):
         return {}
 
     def view(self, run_id):
