@@ -2,9 +2,11 @@
 
 ## 현재 상태와 인증
 
-2026-11-05 기존 시험 VM/NLB를 제거하고 별도 [workload-gcp](../workload-gcp/README.md)의 공개 리전 ALB, 사설 x86 FE/BE VM과 Cloud SQL PSC로 교체했다. 현재 앱 배포/초기화/복귀는 [새 배포 Runbook](../../deploy/workload-gcp/README.md)을 따른다. 기존 인터넷 시험 출발지 입력과 server_ip/demo_address 출력은 제거했다. 아래 2026-11-04의 NLB/8081/IDS 시험 결과는 과거 기록이다. 새 앱의 공개 L7 검사 재개는 별도 정책 설계가 필요하며 현재 disabled를 유지한다.
+2026-11-05 기존 시험 VM/NLB를 제거하고 별도 [workload-gcp](../workload-gcp/README.md)의 공개 리전 ALB, 사설 x86 FE/BE VM과 Cloud SQL PSC로 교체했다. 현재 앱 배포/초기화/복귀는 [새 배포 Runbook](../../deploy/workload-gcp/README.md)을 따른다. 기존 인터넷 시험 출발지 입력과 server_ip/demo_address 출력은 제거했다. 아래 2026-11-04의 NLB/8081/IDS 시험 결과는 과거 기록이다. 현재 공개 앱의 L7 검사에는 별도 정책 설계가 필요하며 이번 사설 검사 재개에 추가하지 않았다.
 
-현재 GCP 모드는 disabled이며 endpoint/association 삭제와 통신/로그/No changes 검증을 완료했다. AWS ANF도 disabled를 유지한다. 실제 진행 상태는 [AI-DLC](../../docs/ai-dlc/gcp-central-network.md)를 따른다. 2026-11-04 새 ADC의 프로젝트 조회, Billing/API/권한/기존 CIDR과 실제 저장 Plan 검토를 완료했다. 첫 Apply의 DNS/연결 오류를 원격 state로 복구했고 GCP 기반과 4터널 Apply를 완료했다. 아래 로그인은 인증 준비 절차이며, 현재 인증을 다시 요구하는 단계가 아니다. 양방향 통신/규칙 거부/ALERT 탐지와 AWS 원본 로그 대조를 완료했고, 네 단일 BGP 경로 철회/복구와 실제 저장 실패77건 ack0/재수집도 검증했다. 최종 GCP/AWS 총5개 root의 실제 Plan은 No changes이며 상세 결과는 AI-DLC에 기록한다.
+2026-11-07 사용자 요청으로 `disabled -> bypass -> enabled` 재개를 완료했다. endpoint1/association2 ACTIVE와 기존 priority200/300의 사설 TCP3000/8080 검사, 모든 심각도 ALERT를 확인했다. 양방향 TCP3000 HTTP200, 실제 Threat8건을 포함한 원본12건의 Security/플랫폼 수신, 기존 ID57개/BGP4개 UP 보존과 최종 실제 Plan No changes/종료0 및 잠금 부재를 검증했다. AWS 모드와 경로는 별도 AWS 재개 작업이 소유한다. [이번 실제 결과와 검증 한계](../../docs/ai-dlc/gcp-central-network.md#2026-11-07-operation-gcp-cloud-ngfw-검사-재개)를 따른다.
+
+다음은 2026-11-04 초기 검증 기록이다. 새 ADC의 프로젝트 조회, Billing/API/권한/기존 CIDR과 실제 저장 Plan을 확인했다. 첫 Apply의 DNS/연결 오류를 원격 state로 복구했고 GCP 기반과 4터널을 적용했다. 양방향 통신/규칙 거부/ALERT 탐지와 AWS 원본 로그, 네 단일 BGP 경로 철회/복구와 실제 저장 실패77건 ack0/재수집을 검증했다. 당시 GCP/AWS 총5개 root의 실제 최종 Plan은 No changes였다. 아래 로그인은 인증 준비 절차이며 현재 인증을 다시 요구하는 단계가 아니다.
 
 [공식 gcloud CLI](https://docs.cloud.google.com/sdk/docs/install)를 준비한 뒤 새 계정으로 로그인한다. 기존 다른 계정의 프로젝트나 credential 파일을 이 모듈에 복사하지 않는다. 로컬 gcloud 기본 프로젝트만 바꾸는 작업은 ADC 로그인과 다르다. ADC 로그인도 gcloud CLI의 활성 계정을 자동으로 바꾸지 않는다. 이 검증에서는 task 전용 config와 메모리의 ADC 단기 token을 사용했고 전역 CLI 계정을 변경하지 않았다. 이후 CLI 관리 전에는 `gcloud auth list`와 명시한 프로젝트를 확인한다.
 
@@ -21,7 +23,7 @@ Python 실행 환경에는 `google-auth`와 `requests`가 필요하다. prefligh
 1. `terraform.tfvars.example`은 mock용 합성값이다. 실제 Project Number, 중앙/FE subnet, 추가 application_subnets와 대상 서비스 계정, AWS Prefix/ASN을 확인해 ignored tfvars를 작성한다. 새 연결의 bootstrap에서만 `aws_vpn_tunnels={}`를 사용하며 현재 네 터널의 실제 계약을 빈 맵으로 덮어쓰지 않는다.
 2. 기존 중앙 S3 버킷 `sbh-delta-central-tf`의 소유 계정 `482840608926`, 서울 리전, 버전 관리, 암호화, 공개 접근 차단과 접근 권한을 확인한다. GCP 전용 key는 `delta/lab/network-security-gcp/terraform.tfstate`다. 실제 `backend.hcl`에 `encrypt=true`, `use_lockfile=true`, `allowed_account_ids=["482840608926"]`를 지정하고 파일 권한을 0600으로 제한한다. 기존 GCS state가 있으면 아래 이전 절차를 먼저 수행한다.
 3. Google/Google Beta Provider를 초기화하고 실제 저장 Plan의 프로젝트, 생성 목록, 검사 정책과 비용을 검토한다. 이 root는 네트워크를 관리한다. VM/ALB/SQL은 별도 workload root의 저장 Plan에서 VM/SQL 공인 IP 부재와 공개 ALB만 확인한다. 실제 Apply는 이 검토 후의 별도 실행 단계다.
-4. 현재 검사 모드는 disabled다. 이번 배포에서 검사 endpoint/association을 재생성하지 않는다. 선택적 검사 재개는 새 앱 정책을 별도 검토하고 실제 Plan/비용 확인 후 진행한다.
+4. 검사 재개는 아래 단계별 저장 Plan과 비용을 확인한다. 현재 두 사설 검사 규칙과 공개 ALB/헬스 허용을 구분하며 공개 앱 L7 정책을 자동으로 추가하지 않는다.
 
 ## GCS에서 S3로 이전
 
@@ -47,6 +49,8 @@ terraform -chdir=terraform/network-security-gcp init \
 
 ## AWS ANF를 끈 채 VPN 연결
 
+아래는 2026-11-04 초기 VPN 연결 절차다. 2026-11-07 이후 AWS 모드는 별도 AWS 재개 작업의 승인과 실제 상태를 따르며 GCP 검사 재개에서 강제로 disabled로 되돌리지 않는다.
+
 AWS ANF는 원복하지 않는다. 중앙 root의 실행 입력에 `inspection_mode="disabled"`를 유지한다. 실제 저장 Plan에 Firewall/endpoint 생성이 포함되면 적용하지 않고 입력과 변경 범위를 확인한다.
 
 1. GCP Gateway 생성 후 `terraform output -json gateway_handoff`를 ignored `gateway-handoff.json`으로 받는다.
@@ -69,7 +73,7 @@ GCP의 다음 Plan에서 4터널, BGP Peer 4개와 NCC hybrid spoke를 확인한
 
 ## 로그 수집
 
-원본은 GCP Cloud Logging에서 확인하고, AWS 중앙 수집은 [플랫폼 로그 안내](../../platform/deploy/logging/README.md)를 따른다. 플랫폼 계정 `616723161368`의 `/delta-platform/central/gcp`로 전달하며 플랫폼 전용 Sink는 `delta-platform-logs`다. 이 네트워크 root에서 전용 AWS 전달 입력이나 출력을 다시 만들지 않는다. 플랫폼 수집은 업무 VPN과 독립적이다.
+원본은 GCP Cloud Logging에서 확인한다. 방화벽 규칙과 NGFW 위협 로그 두 종류는 [Security 전용 수집 절차](../gcp-security-log-ingest/README.md)를 따라 계정 `482840608926`의 두 원본 그룹에 먼저 저장하고 플랫폼 계정 `616723161368`의 `/delta-cp/central/gcp`로 전달한다. 나머지 GCP 로그는 [플랫폼 로그 안내](../../platform/deploy/logging/README.md)의 기존 `delta-platform-logs` Sink로 직접 수집한다. 이 네트워크 root에서 전용 AWS 전달 입력이나 출력을 다시 만들지 않는다. 수집은 업무 VPN과 독립적이다.
 
 Pub/Sub 서비스 에이전트는 프로젝트의 공유 자원이며 이 root의 기존 주소로 보존한다. 플랫폼의 전용 Topic, Subscription과 권한은 플랫폼 root가 소유한다. 이전 네트워크 계정 전용 전달의 정리 결과와 보존한 로그는 [AI-DLC 기록](../../docs/ai-dlc/gcp-central-network.md#2026-11-05-gcp-로그-전달-경로-정리-검토)을 따른다.
 
@@ -78,9 +82,9 @@ Pub/Sub 서비스 에이전트는 프로젝트의 공유 자원이며 이 root�
 | 흐름 | 확인할 증거 | 혼동하면 안 되는 결과 |
 | --- | --- | --- |
 | Internet -> GCP | ALB HTTP80/FE3000, FE를 통한 BE8080 API와 PostgreSQL CRUD/재시작 보존, ALB HEALTHY | LB 미전달/비정상 헬스/앱 미기동은 방화벽 거부가 아님 |
-| GCP IDS | 현재 disabled로 신규 검증하지 않음. 아래 Threat ID는 초기 시험 VM의 과거 검증 | 포트 차단만으로 IDS/IPS 성공 판정하지 않음. 공식 시험 URI에서 실제 IDs 30844/30852/35107/55558과 ALERT를 확인. 앱은 URI만 반환하므로 실제 취약점/파일 접근 성공으로 해석하지 않음 |
+| GCP IDS | 2026-11-07 enabled 후 사설 TCP3000 양방향에서 실제 Threat8건, IDs30844/30852/35107/55558과 ALERT 및 원본의 Security/플랫폼 수신 확인 | 시험 URI는 고정 JSON 서버에만 보냄. 실제 파일 접근/공격 성공, IPS 차단이나 공개 ALB L7 검사 증거가 아님 |
 | AWS <-> GCP | 4터널/BGP, NCC의 AWS Prefix/업무 subnet, 양쪽 실제 TCP 요청과 반환 경로, 터널별 장애 전환 | 터널 UP만으로 앱 통신이나 장애 전환 성공 판정하지 않음. AWS ANF 검사로 보고하지 않음 |
-| GCP -> 플랫폼 AWS 로그 | 새 원본의 project/logName/insertId/시각/요청 정보와 `/delta-platform/central/gcp`의 원본 JSON 및 실제 도착 시각 | Lambda 실행 로그나 합성 메시지 저장만으로 실제 네트워크 로그 수집 완료 판정하지 않음 |
+| GCP -> Security -> 플랫폼 로그 | 방화벽 두 종류의 새 원본 project/logName/insertId/시각과 Security 원본 그룹 및 `/delta-cp/central/gcp`의 original과 event_id 대조 | 합성 메시지 저장만으로 실제 위협 탐지 성공 판정하지 않음. source_timestamp와 수집 시각 구분 |
 
 각 요청에 고유한 `request_id`를 붙여 앱 응답과 로그의 tuple/발생 시각을 대조한다. 초기 평문 HTTP 검증을 HTTPS 본문 검사로 확대하지 않는다. AWS 방화벽과 SG는 별개이므로 시험할 사설 서비스의 SG/리스너도 확인한다. 기존 AWS SG를 이 root에서 변경하지 않는다.
 
@@ -89,7 +93,7 @@ Pub/Sub 서비스 에이전트는 프로젝트의 공유 자원이며 이 root�
 - GCP에서 endpoint/association 준비 상태, 규칙/위협 로그, ALB 헬스와 FE/BE/SQL 상태, NCC 경로, VPN/BGP를 확인한다.
 - 플랫폼 전용 Pub/Sub 구독의 backlog, oldest unacked age와 DLQ를 확인한다. 플랫폼 일반 구독은 24시간, 실패 구독은 7일 보존이다. DLQ는 자동 폐기하지 않으며 원인을 해결한 뒤 권한 있는 운영자가 원본을 검토해 재전달한다.
 - 플랫폼의 Lambda Errors 경보와 `ingest_summary`의 pulled/stored/acked/failed를 확인한다. `event_id`로 재전달 중복을 식별한다. 실패 원문이나 인증 토큰을 로그에 넣지 않는다.
-- 수집 장애 시 플랫폼 운영 절차로 해당 Sink와 실행 규칙을 조정하고 메시지를 보존한다. 원인 해결 후 저장과 ack를 대조한다. 보존 기간을 넘긴 데이터까지 복구된다고 주장하지 않는다. 폐기한 네트워크 계정 수집기를 임의로 재생성하지 않는다.
+- 수집 장애 시 해당 수집 root의 절차로 Sink와 실행 규칙을 조정하고 메시지를 보존한다. 방화벽 로그의 Security 경유 복귀는 플랫폼 직접 수집을 먼저 복구한 후 수행한다. 원인 해결 후 저장과 ack를 대조한다. 보존 기간을 넘긴 데이터까지 복구된다고 주장하지 않는다. 과거 폐기한 수집기를 현재 승인한 전용 root와 혼동하지 않는다.
 - 검사 장애나 정리가 필요하면 공개 forwarding rule을 먼저 닫고 association과 endpoint를 정리한다. VM 중지만으로 검사 과금 중단을 선언하지 않는다. state, 원본 로그와 기존 AWS 기반은 보존한다.
 - VPN 롤백은 신규 VPN 경로/전파와 계약을 의존 순서에 맞게 정리한다. ANF를 재생성하지 않는다. 실제 적용 뒤 최종 Plan과 기존 AWS 통신을 다시 확인한다.
 
@@ -105,14 +109,14 @@ Pub/Sub 서비스 에이전트는 프로젝트의 공유 자원이며 이 root�
 
 ## 검사 비용 중단과 재개
 
-현재 실제 모드는 ignored `inspection-mode.auto.tfvars`의 disabled다. 아래 중단 절차에는 Provider 8.10.0의 참조 제거 오류에 대한 JSON null 우회가 필요하므로 해당 절을 함께 확인한다. 실제 모드는 이 파일에 기록한다. 콘솔에서 endpoint만 삭제하면 Terraform이 다시 생성할 수 있으므로 원하는 모드와 코드를 먼저 맞춘다.
+실제 모드는 ignored `inspection-mode.auto.tfvars`, 원격 state와 API를 함께 확인한다. 2026-11-07에는 사용자 요청으로 기존 GCP 검사를 재개한다. 아래 중단 절차에는 Provider 8.10.0의 참조 제거 오류에 대한 JSON null 우회가 필요하므로 해당 절을 함께 확인한다. 콘솔에서 endpoint만 삭제하면 Terraform이 다시 생성할 수 있으므로 원하는 모드와 코드를 먼저 맞춘다.
 
-1. 중단 준비: `inspection_mode="bypass"`로 저장 Plan을 생성한다. 검사 규칙3개만 allow로 갱신되고 endpoint는 주소 이동/no-op인지 확인한다. VM/NLB/VPC/NCC/VPN 교체/삭제가 없어야 한다. Apply 뒤 두 방향8080/8081 HTTP와 공개8080 허용/8081 기본 거부를 확인한다.
-2. 비용 중단: `inspection_mode="disabled"`로 새 Plan을 만든다. association2개와 endpoint1개만 삭제되는지 확인한 뒤 적용한다. 삭제 완료/API 목록/4 BGP와 양방향 HTTP, 일반 방화벽 로그의 AWS 도착 및 최종 No changes를 확인한다. 프로필과 과거 로그는 유지한다.
-3. 재개 준비: 별도 실행 승인을 확인한 뒤 bypass Plan에서 endpoint/association만 생성한다. 생성/연결 ACTIVE와 기존 통신을 확인한다. 이전 생성 검증은 endpoint20분51초/연결약7분으로 준비 시간이 필요했다.
-4. 검사 재개: enabled Plan에서 검사 규칙3개를 apply_security_profile_group으로 전환한 뒤 실제 허용/거부/Threat 로그를 확인한다.
+1. 중단 준비: `inspection_mode="bypass"`로 저장 Plan을 생성한다. 현재 검사 규칙 priority200/300 두 개만 allow로 갱신되고 endpoint는 no-op인지 확인한다. VPC/NCC/VPN 교체와 별도 workload 변경이 없어야 한다. Apply 뒤 현재 허용 서비스의 양방향 사설 HTTP와 기본 거부, 공개 ALB/헬스 규칙 보존을 확인한다. 과거 NLB8080/8081 결과를 현재 앱의 기대 응답으로 사용하지 않는다.
+2. 비용 중단: `inspection_mode="disabled"`로 새 Plan을 만든다. association2개와 endpoint1개만 삭제되는지 확인한 뒤 적용한다. 삭제 완료/API 목록/4 BGP와 양방향 사설 HTTP, 일반 방화벽 로그의 Security 및 플랫폼 도착과 최종 No changes를 확인한다. 프로필과 과거 로그는 유지한다.
+3. 재개 준비: 실행 승인을 확인한 뒤 bypass Plan에서 endpoint/association만 생성한다. 생성/연결 ACTIVE와 기존 통신을 확인한다. 2026-11-07에는 endpoint21분3초, 병렬 association8분35초/8분36초가 걸렸다. 단순 생성 요청 수락을 준비 완료로 간주하지 않는다.
+4. 검사 재개: enabled Plan에서 현재 priority200/300 두 규칙의 action/profile만 `apply_security_profile_group`으로 전환한 뒤 실제 사설 HTTP와 Threat 원본의 Cloud Logging -> Security -> 플랫폼 수신을 확인한다. 현재 프로필은 모든 심각도 ALERT이며 안전한 시험 URI를 받아 고정 JSON만 반환하는 제한 시간 서버로 탐지를 확인할 수 있다. 앱을 재가동하거나 파일을 읽고 명령을 실행하는 시험 서버를 사용하지 않는다. 임시 SG를 사용하면 그 시점의 기존 정책을 보존하고 자신이 만든 rule ID만 회수한다.
 
-각 단계는 `terraform plan -out=...`의 실제 대상/변경 목록을 검토한 뒤 해당 저장 Plan을 Apply한다. 삭제 후 ready 전에 enabled로 바로 전환하지 않는다. AWS ANF 모드와 이 root의 모드는 독립적이다. 현 AWS 정책에는 GCP 허용 흐름이 준비되지 않았으므로 공통 재개는 AWS VPN 경로/허용 정책 보완과 별도 검증이 필요하다. Endpoint가 없어도 VPN/NCC/VM/NLB/로그 비용은 남는다.
+각 단계는 `terraform plan -out=...`의 실제 대상/변경 목록을 검토한 뒤 해당 저장 Plan을 Apply한다. 삭제 후 ready 전에 enabled로 바로 전환하지 않는다. AWS ANF 모드와 이 root의 모드는 독립적이다. AWS 정책/경로와 검증은 별도 AWS 재개 기록을 따르며 GCP 활성화만으로 양쪽 공통 전환까지 완료했다고 보고하지 않는다. 최종 Plan 종료 후 잠금 부재를 확인하며 자신의 Plan이 실행 중일 때 잠금을 강제로 해제하지 않는다. Endpoint가 없어도 VPN/NCC/VM/NLB/로그 비용은 남는다.
 
 ### Provider 8.10.0의 프로필 참조 제거 오류
 

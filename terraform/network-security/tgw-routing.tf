@@ -80,7 +80,7 @@ resource "aws_ec2_transit_gateway_vpc_attachment_accepter" "spoke" {
 resource "aws_ec2_transit_gateway_route_table_association" "spoke" {
   for_each                       = var.spoke_attachments
   transit_gateway_attachment_id  = data.aws_ec2_transit_gateway_vpc_attachment.spoke[each.key].id
-  transit_gateway_route_table_id = aws_ec2_transit_gateway_route_table.spoke.id
+  transit_gateway_route_table_id = var.inspection_mode == "enabled" && contains(var.isolated_inspection_spokes, each.key) ? aws_ec2_transit_gateway_route_table.isolated_inspection[each.key].id : aws_ec2_transit_gateway_route_table.spoke.id
   depends_on                     = [aws_ec2_transit_gateway_vpc_attachment_accepter.spoke, terraform_data.spoke_contract]
 }
 
@@ -90,9 +90,34 @@ resource "aws_ec2_transit_gateway_route" "before_inspection" {
   transit_gateway_route_table_id = aws_ec2_transit_gateway_route_table.spoke.id
   # Keep route tables, destinations, associations and resource addresses stable.
   # In direct modes, VPN destinations use propagated BGP routes instead.
-  transit_gateway_attachment_id = var.inspection_mode == "enabled" ? aws_ec2_transit_gateway_vpc_attachment.inspection.id : lookup(
+  transit_gateway_attachment_id = var.inspection_mode == "enabled" && (length(var.isolated_inspection_spokes) == 0 || contains(local.selected_inspected_cidrs, each.key)) ? aws_ec2_transit_gateway_vpc_attachment.inspection.id : lookup(
     local.direct_spoke_targets, each.key, aws_ec2_transit_gateway_vpc_attachment.inspection.id
   )
+}
+
+resource "aws_ec2_transit_gateway_route_table" "isolated_inspection" {
+  for_each           = var.isolated_inspection_spokes
+  transit_gateway_id = aws_ec2_transit_gateway.central.id
+  tags               = { Name = "${local.prefix}-${each.key}-inspection" }
+}
+
+locals {
+  isolated_inspection_routes = { for item in flatten([for key in var.isolated_inspection_spokes : [
+    for network in local.remote_networks : { key = "${key}/${network.cidr}", spoke = key, cidr = network.cidr }
+    if network.owner != "spoke/${key}"
+  ]]) : item.key => item }
+}
+
+resource "aws_ec2_transit_gateway_route" "isolated_inspection" {
+  for_each                       = local.isolated_inspection_routes
+  destination_cidr_block         = each.value.cidr
+  transit_gateway_route_table_id = aws_ec2_transit_gateway_route_table.isolated_inspection[each.value.spoke].id
+  transit_gateway_attachment_id  = aws_ec2_transit_gateway_vpc_attachment.inspection.id
+}
+
+output "isolated_inspection_route_table_ids" {
+  description = "Prepared outbound inspection route tables by selected spoke key; never associated with VPN attachments."
+  value       = { for key, table in aws_ec2_transit_gateway_route_table.isolated_inspection : key => table.id }
 }
 
 resource "aws_ec2_transit_gateway_route" "to_spoke" {
@@ -116,7 +141,7 @@ resource "aws_ec2_transit_gateway_route_table_propagation" "vpn" {
 }
 
 resource "aws_ec2_transit_gateway_route_table_propagation" "vpn_direct" {
-  for_each                       = var.inspection_mode == "enabled" ? {} : var.vpn_peers
+  for_each                       = var.inspection_mode == "enabled" && !var.preserve_vpn_direct_routes ? {} : var.vpn_peers
   transit_gateway_attachment_id  = aws_vpn_connection.peer[each.key].transit_gateway_attachment_id
   transit_gateway_route_table_id = aws_ec2_transit_gateway_route_table.spoke.id
 }

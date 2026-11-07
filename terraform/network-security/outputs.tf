@@ -32,6 +32,19 @@ output "guardduty_findings" {
   }
 }
 
+output "network_firewall_logs" {
+  description = "Enterprise Network Firewall FLOW/ALERT storage and platform forwarding configuration; no log contents."
+  value = {
+    log_groups         = { for type, group in aws_cloudwatch_log_group.firewall_enterprise : type => group.name }
+    destination_arn    = var.network_firewall_logs_destination_arn
+    forwarding_enabled = var.network_firewall_logs_forwarding_enabled
+    subscription_filter_names = {
+      for type in keys(aws_cloudwatch_log_group.firewall_enterprise) :
+      type => try(aws_cloudwatch_log_subscription_filter.network_firewall_platform[type].name, null)
+    }
+  }
+}
+
 output "region" {
   description = "Region of the central deployment."
   value       = var.region
@@ -102,7 +115,7 @@ output "firewall_ram_share_arn" {
 }
 
 output "log_groups" {
-  description = "Central FLOW/ALERT CloudWatch Logs group names."
+  description = "Legacy Network Firewall FLOW/ALERT CloudWatch Logs group names retained for historical logs."
   value       = { for type, group in aws_cloudwatch_log_group.firewall : type => group.name }
 }
 

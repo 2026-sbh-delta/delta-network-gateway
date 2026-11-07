@@ -15,6 +15,11 @@ MAX_ENVELOPE_BYTES = 8 * 1024 * 1024
 
 # 플랫폼 자신의 로그(중앙 그룹·플랫폼 서비스 그룹)는 다시 받지 않는다. 예전 이름도 함께 막는다.
 PLATFORM_GROUP_PREFIXES = ("/delta-cp/", "/delta-platform/central/")
+GCP_RELAY_ACCOUNT = "482840608926"
+GCP_RELAY_LOGS = {
+    "/delta/security/gcp-firewall": "projects/term2-delta/logs/compute.googleapis.com%2Ffirewall",
+    "/delta/security/gcp-firewall-threat": "projects/term2-delta/logs/networksecurity.googleapis.com%2Ffirewall_threat",
+}
 
 
 def decode(record, allowed_accounts, stream_arn, collector_prefix):
@@ -77,7 +82,59 @@ def batches(envelope, region, now_ms):
         yield events
 
 
-def process(records, client, group, allowed_accounts, stream_arn, collector_prefix, now_ms=None):
+def gcp_batches(envelope, region, now_ms):
+    """Preserve a verified GCP record and its stable identity across the relay."""
+    expected_name = GCP_RELAY_LOGS[envelope["logGroup"]]
+    events, size = [], 0
+    for original in envelope["logEvents"]:
+        value = json.loads(original["message"])
+        entry = value["original"]
+        insert_id = value["insert_id"]
+        if (
+            value["cloud"] != "gcp"
+            or value["project_id"] != "term2-delta"
+            or value["log_name"] != expected_name
+            or not isinstance(entry, dict)
+            or entry.get("logName") != expected_name
+            or not isinstance(insert_id, str)
+            or not insert_id
+            or (entry.get("insertId") is not None and entry["insertId"] != insert_id)
+            or value["source_timestamp"] != entry.get("timestamp")
+            or value["event_id"]
+            != hashlib.sha256(f"term2-delta\n{expected_name}\n{insert_id}".encode()).hexdigest()
+        ):
+            raise ValueError("Unexpected relayed GCP identity")
+        value["relay"] = {
+            "account_id": envelope["owner"],
+            "region": region,
+            "log_group": envelope["logGroup"],
+            "log_stream": envelope["logStream"],
+            "cloudwatch_event_id": original["id"],
+            "collected_at_ms": now_ms,
+        }
+        text = json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+        event_size = len(text.encode("utf-8")) + 26
+        if event_size > MAX_EVENT_BYTES:
+            raise ValueError("Oversized GCP relay event")
+        if events and (size + event_size > MAX_BATCH_BYTES or len(events) >= 10000):
+            yield events
+            events, size = [], 0
+        events.append({"timestamp": now_ms, "message": text})
+        size += event_size
+    if events:
+        yield events
+
+
+def process(
+    records,
+    client,
+    group,
+    allowed_accounts,
+    stream_arn,
+    collector_prefix,
+    now_ms=None,
+    gcp_group=None,
+):
     now_ms = int(time.time() * 1000) if now_ms is None else now_ms
     failures, stored, skipped = [], 0, 0
     for record in records:
@@ -93,8 +150,16 @@ def process(records, client, group, allowed_accounts, stream_arn, collector_pref
                 [envelope["owner"], region, envelope["logGroup"], envelope["logStream"]]
             )
             stream = f"{envelope['owner']}/{hashlib.sha256(source.encode()).hexdigest()}"
-            writer = CloudWatchWriter(client, group, stream)
-            for batch in batches(envelope, region, now_ms):
+            is_gcp = envelope["logGroup"] in GCP_RELAY_LOGS
+            if is_gcp and (envelope["owner"] != GCP_RELAY_ACCOUNT or not gcp_group):
+                raise ValueError("Untrusted or unconfigured GCP relay")
+            writer = CloudWatchWriter(client, gcp_group if is_gcp else group, stream)
+            converted = (
+                gcp_batches(envelope, region, now_ms)
+                if is_gcp
+                else batches(envelope, region, now_ms)
+            )
+            for batch in converted:
                 if writer.put(batch):
                     raise RuntimeError("CloudWatch rejected records")
                 stored += len(batch)
@@ -133,4 +198,5 @@ def handler(event, context):
         set(os.environ["ALLOWED_SOURCE_ACCOUNTS"].split(",")),
         os.environ["SOURCE_STREAM_ARN"],
         os.environ["COLLECTOR_NAME_PREFIX"],
+        gcp_group=os.environ.get("GCP_DESTINATION_LOG_GROUP"),
     )

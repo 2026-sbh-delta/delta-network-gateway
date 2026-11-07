@@ -1,5 +1,6 @@
 import base64
 import gzip
+import hashlib
 import json
 import unittest
 from unittest.mock import Mock, patch
@@ -119,6 +120,98 @@ class AwsIngestTests(unittest.TestCase):
         self.assertEqual(self.process([item])["batchItemFailures"], [{"itemIdentifier": "100"}])
         with self.assertRaises(KeyError):
             self.process([{}])
+
+    def relay(self, group="/delta/security/gcp-firewall", **changes):
+        name = ingest.GCP_RELAY_LOGS[group]
+        value = {
+            "cloud": "gcp",
+            "project_id": "term2-delta",
+            "log_name": name,
+            "insert_id": "gcp-1",
+            "source_timestamp": "2026-11-07T00:00:00Z",
+            "event_id": hashlib.sha256(f"term2-delta\n{name}\ngcp-1".encode()).hexdigest(),
+            "original": {
+                "logName": name,
+                "insertId": "gcp-1",
+                "timestamp": "2026-11-07T00:00:00Z",
+                "jsonPayload": {"marker": "synthetic"},
+            },
+            **changes,
+        }
+        body = envelope(
+            owner=ingest.GCP_RELAY_ACCOUNT,
+            logGroup=group,
+            logEvents=[{"id": "cw-1", "timestamp": 1, "message": json.dumps(value)}],
+        )
+        return body, value
+
+    def process_relay(self, body, destination="central-gcp"):
+        return ingest.process(
+            [record(body)],
+            self.client,
+            "central-aws",
+            {ACCOUNT, ingest.GCP_RELAY_ACCOUNT},
+            STREAM,
+            "delta-platform-logs",
+            1000,
+            destination,
+        )
+
+    def test_two_gcp_routes_preserve_schema_and_stable_source_id(self):
+        for group in ingest.GCP_RELAY_LOGS:
+            body, original = self.relay(group)
+            self.assertEqual(self.process_relay(body), {"batchItemFailures": []})
+            call = self.client.put_log_events.call_args.kwargs
+            self.assertEqual(call["logGroupName"], "central-gcp")
+            saved = json.loads(call["logEvents"][0]["message"])
+            self.assertEqual({key: saved[key] for key in original}, original)
+            self.assertEqual(saved["relay"]["account_id"], ingest.GCP_RELAY_ACCOUNT)
+            self.assertEqual(saved["relay"]["log_group"], group)
+            later = next(ingest.gcp_batches(body, "ap-northeast-2", 2000))[0]
+            self.assertEqual(json.loads(later["message"])["event_id"], original["event_id"])
+
+    def test_wrong_account_cannot_claim_the_gcp_relay_group(self):
+        body, _ = self.relay()
+        body["owner"] = ACCOUNT
+        self.assertEqual(self.process_relay(body)["batchItemFailures"], [{"itemIdentifier": "100"}])
+        self.client.put_log_events.assert_not_called()
+
+    def test_gcp_identity_mismatch_is_retried_without_storage(self):
+        for changes in (
+            {"project_id": "other"},
+            {"cloud": "aws"},
+            {"event_id": "forged"},
+            {"insert_id": "wrong"},
+            {"source_timestamp": "wrong"},
+            {"log_name": ingest.GCP_RELAY_LOGS["/delta/security/gcp-firewall-threat"]},
+        ):
+            body, _ = self.relay(**changes)
+            self.assertEqual(
+                self.process_relay(body)["batchItemFailures"], [{"itemIdentifier": "100"}]
+            )
+        self.client.put_log_events.assert_not_called()
+
+    def test_unconfigured_gcp_destination_does_not_fall_back_to_aws(self):
+        body, _ = self.relay()
+        self.assertEqual(
+            self.process_relay(body, None)["batchItemFailures"], [{"itemIdentifier": "100"}]
+        )
+        self.client.put_log_events.assert_not_called()
+
+    def test_arbitrary_aws_json_does_not_become_a_gcp_record(self):
+        body, original = self.relay()
+        body["logGroup"] = "/service/test"
+        self.assertEqual(self.process_relay(body), {"batchItemFailures": []})
+        call = self.client.put_log_events.call_args.kwargs
+        self.assertEqual(call["logGroupName"], "central-aws")
+        self.assertEqual(json.loads(call["logEvents"][0]["message"])["cloud"], "aws")
+
+    def test_gcp_destination_rejection_is_not_acknowledged(self):
+        body, _ = self.relay()
+        self.client.put_log_events.return_value = {
+            "rejectedLogEventsInfo": {"tooOldLogEventEndIndex": 0}
+        }
+        self.assertEqual(self.process_relay(body)["batchItemFailures"], [{"itemIdentifier": "100"}])
 
 
 if __name__ == "__main__":

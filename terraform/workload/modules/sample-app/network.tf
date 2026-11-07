@@ -26,7 +26,14 @@ resource "aws_route" "public" {
   for_each               = aws_route_table.public
   route_table_id         = each.value.id
   destination_cidr_block = "0.0.0.0/0"
-  gateway_id             = aws_internet_gateway.app.id
+  gateway_id             = length(var.internet_firewall_endpoints) == 0 ? aws_internet_gateway.app.id : null
+  vpc_endpoint_id        = length(var.internet_firewall_endpoints) == 0 ? null : var.internet_firewall_endpoints[each.key]
+  lifecycle {
+    precondition {
+      condition     = length(var.internet_firewall_endpoints) == 0 || toset(keys(var.internet_firewall_endpoints)) == toset(keys(var.config.public_subnet_cidrs))
+      error_message = "Every public subnet must use a ready secondary endpoint in the same physical AZ."
+    }
+  }
 }
 resource "aws_eip" "nat" {
   domain = "vpc"
@@ -69,6 +76,30 @@ resource "aws_security_group" "app" {
   description = "Sample application ${each.key}; explicit service flows only"
   vpc_id      = var.vpc_id
   tags        = { Name = "${local.prefix}-${each.key}" }
+}
+
+locals {
+  remote_service_flows = { for pair in setproduct(var.remote_service_cidrs, var.remote_service_ports) : "${pair[0]}/${pair[1]}" => { cidr = pair[0], port = pair[1] } }
+}
+
+resource "aws_vpc_security_group_ingress_rule" "remote_service" {
+  for_each          = local.remote_service_flows
+  security_group_id = aws_security_group.app["frontend"].id
+  cidr_ipv4         = each.value.cidr
+  ip_protocol       = "tcp"
+  from_port         = each.value.port
+  to_port           = each.value.port
+  description       = "Explicit private remote frontend service"
+}
+
+resource "aws_vpc_security_group_egress_rule" "remote_service" {
+  for_each          = local.remote_service_flows
+  security_group_id = aws_security_group.app["frontend"].id
+  cidr_ipv4         = each.value.cidr
+  ip_protocol       = "tcp"
+  from_port         = each.value.port
+  to_port           = each.value.port
+  description       = "Explicit private remote frontend service"
 }
 resource "aws_vpc_security_group_ingress_rule" "public_http" {
   security_group_id = aws_security_group.app["alb"].id

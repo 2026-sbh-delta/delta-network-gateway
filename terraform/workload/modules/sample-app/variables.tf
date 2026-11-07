@@ -3,6 +3,32 @@ variable "prefix" {
   type        = string
 }
 
+variable "internet_firewall_endpoints" {
+  description = "Ready secondary firewall endpoint IDs by physical AZ; empty preserves direct public routes."
+  type        = map(string)
+  default     = {}
+}
+
+variable "remote_service_cidrs" {
+  description = "Explicit remote frontend service peers; empty keeps existing SGs."
+  type        = set(string)
+  default     = []
+  validation {
+    condition     = alltrue([for cidr in var.remote_service_cidrs : try(cidrnetmask(cidr) != "" && cidrhost(cidr, 0) == split("/", cidr)[0] && cidr != "0.0.0.0/0", false)])
+    error_message = "Remote peers must be canonical non-default IPv4 CIDRs."
+  }
+}
+
+variable "remote_service_ports" {
+  description = "Frontend TCP ports allowed to and from explicit remote peers."
+  type        = set(number)
+  default     = [3000]
+  validation {
+    condition     = length(var.remote_service_ports) > 0 && alltrue([for port in var.remote_service_ports : floor(port) == port && port >= 1 && port <= 65535])
+    error_message = "Remote TCP ports must be integers in 1..65535."
+  }
+}
+
 variable "region" {
   description = "AWS region."
   type        = string

@@ -1,14 +1,16 @@
 # ANF 비용 절감과 검사 경로 원복
 
+2026-11-07 후속: 사용자 승인으로 `delta-board-vpc`만 인터넷 입출구와 GCP 통신의 ANF 검사를 재개해 현재 enabled다. Primary2개/Secondary2개 READY와 정책 IN_SYNC, 실제 인터넷 두 AZ/사설 양방향 HTTP200, NAT HTTPS200, RDS TLS1.3과 미허용8081 blocked/drop을 확인했다. 원본 FLOW/ALERT21건의 중앙 수신 일치, BGP4개 UP/기존 광고 보존, 두 최종 실제 Plan No changes/종료0과 임시 검증 자원 정리를 확인했다. 앱은 inactive/disabled를 유지한다. Endpoint 시간 요금과 검사량 요금이 발생하며 실제 청구액은 조회하지 않았다. [대상 한정 재개 기록](anf-board-reactivation.md)과 현재 인터넷/GCP 복귀 Runbook을 따른다. 아래는 과거 VPC 전용 원복 기록이며 현재 운영 절차를 대신하지 않는다.
+
 2026-11-04 후속: 새 GCP 작업에서 사용자가 ANF 원복 금지와 VPN 연결을 승인했다. disabled/bypass에서 VPN을 Spoke RT에 BGP로 전파하도록 구현하고 실제 연결을 적용했다. 아래의 2026-11-03 VPC 전용 제약과 실제 전환 검증은 당시 기록이며, 새 VPN 코드/검증/배포 상태는 [GCP AI-DLC](gcp-central-network.md)를 따른다. 이번 작업에서 ANF는 재생성하지 않았다.
 
-## 승인과 현재 상태
+## 2026-11-03 승인과 당시 상태
 
 - 기준일: 2026-11-03 (Asia/Seoul).
 - 사용자가 통신을 유지하면서 ANF 비용을 줄이고 원복할 수 있는 구성을 요청했다. 사전 설명에서 TGW 직접 경로로 우회한 뒤 ANF만 제거하고, 정책과 서브넷을 보존해 다시 생성하는 방식을 제시했다.
 - 사용자 `일단 그렇게 해줘`를 아래 Ideation, Inception, U1 Design/Implementation Plan과 해당 범위의 실제 전환 승인으로 기록한다. 당시 커밋과 푸시는 포함하지 않았다. 이후 사용자 `pull받고 커밋 푸시 ㄱㄱ` 지시로 최신 main 반영과 분할 커밋/푸시를 승인받았다.
-- 현재: **최종 `disabled` 적용 및 실제 검증 완료**. Firewall 부재와 엔드포인트 0개, 기존 ALB/Client의 8080/8081 HTTP 200, 기존 사설 서버/네트워크/정책/로그 보존, 최종 Plan No changes를 확인했다. 실제 ANF 재생성과 검사 경로/삭제 보호 원복, 허용/차단/양방향 로그도 검증한 뒤 다시 비용 중단으로 마무리했다.
-- 로컬 실행 입력: ignored `terraform/network-security/inspection-mode.auto.tfvars`에 `inspection_mode = "disabled"`를 저장했다. 이 파일을 지우면 기본 enabled로 돌아갈 수 있으므로 비용 중단 중에는 보존한다.
+- 당시: **최종 `disabled` 적용 및 실제 검증 완료**. Firewall 부재와 엔드포인트 0개, 기존 ALB/Client의 8080/8081 HTTP 200, 기존 사설 서버/네트워크/정책/로그 보존, 최종 Plan No changes를 확인했다. 실제 ANF 재생성과 검사 경로/삭제 보호 원복, 허용/차단/양방향 로그도 검증한 뒤 다시 비용 중단으로 마무리했다. 현재 상태는 맨 위 2026-11-07 기록을 따른다.
+- 당시 실행 입력: ignored `terraform/network-security/inspection-mode.auto.tfvars`에 `inspection_mode = "disabled"`를 저장했다. 2026-11-07 재개 후 이 파일은 enabled로 갱신됐으며 파일을 지워 모드를 암묵적으로 바꾸지 않는다.
 - 검증: 표준 명령에서 Python helper **11 passed**, Terraform mock **41 passed**. 실제 전환과 별개인 로컬 검사 결과다.
 - Git: 최신 origin/main `22b91803`의 33개 커밋을 fast-forward로 pull하고 ANF 변경을 복원했다. 충돌 없이 문서 인덱스를 자동 병합했으며 기존 원격 변경을 보존했다. pull 후 Python 11개와 Terraform mock 41개를 다시 통과했다. 구현/테스트/운영 문서 3개 서명 커밋을 origin/main에 게시했고 원격 HEAD 일치를 확인했다. 이 게시 확인 기록은 별도 후속 문서 커밋으로 저장한다.
 
@@ -28,7 +30,7 @@
 - `inspection_mode=bypass`: ANF를 유지하면서 Spoke RT의 등록 VPC 목적지를 해당 VPC Attachment로 직접 전달한다. 기존 RT Association과 VPC Route는 유지한다.
 - `inspection_mode=disabled`: 우회 경로를 유지하고 Firewall, 엔드포인트 참조 Route, Firewall 로그 연결과 RAM Resource Association만 제거한다.
 - 원복은 disabled -> bypass(ANF 재생성/READY 확인) -> enabled(양방향 검사 경로 복원) 순서다. 중지 전환은 enabled -> bypass(통신 확인/삭제 보호 해제) -> disabled 순서다.
-- 현재 연결은 AWS Client와 Server 두 VPC뿐이다. VPN이 등록된 상태의 bypass/disabled는 사전 검증으로 거부한다.
+- 당시 연결은 AWS Client와 Server 두 VPC뿐이었다. 당시에는 VPN이 등록된 bypass/disabled를 거부했으며 후속 GCP 연결과 2026-11-07의 분리 송신 RT 지원은 해당 최신 문서를 따른다.
 
 ### Non-Functional Requirements
 

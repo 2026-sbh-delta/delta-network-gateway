@@ -110,6 +110,37 @@ class CloudWatchWriter:
         return rejected
 
 
+class RoutedCloudWatchWriter:
+    """Keep failures local to a destination and never fall back for unknown logs."""
+
+    def __init__(self, client, routes, stream):
+        if not isinstance(routes, dict) or not routes or not all(
+            isinstance(name, str) and name.startswith("projects/term2-delta/logs/")
+            and isinstance(group, str) and group.startswith("/delta/security/")
+            for name, group in routes.items()
+        ):
+            raise ValueError("Invalid source-to-group mapping")
+        self.client, self.routes, self.stream = client, routes, stream
+
+    def put(self, events):
+        destinations, rejected = {}, set()
+        for index, event in enumerate(events):
+            name = json.loads(event["message"])["log_name"]
+            group = self.routes.get(name)
+            if group is None:
+                rejected.add(index)
+            else:
+                destinations.setdefault(group, []).append((index, event))
+        for group, items in destinations.items():
+            try:
+                failed = CloudWatchWriter(self.client, group, self.stream).put([event for _, event in items])
+            except Exception:
+                rejected.update(index for index, _ in items)
+            else:
+                rejected.update(items[index][0] for index in failed)
+        return rejected
+
+
 class PubSub:
     def __init__(self, session, subscription):
         if not re.fullmatch(r"projects/term2-delta/subscriptions/[A-Za-z][A-Za-z0-9._~+%-]{2,254}", subscription):
@@ -149,7 +180,10 @@ def runtime():
     session = AuthorizedSession(credentials, refresh_timeout=5, max_refresh_attempts=1)
     pubsub = PubSub(session, os.environ["PUBSUB_SUBSCRIPTION"])
     logs = boto3.client("logs", config=Config(connect_timeout=3, read_timeout=5, retries={"max_attempts": 2, "mode": "standard"}))
-    return pubsub, CloudWatchWriter(logs, os.environ["DESTINATION_LOG_GROUP"], os.environ.get("DESTINATION_LOG_STREAM", "gcp-network-security")), session
+    stream = os.environ.get("DESTINATION_LOG_STREAM", "gcp-network-security")
+    routes = os.environ.get("DESTINATION_LOG_GROUPS")
+    writer = RoutedCloudWatchWriter(logs, json.loads(routes), stream) if routes is not None else CloudWatchWriter(logs, os.environ["DESTINATION_LOG_GROUP"], stream)
+    return pubsub, writer, session
 
 
 def handler(event, context):

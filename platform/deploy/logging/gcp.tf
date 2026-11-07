@@ -1,6 +1,6 @@
 data "google_project" "source" { project_id = var.gcp_project_id }
 locals {
-  gcp_filter = coalesce(var.gcp_log_filter, <<-FILTER
+  gcp_base_filter = coalesce(var.gcp_log_filter, <<-FILTER
     NOT logName:"cloudaudit.googleapis.com"
     AND (
       resource.type="gce_instance"
@@ -13,6 +13,11 @@ locals {
     )
   FILTER
   )
+  gcp_filter           = var.gcp_firewall_direct_collection_enabled ? local.gcp_base_filter : <<-FILTER
+    (${local.gcp_base_filter})
+    AND NOT logName=("projects/${var.gcp_project_id}/logs/compute.googleapis.com%2Ffirewall"
+                    OR "projects/${var.gcp_project_id}/logs/networksecurity.googleapis.com%2Ffirewall_threat")
+  FILTER
   pubsub_service_agent = "serviceAccount:service-${data.google_project.source.number}@gcp-sa-pubsub.iam.gserviceaccount.com"
   gcp_principal        = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.aws.name}/attribute.aws_role/${aws_iam_role.collector["gcp"].name}"
 }

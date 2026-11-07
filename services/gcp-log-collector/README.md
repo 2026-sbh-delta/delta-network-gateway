@@ -6,6 +6,8 @@ CloudWatch event timestamp는 수집 시각이며 원본 발생 시각은 `sourc
 
 현재 [플랫폼 중앙 로그 수집](../../platform/deploy/logging/README.md)에서 사용하는 공통 코드다. 네트워크 계정 전용 전달 경로 정리와 별개로 플랫폼의 빌드와 테스트에서 계속 사용한다.
 
+[Security 전용 방화벽 수집](../../terraform/gcp-security-log-ingest/README.md)은 선택형 logName별 그룹 매핑을 사용한다. 매핑이 없으면 기존 단일 그룹에 저장한다. 매핑을 사용하면 일치하지 않는 로그는 저장하거나 ACK하지 않으며 특정 그룹의 실패가 다른 그룹의 성공한 메시지 ACK를 막지 않는다.
+
 ## 실행과 패키징
 
 `requirements.txt`는 직접 의존성, `requirements.lock`은 실제 설치하여 고정한 전체 버전이다. Python 3.13 Lambda용 Linux x86_64 wheel로 빌드하며 macOS native 라이브러리를 복사하지 않는다. 산출물은 ignored `.build/collector.zip`이고 빌드는 업로드/배포를 수행하지 않는다.
@@ -21,7 +23,9 @@ PYTHONPATH=services/gcp-log-collector /tmp/delta-gcp-collector-venv/bin/python -
 | --- | --- |
 | `PUBSUB_SUBSCRIPTION` | `projects/term2-delta/subscriptions/...` 경로 |
 | `WIF_AUDIENCE` | 숫자 Project Number의 `.../providers/aws-collector` audience |
-| `DESTINATION_LOG_GROUP` | 중앙 GCP 원본 로그 그룹 |
+| `DESTINATION_LOG_GROUP` | 매핑을 사용하지 않을 때 중앙 GCP 원본 로그 그룹 |
+| `DESTINATION_LOG_GROUPS` | 선택형 JSON object. 전체 원본 logName에서 `/delta/security/` 대상 그룹으로 매핑 |
+| `DESTINATION_LOG_STREAM` | 선택형 스트림 이름. 기본 `gcp-network-security` |
 
 AWS Lambda가 제공하는 임시 역할 자격 증명과 Region을 Google AWS WIF가 사용한다. Google 영구 서비스 계정 키, AWS 영구 키와 사용자 ADC를 패키지에 넣지 않는다. 로컬 테스트는 주입한 fake client와 실제 Google SDK의 오프라인 AWS 서명 생성을 검증한다. 네트워크/metadata 호출 없이 Lambda 환경 자격 증명을 사용하는지 확인하며, 실제 Google/AWS 인증 성공을 의미하지 않는다.
 

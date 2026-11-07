@@ -67,9 +67,13 @@ RAM 조직 공유 활성화는 조직 관리 계정에서 수행하며 `AWSServi
 | `suricata_rules` | `map(object)` | `{}` | 허용 추적보다 먼저 평가할 선택적 추가 규칙 |
 | `stateful_rule_capacity` | `number` | `1000` | Rule Group capacity, 변경 시 교체에 주의 |
 | `inspection_mode` | `string` | `enabled` | `enabled`: 검사, `bypass`: ANF를 유지한 직접 경로, `disabled`: 직접 경로와 엔드포인트 제거. 직접 모드의 VPN은 Spoke RT에 BGP 전파 |
+| `preserve_vpn_direct_routes` | `bool` | `false` | enabled에서도 Spoke BGP 전파 유지. 광고 필터가 아니며 대상 분리는 아래 `isolated_inspection_spokes`와 실제 RT/광고로 확인 |
+| `isolated_inspection_spokes` | `set(string)` | `[]` | 대상 spoke key별 송신 검사 RT 분리. VPN RT에 원격 정적 대역을 넣어 BGP로 되광고하지 않도록 함 |
 | `firewall_protection` | `object` | 내부 속성 모두 `true` | 삭제/Subnet/정책 연결 변경 보호 |
 | `log_retention_days` | `number` | `30` | 지원되는 유한 CloudWatch Logs 보존 일수 |
 | `retain_logs_on_destroy` | `bool` | `true` | 해체 시 로그 그룹 보존, 재관리 시 import 필요 |
+| `network_firewall_logs_forwarding_enabled` | `bool` | `true` | 기업 NFW FLOW와 ALERT 그룹의 플랫폼 구독 제어. false여도 원본 그룹 유지 |
+| `network_firewall_logs_destination_arn` | `string` | `arn:aws:logs:ap-northeast-2:616723161368:destination:delta-platform-logs` | 같은 리전의 플랫폼 계정 논리 Destination |
 | `cidr_service_map` | `map(object)` | `{}` | 나중에 로그에 보강할 CSP/service_id 매핑 |
 
 `Name`은 각 리소스에 설정한다. 나머지 공통 태그의 기본값은 `Team=Delta`, `Project=delta-multicloud`, `Environment=var.environment`, `ManagedBy=Terraform`이며 `tags`로 조정한다.
@@ -186,6 +190,7 @@ GCP 네트워크는 interface 0/1의 서로 다른 공인 IP와 동일 Cloud Rou
 | `central_account_id` | 인증된 중앙 계정 ID |
 | guardduty | 계정/리전 detector ID/ARN, 활성 상태, 게시 주기와 관리하는 기능/추가 설정 |
 | `guardduty_findings` | 기업 원본 Finding 로그 그룹, EventBridge 규칙과 플랫폼 구독 구성 |
+| `network_firewall_logs` | 기업 NFW FLOW와 ALERT 원본 그룹 및 플랫폼 구독 구성 |
 | `region` | 중앙 Region |
 | `az_ids` | 지원하는 물리적 AZ IDs |
 | `tgw_id` | 공유 TGW ID |
@@ -195,11 +200,12 @@ GCP 네트워크는 interface 0/1의 서로 다른 공인 IP와 동일 Cloud Rou
 | `inspection_attachment_id` | appliance mode Inspection Attachment ID |
 | `firewall_arn` | 공유할 Firewall 자체 ARN, disabled에서는 null |
 | `inspection_mode` | 적용할 검사/우회/비용 중단 모드 |
+| `isolated_inspection_route_table_ids` | 대상 spoke key별 준비한 전용 송신 검사 RT ID. VPN에는 연결하지 않음 |
 | `inspection_route_targets` | 정적 Spoke Route의 기대 다음 홉. 직접 모드의 VPN 목적지는 BGP 경로이므로 맵에서 제외 |
 | `primary_endpoint_ids_by_az_id` | Inspection VPC의 AZ ID별 Primary Endpoint IDs, disabled에서는 빈 맵 |
 | `tgw_ram_share_arn` | TGW RAM Share ARN |
 | `firewall_ram_share_arn` | Firewall RAM Share ARN |
-| `log_groups` | 중앙 FLOW/ALERT Log Group 이름 |
+| `log_groups` | 과거 로그 보존용 기존 Network Firewall FLOW와 ALERT 그룹 이름 |
 | `inspection_route_table_ids` | AZ ID별 TGW/Firewall Subnet RT IDs |
 | `vpn_handoff` | 원격 담당자용 비밀값 없는 Gateway/Tunnel/BGP 계약 |
 | `cidr_service_map` | 로그 보강용 입력 메타데이터 |
@@ -217,6 +223,15 @@ GCP 네트워크는 interface 0/1의 서로 다른 공인 IP와 동일 Cloud Rou
 | `destination_arn` | 기존 플랫폼 논리 Destination ARN |
 | `forwarding_enabled` | 구독 필터 생성 구성. 실제 전송 성공 여부는 별도 검증 |
 | `subscription_filter_name` | `delta-platform-central`. 전달 토글 false이면 null |
+
+### `network_firewall_logs` 출력 내부 속성
+
+| 속성명 | 역할 |
+| --- | --- |
+| `log_groups` | `FLOW=/delta/security/nfw-flow`, `ALERT=/delta/security/nfw-alert` |
+| `destination_arn` | 기존 플랫폼 논리 Destination ARN |
+| `forwarding_enabled` | 두 기업 원본 그룹의 구독 생성 구성. 실제 전송 성공 여부는 별도 검증 |
+| `subscription_filter_names` | 로그 유형별 `delta-platform-central`. 전달 토글 false이면 각 값은 null |
 
 ## S3 backend를 준비하고 실행하기
 
@@ -273,7 +288,9 @@ backend는 부분 설정이며 `encrypt=true`, `use_lockfile=true`, 기대하는
 | TGW Inspected | 업무 VPC CIDR | 해당 업무 VPC Attachment |
 | TGW Inspected | 원격 VPN 광고 Prefix | 해당 VPN에서 BGP로 학습한 Attachment |
 
-업무 VPC와 VPN Attachment는 Spoke, Inspection Attachment는 Inspected에만 Association한다. Spoke에는 목적지 VPC/VPN으로 직접 가는 Route 또는 Propagation을 만들지 않는다. AWS VPC는 정적 Route이며 VPN Propagation은 Inspected에만 둔다. 중앙 VPC에는 IGW/NAT나 인터넷 기본 경로가 없다. `EXTERNAL_NET`의 전체 IPv4 값은 규칙 변수이며 인터넷 Route가 아니다.
+위 표는 기본 전체 검사 모드다. 이 모드의 업무 VPC/VPN Attachment는 Spoke, Inspection Attachment는 Inspected에 연결한다. Spoke에는 직접 Route/Propagation을 두지 않고 AWS VPC는 정적 Route, VPN Propagation은 Inspected에 둔다. 중앙 VPC에는 IGW/NAT나 인터넷 기본 경로가 없다. `EXTERNAL_NET`의 전체 IPv4 값은 규칙 변수이며 인터넷 Route가 아니다.
+
+현재 `delta-board-vpc`는 `preserve_vpn_direct_routes=true`, `isolated_inspection_spokes=["aws_client"]`를 사용한다. board만 전용 송신 RT에 연결해 GCP 정적4경로를 Inspection으로 보낸다. 두 VPN은 기존 공유 Spoke RT에 남고 GCP BGP 전파를 유지하며 AWS board 반환 정적 경로만 Inspection으로 보낸다. Inspected RT는 두 VPN의 BGP/ECMP를 유지한다. VPN 연결 RT의 경로가 원격 광고에 영향을 주므로 GCP 정적 prefix를 그 RT에 넣어 되광고하지 않는다. 플래그만으로 광고가 필터링되는 것은 아니다. [대상 한정 전환과 복귀](RUNBOOK.md#delta-board-vpc-인터넷과-gcp-검사-재개), [실제 검증](../../docs/ai-dlc/anf-board-reactivation.md)을 따른다.
 
 GCP에서 Account B Backend로 가는 실제 요청/응답의 단계별 설명과 ALB 경로는 [연결 문서](CONNECTIONS.md#왕복-경로를-추적하기)에 있다. appliance mode 설정만으로 소비자 VPC Route나 원격 BGP가 자동 완성되지는 않는다.
 
@@ -300,9 +317,13 @@ GCP에서 Account B Backend로 가는 실제 요청/응답의 단계별 설명�
 
 ## 로그, 로컬 검증과 운영
 
-중앙 계정의 FLOW/ALERT Log Group과 로그 전달 Resource Policy를 생성한다. `delivery.logs.amazonaws.com`에 두 그룹의 log-stream 생성/쓰기만 허용하고 SourceAccount와 SourceArn을 제한한다. 실행 역할에는 CloudWatch Logs의 Create/Get/Update/Delete/ListLogDelivery와 Put/DescribeResourcePolicies, DescribeLogGroups 권한이 필요하다. 정책 설명 및 목록 API에는 공식 문서에 맞는 wildcard 권한 범위를 사용한다. IAM User와 Access Key는 만들지 않는다.
+기존 `/aws/vendedlogs/network-firewall/delta-lab/flow`와 `/aws/vendedlogs/network-firewall/delta-lab/alert`는 과거 로그와 Terraform 소유권을 보존한다. 새 Network Firewall 대상은 `/delta/security/nfw-flow`와 `/delta/security/nfw-alert`다. 로그 그룹 이름은 직접 바꿀 수 없으므로 기존 그룹을 교체하거나 삭제하지 않는다. 구독은 새 이벤트만 플랫폼으로 보내며 과거 로그를 자동으로 다시 보내지 않는다.
 
-로그 설정은 Firewall ARN 기준이다. 보조 Endpoint에는 별도 destination 설정이 없으므로 공유 Firewall의 중앙 로그 구성을 사용한다. 소비자 계정에 자동 Log Group이나 CloudWatch OAM을 생성하지 않는다. 소비자별 트래픽 발생 시 중앙 그룹 유입과 원시 스키마를 확인하는 것이 운영 수용 조건이다. 아직 생성하지 않은 보조 Endpoint의 실제 로그 유입은 미검증이다.
+두 기업 원본 그룹의 빈 구독 필터가 `network_firewall_logs_destination_arn`으로 전송한다. 필터 이름은 각 그룹에서 `delta-platform-central`이고 배포 방식은 `Random`이다. 기존 플랫폼 Destination, Kinesis와 Lambda를 거쳐 실제 `/delta-cp/central/aws`에 원본 계정, 그룹, 시각과 본문을 저장한다. `network_firewall_logs_forwarding_enabled=false`는 두 구독만 제거하고 네 개의 원본 그룹과 향후 Network Firewall 로그 대상 정의를 유지한다.
+
+중앙 계정의 기존 및 기업 FLOW/ALERT Log Group과 로그 전달 Resource Policy를 관리한다. `delivery.logs.amazonaws.com`에 네 그룹의 log-stream 생성/쓰기만 허용하고 SourceAccount와 SourceArn을 제한한다. 실행 역할에는 CloudWatch Logs의 Create/Get/Update/Delete/ListLogDelivery와 Put/DescribeResourcePolicies, DescribeLogGroups 권한이 필요하다. 정책 설명 및 목록 API에는 공식 문서에 맞는 wildcard 권한 범위를 사용한다. IAM User와 Access Key는 만들지 않는다.
+
+로그 설정은 Firewall ARN 기준이다. `inspection_mode=disabled`에서는 Firewall과 logging configuration이 없지만 기업 원본 그룹과 구독은 유지한다. 이후 ANF를 복구하면 FLOW와 ALERT 모두 새 기업 그룹을 사용한다. 보조 Endpoint에는 별도 destination 설정이 없으므로 공유 Firewall의 중앙 로그 구성을 사용한다. 소비자 계정에 자동 Log Group이나 CloudWatch OAM을 생성하지 않는다. 소비자별 트래픽 발생 시 중앙 그룹 유입과 원시 스키마를 확인하는 것이 운영 수용 조건이다. [설계와 검증 상태](../../docs/ai-dlc/aws-traffic-log-forwarding.md), [조회와 전달 제어](RUNBOOK.md#network-firewall-로그-전달)를 따른다.
 
 ```bash
 # AWS 인증과 실제 입력 없이 실행하는 독립 검증

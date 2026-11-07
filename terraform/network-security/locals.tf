@@ -21,8 +21,11 @@ locals {
   # Direct VPN routes come from BGP, preserving both HA attachments and withdrawals.
   # A static route to one VPN attachment would break ECMP and failover.
   spoke_destination_cidrs = toset(flatten([for spoke in values(var.spoke_attachments) : tolist(spoke.vpc_cidrs)]))
-  static_spoke_cidrs      = var.inspection_mode == "enabled" ? local.inspected_cidrs : local.spoke_destination_cidrs
-  home_net                = sort(tolist(setunion(toset([var.inspection_vpc_cidr]), local.inspected_cidrs)))
+  static_spoke_cidrs      = var.inspection_mode == "enabled" && length(var.isolated_inspection_spokes) == 0 ? local.inspected_cidrs : local.spoke_destination_cidrs
+  selected_inspected_cidrs = toset(flatten([for key, spoke in var.spoke_attachments : spoke.vpc_cidrs
+    if length(var.isolated_inspection_spokes) == 0 || contains(var.isolated_inspection_spokes, key)
+  ]))
+  home_net = sort(tolist(setunion(toset([var.inspection_vpc_cidr]), local.inspected_cidrs)))
 
   # Integer IPv4 intervals permit complete containment/overlap checks, including
   # differently sized prefixes. Invalid CIDRs are rejected before any AWS writes.

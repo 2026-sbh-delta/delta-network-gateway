@@ -25,3 +25,13 @@ output "deployment" {
     logs = { for role, group in aws_cloudwatch_log_group.app : role => group.name }
   }
 }
+
+output "inspection_network" {
+  description = "Existing IGW and public subnet/route-table identities for shared firewall routing; no runtime resource dependency."
+  value = {
+    internet_gateway_id = aws_internet_gateway.app.id
+    public_subnets = { for az, subnet in aws_subnet.public : az => {
+      id = subnet.id, cidr = subnet.cidr_block, route_table_id = aws_route_table.public[az].id
+    } }
+  }
+}

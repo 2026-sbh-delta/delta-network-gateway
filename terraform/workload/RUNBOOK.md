@@ -79,8 +79,40 @@ EIC Endpoint는 유지한다. 네트워크 전용 모드에는 EC2가 없고 앱
 
 중앙 `network-security`의 안정된 `aws_client` spoke 키와 Attachment를 유지한다. GCP는 AWS 목적지 대역을 공통 `10.10.0.0/16` 하나로 등록한다. 네 BGP 세션과 수신/광고 경로를 API에서 확인한다.
 
-EC2가 없는 상태에서는 네트워크 경로의 존재와 HTTP 도달 성공을 구분한다. 이 구성은 VPC 내부 local 트래픽의 중앙 ANF 경유를 보장하지 않는다. 현재 ANF/NGFW의 검사 모드는 별도 요청 전까지 disabled를 유지한다.
+EC2가 없는 상태에서는 네트워크 경로의 존재와 HTTP 도달 성공을 구분한다. 이 구성은 VPC 내부 local 트래픽의 중앙 ANF 경유를 보장하지 않는다. 2026-11-07 사용자 승인으로 board의 인터넷/GCP ANF 검사를 재개했다. 현재 AWS 검사는 마지막 절과 [실제 검증](../../docs/ai-dlc/anf-board-reactivation.md)을, 별도 GCP NGFW 모드는 해당 root의 운영 기록을 따른다.
 
 ## 롤백과 전체 해체
 
 이번 통합으로 삭제한 EC2의 루트 EBS는 state만으로 복구할 수 없다. 기존 시연 환경 재생성이나 공통 네트워크 전체 해체는 대상과 의존성을 별도로 검토한다. 현재 VPC와 TGW Attachment를 보호하기 위해 단순 디렉터리 정리 목적으로 `terraform destroy`를 실행하지 않는다.
+
+
+## 공유 ANF로 인터넷 검사하기
+
+대상은 [승인한 delta-board-vpc](../../docs/ai-dlc/anf-board-reactivation.md) 한 개다. DNS는 기존 ALB를 계속 가리키며, IGW edge 라우팅으로 같은 AZ의 Secondary Endpoint를 왕복한다. 내부 ALB-앱/앱-DB/EIC 경로는 local을 유지한다. NAT 뒤 검사 로그는 NAT 사설 IP와 변환된 출발지 포트를 표시할 수 있으므로 요청 시각/목적지와 실제 NAT tuple을 대조한다.
+
+1. 중앙 계정의 Primary 두 개 READY/IN_SYNC와 RAM 공유를 확인한다. 실제 ARN/물리 AZ IDs를 ignored `internet-inspection.auto.tfvars.json`의 `internet_inspection`에 입력한다. `expected_vpc_id`는 현재 VPC와 반드시 같아야 한다.
+2. `mode=bypass`에서 전용 두 subnet, Secondary 두 개, Endpoint RT/IGW 반환 경로와 미연결 ingress RT를 준비한다. 저장 Plan에서 기존 public/NAT/TGW 경로와 ALB/EC2/RDS 교체가 없어야 한다. 준비 Apply 후 Secondary의 READY, 실제 VPC/subnet/AZ/Endpoint ID를 대조한다.
+3. mode를 enabled로 바꾸고 새 저장 Plan과 JSON을 만든다. 기존 public default 두 개를 해당 AZ Endpoint로 바꾸고 IGW edge Association 한 개를 생성하는 변경만 있어야 한다.
+
+```bash
+terraform plan -input=false -out=internet-enabled.tfplan
+terraform show -json internet-enabled.tfplan > internet-enabled.tfplan.json
+python3 scripts/switch_internet_routes.py internet-enabled.tfplan.json --profile sbh-delta-workload --firewall-profile sbh-delta-security
+# 정확한 대상과 양방향 변경을 검토한 뒤 동일 JSON으로 실행한다.
+python3 scripts/switch_internet_routes.py internet-enabled.tfplan.json --profile sbh-delta-workload --firewall-profile sbh-delta-security --execute
+```
+
+4. 출력의 실제 `import_id`로 새 edge Association을 기존 state에 등록한다. 예시 문자열을 실제 ID 대신 쓰지 않는다.
+
+```bash
+terraform import 'aws_route_table_association.internet_ingress[0]' '<실제-IGW-ID>/<실제-edge-RT-ID>'
+terraform plan -input=false -out=internet-confirmed.tfplan
+# API 전환 뒤 생성한 새 Plan만 검토/적용한다.
+terraform apply internet-confirmed.tfplan
+```
+
+5. 실제 인터넷 요청/응답, 호스트의 NAT HTTPS, ALB health/기존 DB TLS와 관리 접속 및 FLOW/ALERT 원본과 중앙 수신을 확인한다. 앱이 중지돼 있으면 한시적 probe 결과를 실제 앱 정상화로 보고하지 않는다. probe/키/터널/임시 SG는 제거하고 기존 앱 상태를 확인한다.
+
+helper는 다른 계정/VPC/예상 밖 변경, stale 다음 홉, unready/다른 AZ Endpoint와 기존의 다른 IGW edge Association을 거부한다. Route나 Association API가 부분 실패하면 기존 public default와 기존 edge 상태로 복귀한다. 두 방향 API 변경은 원자적이지 않으므로 기존 연결은 재접속할 수 있다.
+
+전환 후 통신이 실패하면 저장해 둔 원래 IGW를 두 public default에 ReplaceRoute로 복원하고 이번 edge Association을 해제한다. 실제 입력의 mode를 bypass로 되돌린 새 Plan으로 state를 대조한다. Endpoint는 경로 참조를 복구하기 전에 제거하지 않는다. 다른 VPC나 IGW의 Association을 해제하지 않는다.

@@ -40,6 +40,21 @@ VPC의 Name 태그는 `vpc_name`으로 지정하며 기본값은 `delta-board-vp
 | guardduty_features | map(object) | 기능별 기본값 표 참고 | 필수 7개 선택 기능과 추가 설정의 명시적 상태 |
 | application_enabled | bool | `false` | 샘플 앱 기반을 명시적으로 생성하는 선택 모드 |
 | application | object | `{}` 내부 기본값 사용 | 앱 세부 설정, 아래 내부 속성 표 참고 |
+| internet_inspection | object | `null` | 공유 ANF 인터넷 검사. bypass는 준비만, enabled는 public/IGW 경로 전환 |
+| application_remote_cidrs | set(string) | `[]` | 앱 frontend와 사설 TCP 통신할 명시적 원격 peer |
+| application_remote_ports | set(number) | `[3000]` | 원격 frontend TCP 서비스 포트 |
+
+### internet_inspection 내부 속성
+
+| 속성명 | 타입 | 기본값 | 역할 |
+| --- | --- | --- | --- |
+| mode | string | 필수 | bypass: Endpoint/미연결 edge RT 준비, enabled: 양방향 인터넷 검사 |
+| firewall_arn | string | 필수 | 같은 Region의 중앙 계정이 RAM 공유한 Firewall |
+| expected_vpc_id | string | 필수 | 현재 VPC ID와 일치해야 함. 다른 VPC에 적용 거부 |
+| primary_az_ids | set(string) | 필수 | 중앙 Primary Endpoint가 실제 READY인 물리 AZ IDs |
+| subnet_cidrs | map(string) | 필수 | 물리 AZ ID별 신규 전용 /24. 기존 모든 subnet과 겹치지 않아야 함 |
+
+`subnet_cidrs`의 키는 기존 `azs` 두 키, 값은 VPC 안의 정규화된 /24다. Primary Endpoint ID를 Workload Route로 사용하지 않는다. 인터넷 NAT 뒤 검사 로그는 원래 앱 주소 대신 NAT 사설 출발지를 표시하며 포트도 변환될 수 있다. 요청 시각/목적지와 실제 NAT tuple로 대조한다. [승인/실제 상태](../../docs/ai-dlc/anf-board-reactivation.md)를 따른다.
 
 ### azs 내부 속성
 
@@ -104,6 +119,21 @@ VPC의 Name 태그는 `vpc_name`으로 지정하며 기본값은 `delta-board-vp
 | features | 기능명별 실제 Provider 상태와 additional_configuration의 이름/상태 맵. Findings 본문은 포함하지 않는다 |
 
 ## 출력 속성
+
+| 출력 속성명 | 역할 |
+| --- | --- |
+| internet_inspection | null 또는 아래의 공유 ANF 준비/활성 라우팅 인벤토리 |
+
+`internet_inspection`의 내부 속성은 다음과 같다.
+
+| 속성명 | 역할 |
+| --- | --- |
+| mode / vpc_id / firewall_arn | 검사 모드와 정확한 VPC/공유 Firewall 대상 |
+| endpoint_ids_by_az_id / association_arns | 물리 AZ별 READY Secondary Endpoint와 Association ARN |
+| firewall_subnet_ids / firewall_route_tables / az_names | Endpoint subnet/RT와 계정별 AZ 이름을 대조하는 맵 |
+| ingress_route_table_id / internet_gateway_id | 준비한 edge RT와 기존 IGW |
+| public_subnets | AZ별 기존 public subnet의 id/cidr/route_table_id |
+
 
 | 속성명 | 역할 |
 | --- | --- |

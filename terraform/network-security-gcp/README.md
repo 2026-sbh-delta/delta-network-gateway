@@ -4,17 +4,17 @@
 
 2026-11-05 승인된 교체 작업으로 기존 시험 VM/외부 패스스루 NLB와 전용 반환 route를 제거했다. 새 앱의 ALB, x86 FE/BE VM, Cloud SQL과 PSC는 [workload-gcp](../workload-gcp/README.md)에서 별도 state로 관리한다. 이 root는 기존 FE subnet과 신규 BE/DB PSC/proxy-only subnet 및 네트워크 정책/광고를 소유한다. 실제 교체/배포 진행은 [GCP Sample App 기록](../../docs/ai-dlc/gcp-sample-app.md)을 따른다.
 
-AWS ANF는 사용자 지시대로 disabled를 유지한다. AWS 측은 [중앙 모듈](../network-security/README.md)의 직접 BGP 전파를 사용한다. 이 root는 AWS 리소스를 소유하지 않는다.
+AWS ANF의 후속 모드와 경로 전환은 별도 AWS 재개 작업이 소유한다. 초기 VPN은 [중앙 모듈](../network-security/README.md)의 직접 BGP 전파로 검증했다. 이 GCP root는 AWS 리소스를 소유하거나 AWS 검사 모드를 변경하지 않는다.
 
-AWS 연결 대상은 공통 `10.10.0.0/16` VPC 하나다. `aws_cidrs`는 NCC export 범위와 private ingress/egress에 함께 적용한다. 과거 Server 대역과 두 EC2 시험의 정리 및 실제 경로 철회는 [통합 기록](../../docs/ai-dlc/aws-workload-consolidation.md)을 따른다.
+애플리케이션 검사 대상 AWS Prefix는 공통 `10.10.0.0/16` VPC다. `aws_cidrs`는 NCC export 범위와 private ingress/egress에 함께 적용한다. `platform_aws_cidrs`는 플랫폼 Prefix를 NCC import 후보에 추가하며 이 값 자체가 방화벽 허용을 부여하지 않는다. 과거 Server 대역과 두 EC2 시험의 정리 및 실제 경로 철회는 [통합 기록](../../docs/ai-dlc/aws-workload-consolidation.md)을 따른다.
 
-현재 사용자 후속 요청으로 `inspection_mode=disabled`다. Endpoint1개/association2개를 제거했고 네 BGP/두 방향 HTTP와 기본 규칙 로그의 중앙 도착, 실제 No changes를 확인했다. 아래 초기 검사 검증은 중단 전의 기록이며 새로운 앱의 L7 검사 검증 결과가 아니다.
+2026-11-07 사용자 요청으로 `disabled -> bypass -> enabled` 검사 재개를 완료했다. Endpoint 1개와 association 2개 ACTIVE, priority200/300 검사 적용, 네 BGP UP과 기존 managed ID57개 보존 및 최종 실제 Plan No changes/종료0을 확인했다. 양방향 TCP3000 HTTP200과 실제 ALERT Threat8건을 포함한 원본12건의 Security/플랫폼 도착도 검증했다. [이번 재개의 실제 결과](../../docs/ai-dlc/gcp-central-network.md#2026-11-07-operation-gcp-cloud-ngfw-검사-재개)를 따른다. 검사 범위는 AWS 사설 TCP3000/8080이며 공개 앱 L7 검사와 IPS 차단은 포함하지 않는다.
 
 2026-11-04 실제 배포를 완료했다. 프로젝트 `366844544284`, Billing 활성과 필요한 권한/API를 확인했고 기존 업무 `10.30.1.0/24`를 보존했다. 새 중앙 `10.31.0.0/24`, 업무 `10.32.1.0/24`와 공유 endpoint를 생성했다. 인터넷 허용/거부 및 ALERT 위협 로그, AWS 양방향 사설 HTTP와 중앙 원본 로그 일치를 확인했다. 네 단일 BGP 경로 철회/복구와 저장 실패 ack0/재수집도 검증했고 총5개 root의 최종 Plan은 No changes다. [승인/실제 결과](../../docs/ai-dlc/gcp-central-network.md), [실행 Runbook](RUNBOOK.md)을 따른다.
 
 ## 로그 수집 소유권
 
-방화벽과 VPN 등의 네트워크 로그는 GCP Cloud Logging에 저장한다. AWS 전달은 별도 [플랫폼 중앙 로그 root](../../platform/deploy/logging/README.md)가 관리하며 플랫폼 계정 `616723161368`의 `/delta-platform/central/gcp`에서 확인한다. 이 네트워크 root는 전용 Sink, Pub/Sub 구독이나 AWS 수집 역할 계약을 정의하지 않는다. 공통 Pub/Sub 서비스 에이전트와 프로젝트 API는 기존 Terraform 주소로 보존한다.
+방화벽과 VPN 등의 네트워크 로그는 GCP Cloud Logging에 저장한다. 방화벽 규칙과 NGFW 위협 로그 두 종류는 별도 [Security 전용 root](../gcp-security-log-ingest/README.md)가 계정 `482840608926`에 먼저 저장하고 기존 Destination으로 전달한다. 플랫폼 계정 `616723161368`의 최종 저장 위치는 `/delta-cp/central/gcp`다. 나머지 GCP 로그는 기존 [플랫폼 중앙 로그 root](../../platform/deploy/logging/README.md)가 직접 수집한다. 이 네트워크 root는 전용 Sink, Pub/Sub 구독이나 AWS 수집 역할 계약을 정의하지 않는다. 공통 Pub/Sub 서비스 에이전트와 프로젝트 API는 기존 Terraform 주소로 보존한다.
 
 이전 네트워크 계정 `482840608926`의 전용 수집 경로 정리와 보존 로그, 실제 적용 상태는 [정리 기록](../../docs/ai-dlc/gcp-central-network.md#2026-11-05-gcp-로그-전달-경로-정리-검토)을 따른다. 2026-11-04의 수집 및 장애 검증은 당시 별도 수집기의 과거 기록이다.
 
@@ -47,6 +47,8 @@ AWS 연결 대상은 공통 `10.10.0.0/16` VPC 하나다. `aws_cidrs`는 NCC exp
 | `application_service_accounts` | `object({frontend=string, backend=string})` | `null` | 앱별 방화벽 대상 서비스 계정 email |
 | `compose_service_account` | `string` | `null` | 통합 Compose 호스트에 DB Proxy 3307 egress 추가 허용 |
 | `aws_cidrs` | `set(string)` | 필수 | NCC에 가져올 AWS 사설 Prefix와 검사 대상 |
+| `platform_aws_cidrs` | `set(string)` | `["10.80.0.0/16"]` | 플랫폼 Prefix의 NCC import 후보. 방화벽 허용은 별도 |
+| `platform_database_endpoint_cidrs` | `set(string)` | `["10.31.0.2/32"]` | VPN VPC의 플랫폼 소유 DB PSC endpoint를 AWS에 광고할 Prefix |
 | `router_asn` | `number` | `65001` | Cloud Router의 private ASN |
 | `aws_vpn_tunnels` | `map(object)` | `{}` | Gateway 생성 후 전달받을 전체 4터널 계약 |
 | `vpn_shared_secrets` | `map(string)` | `{}` | sensitive/ephemeral PSK. write-only 필드에만 사용 |
@@ -58,7 +60,7 @@ AWS 연결 대상은 공통 `10.10.0.0/16` VPC 하나다. `aws_cidrs`는 NCC exp
 | `central` | `string` | 필수 | 중앙 탐지/연결 VPC Subnet CIDR |
 | `workload` | `string` | 필수 | 기존 FE subnet CIDR. 새 VM은 host20을 사용 |
 
-GCP VPC 자체에는 AWS의 VPC CIDR과 같은 단일 범위를 설정하지 않는다. 중앙/업무 Subnet과 `aws_cidrs`는 서로 겹치지 않아야 한다. 각 VM은 공인 IP 없이 생성한다. 기존 NLB 전용 기본 route는 제거했다. DB/proxy 및 Google API 전용 route는 NCC/BGP로 광고하지 않는다. NAT나 일반 인터넷 출구는 만들지 않는다.
+GCP VPC 자체에는 AWS의 VPC CIDR과 같은 단일 범위를 설정하지 않는다. 중앙/업무 Subnet과 `aws_cidrs`는 서로 겹치지 않아야 한다. 각 VM은 공인 IP 없이 생성한다. 기존 NLB 전용 기본 route는 제거했다. 현재 Cloud Router는 FE/BE/DB subnet과 `platform_database_endpoint_cidrs`를 광고한다. proxy subnet과 Google API 전용 route는 광고하지 않는다. NAT나 일반 인터넷 출구는 만들지 않는다.
 
 ### `aws_vpn_tunnels` 내부 속성
 
@@ -82,7 +84,7 @@ GCP VPC 자체에는 AWS의 VPC CIDR과 같은 단일 범위를 설정하지 않
 | 입력 | 내부 속성 | 타입 | 역할 |
 | --- | --- | --- | --- |
 | `application_subnets` | `backend` | `string` | BE subnet CIDR, 기존 FE 대역과 함께 NCC/BGP 광고 |
-| `application_subnets` | `database` | `string` | DB PSC subnet CIDR, AWS 광고 제외 |
+| `application_subnets` | `database` | `string` | DB PSC subnet CIDR, 현재 Cloud Router의 AWS 광고 대상에 포함 |
 | `application_subnets` | `proxy` | `string` | ALB proxy-only subnet CIDR, AWS 광고 제외 |
 | `application_service_accounts` | `frontend` | `string` | ALB/health 트래픽의 대상 FE identity |
 | `application_service_accounts` | `backend` | `string` | FE 수신 및 DB proxy 송신을 허용할 BE identity |
@@ -96,7 +98,7 @@ GCP VPC 자체에는 AWS의 VPC CIDR과 같은 단일 범위를 설정하지 않
 | `networks` | 분리한 중앙/업무 VPC ID |
 | `ncc_hub` | NCC Hub ID |
 | `firewall_endpoint` | 프로젝트 범위 공유 검사 endpoint ID. disabled에서는 null이며 root CLI 출력에서 미표시될 수 있음 |
-| `gateway_handoff` | AWS에 전달할 Gateway 주소, ASN, FE/BE prefix와 프로젝트 식별자. 비밀값 없음 |
+| `gateway_handoff` | AWS에 전달할 Gateway 주소, ASN, FE/BE/DB subnet과 플랫폼 DB PSC prefix, 프로젝트 식별자. 비밀값 없음 |
 | `application_network` | workload VPC ID, FE/BE/DB/proxy subnet ID와 CIDR. 새 workload root의 입력 |
 
 ## 로컬 검증
@@ -120,7 +122,7 @@ API를 활성화하는 리소스는 Terraform에서 제거해도 API를 비활�
 
 ## 검사 중단과 재개
 
-현재 새 앱은 disabled로 운영한다. 아래 mode는 기존 AWS 사설 검사 규칙을 제어하며 ALB proxy/health 허용 규칙의 공개 L7 검사를 자동으로 추가하지 않는다. 새 앱의 인터넷 검사 재개에는 별도 정책 설계/검증이 필요하다.
+아래 mode는 현재 AWS 사설 통신의 ingress priority 200과 egress priority 300, 두 검사 규칙을 제어한다. ALB proxy/health 허용 규칙의 공개 L7 검사를 자동으로 추가하지 않는다. 공개 앱 인터넷 검사에는 별도 정책 설계와 검증이 필요하다. 현재 위협 프로필은 모든 심각도 ALERT이며 IPS 차단 모드와 구분한다.
 
 | 모드 | Endpoint/association | 검사 대상 규칙 | 라우팅과 기본 deny |
 | --- | --- | --- | --- |
@@ -130,7 +132,7 @@ API를 활성화하는 리소스는 Terraform에서 제거해도 API를 비활�
 
 중단은 enabled -> bypass에서 통신을 확인한 뒤 disabled로 전환한다. 재개는 disabled -> bypass에서 endpoint/association 준비를 기다린 뒤 enabled로 전환한다. 기존 singleton endpoint 주소는 moved 블록으로 [0]에 옮겨 bypass 전환 시 교체를 방지한다. 실제 `inspection-mode.auto.tfvars`는 ignored 파일이며 각 단계의 저장 Plan과 실제 통신을 검토한다. 프로필/기본 규칙, NCC/VPN과 별도 workload root/플랫폼 로그 수집 경로는 보존한다. 검사 중단 중에는 새 Threat 로그가 생성되지 않는다.
 
-이번 실행은 GCP 중단만 승인받았다. AWS ANF와 함께 켜는 공통 자동화, AWS GCP 허용 규칙/경로 전환 보완은 후속 범위다. [실행 순서](RUNBOOK.md#검사-비용-중단과-재개)를 따른다.
+2026-11-07 기존 GCP 검사 재개를 승인받았다. AWS ANF의 재개와 AWS 허용 규칙/경로 전환은 별도 작업이며 두 모드를 동시에 바꾸는 자동화는 추가하지 않는다. [실행 순서](RUNBOOK.md#검사-비용-중단과-재개)를 따른다.
 
 Provider 8.10.0의 검사 -> 일반 허용 갱신은 빈 프로필 참조 때문에 API400이 발생했다. 이번 중단은 검토한 동일 조건의 세 규칙에 JSON null을 명시해 정상 전환한 뒤 Terraform의 refresh/저장 Plan으로 동기화했다. 다음 중단 전에는 [참조 제거 오류 절차](RUNBOOK.md#provider-8100의-프로필-참조-제거-오류)를 확인한다.
 

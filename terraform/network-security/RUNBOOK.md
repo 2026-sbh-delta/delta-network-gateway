@@ -127,11 +127,60 @@ aws logs filter-log-events --profile sbh-delta-workload --region ap-northeast-2 
 
 전달만 중지하려면 실제 ignored tfvars에 `guardduty_findings_forwarding_enabled=false`를 저장한 뒤 새 Plan을 검토해 구독 1개만 제거한다. true로 되돌려 새 Plan/Apply하면 구독을 재생성한다. 원본 그룹/규칙/탐지와 로그는 유지한다. `retain_logs_on_destroy=true`로 관리에서 제거한 그룹은 재관리 시 Import가 필요하다. 모든 실제 검증 후 중앙 root의 `plan -detailed-exitcode`가 No changes/종료0인지 확인한다.
 
+## Network Firewall 로그 전달
+
+`terraform/network-security`는 기존 Network Firewall FLOW와 ALERT 그룹을 과거 로그용으로 보존하고, 새 기업 원본 그룹 `/delta/security/nfw-flow`와 `/delta/security/nfw-alert`를 플랫폼 Destination에 구독한다. `inspection_mode=disabled`에서는 ANF와 실제 logging configuration이 없으며 그룹과 구독 경로만 유지한다. [승인과 실제 실행 기록](../../docs/ai-dlc/aws-traffic-log-forwarding.md)을 먼저 확인한다.
+
+```bash
+AWS_PROFILE=sbh-delta-security terraform -chdir=terraform/network-security output -json network_firewall_logs
+aws logs describe-log-groups --profile sbh-delta-security --region ap-northeast-2 \
+  --log-group-name-prefix /delta/security/nfw-
+aws logs describe-subscription-filters --profile sbh-delta-security --region ap-northeast-2 \
+  --log-group-name /delta/security/nfw-flow
+aws logs describe-subscription-filters --profile sbh-delta-security --region ap-northeast-2 \
+  --log-group-name /delta/security/nfw-alert
+```
+
+각 그룹은 Standard, 기대 보관 기간과 삭제 시 보존 설정이어야 한다. 각 구독은 이름 `delta-platform-central`, 빈 필터, 배포 방식 `Random`, 지정된 논리 Destination을 사용하고 송신 역할은 없어야 한다. 기존 두 그룹이 남아 있는지도 별도로 확인한다.
+
+실제 적용 전 저장 Plan에서 새 그룹 2개와 구독 2개, 기존 Firewall 전달 정책의 제한된 갱신만 있는지 확인한다. 출력 변경은 리소스 변경과 구분한다. ANF Firewall, Endpoint, Route, 기존 그룹, GuardDuty와 플랫폼 수신 리소스의 변경이나 삭제가 있으면 적용하지 않는다.
+
+```bash
+umask 077
+mkdir -p terraform/network-security/.validation/network-firewall-logging
+AWS_PROFILE=sbh-delta-security terraform -chdir=terraform/network-security plan \
+  -input=false -parallelism=1 -lock-timeout=2m \
+  -out=.validation/network-firewall-logging/connect.tfplan
+AWS_PROFILE=sbh-delta-security terraform -chdir=terraform/network-security apply \
+  -input=false -parallelism=1 .validation/network-firewall-logging/connect.tfplan
+```
+
+ANF가 disabled이면 실제 Network Firewall FLOW와 ALERT를 만들 수 없다. 승인된 전달 smoke에서는 각 새 그룹에 식별 가능한 이벤트 1개를 직접 기록하고 중앙 도착을 대조한다. 이는 구독과 수집기의 검증이며 Network Firewall 서비스 로그 생성 검증이 아니다.
+
+```bash
+DELTA_NFW_SMOKE_STREAM="delta-platform-smoke-$(date +%Y%m%d%H%M%S)"
+DELTA_NFW_SMOKE_MS="$(($(date +%s) * 1000))"
+aws logs create-log-stream --profile sbh-delta-security --region ap-northeast-2 \
+  --log-group-name /delta/security/nfw-flow --log-stream-name "$DELTA_NFW_SMOKE_STREAM"
+aws logs put-log-events --profile sbh-delta-security --region ap-northeast-2 \
+  --log-group-name /delta/security/nfw-flow --log-stream-name "$DELTA_NFW_SMOKE_STREAM" \
+  --log-events "timestamp=$DELTA_NFW_SMOKE_MS,message=delta-nfw-flow-subscription-smoke"
+aws logs create-log-stream --profile sbh-delta-security --region ap-northeast-2 \
+  --log-group-name /delta/security/nfw-alert --log-stream-name "$DELTA_NFW_SMOKE_STREAM"
+aws logs put-log-events --profile sbh-delta-security --region ap-northeast-2 \
+  --log-group-name /delta/security/nfw-alert --log-stream-name "$DELTA_NFW_SMOKE_STREAM" \
+  --log-events "timestamp=$DELTA_NFW_SMOKE_MS,message=delta-nfw-alert-subscription-smoke"
+```
+
+원본 두 그룹에서 같은 스트림, 시각과 본문을 확인한다. 플랫폼 계정의 `/delta-cp/central/aws`에서는 `account_id=482840608926`, 원본 그룹, 스트림, source timestamp와 message를 대조한다. smoke가 중앙에 도착해도 실제 Network Firewall FLOW와 ALERT는 미검증으로 남긴다.
+
+전달만 중지하려면 ignored tfvars에 `network_firewall_logs_forwarding_enabled=false`를 저장하고 새 Plan에서 구독 2개만 제거되는지 확인한 뒤 적용한다. true로 되돌리면 두 구독을 재생성한다. 원본 그룹과 향후 Firewall 대상은 유지한다. ANF 복구 시 실제 허용 및 차단 트래픽으로 두 서비스 로그가 새 그룹과 중앙에 들어오는지 별도 검증한다.
+
 ## ANF 비용 중단과 원복
 
 승인 범위와 실제 결과는 [ANF 비용 절감 AI-DLC](../../docs/ai-dlc/anf-cost-mode.md)를 따른다. 나머지 검사/관제 절차는 `inspection_mode=enabled` 기준이다. 아래 명령을 실행했다는 사실만으로 통신이나 원복을 성공으로 기록하지 않는다.
 
-2026-11-04 GCP 작업은 사용자 지시로 ANF를 원복하지 않는다. disabled를 유지하며 VPN의 BGP 경로를 Spoke RT에 전파하는 구현을 추가했다. 새 GCP 연결은 [GCP Runbook](../network-security-gcp/RUNBOOK.md)의 절차를 따른다. 아래 VPC 전환 helper는 정적 Route의 추가/삭제를 처리하지 않으므로, VPN이 붙은 상태의 모드 전환에 그대로 사용하지 않는다. 해당 전환은 VPN 전파와 정적 검사 경로의 추가/삭제를 포함한 별도 저장 Plan 검토가 필요하다.
+2026-11-04 GCP 작업은 사용자 지시로 ANF를 원복하지 않는다. disabled를 유지하며 VPN의 BGP 경로를 Spoke RT에 전파하는 구현을 추가했다. 새 GCP 연결은 [GCP Runbook](../network-security-gcp/RUNBOOK.md)의 절차를 따른다. 2026-11-07 helper는 `preserve_vpn_direct_routes=true`인 검토 Plan에 한해 등록된 VPN 정적 검사 Route의 추가/제거도 지원한다. 기존 BGP 전파와 실제 광고 전체를 확인하고, 새 Route는 API 생성 뒤 Terraform 주소로 Import해야 한다. 아래 VPC 전용 절차만으로 VPN 전환을 완료했다고 보지 않으며 [현재 재개 설계](../../docs/ai-dlc/anf-board-reactivation.md)를 따른다.
 
 ### 전환 전 확인
 
@@ -306,7 +355,7 @@ aws ec2 search-transit-gateway-routes --transit-gateway-route-table-id "$DELTA_I
 - Firewall 전체와 선택한 모든 AZ의 Endpoint가 READY이고 기대한 Subnet에 있어야 한다.
 - RAM Resource/Principal Association이 ASSOCIATED이며 대상은 TGW와 Firewall 자체여야 한다.
 - Inspection Attachment의 appliance mode가 enable이고 Inspected RT에 연결돼야 한다.
-- 업무/VPN Attachment는 Spoke에 연결하고 Spoke에는 목적지 직결 Route나 Propagation이 없어야 한다.
+- 기본 전체 검사 모드에서는 업무/VPN Attachment를 Spoke에 연결하고 직접 Route/Propagation을 두지 않는다. `delta-board-vpc`의 분리 모드는 마지막 절의 전용 송신 RT와 VPN 공유 RT 기준을 적용한다.
 - 실제 VPC/TGW Route를 모두 대조해 더 구체적인 Prefix로 우회하거나 잘못 전달하는 경로가 없어야 한다.
 
 소비자의 보조 Endpoint는 소비자 계정에서 `describe-vpc-endpoint-association`으로 READY와 실제 Endpoint ID/Subnet을 확인한다. 중앙 ARN을 공유받았다는 사실만으로 보조 Endpoint 생성이나 로그 수집 완료로 판정하지 않는다.
@@ -366,3 +415,25 @@ FLOW는 단방향 netflow 형식이다. 요청/응답을 각각 조회하고 flo
 9. state bucket과 버전은 이 root module의 관리 대상이 아니다. 백업/복구 및 민감정보 보존 정책을 적용하고 해체 성공과 state 삭제를 같은 작업으로 묶지 않는다.
 
 Terraform destroy 요청 성공만으로 보조 Endpoint, 상대 환경과 로그/state 정리 완료를 기록하지 않는다.
+
+
+## delta-board-vpc 인터넷과 GCP 검사 재개
+
+2026-11-07 승인 범위는 `delta-board-vpc` 한 개의 인터넷 입출구와 GCP 통신이다. [실제 단계와 검증](../../docs/ai-dlc/anf-board-reactivation.md)을 먼저 확인한다. 다른 VPC 연결이나 새 BGP 광고가 발견되면 현재 Plan을 적용하지 않는다.
+
+1. 실제 GCP 광고 전체와 `vpn_networks` CIDR 계약을 일치시키고 필요한 허용 규칙을 먼저 준비한다. 현재 계약은 `/32` 한 개와 `/24` 세 개다. `preserve_vpn_direct_routes=true`, `isolated_inspection_spokes=["aws_client"]`로 두 VPN의 Spoke/Inspected BGP 전파를 유지하면서 board 전용 송신 RT를 분리한다. 보존 플래그 자체가 BGP 광고 필터는 아니다.
+2. 중앙 `bypass`에서 Firewall/Primary 두 개, 로그/RAM/Endpoint Route와 미연결 board 전용 RT/검사 정적4경로를 준비한다. 기존 Association/board 반환 다음 홉과 BGP는 유지한다. 모두 READY/IN_SYNC와 물리 AZ 매핑을 확인한다. GCP 정적 prefix를 VPN이 연결된 공유 RT에 추가하지 않는다.
+3. [Workload Runbook](../workload/RUNBOOK.md#공유-anf로-인터넷-검사하기)의 Secondary Endpoint와 인터넷 대칭 경로를 준비/전환하고 실제 통신을 검증한다. DNS는 기존 ALB를 계속 가리킨다.
+4. 중앙 mode를 enabled로 바꿔 새 저장 Plan/JSON을 만든다. board의 Association을 준비한 전용 RT로 옮기고 기존 공유 RT의 `10.10.0.0/16` 반환 다음 홉을 Inspection Attachment로 교체하는 변경을 검토한다. 특정 VPN Attachment를 다음 홉으로 고정하거나 GCP 광고 설정을 바꾸지 않는다.
+5. `python3 scripts/replace_inspection_routes.py <reviewed-plan.json> --profile sbh-delta-security`로 preview하고 검토한 동일 JSON에 `--execute`를 추가한다. helper는 계정/READY/실제 경로를 확인하고 반환 Route와 Association을 함께 전환/복귀한다. 수렴은 `GetTransitGatewayRouteTableAssociations`로 확인한다. 일반 Attachment Describe의 Association은 지연될 수 있다.
+6. API 전환 후 state를 백업하고 `terraform plan -refresh-only -out=<refresh-plan>` 및 JSON을 검토한다. 변경된 board 반환 Route와 실제 없어진 이전 Association만 state에 반영하며 AWS 자원 동작이 없는지 확인한 뒤 저장 refresh-only Plan을 적용한다. 이어 아래 한 주소만 출력의 실제 RT/Attachment 조합으로 Import한다. accepter/Attachment나 state 전체를 제거하지 않는다.
+
+```bash
+terraform import 'aws_ec2_transit_gateway_route_table_association.spoke["aws_client"]' '<실제-board-전용-RT-ID>_<기존-board-Attachment-ID>'
+```
+
+7. 이전 enabled Plan은 폐기하고 새 Plan을 검토한다. 이번 실제 전환에서는 삭제 보호 false->true 한 건만 남았고 적용 후 두 root 모두 No changes/종료0이었다. 양방향 사설 HTTP, 두 ALB IP와 NAT HTTPS, DB TLS, 실제 FLOW/ALERT 및 중앙 원문 수신을 대조하고 probe/규칙/키/터널을 정리한다.
+
+최종 경로는 board 전용 RT의 GCP 정적4개 -> Inspection, 공유 VPN RT의 AWS board 정적1개 -> Inspection, Inspected RT의 GCP BGP4개 -> 두 VPN/네 터널이다. VPN이 연결된 RT의 경로는 BGP 광고에 영향을 주므로 원격 GCP 정적 대역을 그곳에 추가하지 않는다. 네 Cloud Router peer UP과 각 AWS prefix 수신1개를 함께 확인한다. 일반 helper의 VPN Route 생성/Import 안내는 이 분리 모드의 절차가 아니다.
+
+GCP 복귀는 bypass의 새 검토 Plan으로 board 반환 다음 홉을 원래 board Attachment로 바꾸고 board Association을 공유 Spoke RT로 되돌린다. 미연결 전용 RT/정적4경로는 보존할 수 있다. 실제 왕복/BGP를 재확인하고 위 refresh-only/정확한 Association Import로 동기화한다. 인터넷은 Workload의 별도 bypass 복귀 절차를 사용한다. Firewall/Endpoint 삭제는 경로 복귀와 구분해 검토한다.

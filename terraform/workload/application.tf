@@ -10,6 +10,9 @@ module "sample_app" {
   management_security_group_id = aws_security_group.management.id
   management_endpoint_id       = aws_ec2_instance_connect_endpoint.management.id
   instance_az_id               = var.client_az_id
+  internet_firewall_endpoints  = local.internet_inspection_active ? local.internet_endpoint_ids : {}
+  remote_service_cidrs         = var.application_remote_cidrs
+  remote_service_ports         = var.application_remote_ports
   workload_subnets = { for az_id in keys(var.azs) : az_id => {
     id             = aws_subnet.private["${az_id}/client"].id
     route_table_id = aws_route_table.private["${az_id}/client"].id

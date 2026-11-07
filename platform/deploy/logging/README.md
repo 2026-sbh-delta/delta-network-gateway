@@ -19,7 +19,7 @@ GCP Cloud Logging  → Sink → Pub/Sub → Lambda(WIF 인증) ─────�
 - 중앙 로그 기본 3일, 전송 대기 24시간, 실패 보관 7일. 원본 로그 보관 설정은 변경하지 않는다.
 - OTel 메트릭·트레이스 수신 주소가 아니다. 이 작업으로 플랫폼 웹의 로그 화면이 자동 연결되지는 않는다.
 
-2026-11-06 현재 운영 그룹은 위 `/delta-cp/central/*`이며 AWS 수집기의 `DESTINATION_LOG_GROUP`도 확인했다. 다만 tracked `aws.tf`는 아직 이전 `/delta-platform/central/*`를 정의한다. 아래 배포 명령은 최초 구축 절차이며, 현재 환경에 실행하려면 이 차이를 먼저 검토해야 한다. 이번 GuardDuty 송신 경로 설계에서는 플랫폼 root의 코드/state/운영 설정이나 Plan/Apply를 변경 또는 실행하지 않았다. [조회 근거와 검증 한계](../../../docs/ai-dlc/platform-central-logging.md#2026-11-06-guardduty-송신-연결-설계와-현재-로그-이름)
+2026-11-07 사전 조회와 실제 Plan에서는 tracked `aws.tf`, 원격 state와 실제 중앙 그룹이 모두 `/delta-cp/central/*`로 일치했다. 2026-11-06 GuardDuty와 Network Firewall 작업의 [과거 조회 기록](../../../docs/ai-dlc/platform-central-logging.md#2026-11-06-guardduty-송신-연결-설계와-현재-로그-이름)과 구분한다. GCP 방화벽 로그의 Security 경유 변경은 [별도 승인과 실제 검증 기록](../../../docs/ai-dlc/gcp-security-log-consolidation.md)을 따른다.
 
 ## 팀원에게 전달할 AWS 설정
 
@@ -32,6 +32,8 @@ arn:aws:logs:ap-northeast-2:616723161368:destination:delta-platform-logs
 현재 허용 계정은 `482840608926`, `616723161368`다. 다른 계정은 Terraform의 `source_aws_accounts`에 먼저 추가한다. 송신 로그 그룹도 **서울 리전**이어야 한다. 다른 리전에는 해당 리전용 Destination을 별도 준비한다.
 
 2026-11-06 중앙 계정 `482840608926`의 `/delta/security/guardduty`는 `delta-platform-central` 구독으로 위 Destination에 연결했다. 원본과 `/delta-cp/central/aws`에서 같은 GuardDuty 샘플1건의 본문/출처/시각/ID를 확인했다. 구독은 이 저장소의 중앙 Terraform root가 관리하며 [중앙 Runbook](../../../terraform/network-security/RUNBOOK.md#guardduty-finding-로그-전달)으로 조회/중지/재개한다. [실제 검증 기록](../../../docs/ai-dlc/aws-guardduty-logging.md)을 따른다.
+
+같은 날 `/delta/security/nfw-flow`와 `/delta/security/nfw-alert`도 각각 `delta-platform-central` 구독으로 연결했다. 각 그룹의 수동 smoke 1건이 `/delta-cp/central/aws`에서 원본 계정, 리전, 그룹, 스트림, 원본 시각과 본문까지 일치했다. ANF가 `disabled`여서 실제 Network Firewall 서비스 로그 생성은 미검증이다. 구독은 중앙 Terraform root가 관리하며 [중앙 Runbook](../../../terraform/network-security/RUNBOOK.md#network-firewall-로그-전달)과 [실제 검증 기록](../../../docs/ai-dlc/aws-traffic-log-forwarding.md)을 따른다.
 
 송신 계정에서 필요한 로그 그룹 하나를 선택하고 실행한다. `SOURCE_LOG_GROUP`만 실제 값으로 바꾼다. 빈 필터는 **선택한 그룹의 모든 새 이벤트**를 전달하며, 과거 로그를 복사하지 않는다. 기존 구독은 먼저 조회하고 덮어쓰지 않는다.
 
@@ -53,6 +55,10 @@ aws logs put-subscription-filter \
 **재전송 금지:** `/delta-cp/*`(중앙·플랫폼 서비스), 이전 `/delta-platform/central/*`와 `/aws/lambda/delta-platform-logs-*`는 구독 대상에서 제외한다. 수집기도 이 그룹에서 온 이벤트는 버린다. 계정 전체 구독을 만드는 작업이 아니다. 그룹당 기존 구독 한도도 확인한다.
 
 ## 팀원에게 전달할 GCP 설정
+
+GCP 방화벽 규칙과 위협 로그 두 종류는 [Security 전용 root](../../../terraform/gcp-security-log-ingest/README.md)의 원본 그룹을 거쳐 같은 Destination으로 전달하는 구성을 사용한다. `gcp_security_relay_enabled=true`는 Security 계정과 지정한 두 그룹 및 GCP 원본 식별자가 모두 일치할 때만 `/delta-cp/central/gcp`에 저장한다. 기존 GCP event_id와 original을 유지하고 중계 정보를 `relay`에 추가한다. 나머지 AWS 그룹의 JSON 내용으로 GCP 분류를 바꾸지 않는다.
+
+플랫폼 직접 Sink는 Security 경로 수신 확인 후 `gcp_firewall_direct_collection_enabled=false`로 전환한다. 제외 조건은 전체 원본 필터 바깥에 적용해 VM 등의 OR 조건으로 방화벽 로그가 중복 포함되지 않게 한다. 나머지 GCP 수집과 대기 메시지는 기존 수집기가 계속 처리한다. 복귀 시 이 값을 true로 바꿔 직접 수신을 먼저 복구한다.
 
 - Sink: `delta-platform-logs`
 - Topic: `projects/term2-delta/topics/delta-platform-logs`
@@ -152,6 +158,8 @@ CloudWatch에서 수집기 `Errors`, AWS `IteratorAge`, `FailedEnvelopes`, 실�
 | `retention_days` | number | `3` | 중앙·수집기 CloudWatch 로그 보관 기간 |
 | `aws_lambda_zip` | string | 필수 | AWS 수집기 ZIP 경로 |
 | `gcp_lambda_zip` | string | 필수 | GCP 수집기 ZIP 경로 |
+| `gcp_security_relay_enabled` | bool | `false` | Security의 지정된 GCP 원본 그룹을 기존 GCP 중앙 그룹으로 분기 |
+| `gcp_firewall_direct_collection_enabled` | bool | `true` | false이면 전체 Sink 필터에서 두 방화벽 logName을 제외. Security 실제 수신 확인 후 전환 |
 | `gcp_log_filter` | string/null | `null` | 기본 VM·Cloud Run·네트워크 필터를 대체할 Logging 필터 |
 
 ## 출력 속성
