@@ -143,6 +143,24 @@ export function ApplicationProgress({
           </p>
         )}
       </details>
+      {app.status === "failed" &&
+        app.steps.some(
+          (s) => s.status === "failed" && /^(security|dast)_/.test(s.key),
+        ) && (
+          <div className="application-retired">
+            <p>
+              이전 방식(플랫폼 SAST·DAST)에서 멈춘 등록입니다. 보안 검사는 이전
+              파이프라인이 맡으므로 샌드박스 → 배포로 이어서 진행할 수 있습니다.
+            </p>
+            <button
+              className="primary"
+              disabled={busy}
+              onClick={() => resume()}
+            >
+              이어서 진행
+            </button>
+          </div>
+        )}
       {app.status === "blocked" && (
         <button disabled={busy} onClick={() => resume()}>
           설정 확인 후 계속

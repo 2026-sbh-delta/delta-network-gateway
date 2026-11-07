@@ -176,6 +176,38 @@ def test_registration_skips_security_scanners_and_needs_no_review(engine, target
     assert not any(s["key"].startswith(("security_", "dast_")) for s in state["steps"])
 
 
+def test_registration_failed_in_retired_scanner_step_can_continue(engine, targets):
+    apps, store = ApplicationStore(engine, config()), Store(engine)
+    app, _ = apps.register(body(), "retired", "team")
+    for _ in range(4):
+        apps.tick()
+        finish_next(store)
+    state = store.service(app["id"])["application"]
+    # 11/7 이전 등록: 플랫폼 SAST 단계에서 실패한 상태
+    state["steps"].append(
+        {"key": "security_frontend", "label": "프론트엔드 SAST", "status": "failed"}
+    )
+    state.update(status="failed", error="재시도 횟수를 초과했습니다.")
+    apps._save(app["id"], state)
+    resumed = apps.resume(app["id"])["application"]
+    assert resumed["status"] == "running"
+    assert not any(s["key"].startswith("security_") for s in resumed["steps"])
+    for _ in range(20):
+        apps.tick()
+        finish_next(store)
+    assert store.service(app["id"])["application"]["status"] == "succeeded"
+
+
+def test_failed_registration_in_a_current_step_still_cannot_resume(engine, targets):
+    apps, store = ApplicationStore(engine, config()), Store(engine)
+    app, _ = apps.register(body(), "real-fail", "team")
+    apps.tick()
+    finish_next(store, fail=True)
+    apps.tick()
+    with pytest.raises(Problem):
+        apps.resume(app["id"])
+
+
 def test_failed_run_never_deploys(engine, targets):
     apps, store = ApplicationStore(engine, config()), Store(engine)
     app, _ = apps.register(body(), "fail", "team")

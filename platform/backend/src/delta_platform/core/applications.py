@@ -197,6 +197,14 @@ class ApplicationStore:
             )
             try:
                 state = self.store.service(identifier)["application"]
+                if state and state["status"] == "failed" and self._retired_failure(state):
+                    # Registered before SAST/DAST moved to the migration pipeline: drop those
+                    # steps and continue with the current sequence (sandbox → deploy).
+                    current = {key for key, _ in STEPS}
+                    state["steps"] = [s for s in state["steps"] if s["key"] in current]
+                    state.update(status="running", error=None)
+                    self._save(identifier, state)
+                    return self.store.service(identifier)
                 if not state or state["status"] not in ("blocked", "review"):
                     raise Problem(
                         "application_not_paused",
@@ -215,6 +223,12 @@ class ApplicationStore:
                     {"id": str(identifier)},
                 )
         return self.store.service(identifier)
+
+    @staticmethod
+    def _retired_failure(state):
+        current = {key for key, _ in STEPS}
+        failed = [s for s in state["steps"] if s["status"] == "failed"]
+        return bool(failed) and all(s["key"] not in current for s in failed)
 
     def _review_evidence(self, state):
         evidence = []

@@ -870,7 +870,8 @@
   font-weight: 600;
   white-space: nowrap;
 }
-.g-match {
+.g-match,
+.g-exact {
   color: var(--st-pass);
   background: #e8f6ee;
 }
@@ -1768,4 +1769,384 @@
   background: #000000aa;
   color: #fff;
   font-size: 13px;
+}
+
+/* Step evidence: what the step changed (facts, route, terminal). */
+.ev {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+}
+.ev-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.ev-fact {
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid #ececf0;
+  border-radius: 10px;
+  background: #fafafb;
+}
+.ev-fact span {
+  font-size: 11px;
+  color: var(--ink-2);
+  letter-spacing: 0.02em;
+}
+.ev-fact b {
+  font-size: 13px;
+  font-weight: 650;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ev-fact b.mono,
+.ev code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+}
+.ev-hero {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #ecfdf3, #f5fbff);
+  border: 1px solid #c7ecd6;
+}
+.ev-hero div {
+  display: grid;
+}
+.ev-hero small {
+  color: var(--ink-2);
+}
+.ev-cloud {
+  display: inline-grid;
+  place-items: center;
+  min-width: 46px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font:
+    700 11px/1.4 ui-sans-serif,
+    system-ui;
+  letter-spacing: 0.04em;
+  color: #fff;
+  background: #8a94a6;
+}
+.ev-cloud.aws {
+  background: #f59e0b;
+}
+.ev-cloud.gcp {
+  background: #2f6fe4;
+}
+.ev-cloud.온프렘 {
+  background: #7b4fb0;
+}
+.ev-route {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  border-radius: 12px;
+  border: 1px solid #ececf0;
+  background:
+    radial-gradient(#e6e8ee 1px, transparent 1px) 0 0 / 14px 14px,
+    #fff;
+}
+.ev-record {
+  display: grid;
+  justify-items: center;
+  padding: 10px;
+  border-radius: 10px;
+  background: #18181b;
+  color: #fff;
+}
+.ev-record small {
+  color: #a1a1aa;
+  font-size: 11px;
+}
+.ev-hop {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px dashed #d4d4d8;
+  background: #fff;
+}
+.ev-hop.from.done {
+  opacity: 0.55;
+  text-decoration: line-through;
+}
+.ev-hop.to.done {
+  border: 1px solid var(--st-pass);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--st-pass) 15%, transparent);
+}
+.ev-arrow {
+  justify-self: center;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: #eef2ff;
+  color: var(--flow);
+  font-size: 12px;
+  font-weight: 650;
+}
+.ev-arrow::before {
+  content: "↓ ";
+}
+.ev-now {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #f4f4f5;
+  font-size: 13px;
+  font-weight: 600;
+}
+.ev-pulse {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--st-pass);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--st-pass) 60%, transparent);
+  animation: ev-pulse 1.6s infinite;
+}
+@keyframes ev-pulse {
+  70% {
+    box-shadow: 0 0 0 8px transparent;
+  }
+}
+.ev-checks {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ev-checks li {
+  position: relative;
+  padding: 8px 10px 8px 32px;
+  border-radius: 8px;
+  background: #fafafb;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.ev-checks li::before {
+  content: "";
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  margin-top: -7px;
+  border-radius: 50%;
+  border: 2px solid #d4d4d8;
+}
+.ev-checks li.ok {
+  color: var(--ink);
+}
+.ev-checks li.ok::before {
+  border-color: var(--st-pass);
+  background: var(--st-pass)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 8.5l2.5 2.5L12 5.5' fill='none' stroke='white' stroke-width='2'/%3E%3C/svg%3E")
+    center / 12px no-repeat;
+}
+.ev-term {
+  overflow: hidden;
+  border-radius: 12px;
+  background: #0f1117;
+  box-shadow: 0 10px 24px #0000001f;
+}
+.ev-term header {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 12px;
+  background: #1a1d26;
+  color: #c9cdd6;
+  font-size: 12px;
+}
+.ev-term header em {
+  margin-left: auto;
+  font-style: normal;
+  color: #8b93a3;
+}
+.ev-term header em.live {
+  color: #4ade80;
+}
+.ev-dots {
+  display: flex;
+  gap: 5px;
+}
+.ev-dots i {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #ff5f57;
+}
+.ev-dots i:nth-child(2) {
+  background: #febc2e;
+}
+.ev-dots i:nth-child(3) {
+  background: #28c840;
+}
+.ev-term pre {
+  margin: 0;
+  max-height: 260px;
+  overflow: auto;
+  padding: 12px 14px;
+  color: #d6dae3;
+  font:
+    11.5px/1.55 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* Passed steps and approvals: translucent green cover so progress reads at a glance. */
+.lf-node.s-pass,
+.lf-msg.s-pass {
+  background: rgb(220 252 231 / 0.72);
+  border-color: #86efac;
+  backdrop-filter: blur(6px);
+}
+.lf-node.s-pass .lf-input {
+  background: rgb(255 255 255 / 0.7);
+  border-color: #bbf7d0;
+}
+.lf-node.s-pass .lf-output {
+  border-top-color: #bbf7d0;
+}
+.lf-node.s-pass.selected,
+.lf-msg.s-pass.selected {
+  border-color: #16a34a;
+  box-shadow:
+    0 0 0 1px #16a34a,
+    0 8px 24px #16a34a26;
+}
+
+/* AWS → GCP mapping: grouped by resource, each row wraps instead of overflowing the panel. */
+.mp-head {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 12px 14px;
+  border: 1px solid #ececf0;
+  border-radius: 12px;
+  background: #fafafb;
+}
+.mp-bar {
+  display: flex;
+  gap: 2px;
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+}
+.mp-bar i {
+  display: block;
+}
+.mp-bar i.g-exact {
+  background: var(--st-pass);
+}
+.mp-bar i.g-approximate {
+  background: var(--st-running);
+}
+.mp-bar i.g-gap {
+  background: var(--st-fail);
+}
+.mp-bar i.g-unknown {
+  background: var(--st-waiting);
+}
+.mp-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.mp-group {
+  margin-bottom: 12px;
+}
+.mp-group h5 {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  margin: 0 0 6px;
+  font-size: 12px;
+  color: var(--ink-2);
+  letter-spacing: 0.02em;
+}
+.mp-group h5 small {
+  color: #a1a1aa;
+  font-weight: 500;
+}
+.mp-row {
+  margin-bottom: 6px;
+  border: 1px solid #ececf0;
+  border-left: 3px solid #d4d4d8;
+  border-radius: 8px;
+  background: #fff;
+}
+.mp-row.g-exact {
+  border-left-color: var(--st-pass);
+  background: #fff;
+}
+.mp-row.g-approximate {
+  border-left-color: var(--st-running);
+  background: #fff;
+}
+.mp-row.g-gap {
+  border-left-color: var(--st-fail);
+  background: #fff;
+}
+.mp-row.g-unknown {
+  border-left-color: var(--st-waiting);
+  background: #fff;
+}
+.mp-row summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+  list-style: none;
+  font-size: 12.5px;
+}
+.mp-row summary::-webkit-details-marker {
+  display: none;
+}
+.mp-src {
+  grid-column: 1;
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+.mp-arrow {
+  display: none;
+}
+.mp-dst {
+  grid-column: 1;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.mp-dst::before {
+  content: "→ ";
+  color: #a1a1aa;
+  font-weight: 400;
+}
+.mp-dst.none {
+  color: var(--st-fail);
+}
+.mp-row summary .grade {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: center;
+}
+.mp-row ul {
+  margin: 0;
+  padding: 0 10px 8px 26px;
+  color: var(--ink-2);
+  font-size: 12px;
+  line-height: 1.5;
 }

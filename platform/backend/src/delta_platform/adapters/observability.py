@@ -16,7 +16,7 @@ from botocore.auth import SigV4Auth
 from botocore.awsrequest import AWSRequest
 from botocore.config import Config
 
-from delta_platform.core.environments import FIELDS, EnvironmentInput
+from delta_platform.core.environments import FIELDS, STORED_METADATA_FIELDS, EnvironmentInput
 
 SDK_CONFIG = Config(connect_timeout=3, read_timeout=5, retries={"max_attempts": 1})
 
@@ -337,7 +337,11 @@ class DashboardReader:
 
     def read(self, env, minutes):
         EnvironmentInput.model_validate(
-            {**{k: env[k] for k in ("name", "cloud", "region", "version")}, **env["binding"]}
+            {
+                **{k: env[k] for k in ("name", "cloud", "region", "version")},
+                # Stored lifecycle evidence is not part of the resource identity input.
+                **{k: v for k, v in env["binding"].items() if k not in STORED_METADATA_FIELDS},
+            }
         )
         key = (str(env["service_id"]), str(env["id"]), str(env["updated_at"]), minutes)
         # One request per binding at a time. Small read cache bounds provider costs.

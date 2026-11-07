@@ -328,6 +328,16 @@ class DemoReset:
         self.status = {**self.status, "steps": [{**s, **update} if s["id"] == key else s
                                                   for s in self.status["steps"]]}
 
+    def latest_repo(self) -> str:
+        """정리할 저장소: 가장 최근 실행의 저장소(빌드 기록이 없어도 PR 정리는 한다)."""
+        boards = sorted((self._pipelines.store_dir / BOARD_DIR).glob("*.json"),
+                        key=lambda p: p.stat().st_mtime, reverse=True)
+        for path in boards:
+            repo = (json.loads(path.read_text(encoding="utf-8")).get("options") or {}).get("repo")
+            if repo:
+                return repo
+        raise RuntimeError("정리할 저장소를 찾지 못했습니다")
+
     @staticmethod
     def branch_head(repo: str, branch: str) -> str:
         """공개 저장소 브랜치의 현재 커밋. 시연 앱의 main 은 취약 버전 그대로다(AI 수정은 PR 로만 간다)."""
@@ -350,13 +360,15 @@ class DemoReset:
         for path in boards:
             saved = json.loads(path.read_text(encoding="utf-8"))
             options = saved.get("options") or {}
-            if options.get("execution_cloud", "gcp") != "gcp" or not options.get("repo"):
+            # 시연 앱은 main 이 취약 버전이다. 다른 브랜치(작업 브랜치)의 빌드는 고르지 않는다.
+            if (options.get("execution_cloud", "gcp") != "gcp" or not options.get("repo")
+                    or (options.get("branch") or "main") != "main"):
                 continue
             build = next((n for n in saved.get("nodes", ()) if n.get("id") == "build"), {})
             bundle = (build.get("detail") or {}).get("bundle")
             if build.get("state") != "pass" or not bundle or bundle.get("commit") != options.get("commit"):
                 continue
-            key = (options["repo"], options.get("branch") or "main")
+            key = (options["repo"], "main")
             if key not in heads:
                 heads[key] = head(*key)
             if options["commit"] != heads[key]:
@@ -367,11 +379,40 @@ class DemoReset:
                 continue
         raise RuntimeError("main 현재 커밋을 수정 없이 빌드한 기록이 없습니다. 파이프라인을 한 번 돌려 빌드를 남기세요")
 
+    def build_main(self, jenkins: Any = None) -> tuple[dict[str, Any], str]:
+        """main 현재 커밋(취약 버전 그대로)을 파이프라인과 같은 delta-build 로 빌드해 묶음을 얻는다."""
+        from delta_pipeline.delivery import validate_bundle
+
+        repo = self.latest_repo()
+        commit = self.branch_head(repo, "main")
+        if jenkins is None:
+            zone = os.environ.get("DELTA_INTERNAL_ZONE", "cp.internal")
+            jenkins = Jenkins(f"http://jenkins.{zone}:8080", "platform",
+                              os.environ.get("JENKINS_PLATFORM_PASSWORD", ""), job="delta-build")
+        build = jenkins.trigger({"REPO": repo, "COMMIT": commit,
+                                 "IMAGE_REPO": os.environ.get("DELTA_IMAGE_REPO", IMAGE_REPO)},
+                                f"reset-build-{uuid.uuid4().hex[:20]}")
+        self._step("release", summary=f"main {commit[:7]} 빌드 중 (Jenkins delta-build #{build})")
+        deadline = time.time() + self.RELEASE_DEADLINE_SECONDS
+        while time.time() < deadline:
+            status = jenkins.status(build)
+            if status != "IN_PROGRESS":
+                result = jenkins.file(build, "result.json") or {}
+                if status != "SUCCESS":
+                    raise RuntimeError(f"main 빌드 실패 (#{build} {status})")
+                return validate_bundle(result, commit), repo
+            time.sleep(5)
+        raise RuntimeError(f"main 빌드 #{build} 가 제한 시간 안에 끝나지 않았습니다")
+
     def _redeploy(self) -> str:
         from delta_pipeline.clients import evidence_hash
         from delta_pipeline.delivery import canonical_json, sign_approval, validate_config
 
-        bundle, repo = self.vulnerable_bundle()
+        try:
+            bundle, repo = self.vulnerable_bundle()
+        except RuntimeError:
+            # A run that went through the AI fix keeps only the fixed rebuild, so build main here.
+            bundle, repo = self.build_main()
         self._repo = repo
         target_id, config = next(((k, v) for k, v in release_targets().items()
                                   if v.get("cloud") == "gcp" and "terraform_mapping" not in v),
@@ -439,7 +480,7 @@ class DemoReset:
                                else f"오류({type(exc).__name__})")
                 self._step("fixes", state="running", summary="수정 PR 닫는 중")
                 try:
-                    repo = self._repo or self.vulnerable_bundle()[1]
+                    repo = self._repo or self.latest_repo()
                     zone = os.environ.get("DELTA_INTERNAL_ZONE", "cp.internal")
                     done = Dast(f"http://dast.{zone}:8765", os.environ.get("DAST_PLATFORM_TOKEN", "")) \
                         .cleanup_fix_branches(repo)

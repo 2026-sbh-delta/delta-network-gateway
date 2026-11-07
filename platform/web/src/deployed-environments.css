@@ -20,6 +20,26 @@
   flex-wrap: wrap;
   gap: 10px;
 }
+.deployment-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.deployment-action-icon {
+  flex-shrink: 0;
+}
+.deployment-environment-card .release-state {
+  align-items: center;
+  gap: 7px;
+}
+.deployment-state-indicator {
+  width: 7px;
+  height: 7px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: currentColor;
+}
 .deployment-environment-cards {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -28,23 +48,33 @@
 .deployment-environment-card {
   min-width: 0;
   padding: 24px;
-  background: #fafcff;
-  border: 1px solid var(--border);
-  border-top: 3px solid var(--cloud-accent, var(--border));
+  background: var(--cloud-background, #f1f3f5);
+  border: 0;
   border-radius: 12px;
+  box-shadow: none;
 }
 .deployment-environment-card.cloud-aws {
-  --cloud-accent: #b65e13;
+  --cloud-background: #fff3e0;
 }
 .deployment-environment-card.cloud-gcp {
-  --cloud-accent: #2f57d4;
+  --cloud-background: #eaf2ff;
 }
 .deployment-environment-card.cloud-onprem {
-  --cloud-accent: #176b60;
+  --cloud-background: #f1f3f5;
 }
 .deployment-environment-card h3 {
   font-size: 1.125rem;
   margin: 0;
+}
+.deployment-cloud-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.deployment-cloud-logo {
+  display: block;
+  flex: 0 0 40px;
+  object-fit: contain;
 }
 .deployment-environment-card dl {
   margin: 24px 0 0;

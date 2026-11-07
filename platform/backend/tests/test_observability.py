@@ -21,6 +21,7 @@ from delta_platform.adapters.observability import (
 from delta_platform.api.app import create_app
 from delta_platform.core.environments import EnvironmentInput, EnvironmentStore
 from delta_platform.core.errors import Problem
+from delta_platform.core.schema import environments
 
 NOW = datetime(2026, 11, 4, 3, 0, tzinfo=UTC)
 
@@ -102,6 +103,135 @@ def test_operator_binding_rejects_urls_and_invalid_resources():
         EnvironmentInput(
             **{**target().model_dump(), "instances": [{"id": "999", "name": "gcp-vm"}]}
         )
+
+
+@pytest.mark.parametrize("cloud", ["aws", "gcp", "onprem"])
+def test_environment_list_exposes_only_public_resource_details(signed, engine, store, data, cloud):
+    service, _ = store.register(data, "public-environment")
+    payload = target().model_dump()
+    if cloud == "gcp":
+        payload.update(
+            cloud="gcp",
+            region="asia-northeast3",
+            account_id=None,
+            gcp_project="fixture-project",
+            instances=[{"id": "123456789", "name": "app", "zone": "asia-northeast3-a"}],
+        )
+    elif cloud == "onprem":
+        payload.update(
+            cloud="onprem",
+            region="onprem-local",
+            account_id=None,
+            instances=[{"id": "onprem-" + "a" * 32, "name": "app"}],
+        )
+    envs = EnvironmentStore(engine)
+    identifier = envs.bind(service["id"], EnvironmentInput(**payload))
+    binding = envs.get(service["id"], identifier)["binding"]
+    with engine.begin() as conn:
+        conn.execute(
+            environments.update()
+            .where(environments.c.id == identifier)
+            .values(
+                binding={
+                    **binding,
+                    "database": {"profile_id": "fixture-postgres", "password": "private-db-value"},
+                    "deployment_run_id": str(uuid4()),
+                    "service_url": "https://private-address.invalid",
+                    "runtime_status": "active",
+                    "private_metadata": "private-operator-value",
+                }
+            )
+        )
+    response = signed.get(f"/api/v1/services/{service['id']}/environments")
+    assert response.status_code == 200
+    item = response.json()["items"][0]
+    assert item["account_id"] == payload.get("account_id")
+    assert item["gcp_project"] == payload.get("gcp_project")
+    assert item["instances"][0]["id"] == payload["instances"][0]["id"]
+    assert item["database_profile_id"] == "fixture-postgres"
+    assert item["runtime_status"] == "active"
+    assert not {
+        "binding",
+        "runtime",
+        "database",
+        "deployment_run_id",
+        "service_url",
+        "private_metadata",
+    }.intersection(item)
+    assert "private-db-value" not in response.text
+    assert "private-operator-value" not in response.text
+
+
+@pytest.mark.parametrize("cloud", ["aws", "gcp", "onprem"])
+def test_dashboard_accepts_stored_deployment_metadata_and_keeps_identity_validation(cloud):
+    env = environment()
+    if cloud == "gcp":
+        env.update(cloud="gcp", region="asia-northeast3")
+        env["binding"] = {
+            "gcp_project": "fixture-project",
+            "instances": [{"id": "123456789", "name": "app", "zone": "asia-northeast3-a"}],
+        }
+    elif cloud == "onprem":
+        env.update(cloud="onprem", region="onprem-local")
+        env["binding"] = {"instances": [{"id": "onprem-" + "a" * 32, "name": "app"}]}
+    env["binding"].update(
+        deployment_run_id=str(uuid4()),
+        service_url="https://example.com",
+        database={"profile_id": "fixture-postgres"},
+        runtime_status="active",
+    )
+    provider = SimpleNamespace(
+        metrics=lambda *args: {"requests": metric(8)},
+        logs=lambda *args: {"status": "no_data", "items": []},
+        trace=lambda *args: {"status": "no_data", "spans": []},
+        aws_infra=lambda *args: {"status": "ok", "instances": []},
+        query=lambda *args, **kwargs: [],
+    )
+    gcp = SimpleNamespace(read=lambda *args: {"status": "ok", "instances": []})
+    reader = DashboardReader("ap-northeast-2", telemetry=provider, gcp=gcp, clock=lambda: NOW)
+    assert reader.read(env, 15)["metrics"]["requests"]["value"] == 8
+    env["binding"]["endpoint"] = "http://169.254.169.254"
+    with pytest.raises(ValidationError):
+        reader.read(env, 15)
+    env["binding"].pop("endpoint")
+    env["binding"]["instances"] = [{"id": "unregistered", "name": "app"}]
+    with pytest.raises(ValidationError):
+        reader.read(env, 15)
+
+
+def test_observability_route_returns_partial_errors_for_a_deployed_binding(engine, store, data):
+    service, _ = store.register(data, "deployed-observability")
+    envs = EnvironmentStore(engine)
+    identifier = envs.bind(service["id"], target())
+    binding = envs.get(service["id"], identifier)["binding"]
+    with engine.begin() as conn:
+        conn.execute(
+            environments.update()
+            .where(environments.c.id == identifier)
+            .values(
+                binding={
+                    **binding,
+                    "deployment_run_id": str(uuid4()),
+                    "service_url": "https://example.com",
+                    "database": None,
+                }
+            )
+        )
+    reader = DashboardReader("ap-northeast-2", telemetry=SimpleNamespace(), clock=lambda: NOW)
+    config = settings().model_copy(update={"presentation_mode": True})
+    with TestClient(
+        create_app(config, engine, dashboard=reader), base_url=config.public_origin
+    ) as client:
+        assert client.get("/api/v1/auth/session").status_code == 200
+        response = client.get(
+            f"/api/v1/services/{service['id']}/observability?environment_id={identifier}&minutes=15"
+        )
+    assert response.status_code == 200
+    result = response.json()
+    assert result["environment"]["id"] == str(identifier)
+    assert result["metrics"]["requests"]["status"] == "error"
+    assert result["metrics"]["requests"]["value"] is None
+    assert result["infra"]["status"] == "error"
 
 
 def test_metric_missing_stale_and_nonfinite_are_not_zero():

@@ -322,3 +322,110 @@ Review와 Operation:
 - 게시 기록은 `docs/README.md`, 이 문서와 웹 구현 기록을 함께 갱신한다. 최종 검증 자료는 ignored `platform/web/test-results/ui-pr-publication.json`에 기록한다.
 - 병합 전 최종 PR head의 CI, 리뷰/미해결 스레드 및 mergeable 상태를 확인하고 해당 head SHA를 지정해 squash한다. 강제 병합/검사 우회/직접 main 푸시는 사용하지 않는다. 병합 후 원격 main SHA와 로컬 main/작업 트리를 확인한다.
 - 원본 운영 번들 전체 복구, 실제 운영 배포, Terraform Plan/Apply와 고객 자원 변경은 이번 Git 게시에 포함하지 않는다.
+
+## 환경 카드 후속 수정 (2026-11-08 KST)
+
+- 승인 범위: 기존 U2 배포 환경 화면 개선의 후속으로 사용자가 카드 테두리와 상단 색상 효과 제거, CSP 색상 배경과 로고, AWS → GCP → On-Premise 순서 및 영문 이름을 직접 지정했다. 추가 지시로 버튼 이름을 `이관 진행`, `모니터링`으로 변경한다. 기존 승인 범위의 프론트엔드 수정이며 현재 `main`에서 진행한다.
+- 문제와 사용자: 배포 환경을 확인하는 팀원이 CSP를 쉽게 구분하고 요청한 이름으로 화면을 이동하도록 한다.
+- 성공 기준과 Scope: AWS 연한 주황, GCP 연한 파랑, On-Premise 연한 회색의 테두리와 그림자 없는 카드에 로컬 SVG 로고를 표시한다. API 응답 순서와 관계없이 지정 순서로 표시하고 두 버튼 이름을 바꾼다.
+- Non-goals: 다른 화면의 CSP 이름, API/DB/인증, 실제 이관 실행과 인프라 변경은 포함하지 않는다.
+- Inception: 기존 `DeployedEnvironments`에서 표시용 정렬과 이름을 적용하고 전용 CSS 및 번들에 포함되는 SVG를 사용한다. 환경 데이터, 상태, 폴링과 이동 대상은 유지한다. 데스크톱/390px 반응형과 텍스트 가독성을 유지하며 외부 이미지 요청과 새 의존성을 추가하지 않는다.
+- Construction Design/Plan: 카드 헤더에 로고와 이름을 묶고 AWS/GCP 색상을 연하게 적용한다. On-Premise에는 회색 서버 아이콘을 사용한다. 기존 fixture의 이름과 탐색 검증을 갱신하고 순서 및 로고를 확인한 뒤 빌드, 형식 검사와 기존 fixture 회귀를 실제 실행한다. 단순 CSS 수치를 복제하는 영구 테스트는 추가하지 않는다.
+- 현재 상태: Construction 구현/로컬 Test/Review 완료. 사용자가 현재 main의 커밋과 푸시를 요청했다. Git 게시 상태는 저장소 이력을 따르며 운영 배포는 별도다.
+
+Implementation:
+
+- `DeployedEnvironments.tsx`는 조회 배열을 복사해 CSP 순서로 정렬하며 On-Premise 이름은 이 화면의 표시와 접근성 이름에만 적용한다. 버튼의 기존 이동 대상과 서비스 ID를 유지한다.
+- `deployed-environments.css`에서 카드 외곽/상단 테두리와 그림자를 없애고 `#fff3e0`, `#eaf2ff`, `#f1f3f5` 배경을 적용했다. 기존 내부 항목 구분과 반응형 배치를 유지한다.
+- `public/cloud-logos/`의 SVG 3개를 같은 origin에서 제공한다. [AWS 로고](https://github.com/devicons/devicon/blob/v2.16.0/icons/amazonwebservices/amazonwebservices-original-wordmark.svg)와 [GCP 로고](https://github.com/devicons/devicon/blob/master/icons/googlecloud/googlecloud-original.svg)는 Devicon의 SVG를 사용하며 On-Premise는 회색 서버 아이콘이다. 이미지에는 빈 대체 텍스트를 사용하고 인접 제목으로 환경을 식별한다.
+- 기존 1440px/390px fixture 검사에 API 순서와 다른 표시 순서, 영문 이름과 로고의 실제 로드 확인을 추가하고 버튼 이름 검증을 갱신했다. 새로운 시험 시나리오나 CSS 수치 복제 검사는 추가하지 않았다.
+
+Test (2026-11-08 KST):
+
+| 실제 실행 명령/확인 | 결과 |
+| --- | --- |
+| `npm run build` | TypeScript/Vite 통과. CSS `index-IBkYl91R.css`, JS `index-CbZBpwAo.js` 생성 |
+| `npm run format:check` | Prettier 통과 |
+| `PLAYWRIGHT_BUILT_ASSETS=1 PLAYWRIGHT_BROWSERS_PATH=/private/tmp/delta-ui-playwright npx --no-install playwright test --config=playwright.fixture.config.ts --output=test-results/csp-card-refresh` | 49 passed (39.0s). 빌드된 웹과 API fixture를 사용한 로컬 시험이다. 기존 탐색/상태 전환/오류 복구와 새 순서/이름/로고 로드를 포함한다. |
+| `python3 -`로 SVG XML 파싱 및 public/dist 파일 비교 | SVG 3개가 유효하며 빌드에 동일하게 포함됨 |
+| `python3 -`로 배경과 본문/보조 글자 대비 계산 | AWS 14.36:1/6.13:1, GCP 13.98:1/5.97:1, On-Premise 14.16:1/6.05:1. 선택 단색 조합의 정적 확인이며 페이지 전체 접근성 인증은 아님 |
+| fixture PNG 시각 확인 | 1440px 3열/390px 1열에서 로고, 지정 배경/순서/이름/버튼 표시와 긴 값 줄바꿈 확인. 페이지 가로 넘침 검사 통과 |
+| `git diff --check` | 형식 오류 없음 |
+
+Review / Operation:
+
+- 화면 캡처는 ignored `platform/web/test-results/csp-card-refresh/`에 있다. 로고는 빌드에 포함되므로 런타임 외부 이미지 의존성이 없다.
+- 운영 페이지는 웹 조회 도구로 접근하지 못했고 CUA도 `The browser access host is unavailable`을 반환했다. 이번 시각 확인과 동작 검증은 로컬 fixture이며 운영 상태로 표시하지 않는다.
+- 로컬 검증 시점에 Deployment, 커밋, 푸시, DB 기반 전체 E2E, 클라우드 실행과 Terraform Plan/Apply는 수행하지 않았다. 실제 반영은 기존 플랫폼 웹 릴리스 절차를 따르며 readiness와 해당 서비스 개요/이동을 확인한다. 문제 발생 시 이전 웹 번들로 복귀한다.
+
+### 로컬 프리뷰 실행 (2026-11-08 KST)
+
+- 사용자가 프론트와 백엔드 로컬 실행, 더미 데이터와 해당 화면 분기 진입을 요청했다. 기존 UI 수정의 로컬 검토를 위한 실행이며 `main`과 기존 변경을 유지했다.
+- Docker/uv CLI는 없으나 PostgreSQL 18.6과 Python 3.12.16의 기존 백엔드 가상환경이 준비되어 있었다. 기존 `.env`를 읽지 않는 전용 설정으로 새 PostgreSQL 클러스터와 `delta_ui_preview` DB를 만들고 Alembic head `0013`까지 적용했다.
+- `127.0.0.1:55434`의 독립 DB에 `Migration verification - LOCAL DEMO` 앱과 숨겨진 BE 구성 요소, AWS/GCP/On-Premise 환경 3개를 넣었다. 앱의 `application.status=succeeded`로 배포 환경 카드 분기를 표시한다. 실제 배포 결과가 아닌 로컬 더미 데이터다.
+- 실제 FastAPI는 `127.0.0.1:8088`, Vite 개발 서버는 `127.0.0.1:5173`에서 실행 중이다. 로컬에서만 발표 세션 자동 로그인을 사용한다. 임시 API 구성은 더미 환경 binding의 선택 표시 필드만 보강하고 실제 클라우드 지표 요청을 거부한다. Worker와 클라우드 연동은 실행하지 않았다.
+- 화면 주소: `http://127.0.0.1:5173/#/overview/61b078c3-f956-4b9b-b394-6c43324dc2af`.
+
+| 실제 실행 명령/확인 | 결과 |
+| --- | --- |
+| `platform/backend/.venv/bin/python .validation/local-ui-preview/server.py` | 독립 PostgreSQL 초기화/기동, DB migration, 더미 데이터 등록 후 실제 API 실행 |
+| `npm run dev -- --host 127.0.0.1 --port 5173` (`platform/web`) | Vite 개발 서버 실행, `/api`를 실제 로컬 백엔드로 프록시 |
+| Python `urllib.request`의 로컬 HTTP 확인 | API `/health/ready` 200/ready, 프론트 `/` 200, 프록시 `/api/v1/auth/session`의 자동 발표 세션 확인. 쿠키를 메모리에 유지하고 서비스 상세의 succeeded 분기와 환경 3개/인스턴스/DB 설정 확인. SVG 3개 모두 200 |
+
+- 실행기, 메타데이터와 재시작/중지 안내는 ignored `.validation/local-ui-preview/`에 있다. API/프론트 프로세스는 실행한 터미널의 Ctrl+C로 중지한다. DB는 저장소 루트의 `/opt/homebrew/bin/pg_ctl -D .validation/local-ui-preview/postgres -m fast -w stop`으로 데이터 보존 후 중지한다.
+- 이번 후속 검증은 실제 로컬 서버의 HTTP 확인이다. 앞선 49개 fixture 회귀와 구분하며 새 운영 배포나 DB 기반 전체 E2E를 실행한 것으로 기록하지 않는다.
+
+### 버튼 아이콘 후속 (2026-11-08 KST)
+
+- 사용자 요청으로 `이관 진행` 앞에 Font Awesome Free 6.7.2 Solid의 [right-left](https://fontawesome.com/icons/right-left?f=classic&s=solid), `모니터링` 앞에 [chart-line](https://fontawesome.com/icons/chart-line?f=classic&s=solid)을 추가했다. 기존 카드 작업의 작은 표시 변경으로 현재 main에서 진행했다.
+- 공식 SVG path를 인라인으로 포함하고 `currentColor`로 버튼 글자색을 따른다. 아이콘은 16px, 글자와 간격은 8px이며 장식 요소로 숨겨 기존 버튼 접근성 이름과 이동 동작을 유지한다. 새 패키지와 외부 런타임 요청은 없다.
+- 출처/CC BY 4.0 고지를 소스와 빌드에 복사되는 `public/third-party-notices/fontawesome.txt`에 유지한다. 번들러가 주석을 제거하므로 배포 산출물의 별도 고지 파일로 보존한다.
+- 실제 실행: `npm run build` 통과, `npm run format:check`는 첫 검사에서 해당 TSX 형식을 지적하여 Prettier 적용 후 통과했다. `PLAYWRIGHT_BUILT_ASSETS=1 PLAYWRIGHT_BROWSERS_PATH=/private/tmp/delta-ui-playwright npx --no-install playwright test --config=playwright.fixture.config.ts tests/deployed-environments.spec.ts --output=test-results/csp-action-icons`는 6 passed (15.7s)다.
+- 1440px/390px fixture 캡처에서 두 아이콘의 위치와 색상, 버튼 줄바꿈과 가로 넘침 없음을 확인했다. 실행 중인 Vite의 `/src/DeployedEnvironments.tsx` HTTP 200 응답에서 두 아이콘을 포함한 최신 모듈을 확인했다. 이 검증 시점에는 운영 배포, 커밋과 푸시를 실행하지 않았다.
+
+## 환경 정보 누락과 모니터링 오류 수정 (2026-11-08 KST)
+
+- 사용자 요청: 지정 서비스의 CSP 계정 정보 누락과 모니터링 연결을 수정하고, 배포 상태가 active인 카드에 초록 배경의 `활성화`를 표시한다. 후속 지시로 활성화 텍스트 앞에 초록색 상태 점도 표시한다. 기존 환경 조회/관측 기능의 오류 수정과 상태 표시가 범위다.
+- 문제/사용자/성공 기준: 서비스 운영자가 저장된 AWS 계정/GCP 프로젝트와 실제 배포 기록 상태를 확인하고, 정상적인 배포 메타데이터가 있는 환경의 관측 조회가 HTTP 500으로 중단되지 않아야 한다. 데이터 없음과 공급자 조회 실패는 정상으로 바꾸지 않는다.
+- Inception/Design: 환경 목록에 안전한 계정/프로젝트/인스턴스/DB 설정 ID만 명시적으로 투영한다. 관측 자원 검증에서 서버가 저장한 배포/생명주기 메타데이터만 제외하고 자원 신원과 미지원 입력 검증은 유지한다. 카드는 서버의 runtime_status로 활성화/정리/삭제/미확인 상태를 구분한다.
+- Implementation Plan/Acceptance Criteria: 실제 PostgreSQL과 HTTP 계약의 누락/오류 회귀를 추가하고 세 CSP의 배포 메타데이터와 비밀값 비노출, 엄격한 자원 검증을 확인한다. 기존 웹 회귀와 데스크톱/모바일에서 초록 활성화 표시 및 다른 상태 구분을 확인한다. API/DB 스키마, CSP 권한, 리소스와 운영 데이터 변경은 포함하지 않는다.
+- 읽기 전용 운영 확인: HTML/세션/서비스/환경 목록은 200, 대상 앱은 succeeded, 세 환경은 runtime_status=active였다. 환경 목록 응답에는 account_id/gcp_project/instances/DB 설정 ID가 없고 AWS/GCP/On-Premise 관측 API는 모두 500이었다.
+- 원인 재현: complete_deployment가 저장하는 deployment_run_id/service_url/database를 DashboardReader가 EnvironmentInput(extra=forbid)에 그대로 전달해 세 필드의 extra_forbidden 오류가 클라우드 조회 전에 발생한다. 별도로 환경 목록은 binding의 공개 자원 정보를 반환하지 않는다.
+- 작업 기준: 사용자 요청대로 현재 main을 유지했고 후속 PR #93을 fast-forward로 보존했다. 로컬 fixture/API 검증과 실제 운영 배포/관측 수신 검증을 구분한다. AWS 운영 SSO가 만료되어 직접 SSM/DB 조회는 수행하지 못했으며 공개 API 응답과 코드 재현 결과가 현재 근거다.
+- 현재 단계: Construction 구현, 로컬 Test/Review 완료. 사용자가 현재 main의 커밋과 푸시 후 운영 배포를 요청했으며 실제 게시/배포 상태는 Git과 릴리스 실행 이력을 따른다.
+
+구현과 Review:
+
+- 환경 목록은 account_id/gcp_project, 인스턴스의 id/name/zone, database_profile_id와 기존 생명주기 상태만 반환한다. DB 설정의 내부 접속값, runtime 원문, 서비스 주소, 전체 binding 및 미지정 운영자 메타데이터는 노출하지 않는다.
+- 관측 조회는 저장된 deployment_run_id/service_url/database/runtime_status/database_profile_id만 자원 입력 검증에서 제외한다. 미지원 endpoint나 잘못된 인스턴스 ID는 계속 거부하며, 공급자 장애는 기존 부분 실패 응답으로 남긴다.
+- active만 초록 배경의 `활성화`와 초록색 원형 점을 표시한다. 정리 중/삭제됨/배포 중/실패/중지/비활성 상태를 구분하며 null과 미지정 상태를 활성으로 표시하지 않는다. 상태 점은 장식 요소로 숨겨 버튼과 카드의 접근성 이름을 바꾸지 않는다. 이는 저장된 배포 생명주기 기준이며 실시간 VM 전원이나 앱 응답 검증으로 표현하지 않는다.
+- 로컬 프리뷰의 환경 응답 보강 대역을 제거하고 수정한 실제 환경 API를 사용한다. 관측은 실제 DashboardReader를 거치되 로컬 전용 공급자 대역이 데이터 없음으로 반환하므로 클라우드 정상이나 실측 값으로 표시하지 않는다.
+
+실제 검증 (2026-11-08 KST):
+
+| 명령/확인 | 결과 |
+| --- | --- |
+| 새 회귀의 수정 전 실행 (`run-tests.py -q tests/test_observability.py -k 'environment_list_exposes or dashboard_accepts' --maxfail=2`) | AWS/GCP의 account_id 누락으로 2 failed. 관측 메타데이터 검증 오류는 별도 직접 재현했다. |
+| `platform/backend/.venv/bin/python .validation/csp-environment-repair-20261108/run-tests.py -q tests/test_observability.py tests/test_onprem_observability.py tests/test_deployments.py tests/test_applications.py` | 초기 관련 회귀 42 passed (1.60s). 이후 실제 HTTP 부분 실패 보존 검사를 추가했다. |
+| `platform/backend/.venv/bin/python .validation/csp-environment-repair-20261108/run-tests.py -q` | 최종 전체 291 passed, 1 deselected (13.27s). 새 계약/관측/HTTP 회귀 7개 포함. 최초 전체 실행은 자식 Worker가 기본 55433을 사용해 290 passed/1 failed였고, 임시 시험 실행기에 55433→격리 클러스터 55434 프록시를 넣어 재검증했다. 제품 테스트나 운영 코드를 우회하지 않았다. |
+| 수정 Python 3개 파일의 `ruff check` 및 `ruff format --check` | 통과 |
+| `npm run build`, `npm run format:check` | 최종 통과. CSS `index-BOdSLDTS.css`, JS `index-Bs_Qr9kL.js` |
+| `PLAYWRIGHT_BUILT_ASSETS=1 PLAYWRIGHT_BROWSERS_PATH=/private/tmp/delta-ui-playwright npx --no-install playwright test --config=playwright.fixture.config.ts --output=test-results/csp-environment-repair` | 전체 웹 fixture 53 passed (38.7s). 공급자/누락 상태/기존 이동과 기능을 확인했다. |
+| 상태 점 추가 후 같은 명령의 `tests/deployed-environments.spec.ts --output=test-results/csp-environment-indicator` | 최종 카드 회귀 10 passed (16.1s). 활성 상태에만 점이 나타나며 다른 상태에는 없음을 확인했다. |
+| 최종 1440px/390px 캡처 시각 확인 | 초록 배경, 초록 상태 점과 활성화 글자의 정렬, 카드/버튼과 가로 넘침 없음을 확인했다. fixture이며 운영 데이터가 아니다. |
+| 로컬 프리뷰 재시작 후 프론트 프록시를 통한 실제 HTTP 확인 | 실제 환경 API에 AWS 계정/GCP 프로젝트/인스턴스/DB 설정 ID가 있고 세 CSP 관측 API가 200이다. 로컬 공급자 대역의 요청 지표는 모두 no_data이며 실제 클라우드 수집 검증과 구분한다. |
+
+Operation:
+
+- 배포 전 검증 시점에는 수정 후 운영 배포와 실제 CSP 관측 수신을 확인하지 않았다. 최초 운영 확인 자료는 ignored `.validation/csp-environment-repair-20261108/monitoring-before.json`, 최종 로컬 캡처는 `platform/web/test-results/csp-environment-indicator/`에 있다.
+- 운영 반영은 기존 플랫폼 릴리스 경로를 사용하고, 배포 후 같은 서비스의 계정 정보, 상태 표시와 세 CSP 관측 응답을 다시 확인한다. 200이라도 실제 지표의 ok/no_data/error/stale을 각각 확인한다.
+- 롤백은 기존 플랫폼 이미지로 복귀한다. DB 스키마와 실제 CSP 설정 변경은 없으며 새 Terraform Plan/Apply나 IAM 권한 변경을 실행하지 않았다. 로컬 실행기는 기존 더미 DB와 별도 platform_test DB를 분리한다.
+
+### 운영 반영 준비 (2026-11-08 KST)
+
+- 사용자가 `커밋푸시 후 배포`를 요청했다. 현재 main을 사용하며 이후 병합된 PR #94, #95와 #96을 fast-forward로 보존했다.
+- 배포 전 공개 HTTPS의 readiness/화면/발표 세션은 모두 200이고 기존 서비스 2개와 대상 환경 3개를 확인했다. 파이프라인의 최근 10개 실행은 모두 종료 결과가 있었다. 읽기 전용 결과는 ignored `.validation/csp-environment-repair-20261108/production-pre.json`에 기록했다.
+- 선행 Platform release `42389268762`가 별도 main 커밋 `6fb0fa4e`로 진행 중이었다. 기존 릴리스를 취소하지 않고 완료를 확인한 뒤 이번 커밋의 Platform checks와 Release를 진행한다.
+- PR #96까지 반영한 뒤 `npm run build`, `npm run format:check`, 변경 Python Ruff 검사/형식 검사와 `git diff --check`를 재실행해 통과했다. 격리 PostgreSQL의 관측/온프레미스/배포/앱 관련 회귀는 45 passed (2.01s), 최종 빌드의 배포 환경 카드 회귀는 10 passed (16.0s)였다. 원격 CI/Release의 실제 결과는 각 실행 결과를 따른다.
+- 수정 커밋 `f7951e9cee319f634f85abed03095cc23e1c374b`를 main에 푸시했고 GitHub의 서명 검증 결과는 valid였다. 이어 PR #97을 fast-forward로 반영했으며 PR #97은 오케스트레이터 두 파일을 변경한다. 게시 직후 [Platform checks 42389992966](https://github.com/2026-sbh-delta/delta-network-gateway/actions/runs/42389992966)은 진행 중이었다.
+- 선행 릴리스 `42389268762`는 성공했으며, 이어서 선행 릴리스 `42389771314`가 실행됐다. 두 번째 릴리스를 보존하고 종료를 확인한 뒤 이번 운영 반영을 시작한다.
