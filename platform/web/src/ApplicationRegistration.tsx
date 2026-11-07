@@ -312,7 +312,8 @@ export function ApplicationRegistration({
             <li>운영 배포 · 도메인 전환</li>
           </ol>
           <p className="muted">
-            빌드 → SAST → 샌드박스·DAST → VM·DB → 연결 확인 · 검토 필요 시 멈춤
+            빌드 → 샌드박스 → VM·DB → 연결 확인 · 보안 검사는 이전
+            파이프라인에서
           </p>
           {error && (
             <p role="alert" className="error">

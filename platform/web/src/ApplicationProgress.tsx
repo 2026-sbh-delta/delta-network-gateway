@@ -10,12 +10,11 @@ const labels: Record<string, string> = {
   review: "검토 필요",
   skipped: "미실행",
 };
+// Registration stands up the current production; SAST/DAST run later in the migration pipeline.
 const stages = [
   ["source", "소스 확인"],
   ["build", "Jenkins 빌드"],
-  ["security", "SAST"],
   ["sandbox", "샌드박스"],
-  ["dast", "DAST"],
   ["deploy", "VM·DB 준비 및 배포"],
 ];
 export function ApplicationProgress({
