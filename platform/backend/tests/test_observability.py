@@ -138,6 +138,9 @@ def test_environment_list_exposes_only_public_resource_details(signed, engine, s
                     "deployment_run_id": str(uuid4()),
                     "service_url": "https://private-address.invalid",
                     "runtime_status": "active",
+                    "migration_id": "private-migration-value",
+                    "migration_role": "target",
+                    "release": {"private": "private-release-value"},
                     "private_metadata": "private-operator-value",
                 }
             )
@@ -156,10 +159,15 @@ def test_environment_list_exposes_only_public_resource_details(signed, engine, s
         "database",
         "deployment_run_id",
         "service_url",
+        "migration_id",
+        "migration_role",
+        "release",
         "private_metadata",
     }.intersection(item)
     assert "private-db-value" not in response.text
     assert "private-operator-value" not in response.text
+    assert "private-migration-value" not in response.text
+    assert "private-release-value" not in response.text
 
 
 @pytest.mark.parametrize("cloud", ["aws", "gcp", "onprem"])
@@ -179,6 +187,9 @@ def test_dashboard_accepts_stored_deployment_metadata_and_keeps_identity_validat
         service_url="https://example.com",
         database={"profile_id": "fixture-postgres"},
         runtime_status="active",
+        migration_id=str(uuid4()),
+        migration_role="target",
+        release={"private": "fixture-release"},
     )
     provider = SimpleNamespace(
         metrics=lambda *args: {"requests": metric(8)},

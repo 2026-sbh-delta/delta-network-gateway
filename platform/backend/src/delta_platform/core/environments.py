@@ -17,7 +17,16 @@ from delta_platform.core.store import Store
 WORKSPACE_ID = UUID("496562be-f67b-5f7e-a16b-929fd347b9ad")
 FIELDS = ("id", "name", "cloud", "region", "version")
 STORED_METADATA_FIELDS = frozenset(
-    {"deployment_run_id", "service_url", "database", "runtime_status", "database_profile_id"}
+    {
+        "deployment_run_id",
+        "service_url",
+        "database",
+        "runtime_status",
+        "database_profile_id",
+        "migration_id",
+        "migration_role",
+        "release",
+    }
 )
 
 

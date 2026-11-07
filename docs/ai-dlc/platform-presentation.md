@@ -429,3 +429,11 @@ Operation:
 - PR #96까지 반영한 뒤 `npm run build`, `npm run format:check`, 변경 Python Ruff 검사/형식 검사와 `git diff --check`를 재실행해 통과했다. 격리 PostgreSQL의 관측/온프레미스/배포/앱 관련 회귀는 45 passed (2.01s), 최종 빌드의 배포 환경 카드 회귀는 10 passed (16.0s)였다. 원격 CI/Release의 실제 결과는 각 실행 결과를 따른다.
 - 수정 커밋 `f7951e9cee319f634f85abed03095cc23e1c374b`를 main에 푸시했고 GitHub의 서명 검증 결과는 valid였다. 이어 PR #97을 fast-forward로 반영했으며 PR #97은 오케스트레이터 두 파일을 변경한다. 게시 직후 [Platform checks 42389992966](https://github.com/2026-sbh-delta/delta-network-gateway/actions/runs/42389992966)은 진행 중이었다.
 - 선행 릴리스 `42389268762`는 성공했으며, 이어서 선행 릴리스 `42389771314`가 실행됐다. 두 번째 릴리스를 보존하고 종료를 확인한 뒤 이번 운영 반영을 시작한다.
+
+### 운영 확인과 추가 메타데이터 (2026-11-08 KST)
+
+- Platform checks `42389992966`, `42390407276`과 [Platform release 42390760149](https://github.com/2026-sbh-delta/delta-network-gateway/actions/runs/42390760149)가 성공했다. 릴리스 대상은 `95cbf1b56e294e3b77c5c9916ef21394d7062615`다. 서비스 2개와 대상 환경 3개가 유지됐고 실제 화면에 AWS 계정과 GCP 프로젝트, 활성화 표시가 나타났다.
+- 릴리스 직후 세 관측 API의 500을 확인했으나 이후 세 API가 200을 반환했다. 당시 실행 이미지는 릴리스 ECR 이미지가 아닌 로컬 `delta-platform-dashboard:e473e12df6fe474d`였으며, 실행 코드와 저장소의 관측 함수 해시 일부가 달랐다. 원인은 확인하지 못했다. 이 차이를 해소하기 전 추가 배포로 실행 이미지를 덮어쓰지 않는다.
+- 읽기 전용 SSM 진단 `0fe164f5-42f4-4af5-a22e-9b4580da6333`에서 AWS의 requests, error_rate, p95_ms, app_up, db_up이 모두 ok였고 CloudWatch 직접 쿼리도 200이었다. 앞선 API 확인에서는 AWS requests에 error가 관찰되어 지속적인 정상 수집으로 단정하지 않는다. GCP와 온프렘 서버는 사용자가 현재 중지했다고 확인했으며 재시작하지 않았다. 활성화는 저장된 배포 상태이며 서버의 실시간 가동 상태가 아니다.
+- 운영 binding에 추가로 저장된 `migration_id`, `migration_role`, `release`를 알려진 메타데이터로 처리한다. 미지원 endpoint와 잘못된 인스턴스 ID 검증을 유지하고 환경 목록에 해당 메타데이터를 노출하지 않는다.
+- `platform/backend/.venv/bin/python .validation/csp-environment-repair-20261108/run-tests.py -q`: 293 passed, 1 deselected. 변경 파일의 Ruff 검사와 형식 검사, `git diff --check` 통과. 격리 DB 소켓 접근은 샌드박스에서 거부되어 승인된 실행으로 재검증했다.
