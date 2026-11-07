@@ -322,3 +322,48 @@ Review와 Operation:
 - 게시 기록은 `docs/README.md`, 이 문서와 웹 구현 기록을 함께 갱신한다. 최종 검증 자료는 ignored `platform/web/test-results/ui-pr-publication.json`에 기록한다.
 - 병합 전 최종 PR head의 CI, 리뷰/미해결 스레드 및 mergeable 상태를 확인하고 해당 head SHA를 지정해 squash한다. 강제 병합/검사 우회/직접 main 푸시는 사용하지 않는다. 병합 후 원격 main SHA와 로컬 main/작업 트리를 확인한다.
 - 원본 운영 번들 전체 복구, 실제 운영 배포, Terraform Plan/Apply와 고객 자원 변경은 이번 Git 게시에 포함하지 않는다.
+
+### Operation: UI 배포 승인과 운영 기능 보존 (2026-11-07 KST)
+
+- 사용자가 `배포도 해줭`으로 UI 운영 반영을 승인했다. 대상 소스는 main squash 커밋 `3767fd3236591a60bbe4c6860e4c41c6af7dcc09`다. main CI 20개 job의 completed/success를 확인한 뒤 배포했다.
+- 기본 `platform-release.yml`은 API/Worker 이미지와 migration까지 교체한다. 현재 운영 번들에는 main에 없는 마이그레이션/팀 파이프라인 UI가 있어 전체 이미지를 그대로 교체하지 않는다.
+- 배포 설계: 현재 운영 정적 자산과 컨테이너를 기준으로, main의 CSS 변경과 정확한 주소 안내 제거만 반영하는 UI 배포를 준비한다. 기존 API/Worker 코드, 환경 설정, DB, 운영의 추가 정적 모듈과 기능을 보존한다.
+- 사전 확인: 운영 HTML/자산과 서비스/환경 조회 결과, 실제 이미지/Compose/웹 경로를 보존한다. 적용 직전에 기준 해시가 달라지면 중단하고 다시 준비한다.
+- 변경 범위: CSS 가독성/배치 및 환경 카드의 주소 안내 표시만 변경한다. 기존 JS의 나머지 동작과 추가 모듈을 보존하고 새 API/인프라/IAM/DB 변경은 하지 않는다.
+- 검증: 기준 운영 번들에 변경을 적용한 로컬 브라우저 검사, 배포 후 실제 HTTPS readiness/자산 해시/주소 문구/기존 탐색 및 서비스/환경 보존을 확인한다. 실제 고객 빌드/배포/이전은 검증을 위해 실행하지 않는다.
+- Rollback: 기존 이미지와 HTML/자산, 실행 설정을 보관하고 API 또는 웹 파일만 이전 상태로 복구한다. Worker/DB를 중지하거나 데이터를 되돌리지 않는다.
+- 준비 초기에 이전 프로필의 AWS SSO 갱신을 시도했으나 아래 사전 검증에서 올바른 Workload 프로필의 유효한 인증을 확인했다. 이 준비 단계에서는 운영 변경을 실행하지 않았다.
+
+
+Operation 사전 검증과 구체 배포 설계 (2026-11-07 17:37 KST):
+
+- `gh run view 42354324590 --json status,conclusion,headSha,jobs`: main `3767fd32`의 20개 job 전부 success, workflow completed/success를 확인했다.
+- 앞서 연 `sbh-platform`은 예전 계정 `723225040786`의 프로필이었다. 현재 플랫폼은 Workload `616723161368`이며 기존 `sbh-delta-workload`의 `sts get-caller-identity`가 성공했다. 기존 포털도 같은 Workload 계정을 표시했다. 새 인증/권한 부여 없이 이전 로그인 대기만 종료했다.
+- SSM으로 실제 서버 `i-0e5df7881a7de8fbd`의 API 이미지/현재 Compose/웹 경로와 설정 해시를 읽기 전용으로 확인했다. API는 readonly rootfs이며 기존 Wazuh bind mount를 사용하지만 Compose에 해당 mount가 없었다. 기존 런타임 구성을 그대로 복제하며 그 mount도 유지한다.
+- 구체 배포: 기존 이미지와 API 설정을 유지하고 기존 웹 전체를 보관한 새 UI 디렉터리를 `/app/web/dist:ro`로 연결한다. API 컨테이너만 교체하고 이전 컨테이너는 정지 상태로 보존한다. 현재 Compose에는 API의 기존 mount와 새 readonly 웹 mount만 추가하며 렌더링된 나머지 설정이 일치하는지 적용 전에 검증한다. Worker/DB의 ID/시작 시각/환경 설정과 기존 env 파일 해시를 보호한다.
+- 실제 운영 정적 자산 6개를 전부 유지하고 주소 표시 문단 3곳과 클라우드 표시 class 한 곳만 원본 JS의 정확한 바이트 범위에서 수정했다. 그 외 JS가 원본과 동일함을 역변환으로 확인했다. main의 CSS 변경과 반응형 규칙을 추가 CSS로 적용한다. 기존 추가 마이그레이션/RDS 모듈의 내용은 변경하지 않는다.
+- `node .runtime/ui-release-20261107/prepare-ui.mjs`: JS 파싱/범위와 SHA256 검증 통과. 결과 HTML SHA256 `da04d7835aefe36c761a176c2aa68d84cf8b10df2825077557bc2dcc5963b7c6`.
+- `PLAYWRIGHT_BROWSERS_PATH=/private/tmp/delta-ui-playwright npx --no-install playwright test --config=../.runtime/ui-release-20261107/playwright.config.mjs --output=../.runtime/ui-release-20261107/test-results-final`: 실제 운영 번들에 UI만 적용한 로컬 fixture 4개 통과(1.3초). 1440px/390px 카드/주소 안내 제거/14px 이상 보조 글자/44px 버튼/가로 넘침 없음, 마이그레이션/대시보드 탐색, 기존 3단계 진행과 쓰기 요청 0개를 확인했다. 초기 2개 실패는 이전 소스의 6단계와 대시보드 문구를 기대한 시험 오류여서 실제 최신 화면 계약으로 바로잡은 후 재실행했다.
+- 두 폭의 실제 PNG를 열어 배치와 줄바꿈을 확인했다. 시험은 로컬 공개 응답 fixture이며 운영 배포 검증은 아직 아니다. UI/Worker/DB의 실제 전체 동작을 재실행한 결과로 확대하지 않는다.
+- 배포 전 stage는 운영의 현재 symlink, Compose/설정/자산 해시와 API/Worker/DB ID를 확인한다. apply 직전도 다시 검사하며 변경되면 중단한다. API readiness 실패 시 이전 컨테이너와 Compose로 자동 복구한다. 성공 후 별도 rollback 명령도 이전 API만 복원한다.
+
+
+실제 UI 배포 결과 (2026-11-07 17:38 KST):
+
+- 첫 stage SSM `942516f9-4e18-4ad4-94f0-a847e6dea9d7`는 운영 API ID 변경을 감지해 적용 전에 종료했다. 당시 API/Worker/DB/Compose를 변경하지 않았다. 최신 API `7dd098217f49`와 새 deploy.env 해시를 다시 조회했고, HTTPS 자산 6개가 시험 기준과 동일함을 확인했다. 이 새 기준을 별도 릴리스에 보존했다.
+- 최종 릴리스: `ui-readability-3767fd32-da04d7835aef-7dd098217f49`. 비공개 배포 파일은 `s3://delta-platform-artifacts-616723161368/releases/ui-readability-3767fd32-da04d7835aef-7dd098217f49/ui-release.tar.gz`이며 SHA256은 `3794800f62441497aa1084eea95cacd5913fe4ddd30042e57a9b574908261013`다. 자격 증명/DB 데이터는 포함하지 않았다.
+- `aws --profile sbh-delta-workload --region ap-northeast-2 ssm send-command --cli-input-json file://.runtime/ui-release-20261107/stage-request-2.json`: SSM `ae9da282-1ea3-4940-8e19-f3dbd98d4980` Success. 기존 웹의 추가 파일 12개, API 설정과 Wazuh bind mount를 보존했고 새 정적 파일 2개/기존 index 수정만 준비했다. 렌더링된 Compose의 변경이 API mount 추가뿐임을 확인했다.
+- 같은 프로필의 `ssm send-command --cli-input-json file://.runtime/ui-release-20261107/apply-request.json`: SSM `78db073c-2319-45b7-b9d0-93e8c3ec6fba` Success/종료 0. 실제 실행 17:37:46~17:38:03 KST, 약 17초. 새 API `4d8238d6b56e` healthy/readiness ready. 이 시간은 배포 명령 실행 시간이며 전체 서비스 중단 시간 측정값은 아니다.
+- 백엔드 이미지 `sha256:1cacdf34fa3d65f13f5ff6b307ed3ebc96a0a609c48c4a68a95ae8201ca2aba8`와 API의 Env/Cmd/Entrypoint/User/WorkingDir/Labels/Healthcheck 및 기존 HostConfig를 보존하고 readonly 웹 bind만 추가했다. API를 한 번 재생성했으며 API 코드/이미지 교체, migration, Terraform Plan/Apply와 IAM 변경은 실행하지 않았다.
+- Worker `40042b070149`와 DB `2c20a93d56b8`의 ID, 실행 상태, 시작 시각, 환경 해시와 모든 기존 env 파일 해시가 유지됐다. Compose SHA256은 API mount를 반영한 `0784604eadc8d2ad4ad311530c9fbb2508714bd03a94bcd47e4c09eb254751c1`다. Worker/DB를 재시작하지 않았다.
+- `python3 .runtime/ui-release-20261107/capture-live.py .runtime/ui-release-20261107/after`와 후속 SHA256/응답 비교: 실제 HTTPS readiness ready, 변경 HTML/JS/CSS 3개가 시험한 파일과 일치, 기존 자산 6개 전부 동일한 bytes/HTTP200, 기존 서비스 ID/이름/완료 상태와 환경 3개의 전체 조회 응답 보존을 확인했다. 토큰/쿠키는 저장하거나 출력하지 않았다.
+- 배포 후 CUA에서 서비스 목록 새로고침까지 관찰했으나 native Chrome의 접근성 연결/timeout과 browser access host unavailable로 상세 화면 시각 검증을 완료하지 못했다. 실제 운영 상세 화면 캡처를 PASS로 기록하지 않는다. 배포 전 같은 bytes의 1440px/390px PNG 확인 및 로컬 4개 검증과 실제 HTTPS 파일 검증을 구분한다.
+- Git: 소스 main은 PR #73 squash `3767fd32`이며 해당 원격 CI는 20개 success다. 이번 후속 운영 기록의 커밋/푸시 상태는 실제 Git 이력을 따른다. 전체 main 이미지 릴리스는 실행하지 않았으며 운영에만 있는 최신 API/팀 파이프라인/추가 UI 기능을 그대로 보존했다.
+
+Runbook / Rollback:
+
+- 운영 UI 경로: `/opt/delta-platform/releases/ui-readability-3767fd32-da04d7835aef-7dd098217f49/web`를 API의 `/app/web/dist`에 readonly로 연결한다. 기존 `/opt/delta-platform/current` symlink와 이미지 pin, env 파일은 유지한다.
+- 릴리스 디렉터리에 `web-before`, `compose-before.yaml`, `compose-after.yaml`, `ui-manifest.json`, `expected-host.json`, `stage.json`, `applied.json`, `operate-ui.py`를 root 전용으로 보관했다. 이전 API 컨테이너는 `delta-platform-api-1-before-ui-readability-3767fd32-da04d7835aef-7dd098217f49` 이름으로 정지 보존한다. 웹 디렉터리 내부만 앱이 읽도록 허용했다.
+- readonly SSM 점검은 실제 현재 API와 Worker/DB의 ID/상태/시작 시각, 설정 해시, `/health/ready` 및 HTTPS index/자산 해시를 기준으로 한다. API UI 복구에 Worker/DB stop, 데이터 복원, 스키마 migration이나 인프라 Apply를 사용하지 않는다.
+- 실제 rollback 명령은 위 VM의 SSM에서 `python3 /opt/delta-platform/releases/ui-readability-3767fd32-da04d7835aef-7dd098217f49/operate-ui.py rollback /opt/delta-platform/releases/ui-readability-3767fd32-da04d7835aef-7dd098217f49`다. 현재 API/Compose가 이번 릴리스와 일치할 때만 이전 API와 Compose를 복원하며 Worker/DB 보존 및 readiness를 다시 확인한다. 적용 후 운영 rollback을 실행하지 않았으므로 실제 rollback 완료로 기록하지 않는다.
+- 이후 전체 배포는 main에 없는 운영 소스를 먼저 통합해야 한다. 기본 release workflow가 현재 Worker/백엔드/추가 UI를 이전 코드로 교체하지 않도록 이 릴리스의 보존 범위와 현재 소스를 확인한다.
