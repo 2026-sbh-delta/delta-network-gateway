@@ -1,6 +1,6 @@
 # 웹 검사와 병렬로 실행하는 워크로드 차분
 
-2026-11-07 KST. 로컬 ADR, 번호 미할당. 사용자 승인 범위는 기존 웹 검사·수정 루프를 보존하고, AWS → GCP Diff 결과를 운영 반영 전에 확인하는 로컬 구현이다. 기준 소스는 GitHub `main`의 `4e5c2a5`다.
+2026-11-07 KST. ADR 번호 미할당. 사용자 승인 범위는 기존 웹 검사·수정 루프를 보존하고, AWS → GCP Diff 결과를 운영 반영 전에 확인하는 구현과 후속 실제 시연 오케스트레이터 배포다. 기준 소스는 GitHub `main`의 `328268e`다.
 
 ## 흐름과 결정
 
@@ -40,8 +40,19 @@
 }
 ```
 
-실행 ID는 오케스트레이터가 넣는다. 승인된 요청 해시는 실행과 함께 저장한다. 오케스트레이터 교체 및 설정 활성화 전에는 진행 중인 도메인 전환을 마무리하고, 기존 state 디렉터리를 보존한다. AWS·DNS 변경과 공용 런타임 배포는 이 로컬 작업의 범위 밖이다.
+실행 ID는 오케스트레이터가 넣는다. 승인된 요청 해시는 실행과 함께 저장한다. 오케스트레이터 교체 및 설정 활성화 전에는 진행 중인 도메인 전환을 마무리하고, 기존 state 디렉터리를 보존한다.
 
 ## 검증
 
-2026-11-07에 `pytest -q services/delta-pipeline/tests services/delta-orchestrator/tests`를 실행해 239개가 통과했다. 웹·Jenkins·Diff·delta-ai·Cloudflare를 대역으로 사용해 병렬 실행, 승인·거절, 예외 진단과 전환 차단, 웹 수정 재검증, 재시작 후 승인, 다른 실행의 Diff 응답 거부를 확인했다. 이전 Diff API 코드의 로컬 `TestClient`가 생성한 `needs_human` 응답도 새 클라이언트가 검증했다. `node --check`와 `git diff --check`가 통과했다. 배포, 실제 파이프라인 실행, DNS 변경은 검증 범위에 포함하지 않았다.
+2026-11-07에 `pytest -q services/delta-pipeline/tests services/delta-orchestrator/tests`를 실행해 251개가 통과했다. 웹·Jenkins·Diff·delta-ai·Cloudflare를 대역으로 사용해 병렬 실행, 승인·거절, 예외 진단과 전환 차단, 웹 수정 재검증, 재시작 후 승인, 다른 실행의 Diff 응답 거부를 확인했다. 이전 Diff API 코드의 로컬 `TestClient`가 생성한 `needs_human` 응답도 새 클라이언트가 검증했다. `node --check`와 `git diff --check`가 통과했다.
+
+## 실제 시연 오케스트레이터 배포
+
+후속 사용자 승인으로 코드 `e0c3d3a`의 변경 파일을 실행 중인 이미지 위에 적용했다. 미완료 실행 0건과 기존 소스 해시를 확인한 뒤, 별도 상태 디렉터리의 후보를 검증하고 포트 8080을 전환했다. 기존 환경 설정과 실행 기록 60개를 보존했다.
+
+- 새 이미지 digest는 `sha256:135df51d81d83fe7e8a5b21a8abc4b8d4f9bc064e2f4d0c399fa04ad3e90b120`이다.
+- 이전 컨테이너는 `delta-orchestrator-before-parallel-diff-e0c3d3a5964b`로 정지 보존했다. 상태 사본은 호스트 `/opt/delta/parallel-diff/e0c3d3a5964b/state-before`에 있다.
+- 호스트 `/opt/delta/parallel-diff/e0c3d3a5964b/rollback.py`는 현재 이미지와 미완료 실행을 확인한 뒤 이전 컨테이너를 복구한다. 배포 검증 중 이 스크립트는 설치만 했다.
+- 실제 검증 실행 `dfc73e0513544f5342262ba27cf63fb133d68b45009712a441ae0e2181101836`은 기존 성공한 수정 커밋 `45a6aee5`를 사용했다. 운영 배포와 DNS 전환 옵션은 껐다. 빌드·SAST·스테이징 통과 후 DAST 후보 0건을 실제 delta-ai가 분석했고, 사람 확인 대기에 도달했다. 후속 검증 결과는 해당 실행 기록을 따른다.
+
+DNS는 별도 세션이 담당한다. 이 배포는 기존 `DELTA_CUTOVER` 값을 그대로 보존했다.

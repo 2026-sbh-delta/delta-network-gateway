@@ -1,6 +1,6 @@
 # Delta network gateway
 
-2026-11-07 워크로드 차분 병렬 연결을 로컬에 구현했다. 기존 웹 검사·수정 재검증과 병렬로 Diff를 호출하고, 판정 보류는 사람 확인을 거친 뒤 운영 배포와 도메인 전환으로 넘어간다. 실패는 기존 delta-ai 진단으로 보낸다. [설정·검증·승인 범위](ai-dlc/parallel-workload-diff.md)
+2026-11-07 워크로드 차분 병렬 연결을 실제 시연 오케스트레이터에 배포했다. 기존 웹 검사·수정 재검증과 병렬로 Diff를 호출하고, 판정 보류는 사람 확인을 거친 뒤 운영 배포와 도메인 전환으로 넘어간다. 실패는 기존 delta-ai 진단으로 보낸다. 기존 컨테이너와 상태 사본을 복구용으로 보존했다. [설정·검증·승인 범위](ai-dlc/parallel-workload-diff.md)
 
 2026-11-07 AWS ANF 재개 완료: `delta-board-vpc`만 인터넷 입출구와 GCP 양방향 검사를 enabled로 전환했다. Primary2/Secondary2 READY/IN_SYNC, ALB 두 IP 및 사설 양방향 HTTP200/NAT HTTPS200/RDS TLS1.3과 미허용8081의 실제 blocked/drop을 확인했다. FLOW/ALERT 원본21건과 플랫폼 중앙 원문이 일치했고 BGP4개 UP/기존 광고 유지 및 두 최종 실제 Plan No changes/종료0을 확인했다. Terraform mock131개/Python38개 통과. DNS/ALB와 기존 자원 ID를 보존했고 임시 probe/규칙/키/터널을 정리했다. 앱은 inactive/disabled를 유지하므로 공개 앱은 기존 HTTP502다. Git 게시와 원격 CI 상태는 Git 이력과 실행 결과를 따른다. [승인과 실제 결과](ai-dlc/anf-board-reactivation.md)를 따르며 별도 GCP 작업의 설정과 문서를 보존한다.
 
