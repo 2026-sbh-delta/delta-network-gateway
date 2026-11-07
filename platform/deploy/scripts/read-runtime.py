@@ -18,6 +18,8 @@ DEPLOYMENT_OPTIONAL_KEYS = {
     "PLATFORM_ORCHESTRATOR_PASSWORD",
     "PLATFORM_ORCHESTRATOR_TARGETS",
     "PLATFORM_ORCHESTRATOR_URL",
+    # Demo: open the workspace with the shared account instead of the login page (CSRF stays on).
+    "PLATFORM_PRESENTATION_MODE",
 }
 
 
