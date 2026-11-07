@@ -48,6 +48,8 @@ def step_routes(cutover: bool, release: bool = False) -> dict[str, tuple[Any, tu
     def route_dast_start(state: PipelineState) -> str:
         if state.get("halt"):
             return HALTED
+        if state.get("pending_gate"):
+            return "ask_dast"
         return "dast_wait" if state.get("dast_run_id") else after_dast
 
     def route_ask_dast(state: PipelineState) -> str:
@@ -63,7 +65,7 @@ def step_routes(cutover: bool, release: bool = False) -> dict[str, tuple[Any, tu
         "ask_sast": (after_step("stage_start"), ("stage_start", HALTED)),
         "stage_start": (after_step("stage_wait"), ("stage_wait", HALTED)),
         "stage_wait": (after_step("dast_start"), ("dast_start", HALTED)),
-        "dast_start": (route_dast_start, ("dast_wait", after_dast, HALTED)),
+        "dast_start": (route_dast_start, ("ask_dast", "dast_wait", after_dast, HALTED)),
         "dast_wait": (route_gate("ask_dast", after_dast), ("ask_dast", after_dast, HALTED)),
         "ask_dast": (route_ask_dast, ("fix_apply", after_dast, HALTED)),
         "done": (after_step(END), (END, HALTED)),
