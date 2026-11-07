@@ -962,7 +962,7 @@ function Workspace({
               + 서비스 등록
             </button>
           </div>
-          {route.view === "overview" && (
+          {route.view === "overview" && !register && (
             <section
               className="workspace-journey"
               aria-label="서비스 작업 흐름"

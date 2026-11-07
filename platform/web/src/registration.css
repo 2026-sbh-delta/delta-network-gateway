@@ -1,0 +1,177 @@
+/* New project registration: three grouped steps on the left, a sticky summary on the right. */
+.reg-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 24px;
+  align-items: start;
+}
+.reg-steps {
+  display: grid;
+  gap: 16px;
+}
+.reg-step {
+  margin: 0;
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #fff;
+}
+.reg-step legend {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 6px;
+  font-weight: 700;
+}
+.reg-step legend span {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-size: 12px;
+}
+.reg-step details summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: var(--text-small);
+}
+.reg-clouds {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.reg-cloud {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+}
+.reg-cloud input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.reg-cloud small {
+  color: var(--muted);
+}
+.reg-cloud.on {
+  border-color: var(--accent);
+  background: #eef3ff;
+  box-shadow: 0 0 0 1px var(--accent) inset;
+}
+.reg-cloud:has(input:focus-visible) {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.reg-warn {
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #fff7e6;
+  color: #8a5a00;
+  font-size: var(--text-small);
+}
+.reg-summary {
+  position: sticky;
+  top: 16px;
+  display: grid;
+  gap: 10px;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #f8faff;
+}
+.reg-summary h3 {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+.reg-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.reg-chips li {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: #fff;
+  border: 1px solid var(--border);
+  font-size: 12px;
+}
+.reg-flow {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: flow;
+}
+.reg-flow li {
+  position: relative;
+  padding: 4px 0 4px 26px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.reg-flow li::before {
+  counter-increment: flow;
+  content: counter(flow);
+  position: absolute;
+  left: 0;
+  top: 5px;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  font-size: 11px;
+  background: #fff;
+}
+.reg-flow li.now {
+  color: var(--ink);
+  font-weight: 650;
+}
+.reg-flow li.now::before {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+.reg-summary .muted {
+  margin: 0;
+  font-size: 12px;
+}
+.reg-summary > .primary {
+  width: 100%;
+}
+.reg-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.reg-links button {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--accent);
+  font-size: 13px;
+  cursor: pointer;
+}
+@media (max-width: 860px) {
+  .reg-layout {
+    grid-template-columns: 1fr;
+  }
+  .reg-summary {
+    position: static;
+  }
+  .reg-clouds {
+    grid-template-columns: 1fr;
+  }
+}
