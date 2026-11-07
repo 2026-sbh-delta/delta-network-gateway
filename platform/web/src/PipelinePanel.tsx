@@ -239,12 +239,14 @@ function FlowNode({
   stage,
   selected,
   onSelect,
+  top,
 }: {
   stage: Stage;
   selected: boolean;
   onSelect: () => void;
+  top?: number;
 }) {
-  const pos = LAYOUT[stage.id];
+  const pos = { ...LAYOUT[stage.id], ...(top ? { y: top } : {}) };
   const rows = stage.steps.filter((s) => s.state !== "mock");
   const mock = stage.steps.filter((s) => s.state === "mock");
   const time = (id: string) => {
@@ -254,6 +256,7 @@ function FlowNode({
   return (
     <div
       className={`lf-node s-${stage.state} lane-${stage.lane}${selected ? " selected" : ""}`}
+      data-stage={stage.id}
       style={{ left: pos.x, top: pos.y, width: pos.w }}
       role="button"
       tabIndex={0}
@@ -391,6 +394,9 @@ function FlowCanvas({
   const stage = useRef<HTMLDivElement>(null);
   const [ports, setPorts] = useState<Record<string, [number, number]>>({});
   const [pan, setPan] = useState({ x: 0, y: 0 });
+  // The web lane grows while DAST/fix rows fill in; the diff lane sits below its tallest node.
+  const [diffY, setDiffY] = useState(LAYOUT.diff.y);
+  const [height, setHeight] = useState(CANVAS.h);
   const drag = useRef<{ x: number; y: number; px: number; py: number } | null>(
     null,
   );
@@ -398,6 +404,17 @@ function FlowCanvas({
   useLayoutEffect(() => {
     const root = stage.current;
     if (!root) return;
+    const bottom = (id: string) => {
+      const el = root.querySelector<HTMLElement>(`[data-stage="${id}"]`);
+      return el ? el.offsetTop + el.offsetHeight : 0;
+    };
+    const nextDiff = Math.max(
+      LAYOUT.diff.y,
+      Math.max(bottom("build"), bottom("verify")) + 72,
+    );
+    if (nextDiff !== diffY) return setDiffY(nextDiff);
+    const nextHeight = Math.max(CANVAS.h, bottom("diff") + 40);
+    if (nextHeight !== height) setHeight(nextHeight);
     const base = root.getBoundingClientRect();
     const found: Record<string, [number, number]> = {};
     root.querySelectorAll<HTMLElement>("[data-port]").forEach((el) => {
@@ -410,7 +427,7 @@ function FlowCanvas({
     setPorts((old) =>
       JSON.stringify(old) === JSON.stringify(found) ? old : found,
     );
-  }, [board, zoom]);
+  }, [board, zoom, diffY, height]);
   // Fit the flow into the visible area when the window size changes.
   useEffect(() => {
     const el = view.current;
@@ -420,14 +437,14 @@ function FlowCanvas({
         Math.min(
           1.1,
           (el.clientWidth - 48) / CANVAS.w,
-          (el.clientHeight - 96) / CANVAS.h,
+          (el.clientHeight - 96) / height,
         ),
       );
     fit();
     const ro = new ResizeObserver(fit);
     ro.observe(el);
     return () => ro.disconnect();
-  }, []);
+  }, [height]);
   const edgeClass = (from: string, to: string) => {
     const a = state[from];
     const b = state[to];
@@ -458,20 +475,20 @@ function FlowCanvas({
         ref={stage}
         style={{
           width: CANVAS.w,
-          height: CANVAS.h,
+          height,
           transform: `translate(calc(-50% + ${pan.x}px), calc(-50% + ${pan.y}px)) scale(${zoom})`,
         }}
       >
         <span className="lf-lane web" style={{ left: 40, top: 14 }}>
           웹 배포 에이전트
         </span>
-        <span className="lf-lane infra" style={{ left: 40, top: 334 }}>
+        <span className="lf-lane infra" style={{ left: 40, top: diffY - 58 }}>
           차분 분석 에이전트
         </span>
         <svg
           className="lf-wires"
           width={CANVAS.w}
-          height={CANVAS.h}
+          height={height}
           aria-hidden="true"
         >
           {WIRES.map(([a, b]) => {
@@ -492,6 +509,7 @@ function FlowCanvas({
             stage={s}
             selected={selected === s.id}
             onSelect={() => onSelect(s.id)}
+            top={s.id === "diff" ? diffY : undefined}
           />
         ))}
         {gates.map((g) => (
@@ -504,6 +522,87 @@ function FlowCanvas({
         ))}
       </div>
     </div>
+  );
+}
+
+// While a run is live: what is happening now, the step history and the running Jenkins console tail.
+const JENKINS_NODE = new Set(["build", "stage", "release"]);
+function Activity({ board }: { board: Board }) {
+  const [, tick] = useState(0);
+  const [tail, setTail] = useState("");
+  useEffect(() => {
+    const t = setInterval(() => tick((n) => n + 1), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const running = board.nodes.filter(
+    (n) => n.state === "running" || n.state === "waiting",
+  );
+  const logNode = running.find((n) => JENKINS_NODE.has(n.id))?.id;
+  useEffect(() => {
+    setTail("");
+    if (!logNode) return;
+    let stop = false;
+    const load = () =>
+      api<{ text: string }>(`/pipeline/runs/${board.run_id}/log/${logNode}`)
+        .then((r) => {
+          if (!stop)
+            setTail(
+              r.text
+                .split("\n")
+                .filter((l) => l.trim())
+                .slice(-8)
+                .join("\n"),
+            );
+        })
+        .catch(() => undefined);
+    load();
+    const t = setInterval(load, 4000);
+    return () => {
+      stop = true;
+      clearInterval(t);
+    };
+  }, [board.run_id, logNode]);
+  const history = board.nodes
+    .filter((n) => n.started_at && n.state !== "skipped")
+    .sort((a, b) => (b.started_at ?? 0) - (a.started_at ?? 0));
+  return (
+    <aside className="flow-activity" aria-label="진행 상황">
+      <header>
+        <strong>진행 상황</strong>
+        <span>{duration(board.started_at, null)}</span>
+      </header>
+      {running.map((n) => (
+        <div key={n.id} className={`fa-now s-${n.state}`}>
+          <span className="lf-spin" />
+          <div>
+            <b>
+              {n.label}
+              <small>{duration(n.started_at, null)}</small>
+            </b>
+            <p>
+              {n.state === "waiting" ? "승인 대기" : n.summary || "진행 중"}
+            </p>
+          </div>
+        </div>
+      ))}
+      {tail && (
+        <pre className="fa-tail" aria-label="Jenkins 로그">
+          {tail}
+        </pre>
+      )}
+      <ol className="fa-history">
+        {history.map((n) => (
+          <li key={n.id} className={`s-${n.state}`}>
+            <i />
+            <span>
+              <b>{n.label}</b>
+              {n.summary && <small>{n.summary}</small>}
+            </span>
+            <time>{duration(n.started_at, n.ended_at)}</time>
+          </li>
+        ))}
+      </ol>
+    </aside>
   );
 }
 
@@ -1163,7 +1262,7 @@ export function PipelinePanel({ runId: linked }: { runId?: string | null }) {
     : "";
 
   return (
-    <div className="flow-page">
+    <div className={`flow-page${live && !showPanel ? " with-activity" : ""}`}>
       {board ? (
         <FlowCanvas
           board={board}
@@ -1306,6 +1405,7 @@ export function PipelinePanel({ runId: linked }: { runId?: string | null }) {
           onClose={() => setClosedFix(fixKey)}
         />
       )}
+      {board && live && !showPanel && <Activity board={board} />}
       {board && showPanel && selection && (
         <aside className="flow-panel" aria-label="단계 상세">
           <button

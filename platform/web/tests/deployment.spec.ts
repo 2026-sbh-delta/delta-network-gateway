@@ -314,7 +314,7 @@ async function fixture(
           repo: extra.pipelineRepo,
           branch: "main",
           branches: ["main"],
-          commits: [],
+          commits: [{ sha: "c".repeat(40), message: "최신" }],
           release_targets: [
             { id: "a-corp-gcp-prod", cloud: "gcp", label: "A기업 GCP 운영" },
           ],
@@ -616,11 +616,12 @@ test("GCP 이전은 보안 파이프라인으로 시작하고 온프레미스만
   await panel.getByLabel("온프레미스 등록 호스트").selectOption("host-1");
   await expect(panel).toContainText("GCP · 보안 파이프라인");
   await expect(panel).toContainText("온프레미스 · 플랫폼 배포 함께 실행");
+  await expect(panel).toContainText("실행 커밋 ccccccc · main 최신");
   await panel.getByRole("button", { name: "파이프라인 시작" }).click();
   await expect(page).toHaveURL(/#\/pipeline\/run123$/);
   expect(state.pipelineBody).toEqual({
     branch: "main",
-    commit: "a".repeat(40),
+    commit: "c".repeat(40),
     cutover: true,
     release_target: "a-corp-gcp-prod",
   });

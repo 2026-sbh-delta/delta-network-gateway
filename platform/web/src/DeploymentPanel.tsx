@@ -38,6 +38,8 @@ const targetStatus: Record<string, string> = {
 // GCP migration target: its release uses the same GCP deployment, so the platform plan skips GCP.
 type PipelineOptions = {
   repo: string;
+  branch?: string;
+  commits?: { sha: string; message: string }[];
   release_targets: { id: string; cloud?: string; label: string }[];
   cutover_configured: boolean;
 };
@@ -101,11 +103,15 @@ export function DeploymentPanel({ serviceId }: { serviceId: string }) {
   const [pipeline, setPipeline] = useState<PipelineOptions | null>(null);
   const buildsReady = useMemo(() => builds.filter(readyBuild), [builds]);
 
+  // The pipeline builds and scans from source itself, so it runs the latest commit of the
+  // registered branch (the platform image may be older and miss the current code).
+  const sourceRef = service?.source_ref;
   useEffect(() => {
+    if (!sourceRef) return;
     const controller = new AbortController();
     setPipeline(null);
     api<PipelineOptions>(
-      "/pipeline/options",
+      `/pipeline/options?branch=${encodeURIComponent(sourceRef)}`,
       undefined,
       undefined,
       controller.signal,
@@ -116,7 +122,7 @@ export function DeploymentPanel({ serviceId }: { serviceId: string }) {
       // Without the pipeline link the panel keeps the platform-only plan flow.
       .catch(() => undefined);
     return () => controller.abort();
-  }, [serviceId]);
+  }, [serviceId, sourceRef]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -386,6 +392,7 @@ export function DeploymentPanel({ serviceId }: { serviceId: string }) {
   async function createPlan(event: React.FormEvent) {
     event.preventDefault();
     if (usePipeline) return startPipeline();
+    if (busy) return;
     const body = {
       kind,
       build_id: buildId,
@@ -447,10 +454,10 @@ export function DeploymentPanel({ serviceId }: { serviceId: string }) {
   // GCP goes through the security pipeline; any other target (on-premises) still runs as a
   // platform plan, approved by the same click. Then the pipeline graph takes over the screen.
   async function startPipeline() {
-    if (!service || !chosenBuild?.resolved_commit_sha || !gcpRelease) return;
+    if (!service || !pipelineCommit || !gcpRelease) return;
     const run = {
       branch: service.source_ref,
-      commit: chosenBuild.resolved_commit_sha,
+      commit: pipelineCommit,
       cutover: !!pipeline?.cutover_configured,
       release_target: gcpRelease.id,
     };
@@ -461,14 +468,31 @@ export function DeploymentPanel({ serviceId }: { serviceId: string }) {
     setError("");
     setNotice("");
     let runId = "";
+    const asked = Date.now() / 1000;
     try {
-      runId = (
-        await api<{ run_id: string }>(
-          "/pipeline/runs",
-          run,
-          pipelineKey.current.key,
-        )
-      ).run_id;
+      try {
+        runId = (
+          await api<{ run_id: string }>(
+            "/pipeline/runs",
+            run,
+            pipelineKey.current.key,
+          )
+        ).run_id;
+      } catch (e) {
+        // A slow start can time out on the way back although the run began; look for it.
+        const { runs } = await api<{
+          runs: {
+            run_id: string;
+            started_at: number;
+            options: { commit?: string };
+          }[];
+        }>("/pipeline/runs").catch(() => ({ runs: [] }));
+        const started = runs.find(
+          (r) => r.options.commit === run.commit && r.started_at >= asked - 5,
+        );
+        if (!started) throw e;
+        runId = started.run_id;
+      }
       pipelineKey.current = null;
       if (platformTargets.length > 0) {
         const plan = await api<DeploymentPlan>(
@@ -504,13 +528,15 @@ export function DeploymentPanel({ serviceId }: { serviceId: string }) {
   const source = environments.find((item) => item.id === sourceId);
   const chosenBuild = buildsReady.find((item) => item.id === buildId);
   const gcpRelease = pipeline?.release_targets.find((t) => t.cloud === "gcp");
+  const pipelineCommit = pipeline?.commits?.[0]?.sha;
   const pipelineRepo =
     !!pipeline && !!service && sameRepo(pipeline.repo, service.repository_url);
   const usePipeline =
     kind === "migration" &&
     targets.some((t) => t.cloud === "gcp") &&
     pipelineRepo &&
-    !!gcpRelease;
+    !!gcpRelease &&
+    !!pipelineCommit;
   const platformTargets = usePipeline
     ? targets.filter((t) => t.cloud !== "gcp")
     : targets;
@@ -813,6 +839,10 @@ export function DeploymentPanel({ serviceId }: { serviceId: string }) {
                 <span>
                   빌드 → SAST → 스테이징 → DAST·AI 수정 → 차분 → 운영 배포 승인
                   → 도메인 전환
+                </span>
+                <span>
+                  실행 커밋 <code>{pipelineCommit?.slice(0, 7)}</code> ·{" "}
+                  {service?.source_ref} 최신
                 </span>
                 {platformTargets.length > 0 && (
                   <span>
