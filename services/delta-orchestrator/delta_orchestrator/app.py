@@ -503,6 +503,11 @@ def create_app(pipelines: Pipelines | None = None, *, case_review_client_factory
         board = board_of(run_id)
         return await relay(lambda c: live.dast_view(c, board, f"/api/pipeline/runs/{run_id}/live/dast"))
 
+    @app.get("/api/pipeline/runs/{run_id}/live/dast/fix")
+    async def live_dast_fix(run_id: str):
+        board = board_of(run_id)
+        return await relay(lambda c: live.dast_fix(c, board))
+
     @app.get("/api/pipeline/runs/{run_id}/live/dast/artifacts/{name}")
     async def live_dast_artifact(run_id: str, name: str):
         board = board_of(run_id)

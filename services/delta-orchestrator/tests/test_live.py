@@ -98,3 +98,19 @@ def test_dast_artifact_only_png_names():
     for bad in ("../x.png", "report.json", "a.png.html"):
         with pytest.raises(live.LiveError):
             run(live.dast_artifact(client(handler), BOARD, bad))
+
+
+def test_dast_fix_reads_the_proposal_for_the_reproduced_finding(monkeypatch):
+    monkeypatch.setenv("DAST_PLATFORM_TOKEN", "platform-token-for-tests")
+    board = {"run_id": "r1", "nodes": [{"id": "dast", "detail": {"run_id": DAST_ID, "results": [
+        {"finding_id": "sast-ok", "status": "NOT_REPRODUCED"}, {"finding_id": "sast-abc", "status": "REPRODUCED"}]}}]}
+
+    def handler(request):
+        assert request.url.path == f"/api/runs/{DAST_ID}/findings/sast-abc/fix"
+        assert request.headers["authorization"] == "Bearer platform-token-for-tests"
+        return httpx.Response(200, json={"status": "ready", "patch": "-a\n+b\n", "summary": "s", "context": "x"})
+
+    out = run(live.dast_fix(client(handler), board))
+    assert out["finding_id"] == "sast-abc" and out["patch"] == "-a\n+b\n" and "context" not in out
+    with pytest.raises(live.LiveError):
+        run(live.dast_fix(client(handler), {"nodes": [{"id": "dast", "detail": {"run_id": DAST_ID, "results": []}}]}))
