@@ -40,3 +40,20 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+.application-retired {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: #eef3ff;
+  border: 1px solid #c7d4f7;
+}
+.application-retired p {
+  margin: 0;
+  flex: 1 1 320px;
+  font-size: var(--text-small);
+}

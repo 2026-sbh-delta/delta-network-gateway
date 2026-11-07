@@ -20,8 +20,9 @@ def bundle(commit: str, tag: str) -> dict:
             "image_digest": digests["frontend"], "registry_images": {"gcp": images}}
 
 
-def board(path, run_id: str, commit: str, built: str, tag: str, at: float, cloud: str = "gcp") -> None:
-    data = {"run_id": run_id, "options": {"repo": REPO, "commit": commit, "execution_cloud": cloud},
+def board(path, run_id: str, commit: str, built: str, tag: str, at: float, cloud: str = "gcp",
+          branch: str = "main") -> None:
+    data = {"run_id": run_id, "options": {"repo": REPO, "commit": commit, "execution_cloud": cloud, "branch": branch},
             "nodes": [{"id": "build", "state": "pass", "detail": {"bundle": bundle(built, tag)}}]}
     file = path / mod.BOARD_DIR / f"{run_id}.json"
     file.write_text(json.dumps(data))
@@ -43,8 +44,10 @@ def test_picks_the_unfixed_build_of_the_current_main_commit(tmp_path):
     board(tmp_path, "fixed", "a" * 40, "c" * 40, "2", now - 100)  # 수정 후 재빌드: 커밋이 바뀜
     board(tmp_path, "older", "b" * 40, "b" * 40, "4", now - 80)  # 예전 커밋(취약 게시판 이전)
     board(tmp_path, "onprem", "a" * 40, "a" * 40, "3", now - 50, cloud="onprem")
+    board(tmp_path, "branch", "e" * 40, "e" * 40, "5", now - 10, branch="feat/x")  # 작업 브랜치 빌드
     reset = mod.DemoReset(Idle(tmp_path), mod.DomainRevert())
-    found, repo = reset.vulnerable_bundle(head=lambda repo, branch: "a" * 40)
+    heads = {"main": "a" * 40, "feat/x": "e" * 40}
+    found, repo = reset.vulnerable_bundle(head=lambda repo, branch: heads[branch])
     assert found["commit"] == "a" * 40 and found["image_digests"]["frontend"] == "sha256:" + "1" * 64
     assert repo == REPO
     with pytest.raises(RuntimeError, match="main 현재 커밋"):

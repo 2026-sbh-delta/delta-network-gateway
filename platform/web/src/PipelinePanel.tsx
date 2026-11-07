@@ -874,11 +874,23 @@ type MapRow = {
   differences: string[];
 };
 const GRADE: Record<string, string> = {
+  exact: "일치",
   match: "일치",
   approximate: "근사",
   gap: "공백",
   unknown: "확인 필요",
 };
+// Mapping rows grouped by what they describe, server first, then network and security.
+const RESOURCE: [string, string][] = [
+  ["compute", "서버"],
+  ["cpu_arch", "CPU"],
+  ["os", "운영체제"],
+  ["database", "데이터베이스"],
+  ["load_balancer", "로드밸런서"],
+  ["subnet", "네트워크"],
+  ["identity", "권한"],
+  ["security", "보안 탐지"],
+];
 
 type TraceStep = { role: string; file: string; line?: number };
 type DastResult = { finding_id: string; status: string };
@@ -975,39 +987,72 @@ function VulnStory({ board }: { board: Board }) {
 function MappingTable({ node }: { node: BoardNode }) {
   const rows = (node.detail.rows as MapRow[] | undefined) ?? [];
   if (!rows.length) return null;
-  const count = (g: string) => rows.filter((r) => r.grade === g).length;
+  const grade = (r: MapRow) => (r.grade === "match" ? "exact" : r.grade);
+  const order = ["exact", "approximate", "gap", "unknown"];
+  const count = (g: string) => rows.filter((r) => grade(r) === g).length;
+  const known = new Set(RESOURCE.map(([k]) => k));
+  const groups = [
+    ...RESOURCE,
+    ...[...new Set(rows.map((r) => r.resource))]
+      .filter((k) => !known.has(k))
+      .map((k): [string, string] => [k, k]),
+  ]
+    .map(([key, label]) => ({
+      key,
+      label,
+      rows: rows.filter((r) => r.resource === key),
+    }))
+    .filter((g) => g.rows.length);
   return (
     <div className="pl-mapping">
-      <div className="pl-mapping-sum">
-        <span>매핑 {rows.length}행</span>
-        {["match", "approximate", "gap", "unknown"].map((g) => (
-          <span key={g} className={`grade g-${g}`}>
-            {GRADE[g]} {count(g)}
-          </span>
-        ))}
-      </div>
-      <table>
-        <thead>
-          <tr>
-            <th>AWS 구성</th>
-            <th>GCP 대응</th>
-            <th>판정</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r, i) => (
-            <tr key={i}>
-              <td>{r.source}</td>
-              <td>{r.target || "—"}</td>
-              <td>
-                <span className={`grade g-${r.grade}`}>
-                  {GRADE[r.grade] ?? r.grade}
-                </span>
-              </td>
-            </tr>
+      <div className="mp-head">
+        <strong>AWS → GCP 매핑 {rows.length}건</strong>
+        <div className="mp-bar" aria-hidden="true">
+          {order.map((g) =>
+            count(g) ? (
+              <i key={g} className={`g-${g}`} style={{ flex: count(g) }} />
+            ) : null,
+          )}
+        </div>
+        <div className="mp-legend">
+          {order.map((g) => (
+            <span key={g} className={`grade g-${g}`}>
+              {GRADE[g]} {count(g)}
+            </span>
           ))}
-        </tbody>
-      </table>
+        </div>
+      </div>
+      {groups.map((g) => (
+        <section key={g.key} className="mp-group">
+          <h5>
+            {g.label}
+            <small>{g.rows.length}</small>
+          </h5>
+          {g.rows.map((r, i) => (
+            <details key={i} className={`mp-row g-${grade(r)}`}>
+              <summary>
+                <span className="mp-src">{r.source}</span>
+                <span className="mp-arrow" aria-hidden="true">
+                  →
+                </span>
+                <span className={`mp-dst${r.target ? "" : " none"}`}>
+                  {r.target || "대응 없음"}
+                </span>
+                <span className={`grade g-${grade(r)}`}>
+                  {GRADE[grade(r)] ?? r.grade}
+                </span>
+              </summary>
+              {r.differences?.length > 0 && (
+                <ul>
+                  {r.differences.map((d, j) => (
+                    <li key={j}>{d}</li>
+                  ))}
+                </ul>
+              )}
+            </details>
+          ))}
+        </section>
+      ))}
     </div>
   );
 }
