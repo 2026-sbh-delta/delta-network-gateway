@@ -16,6 +16,8 @@
 - 임시 PostgreSQL을 이용해 `backend/.venv/bin/pytest -q` 실행: 275개 통과, 1개 제외. 신규 DB 마이그레이션을 실행했다. `pytest -q tests/test_worker.py tests/test_rollback_schema_compatibility.py`: 11개 통과, 기존 `0013` 예약 데이터 보존과 작업 선택을 검증했다.
 - `python3 -m unittest discover -s deploy/tests -p test_onprem_runtime_merge.py -v`: 5개 통과. 변경 파일 Ruff 검사 통과.
 
+- 원격 CI 첫 실행에서 배포 테스트 65개는 통과했으나 새 테스트 파일의 Ruff 형식 검사에서 실패했다. `ruff format`으로 수정하고 로컬 형식 및 병합 테스트를 다시 통과했다. 원격 재검증은 다음 실행을 따른다.
+
 ## Operation (2026-11-07 KST)
 
 - 호환 코드 운영 배포는 아직 실행하지 않았다. 기존 운영 서비스는 `/health/ready` 응답을 확인했다.
