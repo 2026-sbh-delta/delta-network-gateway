@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { api, message } from "./api";
 import {
+  choices,
   OUTCOME,
   STATE_LABEL,
   activeStage,
@@ -796,7 +797,7 @@ function Approval({
       <strong>{decision.prompt}</strong>
       {node.id === "dast" && <FixProposal board={board} />}
       <div>
-        {decision.options.map((o) => (
+        {choices(decision).map((o) => (
           <button
             key={o.value}
             className={
