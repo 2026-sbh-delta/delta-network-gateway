@@ -1,0 +1,2065 @@
+{
+  "$defs": {
+    "AssessmentResult": {
+      "additionalProperties": false,
+      "properties": {
+        "assessment_id": {
+          "title": "Assessment Id",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "migration_parity",
+            "feedback_ingest",
+            "deployment_gate",
+            "runtime_security",
+            "dast_verification",
+            "migration_mapping"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "verdict": {
+          "enum": [
+            "pass",
+            "fix",
+            "needs_human"
+          ],
+          "title": "Verdict",
+          "type": "string"
+        },
+        "reasons": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Reasons",
+          "type": "array"
+        },
+        "findings": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Finding"
+          },
+          "title": "Findings",
+          "type": "array"
+        },
+        "checks": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Check"
+          },
+          "title": "Checks",
+          "type": "array"
+        },
+        "verified_controls": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/VerifiedControl"
+          },
+          "title": "Verified Controls",
+          "type": "array"
+        },
+        "posture": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PostureResult"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "mapping": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MappingResult"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "remediation": {
+          "$ref": "#/$defs/Remediation",
+          "default": {
+            "spec_ops": [],
+            "waf_rules": []
+          }
+        },
+        "rule_candidates": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/RuleCandidate"
+          },
+          "title": "Rule Candidates",
+          "type": "array"
+        },
+        "meta": {
+          "$ref": "#/$defs/Meta",
+          "default": {
+            "llm_used": false,
+            "model": null,
+            "prompt_version": null,
+            "input_hash": null,
+            "usage": {},
+            "duration_ms": 0
+          }
+        },
+        "execution_context": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ExecutionContext"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "assessment_id",
+        "kind",
+        "verdict"
+      ],
+      "title": "AssessmentResult",
+      "type": "object"
+    },
+    "Check": {
+      "additionalProperties": false,
+      "properties": {
+        "rule_id": {
+          "title": "Rule Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "state": {
+          "enum": [
+            "green",
+            "red",
+            "unknown"
+          ],
+          "title": "State",
+          "type": "string"
+        }
+      },
+      "required": [
+        "rule_id",
+        "name",
+        "state"
+      ],
+      "title": "Check",
+      "type": "object"
+    },
+    "CostEstimate": {
+      "additionalProperties": false,
+      "description": "같은 사용 시간 기준 참고 값이다. 판정에 쓰지 않으며 실제 청구액이 아니다.",
+      "properties": {
+        "currency": {
+          "const": "USD",
+          "default": "USD",
+          "title": "Currency",
+          "type": "string"
+        },
+        "hours_per_month": {
+          "title": "Hours Per Month",
+          "type": "integer"
+        },
+        "priced_on": {
+          "title": "Priced On",
+          "type": "string"
+        },
+        "source_region": {
+          "title": "Source Region",
+          "type": "string"
+        },
+        "target_region": {
+          "title": "Target Region",
+          "type": "string"
+        },
+        "lines": {
+          "items": {
+            "$ref": "#/$defs/CostLine"
+          },
+          "title": "Lines",
+          "type": "array"
+        },
+        "source_total": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Source Total"
+        },
+        "target_total": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Target Total"
+        },
+        "difference_total": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Difference Total"
+        },
+        "excludes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Excludes",
+          "type": "array"
+        }
+      },
+      "required": [
+        "hours_per_month",
+        "priced_on",
+        "source_region",
+        "target_region",
+        "lines",
+        "source_total",
+        "target_total",
+        "difference_total",
+        "excludes"
+      ],
+      "title": "CostEstimate",
+      "type": "object"
+    },
+    "CostLine": {
+      "additionalProperties": false,
+      "description": "서버 한 대의 월 예상 비용. 단가를 모르는 쪽은 None 이다.",
+      "properties": {
+        "server": {
+          "title": "Server",
+          "type": "string"
+        },
+        "source_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Source Type"
+        },
+        "target_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Target Type"
+        },
+        "source_monthly": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Source Monthly"
+        },
+        "target_monthly": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Target Monthly"
+        },
+        "difference": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Difference"
+        },
+        "notes": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Notes",
+          "type": "array"
+        }
+      },
+      "required": [
+        "server",
+        "source_type",
+        "target_type",
+        "source_monthly",
+        "target_monthly",
+        "difference"
+      ],
+      "title": "CostLine",
+      "type": "object"
+    },
+    "ExecutionContext": {
+      "additionalProperties": false,
+      "properties": {
+        "project_id": {
+          "format": "uuid",
+          "title": "Project Id",
+          "type": "string"
+        },
+        "service_id": {
+          "format": "uuid",
+          "title": "Service Id",
+          "type": "string"
+        },
+        "workflow_id": {
+          "format": "uuid",
+          "title": "Workflow Id",
+          "type": "string"
+        },
+        "run_id": {
+          "format": "uuid",
+          "title": "Run Id",
+          "type": "string"
+        },
+        "environment_id": {
+          "format": "uuid",
+          "title": "Environment Id",
+          "type": "string"
+        },
+        "source_environment_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Environment Id"
+        },
+        "source_provider": {
+          "anyOf": [
+            {
+              "enum": [
+                "aws",
+                "gcp",
+                "onprem"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Provider"
+        },
+        "target_provider": {
+          "enum": [
+            "aws",
+            "gcp",
+            "onprem"
+          ],
+          "title": "Target Provider",
+          "type": "string"
+        },
+        "repository_url": {
+          "title": "Repository Url",
+          "type": "string"
+        },
+        "commit_sha": {
+          "pattern": "^[a-f0-9]{40}$",
+          "title": "Commit Sha",
+          "type": "string"
+        },
+        "image_digest": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Image Digest",
+          "type": "string"
+        },
+        "plan_hash": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Plan Hash",
+          "type": "string"
+        },
+        "payload_hash": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Payload Hash",
+          "type": "string"
+        }
+      },
+      "required": [
+        "project_id",
+        "service_id",
+        "workflow_id",
+        "run_id",
+        "environment_id",
+        "target_provider",
+        "repository_url",
+        "commit_sha",
+        "image_digest",
+        "plan_hash",
+        "payload_hash"
+      ],
+      "title": "ExecutionContext",
+      "type": "object"
+    },
+    "ExistingSubnet": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "cidr": {
+          "title": "Cidr",
+          "type": "string"
+        },
+        "tier": {
+          "anyOf": [
+            {
+              "enum": [
+                "public",
+                "private"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tier"
+        }
+      },
+      "required": [
+        "name",
+        "cidr"
+      ],
+      "title": "ExistingSubnet",
+      "type": "object"
+    },
+    "Finding": {
+      "additionalProperties": false,
+      "properties": {
+        "finding_id": {
+          "title": "Finding Id",
+          "type": "string"
+        },
+        "rule_id": {
+          "title": "Rule Id",
+          "type": "string"
+        },
+        "category": {
+          "title": "Category",
+          "type": "string"
+        },
+        "severity": {
+          "enum": [
+            "high",
+            "medium",
+            "low"
+          ],
+          "title": "Severity",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "fail",
+            "unknown",
+            "dismissed"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "autofix": {
+          "enum": [
+            "allowed",
+            "forbidden"
+          ],
+          "title": "Autofix",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "location": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Location",
+          "type": "object"
+        },
+        "evidence": {
+          "default": "",
+          "title": "Evidence",
+          "type": "string"
+        },
+        "snippet": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Snippet"
+        },
+        "has_doc": {
+          "default": false,
+          "title": "Has Doc",
+          "type": "boolean"
+        },
+        "why": {
+          "default": "",
+          "title": "Why",
+          "type": "string"
+        },
+        "citations": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Citations",
+          "type": "array"
+        },
+        "ops": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/SpecOp"
+          },
+          "title": "Ops",
+          "type": "array"
+        },
+        "waf_rules": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/WafRule"
+          },
+          "title": "Waf Rules",
+          "type": "array"
+        }
+      },
+      "required": [
+        "finding_id",
+        "rule_id",
+        "category",
+        "severity",
+        "status",
+        "autofix",
+        "title"
+      ],
+      "title": "Finding",
+      "type": "object"
+    },
+    "KubernetesInventory": {
+      "additionalProperties": false,
+      "properties": {
+        "workloads": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Workload"
+          },
+          "maxItems": 200,
+          "title": "Workloads",
+          "type": "array"
+        },
+        "volumes": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Volume"
+          },
+          "maxItems": 200,
+          "title": "Volumes",
+          "type": "array"
+        },
+        "load_balancers": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/SourceLoadBalancer"
+          },
+          "maxItems": 200,
+          "title": "Load Balancers",
+          "type": "array"
+        },
+        "databases": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/SourceDatabase"
+          },
+          "maxItems": 200,
+          "title": "Databases",
+          "type": "array"
+        },
+        "network_policies": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 200,
+          "title": "Network Policies",
+          "type": "array"
+        },
+        "unsupported_kinds": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 200,
+          "title": "Unsupported Kinds",
+          "type": "array"
+        }
+      },
+      "title": "KubernetesInventory",
+      "type": "object"
+    },
+    "ManifestMeta": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "kubernetes_yaml",
+          "default": "kubernetes_yaml",
+          "title": "Kind",
+          "type": "string"
+        },
+        "sha256": {
+          "title": "Sha256",
+          "type": "string"
+        },
+        "resource_count": {
+          "title": "Resource Count",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "sha256",
+        "resource_count"
+      ],
+      "title": "ManifestMeta",
+      "type": "object"
+    },
+    "MappingInput": {
+      "additionalProperties": false,
+      "description": "이전 전에 무엇을 만들지 정하는 입력. AWS·GCP·k3s 간 매핑을 다룬다.\n\n방향마다 대응표가 따로 있어서, 출발과 맞지 않는 값(다른 CSP 의 리전·타입·보안 도구)을 받으면 거부한다.\n잘못된 방향의 결과를 그럴듯하게 내지 않으려는 것이다.",
+      "properties": {
+        "source_provider": {
+          "default": "aws",
+          "enum": [
+            "aws",
+            "gcp",
+            "onprem"
+          ],
+          "title": "Source Provider",
+          "type": "string"
+        },
+        "target_provider": {
+          "default": "gcp",
+          "enum": [
+            "aws",
+            "gcp",
+            "onprem"
+          ],
+          "title": "Target Provider",
+          "type": "string"
+        },
+        "network_mode": {
+          "default": "create",
+          "enum": [
+            "create",
+            "reuse"
+          ],
+          "title": "Network Mode",
+          "type": "string"
+        },
+        "region": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Region"
+        },
+        "source_region": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Region"
+        },
+        "subnets": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/SourceSubnet"
+          },
+          "title": "Subnets",
+          "type": "array"
+        },
+        "servers": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/SourceServer"
+          },
+          "title": "Servers",
+          "type": "array"
+        },
+        "security": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceSecurity"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "load_balancers": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/SourceLoadBalancer"
+          },
+          "maxItems": 200,
+          "title": "Load Balancers",
+          "type": "array"
+        },
+        "databases": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/SourceDatabase"
+          },
+          "maxItems": 200,
+          "title": "Databases",
+          "type": "array"
+        },
+        "kubernetes": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/KubernetesInventory"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "target_kubernetes": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/KubernetesInventory"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "existing_subnets": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/ExistingSubnet"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Existing Subnets"
+        },
+        "reserved_cidrs": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Reserved Cidrs",
+          "type": "array"
+        },
+        "scc_tier": {
+          "anyOf": [
+            {
+              "enum": [
+                "standard",
+                "premium"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Scc Tier"
+        },
+        "accepted_gaps": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Accepted Gaps",
+          "type": "array"
+        }
+      },
+      "title": "MappingInput",
+      "type": "object"
+    },
+    "MappingResult": {
+      "additionalProperties": false,
+      "properties": {
+        "region": {
+          "title": "Region",
+          "type": "string"
+        },
+        "network_mode": {
+          "enum": [
+            "create",
+            "reuse"
+          ],
+          "title": "Network Mode",
+          "type": "string"
+        },
+        "rows": {
+          "items": {
+            "$ref": "#/$defs/MappingRow"
+          },
+          "title": "Rows",
+          "type": "array"
+        },
+        "assumptions": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Assumptions",
+          "type": "array"
+        },
+        "cost": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CostEstimate"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "region",
+        "network_mode",
+        "rows"
+      ],
+      "title": "MappingResult",
+      "type": "object"
+    },
+    "MappingRow": {
+      "additionalProperties": false,
+      "description": "매핑표 한 행. 등급은 이전 전 판단이고 실제로 같은지는 migration_parity 와 시험으로 확인한다.",
+      "properties": {
+        "resource": {
+          "enum": [
+            "subnet",
+            "compute",
+            "cpu_arch",
+            "os",
+            "identity",
+            "security",
+            "load_balancer",
+            "database",
+            "workload",
+            "storage"
+          ],
+          "title": "Resource",
+          "type": "string"
+        },
+        "source": {
+          "title": "Source",
+          "type": "string"
+        },
+        "target": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Target"
+        },
+        "grade": {
+          "enum": [
+            "exact",
+            "approximate",
+            "split",
+            "gap",
+            "unknown"
+          ],
+          "title": "Grade",
+          "type": "string"
+        },
+        "differences": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Differences",
+          "type": "array"
+        },
+        "required_tests": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Required Tests",
+          "type": "array"
+        },
+        "value_source": {
+          "enum": [
+            "terraform",
+            "default",
+            "operator",
+            "kubernetes"
+          ],
+          "title": "Value Source",
+          "type": "string"
+        },
+        "rule_id": {
+          "title": "Rule Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "resource",
+        "source",
+        "target",
+        "grade",
+        "value_source",
+        "rule_id"
+      ],
+      "title": "MappingRow",
+      "type": "object"
+    },
+    "Meta": {
+      "additionalProperties": false,
+      "properties": {
+        "llm_used": {
+          "default": false,
+          "title": "Llm Used",
+          "type": "boolean"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model"
+        },
+        "prompt_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Prompt Version"
+        },
+        "input_hash": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Input Hash"
+        },
+        "usage": {
+          "additionalProperties": true,
+          "title": "Usage",
+          "type": "object"
+        },
+        "duration_ms": {
+          "default": 0,
+          "title": "Duration Ms",
+          "type": "integer"
+        }
+      },
+      "title": "Meta",
+      "type": "object"
+    },
+    "PostureLayer": {
+      "additionalProperties": false,
+      "properties": {
+        "layer": {
+          "enum": [
+            "network",
+            "node",
+            "cluster"
+          ],
+          "title": "Layer",
+          "type": "string"
+        },
+        "state": {
+          "enum": [
+            "isolated",
+            "open",
+            "unknown"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "basis": {
+          "title": "Basis",
+          "type": "string"
+        }
+      },
+      "required": [
+        "layer",
+        "state",
+        "basis"
+      ],
+      "title": "PostureLayer",
+      "type": "object"
+    },
+    "PostureProposal": {
+      "additionalProperties": false,
+      "description": "적용은 사람이 정한다. manifest 는 검토용 초안이다.",
+      "properties": {
+        "layer": {
+          "enum": [
+            "network",
+            "node",
+            "cluster"
+          ],
+          "title": "Layer",
+          "type": "string"
+        },
+        "action": {
+          "title": "Action",
+          "type": "string"
+        },
+        "manifest": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Manifest"
+        }
+      },
+      "required": [
+        "layer",
+        "action"
+      ],
+      "title": "PostureProposal",
+      "type": "object"
+    },
+    "PostureResult": {
+      "additionalProperties": false,
+      "properties": {
+        "overall": {
+          "enum": [
+            "isolated",
+            "partial",
+            "open",
+            "unknown"
+          ],
+          "title": "Overall",
+          "type": "string"
+        },
+        "upstream_firewall": {
+          "anyOf": [
+            {
+              "enum": [
+                "managed",
+                "unmanaged"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Upstream Firewall"
+        },
+        "layers": {
+          "items": {
+            "$ref": "#/$defs/PostureLayer"
+          },
+          "title": "Layers",
+          "type": "array"
+        },
+        "proposals": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/PostureProposal"
+          },
+          "title": "Proposals",
+          "type": "array"
+        }
+      },
+      "required": [
+        "overall",
+        "upstream_firewall",
+        "layers"
+      ],
+      "title": "PostureResult",
+      "type": "object"
+    },
+    "Regression": {
+      "additionalProperties": false,
+      "properties": {
+        "vulnerable_hit": {
+          "title": "Vulnerable Hit",
+          "type": "boolean"
+        },
+        "safe_hit": {
+          "title": "Safe Hit",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "vulnerable_hit",
+        "safe_hit"
+      ],
+      "title": "Regression",
+      "type": "object"
+    },
+    "Remediation": {
+      "additionalProperties": false,
+      "properties": {
+        "spec_ops": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/SpecOp"
+          },
+          "title": "Spec Ops",
+          "type": "array"
+        },
+        "waf_rules": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/WafRule"
+          },
+          "title": "Waf Rules",
+          "type": "array"
+        }
+      },
+      "title": "Remediation",
+      "type": "object"
+    },
+    "RuleCandidate": {
+      "additionalProperties": false,
+      "properties": {
+        "candidate_id": {
+          "title": "Candidate Id",
+          "type": "string"
+        },
+        "rule_id": {
+          "title": "Rule Id",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "source": {
+          "title": "Source",
+          "type": "string"
+        },
+        "severity": {
+          "default": "high",
+          "enum": [
+            "high",
+            "medium",
+            "low"
+          ],
+          "title": "Severity",
+          "type": "string"
+        },
+        "detector_contains": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Detector Contains",
+          "type": "array"
+        },
+        "status": {
+          "enum": [
+            "proposed",
+            "needs_detector",
+            "approved",
+            "rejected"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "regression": {
+          "$ref": "#/$defs/Regression",
+          "default": {
+            "vulnerable_hit": false,
+            "safe_hit": false
+          }
+        },
+        "approver": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Approver"
+        }
+      },
+      "required": [
+        "candidate_id",
+        "rule_id",
+        "title",
+        "source",
+        "status"
+      ],
+      "title": "RuleCandidate",
+      "type": "object"
+    },
+    "SourceDatabase": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "maxLength": 253,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "engine": {
+          "anyOf": [
+            {
+              "maxLength": 100,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Engine"
+        },
+        "version": {
+          "anyOf": [
+            {
+              "maxLength": 100,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Version"
+        },
+        "storage_gib": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Storage Gib"
+        },
+        "high_availability": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "High Availability"
+        },
+        "origin": {
+          "default": "operator",
+          "enum": [
+            "terraform",
+            "operator",
+            "kubernetes"
+          ],
+          "title": "Origin",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "SourceDatabase",
+      "type": "object"
+    },
+    "SourceLoadBalancer": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "maxLength": 253,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "kind": {
+          "default": "unknown",
+          "enum": [
+            "application",
+            "network",
+            "classic",
+            "service",
+            "ingress",
+            "unknown"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "protocols": {
+          "default": [],
+          "items": {
+            "enum": [
+              "HTTP",
+              "HTTPS",
+              "TCP",
+              "UDP",
+              "TLS",
+              "TCP_UDP"
+            ],
+            "type": "string"
+          },
+          "title": "Protocols",
+          "type": "array"
+        },
+        "ports": {
+          "default": [],
+          "items": {
+            "maximum": 65535,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "maxItems": 100,
+          "title": "Ports",
+          "type": "array"
+        },
+        "internal": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Internal"
+        },
+        "tls": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tls"
+        },
+        "origin": {
+          "default": "operator",
+          "enum": [
+            "terraform",
+            "operator",
+            "kubernetes"
+          ],
+          "title": "Origin",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "SourceLoadBalancer",
+      "type": "object"
+    },
+    "SourceMeta": {
+      "additionalProperties": false,
+      "description": "어떤 state 를 읽었는지. 같은 serial 이면 같은 입력이다.",
+      "properties": {
+        "bucket": {
+          "title": "Bucket",
+          "type": "string"
+        },
+        "key": {
+          "title": "Key",
+          "type": "string"
+        },
+        "version_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Version Id"
+        },
+        "serial": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Serial"
+        },
+        "lineage": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Lineage"
+        },
+        "terraform_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Terraform Version"
+        },
+        "resource_count": {
+          "title": "Resource Count",
+          "type": "integer"
+        },
+        "excluded_capabilities": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Excluded Capabilities",
+          "type": "array"
+        }
+      },
+      "required": [
+        "bucket",
+        "key",
+        "resource_count"
+      ],
+      "title": "SourceMeta",
+      "type": "object"
+    },
+    "SourceSecurity": {
+      "additionalProperties": false,
+      "properties": {
+        "guardduty_enabled": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Guardduty Enabled"
+        },
+        "guardduty_plans": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Guardduty Plans",
+          "type": "array"
+        },
+        "scc_services": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Scc Services"
+        },
+        "other_tools": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Other Tools",
+          "type": "array"
+        },
+        "origin": {
+          "default": "operator",
+          "enum": [
+            "terraform",
+            "default",
+            "operator",
+            "kubernetes"
+          ],
+          "title": "Origin",
+          "type": "string"
+        }
+      },
+      "title": "SourceSecurity",
+      "type": "object"
+    },
+    "SourceServer": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "instance_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Instance Type"
+        },
+        "os": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Os"
+        },
+        "multi_arch_image": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Multi Arch Image"
+        },
+        "instance_profile": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Instance Profile"
+        },
+        "service_account": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Service Account"
+        },
+        "permissions": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Permissions"
+        },
+        "peak_memory_percent": {
+          "anyOf": [
+            {
+              "maximum": 100,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Peak Memory Percent"
+        },
+        "origin": {
+          "default": "operator",
+          "enum": [
+            "terraform",
+            "default",
+            "operator",
+            "kubernetes"
+          ],
+          "title": "Origin",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "SourceServer",
+      "type": "object"
+    },
+    "SourceSubnet": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "cidr": {
+          "title": "Cidr",
+          "type": "string"
+        },
+        "tier": {
+          "anyOf": [
+            {
+              "enum": [
+                "public",
+                "private"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tier"
+        },
+        "zone": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Zone"
+        },
+        "target_cidr": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Cidr"
+        },
+        "origin": {
+          "default": "operator",
+          "enum": [
+            "terraform",
+            "default",
+            "operator",
+            "kubernetes"
+          ],
+          "title": "Origin",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "cidr"
+      ],
+      "title": "SourceSubnet",
+      "type": "object"
+    },
+    "SpecOp": {
+      "additionalProperties": false,
+      "description": "target_env 인벤토리 기준 JSON Patch 한 줄. 플랫폼이 원하는 상태로 번역한다.",
+      "properties": {
+        "op": {
+          "enum": [
+            "replace",
+            "add",
+            "remove"
+          ],
+          "title": "Op",
+          "type": "string"
+        },
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "value": {
+          "default": null,
+          "title": "Value"
+        }
+      },
+      "required": [
+        "op",
+        "path"
+      ],
+      "title": "SpecOp",
+      "type": "object"
+    },
+    "VerifiedControl": {
+      "additionalProperties": false,
+      "description": "막혔다고 실측된 통제. finding 은 문제만 담으므로 보호 근거는 따로 남긴다.",
+      "properties": {
+        "rule_id": {
+          "title": "Rule Id",
+          "type": "string"
+        },
+        "environment": {
+          "anyOf": [
+            {
+              "enum": [
+                "aws",
+                "gcp",
+                "onprem"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Environment"
+        },
+        "subject": {
+          "title": "Subject",
+          "type": "string"
+        },
+        "observed": {
+          "title": "Observed",
+          "type": "string"
+        }
+      },
+      "required": [
+        "rule_id",
+        "subject",
+        "observed"
+      ],
+      "title": "VerifiedControl",
+      "type": "object"
+    },
+    "Volume": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "namespace": {
+          "default": "default",
+          "title": "Namespace",
+          "type": "string"
+        },
+        "size_gib": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Size Gib"
+        },
+        "storage_class": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Storage Class"
+        },
+        "access_modes": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Access Modes",
+          "type": "array"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "Volume",
+      "type": "object"
+    },
+    "WafRule": {
+      "additionalProperties": false,
+      "properties": {
+        "priority": {
+          "title": "Priority",
+          "type": "integer"
+        },
+        "action": {
+          "title": "Action",
+          "type": "string"
+        },
+        "expression": {
+          "title": "Expression",
+          "type": "string"
+        },
+        "capability": {
+          "title": "Capability",
+          "type": "string"
+        }
+      },
+      "required": [
+        "priority",
+        "action",
+        "expression",
+        "capability"
+      ],
+      "title": "WafRule",
+      "type": "object"
+    },
+    "Workload": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "Pod",
+            "Deployment",
+            "StatefulSet",
+            "DaemonSet",
+            "Job",
+            "CronJob"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "namespace": {
+          "default": "default",
+          "title": "Namespace",
+          "type": "string"
+        },
+        "images": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Images",
+          "type": "array"
+        },
+        "container_count": {
+          "default": 1,
+          "maximum": 100,
+          "minimum": 1,
+          "title": "Container Count",
+          "type": "integer"
+        },
+        "replicas": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Replicas"
+        },
+        "cpu_requests": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Cpu Requests",
+          "type": "array"
+        },
+        "memory_requests": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Memory Requests",
+          "type": "array"
+        },
+        "volumes": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Volumes",
+          "type": "array"
+        }
+      },
+      "required": [
+        "name",
+        "kind"
+      ],
+      "title": "Workload",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "diff_id": {
+      "title": "Diff Id",
+      "type": "string"
+    },
+    "source": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SourceMeta"
+        },
+        {
+          "$ref": "#/$defs/ManifestMeta"
+        }
+      ],
+      "title": "Source"
+    },
+    "target_manifest": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ManifestMeta"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "mapping_input": {
+      "$ref": "#/$defs/MappingInput"
+    },
+    "assessment": {
+      "$ref": "#/$defs/AssessmentResult"
+    }
+  },
+  "required": [
+    "diff_id",
+    "source",
+    "mapping_input",
+    "assessment"
+  ],
+  "title": "DiffResult",
+  "type": "object"
+}

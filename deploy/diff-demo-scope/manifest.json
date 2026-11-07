@@ -1,0 +1,10 @@
+{
+  "release": "c38d667b1b27",
+  "base_image": "sha256:07931d6e8a69db98a40a6142742f0feda55823444c93632ffd3903cef6eea2e7",
+  "files": {
+    "iam.py": "c32b523485ed830f8dcaeabc433593bffcd24638ccf59d5b78dfc60125b95352",
+    "terraform.py": "5011afe5380ca3f4531af20a308ef8335f83009e8c7bbd9cf4f1bac62d0e2baf",
+    "contract.py": "12acaadb8c03fe2d44031a7015d7f4d8238e286db7bfe9ecefb7a8e906bc1715",
+    "diff.py": "9b31a98d0956e924c3fca43a7f7e233f0971e0be52a2fcf673d6ce51ba2ff55d"
+  }
+}
