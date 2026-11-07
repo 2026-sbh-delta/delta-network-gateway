@@ -5,7 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
+    "dev:production": "vite --host 127.0.0.1 --mode production-ui",
     "build": "tsc --noEmit && vite build",
+    "build:production": "tsc --noEmit && vite build --config vite.production.config.ts && node scripts/production-ui.mjs build",
+    "test:production": "playwright test --config playwright.production.config.ts",
     "test:e2e": "playwright test",
     "format:check": "prettier --check src vite.config.ts playwright.config.ts tests"
   },

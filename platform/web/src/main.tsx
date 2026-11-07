@@ -22,15 +22,10 @@ import "./presentation.css";
 import "./dashboard.css";
 import "./release.css";
 import "./migration-diff.css";
-import "./theme.css";
 import "./ui-visibility.css";
 import { ApplicationPanel } from "./ApplicationPanel";
-import {
-  LatestRunCard,
-  PipelinePanel,
-  RunStatus,
-  useLatestRun,
-} from "./PipelinePanel";
+import { PipelinePanel } from "./PipelinePanel";
+import "./production-pipeline.css";
 import {
   AppShell,
   Icon,
@@ -897,15 +892,11 @@ function Workspace({
   function openService(id: string) {
     navigate(route.view === "pipeline" ? "overview" : route.view, id);
   }
-  const latestRun = useLatestRun();
   return (
     <AppShell
       route={route}
       navigate={navigate}
       services={services}
-      status={
-        <RunStatus board={latestRun} onOpen={() => navigate("pipeline")} />
-      }
       account={
         <>
           <div className="account-avatar">
@@ -945,7 +936,9 @@ function Workspace({
         />
       )}
       {route.view === "pipeline" ? (
-        <PipelinePanel />
+        <div className="production-pipeline">
+          <PipelinePanel />
+        </div>
       ) : route.view === "monitoring" && route.serviceId ? (
         <ObservabilityPanel key={route.serviceId} serviceId={route.serviceId} />
       ) : route.serviceId ? (
@@ -972,12 +965,6 @@ function Workspace({
               + 서비스 등록
             </button>
           </div>
-          {route.view === "overview" && latestRun && (
-            <LatestRunCard
-              board={latestRun}
-              onOpen={() => navigate("pipeline")}
-            />
-          )}
           {register && (
             <Register
               onCreated={(s) => {

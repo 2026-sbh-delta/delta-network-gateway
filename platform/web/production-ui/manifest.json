@@ -1,0 +1,18 @@
+{
+  "captured_on": "2026-11-07",
+  "origin": "https://delta.mungji.com",
+  "release": "ui-hide-20261107-4d12f69972eb",
+  "archive_sha256": "6e7f4c4634a1817ccf9c30cba7fb5abe5fd1b496888fa31afb696b04344be296",
+  "files": {
+    "index.html": "4d12f69972eb0f8dfe98914c91314759a3d77837dd8aae751d7159fcc837471a",
+    "assets/index-ui-hidden-691f6b284aa530eb.js": "691f6b284aa530ebfba3d6d8620f901d03983516f496aa1e2f384a9b02167bf6",
+    "assets/index-DFTt_uP_.css": "315508600b83a2dbd5c032b42261282987d86c8dc71c05e63e8967f87f4be6e6",
+    "assets/migration-diff-ca8af287a0f8780d.css": "ca8af287a0f8780d8f00272780096d39c315d9c87ce068d6f902f1457a5c3474",
+    "assets/rds-evidence-e69b0fd5cdc493e3.css": "e69b0fd5cdc493e335b6d1e2ac26be73d180975033ac7c4e56ca51a0156906c9",
+    "assets/ui-readability-0ca33406f9d64724.css": "0ca33406f9d64724e92d043e672d2b52901cec3d083099544eb3a09d59094aca",
+    "assets/ui-visibility-7ed245a6a3bebd9d.css": "7ed245a6a3bebd9d016b28808b9854253cdc55180a03371331585b87a4615f97",
+    "assets/migration-diff-c263ebec80fe1b9b.js": "c263ebec80fe1b9ba8518b3b98074f5bfbcc674036d5320c2808e9783c6b1522",
+    "assets/rds-evidence-f5ce8f5d701669f5.js": "f5ce8f5d701669f51af4122bb71d767693d751e62b7126fcb91d28625a1c900b"
+  },
+  "source_recovery": "Compiled production baseline; original TSX is incomplete in repository."
+}

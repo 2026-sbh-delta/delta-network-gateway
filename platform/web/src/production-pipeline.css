@@ -1,0 +1,119 @@
+/* Keep the operating shell and scope PR #75's palette to the pipeline. */
+.production-pipeline {
+  --bg: #f6f8fb;
+  --surface: #ffffff;
+  --ink: #162339;
+  --ink-2: #34425b;
+  --muted: #63718a;
+  --border: #e1e7f0;
+  --line: #d5dce8;
+  --accent: #345ee8;
+  --st-pending: #a3aec2;
+  --st-running: #345ee8;
+  --st-pass: #1f9d61;
+  --st-waiting: #e08a00;
+  --st-fail: #d93b3b;
+  --lane-web: #c92f45;
+  --lane-infra: #7b4fb0;
+  --flow: #7c3aed;
+  width: 100%;
+  min-width: 0;
+  color: var(--ink);
+  background: var(--bg);
+  color-scheme: light;
+}
+
+.production-pipeline .flow-page {
+  height: calc(100dvh - 180px);
+  min-height: 520px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.production-pipeline button,
+.production-pipeline select,
+.production-pipeline input {
+  color: var(--ink);
+}
+
+.production-pipeline .flow-dark,
+.production-pipeline .primary {
+  color: #fff;
+}
+
+.production-pipeline button:focus-visible,
+.production-pipeline select:focus-visible,
+.production-pipeline input:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (max-width: 700px) {
+  .production-pipeline .flow-page {
+    height: calc(100dvh - 150px);
+    min-height: 520px;
+  }
+
+  .production-pipeline .flow-float.top-left {
+    right: 12px;
+    left: 12px;
+    flex-wrap: wrap;
+    max-width: calc(100% - 24px);
+  }
+
+  .production-pipeline .flow-float.top-left select {
+    flex: 1;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .production-pipeline .flow-float.top-right {
+    top: 90px;
+    right: 12px;
+  }
+
+  .production-pipeline .flow-panel {
+    width: min(420px, 100%);
+    top: 125px;
+    bottom: 310px;
+  }
+
+  .production-pipeline .flow-float.bottom-right.with-panel {
+    right: 12px;
+  }
+
+  .production-pipeline .flow-drawer.with-panel {
+    right: 0;
+  }
+
+  .production-pipeline .flow-popover {
+    top: 140px;
+    right: 12px;
+    width: calc(100% - 24px);
+    max-height: calc(100% - 156px);
+    overflow-y: auto;
+  }
+
+  .production-pipeline .pl-start-row {
+    flex-wrap: wrap;
+  }
+
+  .production-pipeline .pl-start-row label {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+
+  .production-pipeline .pl-start-row select {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .production-pipeline .pl-start-repo {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+
+  .production-pipeline .pl-start-row > .grow:empty {
+    display: none;
+  }
+}
