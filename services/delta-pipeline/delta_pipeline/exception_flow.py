@@ -10,12 +10,14 @@ from delta_ai.diagnostic_contract import (
     DiagnosisContext,
     DiagnosisReport,
     DiagnosisRequest,
+    Observation,
     safe_text,
     unavailable_report,
     validate_report,
 )
 from langgraph.types import interrupt
 
+from delta_pipeline.clients import ServiceUnavailable
 from delta_pipeline.reports import ReportRef, ReportStore
 
 HUMAN_GATES = {"ask_sast", "ask_dast"}
@@ -80,6 +82,11 @@ def prepare_exception(deps, name, result, target, state):
             "summary": _bounded_summary(reason, 2400),
         }
     ]
+    if name == "infrastructure_diff":
+        detail = next(n["detail"] for n in deps.board.snapshot()["nodes"] if n["id"] == "map")
+        if detail.get("verdict"):
+            observations.append({"evidence_id": "diff-assessment", "source": name,
+                "summary": f"판정 {detail['verdict']}, state serial {detail['state_serial']}, 매핑 행 {detail['row_count']}개"})
     for node in deps.board.snapshot()["nodes"]:
         if len(observations) >= MAX_OBSERVATIONS:
             break
@@ -211,6 +218,9 @@ class ExceptionFlow:
 
     def analyze(self, state):
         request = DiagnosisRequest.model_validate(state["diagnosis_request"])
+        if (state.get("halt") and request.node_id != "infrastructure_diff" and state.get("diff_started")
+                and not state.get("mapping_input_hash") and self.deps.diff):
+            request = self._parallel_diff_evidence(request)
         if self.deps.evidence is not None:
             request = self.deps.evidence.enrich(request, started_at=self.deps.board.snapshot().get("started_at"))
         self.deps.board.update(
@@ -236,6 +246,21 @@ class ExceptionFlow:
             summary=report.summary,
         )
         return {"diagnosis_request": request.model_dump(mode="json"), "diagnosis_report": report.model_dump(mode="json")}
+
+    def _parallel_diff_evidence(self, request: DiagnosisRequest) -> DiagnosisRequest:
+        # At this point the failed web branch has released its staging lease.
+        try:
+            result = self.deps.diff.result()
+        except ServiceUnavailable as exc:
+            reason = _bounded_summary(exc)
+        else:
+            if result.assessment.verdict != "fix":
+                self.deps.board.update("map", state="skipped", summary="웹 단계 실패로 차분 확인 단계에 도달하지 못했습니다")
+                return request
+            reason = "워크로드 차분에서 수정이 필요한 항목 발견"
+        self.deps.board.update("map", state="fail", summary=reason)
+        observation = Observation(evidence_id="parallel-diff", source="infrastructure_diff", summary=reason)
+        return request.model_copy(update={"observations": (*request.observations[:MAX_OBSERVATIONS - 1], observation)})
 
     def save(self, state):
         self.deps.board.update(
@@ -284,6 +309,8 @@ class ExceptionFlow:
         if state["diagnosis_resume"] in HUMAN_GATES:
             node_id = (state.get("pending_gate") or {}).get("node_id", "dast")
             self.deps.board.add_detail(node_id, diagnostic_report=data)
+        elif request.node_id == "infrastructure_diff" or any(o.evidence_id == "parallel-diff" for o in request.observations):
+            self.deps.board.add_detail("map", diagnostic_report=data)
         return {
             "diagnosis_ref": ref.model_dump(),
             "diagnosis_pending": False,

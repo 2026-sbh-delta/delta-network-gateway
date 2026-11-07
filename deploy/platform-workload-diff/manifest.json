@@ -1,0 +1,75 @@
+{
+  "release": "2f765772773c",
+  "files": {
+    "workflow_diff.py": "4ce4d0745e5c7b4ff8dca960cc8758d28c86f43edeff16a49c0a139eaa7e899d",
+    "workload_inventory.py": "a40aa3af1b55c5c32384f0c5de696af897647984c239eba1f96293cd2d2316bd",
+    "platform_diff.py": "c64844aed0864ca5e167102bce46f41426e67cea7de575f245c76f830be55306",
+    "patch.py": "354a354ee5841915606ca1e3b46bf306abf27d4a828244781df6d56152a75282",
+    "platform.Dockerfile": "26f3d041c8914b1c633b63ef7614d998f2e4fcdbda63cdd776d14340544377f0",
+    "orchestrator.Dockerfile": "b227e3174ee8a4161c66b6c0f9bc504995cdc126ac3f36169185f632ed085ba1"
+  },
+  "orchestrator_tag": "616723161368.dkr.ecr.ap-northeast-2.amazonaws.com/delta-cp-orchestrator:workload-diff-2f765772773c",
+  "platform_tag": "616723161368.dkr.ecr.ap-northeast-2.amazonaws.com/delta-platform:workload-diff-2f765772773c",
+  "orchestrator_image": "616723161368.dkr.ecr.ap-northeast-2.amazonaws.com/delta-cp-orchestrator@sha256:d0c03596a60507fb715b902930391ca7af80223f9e867724eed3ae9002071194",
+  "platform_image": "616723161368.dkr.ecr.ap-northeast-2.amazonaws.com/delta-platform@sha256:59f7086b8867ad226ab05af28479bc1e668dc346152a824b1569c0805f47a46d",
+  "platform_snapshot": {
+    "release": "f944aade1735",
+    "image": "616723161368.dkr.ecr.ap-northeast-2.amazonaws.com/delta-platform@sha256:7fdb663c01768f714ad83076e45034b57828273591e07f8d7a6d9508c2ec3624",
+    "captured_at": "2026-11-07T05:29:02.579Z",
+    "files": {
+      "workflow_diff.py": "81e1b4505fff2ff6de1e81b640b70accd94d111b3b9eb409ee24803ba090aa4b",
+      "workload_inventory.py": "5b955f1aa331c90e8de6b21a0e4cdbf82ddc8a4cf1cfa5868028af4ea2241b25",
+      "Dockerfile": "7bb826e8bb804e391485138daffe97bed0ee98785cbdc2f83474c102a2ccc102",
+      "onprem-diff-snapshot.json": "f944aade1735391ad151dd21d16a817ff68a92ce2f1699fe86865d1305e31a41"
+    },
+    "rollout_sha256": "bff3f4bfbbdd8db35aba4d9968d29bf540bb6f64592e8d054926e11008249859"
+  },
+  "platform_migration_web": {
+    "image": "616723161368.dkr.ecr.ap-northeast-2.amazonaws.com/delta-platform@sha256:bfb81ab739cd18f7f8d89611935e683d768e3fde4f2fe4a09ae01e532b80c9df",
+    "release": "c263ebec80fe",
+    "original_web_image": "616723161368.dkr.ecr.ap-northeast-2.amazonaws.com/delta-platform@sha256:e68ab0f08b0d4c9bd68518164d5bdbb97f1c1325c80524a79f0c993b03c91c4e",
+    "original_web_tags": [
+      "release-handoff-2ffd2b66f5af98d7",
+      "release-handoff-7c139a468bee5b8d"
+    ],
+    "original_index_sha256": "ea0978120c6dea96dc745f21243cd68cbb7b89cd93873f64563ca4517d59afee",
+    "files": {
+      "Dockerfile": "bb9b6e0a1662e52142e778a32ede50689cf336ef9624349fcf5de8e53543ac5e",
+      "install-migration-web.py": "3255ecfec551964d66af7461c1ac400a012cacd1d97147aacf15bd04de94a39f",
+      "migration-diff-entry.js": "c263ebec80fe1b9ba8518b3b98074f5bfbcc674036d5320c2808e9783c6b1522"
+    },
+    "rollout_sha256": "05821fbf43fde0efc6393789d5a9f3e813d6b5546cc64d9ed0a4d8537cb27876",
+    "ssm_command": "ef8d6275-4610-4cc3-a673-5a0004b6478c"
+  },
+  "platform_migration_snapshot": {
+    "image": "616723161368.dkr.ecr.ap-northeast-2.amazonaws.com/delta-platform@sha256:93f6aac65aec6c7fc6b4b4cb8a5209b8d4fbb07e5edb299cd0724f9ed50253b6",
+    "release": "24d9fceee6b1",
+    "captured_at": "2026-11-07T06:14:59.097Z",
+    "files": {
+      "Dockerfile": "53936257e946d65c1f74370b9d42b0e62d6f3bcb6e0e642b61045c6b10244150",
+      "onprem-diff-snapshot.json": "24d9fceee6b101de08a34aab6c5b5f300d024d8a51c58e3e6efb1224a314abb9"
+    },
+    "rollout_sha256": "23d3afbeb82e4cc7fa2dff8c9f2babf1a364cf59c5c62602144cff69476da2b5",
+    "ssm_command": "6c9b6857-07ba-4b20-8546-d2e92721c50a"
+  },
+  "platform_migration_style": {
+    "image": "616723161368.dkr.ecr.ap-northeast-2.amazonaws.com/delta-platform@sha256:db9632fa33d6d9475e100f263aa51fcbc897dcb2618c5f797b26ad9d4dd4fb20",
+    "release": "ca8af287a0f8",
+    "files": {
+      "Dockerfile": "48cce6c67fd69ee67094573c156ff9b8e08c7a562846b257a6f43263f23f0b86",
+      "install-migration-web.py": "b3b220d068fd2989c53072a4f527b90d092160940d17426a6939f4128653857b",
+      "migration-diff.css": "ca8af287a0f8780d8f00272780096d39c315d9c87ce068d6f902f1457a5c3474"
+    },
+    "rollout_sha256": "c6c827e46389f3eb26d40834e1095b59afe364488a476dbe0f89bbb749460813",
+    "ssm_command": "49e4cc2f-2c25-4490-99d1-a3454028bdad"
+  },
+  "migration_screen_verification": {
+    "workflow_id": "b4e50d0d-8d57-4be7-ab09-1f740cc6c80b",
+    "assessment_id": "321273fe-e59f-4060-be50-60e79b591d7b",
+    "ssm_command": "14adf178-54c3-4259-9a0c-5b220576064e",
+    "status": "planned",
+    "release_actions": 0,
+    "rows": 5,
+    "verdict": "needs_human"
+  }
+}

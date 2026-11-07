@@ -1,4 +1,5 @@
 import { test, expect, type Page, type Route } from "@playwright/test";
+import type { Execution } from "../src/EnvironmentComparison";
 
 // This browser-only fixture intercepts the HTTP boundary. No workflow or environment is written to a backend.
 const sha = "a".repeat(40);
@@ -98,8 +99,15 @@ function workflow(status: "planned" | "approved" = "planned") {
   };
 }
 
-async function fixture(page: Page) {
-  let loggedIn = false;
+async function fixture(
+  page: Page,
+  saved?: {
+    plans: ReturnType<typeof workflow>[];
+    executions: Record<string, Execution[]>;
+  },
+) {
+  let loggedIn = Boolean(saved);
+  const writes: string[] = [];
   let currentWorkflow = workflow();
   let createdBody: Record<string, unknown> | null = null;
   let createHeader: string | undefined;
@@ -110,6 +118,7 @@ async function fixture(page: Page) {
     const url = new URL(request.url());
     const path = url.pathname.replace("/api/v1", "");
     const method = request.method();
+    if (method !== "GET") writes.push(path);
     if (path === "/auth/session")
       return route.fulfill({
         status: loggedIn ? 200 : 401,
@@ -180,7 +189,7 @@ async function fixture(page: Page) {
     if (path === `/services/${service.id}/workflows` && method === "GET")
       return route.fulfill({
         status: 200,
-        json: { items: createdBody ? [currentWorkflow] : [] },
+        json: { items: saved?.plans ?? (createdBody ? [currentWorkflow] : []) },
       });
     if (path === `/services/${service.id}/workflows` && method === "POST") {
       createdBody = request.postDataJSON();
@@ -189,11 +198,27 @@ async function fixture(page: Page) {
     }
     if (path === `/workflows/${currentWorkflow.id}` && method === "GET")
       return route.fulfill({ status: 200, json: currentWorkflow });
+    const savedPlan = saved?.plans.find(
+      (plan) => path === `/workflows/${plan.id}`,
+    );
+    if (savedPlan && method === "GET")
+      return route.fulfill({ status: 200, json: savedPlan });
+    const savedExecutionPlan = saved?.plans.find(
+      (plan) => path === `/workflows/${plan.id}/executions`,
+    );
     if (
-      path === `/workflows/${currentWorkflow.id}/executions` &&
+      (savedExecutionPlan ||
+        path === `/workflows/${currentWorkflow.id}/executions`) &&
       method === "GET"
     )
-      return route.fulfill({ status: 200, json: { items: [] } });
+      return route.fulfill({
+        status: 200,
+        json: {
+          items: savedExecutionPlan
+            ? (saved?.executions[savedExecutionPlan.id] ?? [])
+            : [],
+        },
+      });
     if (
       path === `/workflows/${currentWorkflow.id}/approval` &&
       method === "POST"
@@ -210,6 +235,7 @@ async function fixture(page: Page) {
     });
   });
   return {
+    writes,
     get createdBody() {
       return createdBody;
     },
@@ -299,4 +325,86 @@ test("이전 계획은 고정 빌드·서로 다른 환경으로 만들고 승�
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
+});
+
+test("마이그레이션 화면은 새로고침해도 저장된 온프레미스 → AWS 차분을 표시한다", async ({
+  page,
+}) => {
+  const unrelated = workflow();
+  const plan = {
+    ...workflow(),
+    id: "onprem-aws-current",
+    input_snapshot: {
+      ...unrelated.input_snapshot,
+      source: unrelated.input_snapshot.targets[1],
+      targets: [unrelated.input_snapshot.source],
+    },
+  };
+  const oldPlan = {
+    ...plan,
+    id: "onprem-aws-old",
+    input_hash: "0".repeat(64),
+    created_at: "2026-11-03T01:30:00Z",
+  };
+  function execution(planId: string, item: string): Execution {
+    const id = `diff-${planId}`;
+    return {
+      id,
+      environment_id: "env-aws",
+      kind: "ai_assessment",
+      status: "succeeded",
+      created_at: plan.created_at,
+      assessment: {
+        workflow_id: planId,
+        environment_id: "env-aws",
+        plan_hash: inputHash,
+        assessment_id: id,
+        summary: "워크로드 차분 needs_human · 1개 항목",
+        impact: "대상 환경 설정을 확인하세요.",
+        remaining_gaps: [],
+        differences: [
+          {
+            item,
+            source: "온프레미스 Deployment",
+            target: "AWS 컨테이너",
+            treatment: "런타임 확인",
+            judgment: "needs_check",
+            before: null,
+            after: null,
+          },
+        ],
+        changes: [],
+      },
+    };
+  }
+  const boundary = await fixture(page, {
+    plans: [unrelated, plan, oldPlan],
+    executions: {
+      [plan.id]: [execution(plan.id, "저장된 워크로드 차분")],
+      [oldPlan.id]: [execution(oldPlan.id, "해시가 다른 차분")],
+    },
+  });
+
+  await page.goto(`/#/migration/${service.id}`);
+  const plans = page.getByRole("combobox", {
+    name: "온프레미스 → AWS 비교 계획",
+  });
+  const comparison = page.getByRole("region", { name: "환경 차이와 AI 제안" });
+  const savedDiff = comparison.getByRole("row", {
+    name: /저장된 워크로드 차분/,
+  });
+  await expect(plans).toHaveValue(plan.id);
+  await expect(plans.locator("option")).toHaveCount(2);
+  await expect(savedDiff).toBeVisible();
+  await expect(comparison.getByText(/needs_human/)).toBeVisible();
+
+  await plans.selectOption(oldPlan.id);
+  await expect(comparison.getByText("상세 결과 미연결")).toBeVisible();
+  await expect(comparison.getByText("해시가 다른 차분")).toHaveCount(0);
+  await expect(savedDiff).toHaveCount(0);
+
+  await page.reload();
+  await expect(plans).toHaveValue(plan.id);
+  await expect(savedDiff).toBeVisible();
+  expect(boundary.writes).toEqual([]);
 });

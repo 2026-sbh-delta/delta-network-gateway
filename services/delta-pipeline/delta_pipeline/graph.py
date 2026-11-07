@@ -41,9 +41,10 @@ def route_prepare(state: PipelineState) -> Any:
     return HALTED if state.get("halt") else list(BRANCHES)
 
 
-def step_routes(cutover: bool, release: bool = False) -> dict[str, tuple[Any, tuple[str, ...]]]:
+def step_routes(cutover: bool, release: bool = False, diff: bool = False) -> dict[str, tuple[Any, tuple[str, ...]]]:
     after_release = "ask_cutover" if cutover else "done"
-    after_dast = "ask_release" if release else "done"
+    after_web = "ask_release" if release else "done"
+    after_dast = "infrastructure_diff" if diff else after_web
 
     def route_dast_start(state: PipelineState) -> str:
         if state.get("halt"):
@@ -77,6 +78,9 @@ def step_routes(cutover: bool, release: bool = False) -> dict[str, tuple[Any, tu
             "release_wait": (after_step("release_verify"), ("release_verify", HALTED)),
             "release_verify": (after_step(after_release), (after_release, HALTED)),
         }
+    if diff:
+        routes["infrastructure_diff"] = (route_gate("ask_mapping", after_web), ("ask_mapping", after_web, HALTED))
+        routes["ask_mapping"] = (after_step(after_web), (after_web, HALTED))
     if cutover:
         routes |= {
             "ask_cutover": (after_step("cutover_check"), ("cutover_check", HALTED)),
@@ -100,7 +104,10 @@ def build_graph(deps: Deps, checkpointer: Any) -> Any:
     if deps.options.cutover:
         bodies |= {"ask_cutover": steps.ask_cutover, "cutover_check": steps.cutover_check,
                    "cutover_switch": steps.cutover_switch, "cutover_verify": steps.cutover_verify}
-    routes = step_routes(deps.options.cutover, release)
+    diff = deps.options.diff_request_hash is not None
+    if diff:
+        bodies |= {"infrastructure_diff": steps.infrastructure_diff, "ask_mapping": steps.ask_mapping}
+    routes = step_routes(deps.options.cutover, release, diff)
     if deps.options.execution_cloud == 'onprem':
         bodies.pop('stage_start'); bodies.pop('stage_wait'); bodies.pop('dast_start'); bodies.pop('dast_wait')
         for node in ('stage_start','stage_wait','dast_start','dast_wait'): routes.pop(node)

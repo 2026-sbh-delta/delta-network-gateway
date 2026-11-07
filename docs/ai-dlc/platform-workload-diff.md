@@ -1,0 +1,66 @@
+# 운영 플랫폼의 워크로드 차분 연결
+
+2026-11-07 KST. 사용자 승인: 운영 플랫폼 `delta.mungji.com`의 '환경 차이와 AI 제안' 화면까지 실제 Diff를 연결하고 확인한다. 기존 고객 앱 운영 배포·DNS 전환은 수행하지 않는다. ADR 번호 미할당.
+
+## 발견과 설계
+
+운영 플랫폼은 기존 VPC의 별도 API이며 시연 오케스트레이터와 분리돼 있다. Diff 사설 포트로 직접 연결되지 않지만 인증된 HTTPS 오케스트레이터 연결은 이미 있다. 저장소에는 계획·대상에 묶인 평가 결과를 표시하는 컴포넌트가 있다. 당시 운영 UI의 마이그레이션 경로에는 이 컴포넌트가 마운트되지 않았다.
+
+계획 생성 POST 뒤 읽기 전용 Diff를 호출하고, 결과는 기존 workflow_executions에 같은 계획·서비스·환경·입력 해시로 묶는다. 기존 실행 목록 GET은 표시용 데이터만 추가한다. 실행 재요청은 별도 인증·CSRF를 유지한 POST만 받는다. GET은 분석을 시작하지 않는다. 실패는 확인 필요로 기록하고 계획 생성·사람 승인을 실행 도구의 성공으로 바꾸지 않는다.
+
+온프레미스는 등록된 Deployment·Service만 GET하고 기존 UID·소유권 검사를 재사용한다. Secret·환경변수·명령 인자는 전달하지 않는다. DB·PVC·정책 등 수집하지 않은 범위는 명시한다. AWS는 승인한 워크로드 state와 등록 인스턴스가 맞을 때만 기존 Diff 경로를 사용하며 다른 AWS 환경에 잘못 재사용하지 않는다.
+
+운영 컨테이너 소스 전체 반출은 자동 승인 검토에서 거절돼 수행하지 않았다. 로컬 소스와 런타임 해시를 대조하고, 현재 이미지에 새 모듈과 제한된 설치 지점만 추가하는 방식으로 미게시된 기존 플랫폼 기능과 웹 자산을 보존한다. 최신 main의 온프레미스 인계·DNS 설정 보존 변경은 merge commit으로 통합했다.
+
+## Trivy·온프레미스 확인
+
+Trivy는 현재 파이프라인에서 호출되지 않는다. 예전 수동 수집기에 참조가 있고 온프레미스에는 `aquasec/trivy:0.76.1` 이미지 캐시만 확인됐다. 실행 중 Pod·서비스가 없어 실행 자원 삭제는 하지 않는다. 향후 이미지 취약점 검사를 다시 쓸 수 있으므로 수집기 자체를 임의 삭제하지 않는다.
+
+온프레미스 실행 팩터리는 Diff 생성 전에 반환하므로 자동 병렬 차분이 연결되지 않는다. 실제 `demo` namespace의 허용된 리소스 6개로 배포된 Diff API가 HTTP200·실제 Claude·needs_human 및 매핑 8행을 반환했다(SSM `4b876403-367a-4ed3-abff-6080780c8978`). 엔진의 입력 지원과 운영 플랫폼 연결 누락을 구분한다. 운영 플랫폼의 실제 등록 앱은 `delta-apps`에 있으므로 이 앱의 등록 리소스를 별도로 읽어 비교한다.
+
+## 검증·적용 상태
+
+운영 플랫폼과 시연 오케스트레이터에 적용했다. API 후보를 별도 포트에서 검증한 뒤 교체했으며 기존 환경 변수, 플랫폼의 웹 파일 바이트, DB·Worker를 보존했다. 배포 증적과 정확한 이미지 SHA는 [릴리스 manifest](../../deploy/platform-workload-diff/manifest.json)를 참조한다.
+
+- 운영 연결의 기존 네임스페이스 허용 목록에 `delta-apps`가 없어 직접 조회는 실패했다. 삭제 실행기 권한이나 RBAC는 확장하지 않았다. 이미 운영자가 접근 가능한 읽기 경로로 등록된 앱의 Deployment 2개와 Service 2개만 조회해 UID·소유권 라벨을 대조했다. 2026-11-07 14:29 KST 관측본을 사용하며, 24시간 경과 또는 서비스·바인딩·UID 불일치 시 재분석을 거절한다. 기존 조회가 소유권 불일치로 실패하면 관측본으로 우회하지 않는다. 저장된 평가에는 관측 시각과 미확인 범위를 남긴다. 다른 앱이나 후속 관측의 자동 수집은 포함하지 않는다.
+- 기존 등록 빌드를 사용한 미승인 계획 `b793774f-be4a-4774-b3bf-95d7bbe808e5`에서 실제 온프레미스→AWS Diff `e0bffa35-3002-40f2-a83f-70fea69a0b6d`가 완료됐다(SSM `0465ebae-3bdd-43ec-b64a-ffca11f2fd37`). 계획과 대상 ID·해시가 일치하는 화면용 응답에서 워크로드 2행, 로드밸런서 대응 2행, 관측 범위 1행을 확인했다. AWS 측 항목은 대응 제안이며 대상 배포·설정·호출 검증을 뜻하지 않는다. 결과는 `needs_human`, 계획은 `planned`, 배포 액션은 0건이다.
+- 기존 시연 AWS→GCP 연결은 읽기 전용으로 다시 확인했다(SSM `b0ac18e7-3c75-4fb4-b23a-24cb0c5f89d9`). RDS·S3 및 SCC 미확인 판정과 TGW 전용 서브넷 2개 제외를 보존했다. 활성 파이프라인과 스테이징 점유는 0건이었다.
+- 로컬 플랫폼 회귀 260개 통과(별도 프로세스 시험 1개 제외), 파이프라인·오케스트레이터 회귀 269개 통과. 후속 운영 화면 검증은 아래 기록을 따른다.
+
+## 롤백
+
+운영 플랫폼의 현재 관측본 버전 직전 컨테이너는 `delta-platform-api-1-before-workload-diff-f944aade1735`다. 플랫폼 Diff 전체를 되돌릴 때의 기존 컨테이너는 `delta-platform-api-1-before-workload-diff-2f765772773c`, 오케스트레이터는 `delta-orchestrator-before-workload-diff-2f765772773c`다. 활성 이미지 SHA와 실행 중인 작업 유무를 먼저 확인하고, 해당 API 컨테이너만 정지·이름 변경한 뒤 이전 컨테이너를 원래 이름으로 시작하고 readiness를 확인한다. 오케스트레이터 영속 상태는 그대로 사용하고, 전환 직전 스냅샷은 별도로 보존한다. DB 전체 복원은 필요하지 않다.
+
+
+## 운영 마이그레이션 화면 연결
+
+운영 웹의 기준 이미지 `e68ab0f0…`에 두 `release-handoff-*` 태그가 있다. CloudTrail `PutImage`는 2026-11-07 13:02·13:03 KST의 Mac/Boto3 게시를 기록했다. 이미지에 Git 리비전 라벨이 없었고 GitHub 브랜치 68개와 PR head 71개에서 운영 화면 문구와 모듈을 대조해도 동일 소스가 나오지 않았다. Git 브랜치 또는 PR까지는 확정할 수 없다.
+
+운영 이미지에서 기존 엔트리 `index-CkBRm7ux.js`와 CSS를 보존하고, 해시가 고정된 HTML에 새 모듈 한 개를 추가했다. 해당 모듈은 서비스별 `#/migration/{service_id}` 경로에서 기존 이전 지도와 대상별 파이프라인 사이에 저장소의 `EnvironmentComparison`을 마운트한다. 등록 서비스·온프레미스 출발·AWS 대상에 속한 계획을 읽고, 선택된 계획의 ID와 해시에 연결된 실행 결과를 표시한다. 화면의 모든 요청은 기존 세션을 사용하는 GET이다. 고객 앱 배포와 DNS 전환은 수행하지 않았다.
+
+웹 릴리스 `c263ebec80fe`의 후보와 운영 컨테이너에서 이전 정적 파일 해시, HTML의 지정된 변경, 새 파일의 HTTP 200 및 인증 경계를 확인했다. 이전 계획은 환경 연결이 바뀌어 `plan_target_changed`를 반환했다. 온프레미스 등록 UID와 소유권을 다시 대조해 2026-11-07 15:14:59 KST 관측본을 만들었다. 관측본 릴리스 `24d9fceee6b1`은 앞선 웹 파일을 그대로 보존했다. 표의 긴 이름과 설명에 줄바꿈을 적용한 스타일 릴리스 `ca8af287a0f8`도 후보와 운영 검사를 통과했다.
+
+새 미승인 계획 `b4e50d0d-8d57-4be7-ab09-1f740cc6c80b`에서 실제 Diff `321273fe-e59f-4060-be50-60e79b591d7b`를 실행했다. 2026-11-07 운영 Chrome의 기존 마이그레이션 화면에서 Service 2행·Deployment 2행·관측 범위 1행, `needs_human` 및 미승인을 확인했다. 기존 대상별 파이프라인이 같은 화면에 보였고 표의 넘치는 셀은 0개였다. 새 계획의 배포 액션은 0건이었다.
+
+이 운영 이미지 보완은 `bba3dcf`에서 재현할 수 있다. `platform/web`에서 `npm ci`, `npm run format:check`, `npm run build`를 실행하고 잠금 파일에 포함된 esbuild로 `src/migration-diff-entry.tsx`를 `--bundle --minify --format=esm --target=es2022 --define:process.env.NODE_ENV='"production"'`으로 번들링한다. `platform-migration-web.Dockerfile`은 기준 HTML 해시가 다르면 빌드를 중단한다.
+
+표 스타일만 되돌릴 때는 `delta-platform-api-1-before-workload-diff-ca8af287a0f8`을 사용한다. 웹을 되돌릴 때의 컨테이너는 `delta-platform-api-1-before-workload-diff-c263ebec80fe`다. 관측본만 되돌릴 때는 `delta-platform-api-1-before-workload-diff-24d9fceee6b1`을 사용한다. 배포 전의 활성 작업과 이미지 해시를 확인한 뒤 위 롤백 절차를 따른다.
+
+
+## 정식 플랫폼 빌드
+
+`platform/Dockerfile`은 `npm run build`의 Vite 산출물을 이미지에 복사한다. 기존 정식 산출물에는 접힌 ‘기존 분석·검토 계획’의 일반 비교 기능이 들어 있었고, 운영 이미지에 나중에 추가한 온프레미스→AWS 전용 비교 표는 빠져 있었다. PR #69에서 같은 비교 컴포넌트와 스타일을 마이그레이션 경로에 직접 연결했다. 정식 빌드가 비교 화면을 포함하므로 운영 이미지에 별도로 적용했던 HTML 보완 단계가 필요 없다.
+
+정식 빌드의 화면은 플랫폼 DB에 저장된 실행을 세션 인증 GET으로 조회한다. 기존 비교 결과의 조회는 이미지 안의 온프레미스 관측본에 의존하지 않는다. 환경 연결이 변경되면 계획 검증 규칙을 적용한다. 새 차분을 계산할 때는 유효한 온프레미스 조회 경로나 최신 관측본이 필요하다.
+
+2026-11-07 `npm run build`의 수정 전 산출물을 제공한 브라우저에서 온프레미스→AWS 비교 계획 선택이 없어 회귀 테스트가 실패했다. 수정 후 `npm run format:check`, `npm run build`, `PLAYWRIGHT_BUILT_ASSETS=1 npx playwright test --config=playwright.fixture.config.ts workflow-planning.spec.ts deployment.spec.ts`가 통과했다. 브라우저 11개 검사에서 새로고침 후 저장된 차분 표시, 다른 계획 해시의 결과 격리, 화면 조회 중 쓰기 요청 0건을 검증했다.
+
+정식 릴리스와 같은 `docker buildx build --platform linux/arm64 --load -f platform/Dockerfile`로 로컬 이미지를 빌드했다. 이미지의 `/app/web/dist` 파일 3개의 SHA-256이 브라우저 검사에 사용한 산출물과 모두 일치했고, 이미지에서 Diff 조회 모듈을 불러올 수 있었다.
+
+## 최신 main 통합 검증
+
+2026-11-07 `3767fd3`(#73)을 PR #69에 통합했다. 배포 완료 앱의 환경 카드와 완료 상태 전환은 팀 화면을 따르며, 완료 앱의 기존 진행 상세와 정확한 주소 안내는 그 화면에서 빠졌다. 이전 화면에는 대상별 파이프라인, 온프레미스→AWS 비교 계획 선택과 읽기 전용 차분 표, 접힌 기존 검토 계획을 모두 유지했다. 차분 컴포넌트·스타일·결과 바인딩과 파이프라인의 승격 조건은 PR의 기존 구현을 보존했다.
+
+- `npm run format:check`, `npm run build`, `PLAYWRIGHT_BUILT_ASSETS=1 npm exec -- playwright test --config=playwright.fixture.config.ts`가 통과했다. 정식 웹 산출물에서 Chromium 47개 회귀를 실행했다. 팀 환경 카드의 데스크톱·모바일 표시와 완료 시 자동 전환, 이전 화면의 저장 결과·새로고침·잘못된 계획 해시 차단·쓰기 요청 0건을 검증했다.
+- `uv sync --frozen --python 3.12` 환경에서 Ruff 검사와 형식 검사, 격리 PostgreSQL 17을 사용한 `pytest -q -x`가 통과했다. 플랫폼 백엔드 273개가 통과했고 기본 설정에서 실환경 테스트 1개를 제외했다.
+- `AWS_EC2_METADATA_DISABLED=true DIAGNOSTICS_PYTHON=.venv/bin/python bash deploy/orch-diagnostics/check.sh`에서 AI 346개, Diff 107개, 파이프라인 231개, 오케스트레이터 38개가 통과했다. `needs_human` 대기·거절 시 Jenkins 운영 배포와 DNS 쓰기가 0건이며, 현재 결정 ID로 차분을 승인한 뒤에도 배포와 도메인 전환에 각각 승인이 필요한 것을 확인했다. 배포·DNS 의존성은 테스트 대역을 사용했다.

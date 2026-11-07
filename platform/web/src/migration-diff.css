@@ -1,0 +1,17 @@
+[data-migration-workload-diff] > label {
+  display: grid;
+  gap: 0.5rem;
+  margin: 1rem 0;
+  max-width: 24rem;
+}
+
+[data-migration-workload-diff] > label > select {
+  padding: 0.45rem;
+}
+
+[data-migration-workload-diff] .release-table th,
+[data-migration-workload-diff] .release-table td,
+[data-migration-workload-diff] .release-table small {
+  overflow-wrap: anywhere;
+  white-space: normal;
+}

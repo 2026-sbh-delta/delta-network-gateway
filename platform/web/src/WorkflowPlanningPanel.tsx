@@ -4,7 +4,7 @@ import { EnvironmentComparison, type Execution } from "./EnvironmentComparison";
 import type { Environment } from "./observability-api";
 
 type WorkflowKind = "migration" | "deployment";
-type Workflow = {
+export type Workflow = {
   id: string;
   project_id: string;
   service_id: string;

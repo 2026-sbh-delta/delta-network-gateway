@@ -1,7 +1,9 @@
 import { defineConfig } from "@playwright/test";
 
-// Browser-only fixtures use Vite and intercept every API call in the spec.
+// Browser-only fixtures intercept API calls and can serve the release assets.
 // This configuration deliberately does not start the database-backed E2E server.
+const built = process.env.PLAYWRIGHT_BUILT_ASSETS === "1";
+
 export default defineConfig({
   testDir: "./tests",
   testMatch: [
@@ -23,7 +25,9 @@ export default defineConfig({
     screenshot: "only-on-failure",
   },
   webServer: {
-    command: "npm run dev -- --host 127.0.0.1 --port 5174",
+    command: built
+      ? "npm exec vite preview -- --host 127.0.0.1 --port 5174 --strictPort"
+      : "npm run dev -- --host 127.0.0.1 --port 5174",
     url: "http://127.0.0.1:5174",
     reuseExistingServer: false,
     timeout: 30000,

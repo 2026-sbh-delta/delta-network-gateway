@@ -534,6 +534,9 @@ def create_app(settings=None, engine=None, *, dashboard=None, pipeline=None):
     def pipeline_answer(run_id: str, body: PipelineAnswerInput):
         return pipeline.answer(run_id, body.value, body.decision_id, body.case_id)
 
+    from delta_platform.adapters.workflow_diff import install as install_workload_diff
+
+    install_workload_diff(protected, workflows, settings)
     router.include_router(protected)
     app.include_router(router)
 

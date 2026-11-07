@@ -14,7 +14,7 @@
   const GROUPS = [
     { label: "진단·보고서", code: "관측 → 원인 후보 → 사람 확인", x: -40, y: 680, w: 1000, h: 190 },
     { label: "웹 갈래", code: "build ∥ sast → stage → dast", x: -40, y: -200, w: 1520, h: 560 },
-    { label: "인프라 갈래 · 추후", code: "차분 에이전트", x: -40, y: 410, w: 1820, h: 200 },
+    { label: "인프라 갈래", code: "워크로드 차분", x: -40, y: 410, w: 1820, h: 200 },
     { label: "운영 반영", code: "운영 배포 → 도메인 전환", x: 1530, y: 40, w: 1110, h: 300 },
   ];
   const T = (id, label, x, y, o = {}) => ({ id, label, x, y, w: 210, h: 98, kind: "task", ...o });
@@ -38,7 +38,7 @@
     T("exception-report", "분석 보고서", 420, 730, { icon: "doc", mock: true, tool: "오케스트레이터 보고서 저장소", desc: "관측 근거와 분석 결과를 저장하고 무결성을 검증합니다." }),
     T("exception-review", "실패 보고서 확인", 690, 730, { icon: "pause", mock: true, tool: "사람 확인", desc: "실패한 작업을 재실행하지 않고 보고서를 확인한 뒤 종료합니다." }),
     T("read_aws", "AWS 구성 읽기", 150, 470, { icon: "doc", mock: true, tool: "S3 Terraform 코드·state", desc: "A 기업 AWS Terraform 코드와 state 를 조회 역할로 읽습니다. (3단계)" }),
-    T("map", "차분 매핑", 420, 470, { icon: "spark", ai: true, mock: true, tool: "차분 에이전트", desc: "AWS 자원·보안 설정(GuardDuty·WAF·ANF)을 GCP 대응과 등급(일치·근사·공백)으로 매핑합니다. (3단계)" }),
+    T("map", "워크로드 차분", 420, 470, { icon: "spark", ai: true, mock: true, tool: "delta-diff · delta-ai", desc: "웹 검사와 동시에 AWS 워크로드 구성을 GCP와 비교합니다. 판단이 보류된 항목은 운영 배포와 도메인 전환 전에 확인합니다. 중앙 네트워크와 L7 검사 정책은 매핑 범위에서 제외합니다." }),
     T("gen_plan", "GCP 구성 · plan", 690, 470, { icon: "doc", mock: true, tool: "Terraform plan", desc: "매핑으로 GCP 구성을 만들고 plan 을 저장합니다. (3단계)" }),
     T("infra_approve", "인프라 승인", 960, 470, { icon: "pause", mock: true, tool: "interrupt()", desc: "매핑 표와 plan, 공백 항목을 승인합니다. (3단계)" }),
     T("apply", "GCP 적용", 1230, 470, { icon: "layers", mock: true, tool: "Terraform apply", desc: "plan 을 적용하고 다시 plan 해 변경이 없는지 확인합니다. (3단계)" }),
@@ -52,6 +52,7 @@
     ["result", "release"], ["release", "cutover"], ["cutover", "end"],
     ["dast", "exception-analysis", { from: "bottom", to: "top", label: "진단" }],
     ["exception-analysis", "exception-report"], ["exception-report", "exception-review"],
+    ["prepare", "map", { from: "bottom", to: "top" }], ["map", "release", { from: "top", to: "bottom", label: "차분 확인" }],
     ["start", "read_aws", { from: "bottom", to: "left", mock: true }], ["read_aws", "map", { mock: true }], ["map", "gen_plan", { mock: true }],
     ["gen_plan", "infra_approve", { mock: true }], ["infra_approve", "apply", { mock: true }], ["apply", "db_dump", { mock: true }],
     ["db_dump", "release", { from: "top", to: "bottom", mock: true }],
@@ -219,7 +220,10 @@
     const fixChip = !fix ? branchChip("수정 루프", "t-mock", "이 실행에는 없음")
       : branchChip("수정 루프", fix.state === "pass" ? "t-ok" : fix.state === "fail" ? "t-bad" : fix.state === "running" ? "t-run" : "",
         fix.state === "pass" ? ((nodeOf("dast") || {}).round > 1 ? "2차 재검증" : "수정 PR") : fix.state === "pending" ? "재현 시 선택" : STATE[fix.state]);
-    $("#branches").innerHTML = webChip + fixChip + branchChip("인프라", "t-mock", "추후(3단계)") + rollChip;
+    const mapping = nodeOf("map");
+    const mappingChip = mapping ? branchChip("워크로드 차분", {pass: "t-ok", fail: "t-bad", waiting: "t-wait", warn: "t-wait", running: "t-run"}[mapping.state] || "",
+      mapping.detail?.review === "approved" ? "사람 확인 완료" : STATE[mapping.state]) : branchChip("인프라", "t-mock", "이 실행에는 차분 없음");
+    $("#branches").innerHTML = webChip + fixChip + mappingChip + rollChip;
   }
 
   function autoTarget() {
@@ -249,6 +253,14 @@
   }
   function special(id, d) {
     d = d || {};
+    if (id === "map" && d.verdict) {
+      const rows = d.rows || [];
+      return `<dl class="kv"><dt>차분 판정</dt><dd>${esc(d.verdict)}</dd><dt>State serial</dt><dd>${esc(d.state_serial)}</dd></dl>
+        ${(d.reasons || []).length ? `<ul>${d.reasons.map((reason) => `<li>${esc(reason)}</li>`).join("")}</ul>` : ""}
+        <table class="res"><thead><tr><th>출발 자원</th><th>대상 후보</th><th>등급과 차이</th></tr></thead><tbody>${rows.map((r) =>
+          `<tr><td>${esc(r.source)}</td><td>${esc(r.target || "—")}</td><td>${esc(r.grade)}${r.differences?.length ? `<br>${r.differences.map(esc).join(" · ")}` : ""}</td></tr>`).join("")}</tbody></table>
+        ${d.row_count > rows.length ? `<p>${esc(d.row_count)}개 중 ${esc(rows.length)}개 표시</p>` : ""}`;
+    }
     if (id === "exception-report") {
       const r = d.report || {}, ref = r.reference;
       const links = ref && board ? ["json", "md"].map((f) => `<a href="/api/pipeline/runs/${encodeURIComponent(board.run_id)}/reports/${encodeURIComponent(ref.case_id)}/${f}">${f.toUpperCase()} 다운로드</a>`).join(" · ") : "";
@@ -311,7 +323,7 @@
     $("#p-head").innerHTML = `
       <div class="p-sec">
         <div class="eyebrow"><span>${sel ? "선택한 단계" : "현재 단계 · 자동으로 따라갑니다"}</span>${sel ? '<button type="button" id="unsel">자동으로</button>' : ""}</div>
-        <div class="p-title"><h2>${esc(n.label)}</h2><span class="state s-${st}">${real ? STATE[st] : "추후"}</span>${n.ai ? '<span class="state s-running">AI</span>' : ""}</div>
+        <div class="p-title"><h2>${esc(n.label)}</h2><span class="state s-${st}">${real ? (id === "map" && data?.detail?.review === "approved" ? "사람 확인 완료" : STATE[st]) : "추후"}</span>${n.ai ? '<span class="state s-running">AI</span>' : ""}</div>
         ${n.tool ? `<div class="tool">${esc(onpremMeta(n).tool||n.tool)}</div>` : ""}
         ${n.desc ? `<p class="desc">${esc(onpremMeta(n).desc||n.desc)}</p>` : ""}
         ${real ? `<dl class="kv"><dt>소요</dt><dd class="mono">${esc(dur)}</dd>${data && data.summary ? `<dt>결과</dt><dd>${esc(data.summary)}</dd>` : ""}</dl>` : ""}

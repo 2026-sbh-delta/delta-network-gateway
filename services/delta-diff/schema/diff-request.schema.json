@@ -1,0 +1,187 @@
+{
+  "$defs": {
+    "DiffSource": {
+      "additionalProperties": false,
+      "properties": {
+        "provider": {
+          "default": "aws",
+          "enum": [
+            "aws",
+            "gcp",
+            "onprem"
+          ],
+          "title": "Provider",
+          "type": "string"
+        },
+        "state": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StateRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "manifests": {
+          "anyOf": [
+            {
+              "maxLength": 60000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Manifests"
+        },
+        "region": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Region"
+        },
+        "exclude_subnets": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 20,
+          "title": "Exclude Subnets",
+          "type": "array"
+        }
+      },
+      "title": "DiffSource",
+      "type": "object"
+    },
+    "DiffTarget": {
+      "additionalProperties": false,
+      "properties": {
+        "provider": {
+          "default": "gcp",
+          "enum": [
+            "aws",
+            "gcp",
+            "onprem"
+          ],
+          "title": "Provider",
+          "type": "string"
+        },
+        "manifests": {
+          "anyOf": [
+            {
+              "maxLength": 60000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Manifests"
+        },
+        "region": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Region"
+        }
+      },
+      "title": "DiffTarget",
+      "type": "object"
+    },
+    "StateRef": {
+      "additionalProperties": false,
+      "properties": {
+        "bucket": {
+          "pattern": "^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$",
+          "title": "Bucket",
+          "type": "string"
+        },
+        "key": {
+          "maxLength": 1024,
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        }
+      },
+      "required": [
+        "bucket",
+        "key"
+      ],
+      "title": "StateRef",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "diff_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Diff Id",
+      "type": "string"
+    },
+    "service_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Service Id",
+      "type": "string"
+    },
+    "source": {
+      "$ref": "#/$defs/DiffSource"
+    },
+    "target": {
+      "$ref": "#/$defs/DiffTarget",
+      "default": {
+        "provider": "gcp",
+        "manifests": null,
+        "region": null
+      }
+    },
+    "accepted_gaps": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 50,
+      "title": "Accepted Gaps",
+      "type": "array"
+    },
+    "scc_tier": {
+      "anyOf": [
+        {
+          "enum": [
+            "standard",
+            "premium"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Scc Tier"
+    }
+  },
+  "required": [
+    "diff_id",
+    "service_id",
+    "source"
+  ],
+  "title": "DiffRequest",
+  "type": "object"
+}

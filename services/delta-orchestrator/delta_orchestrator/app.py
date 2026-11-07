@@ -524,5 +524,7 @@ def create_app(pipelines: Pipelines | None = None, *, case_review_client_factory
         return FileResponse(STATIC / "index.html", media_type="text/html")
 
     app.mount("/static", StaticFiles(directory=str(STATIC)), name="static")
+    from .platform_diff import router as platform_diff_router
+    app.include_router(platform_diff_router())
     return app
 

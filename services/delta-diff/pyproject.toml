@@ -1,0 +1,29 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "delta-diff"
+version = "0.1.0"
+description = "Delta 차분 에이전트 — 출발 환경 Terraform state 로 대상 환경 매핑 제안"
+requires-python = ">=3.12"
+dependencies = [
+    "delta-ai",
+    "boto3>=1.35",
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=9", "pytest-asyncio>=1", "httpx>=0.27"]
+
+[tool.uv.sources]
+delta-ai = { path = "../delta-ai", editable = true }
+
+[tool.hatch.build.targets.wheel]
+packages = ["delta_diff"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
