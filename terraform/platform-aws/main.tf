@@ -22,8 +22,6 @@ locals {
     sast          = { port = 8790, instance_type = var.sast_instance_type, volume_gb = 30, llm = true, arch = "arm64" }
     dast          = { port = 8765, instance_type = var.dast_instance_type, volume_gb = 40, llm = true, arch = "arm64" }
     diff          = { port = 8095, instance_type = var.small_instance_type, volume_gb = 20, llm = true, arch = "arm64" }
-    # 장애 원인 진단(연재님 delta-ai). 멈춘 실행의 원인 설명만 한다(판정은 파이프라인).
-    ai = { port = 8090, instance_type = var.small_instance_type, volume_gb = 20, llm = true, arch = "arm64" }
   }
 
   # 서비스 사이 연결. 여기 적은 것만 열린다(그 밖은 모두 차단).
@@ -32,7 +30,6 @@ locals {
     { from = "orchestrator", to = "sast", port = 8790 },
     { from = "orchestrator", to = "dast", port = 8765 },
     { from = "orchestrator", to = "diff", port = 8095 },
-    { from = "orchestrator", to = "ai", port = 8090 }, # 멈춘 실행의 원인 진단
     { from = "jenkins-agent", to = "jenkins", port = 8080 },
     { from = "jenkins", to = "sast", port = 8790 },
     { from = "dast", to = "sast", port = 8790 },
