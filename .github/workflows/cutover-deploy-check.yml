@@ -1,0 +1,35 @@
+name: Platform deployment checks
+
+on:
+  pull_request:
+    paths:
+      - 'deploy/platform/**'
+      - '.github/workflows/cutover-deploy-check.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'deploy/platform/**'
+      - '.github/workflows/cutover-deploy-check.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deployment-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      AWS_EC2_METADATA_DISABLED: 'true'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e
+        with:
+          version: '0.10.0'
+          python-version: '3.12'
+      - name: Validate deployment shell syntax
+        run: bash -n deploy/platform/deploy.sh
+      - name: Test deployment and SSM result handling
+        run: uv run --no-project --python 3.12 --with pytest==9.2.0 python -m pytest -q deploy/platform/tests
