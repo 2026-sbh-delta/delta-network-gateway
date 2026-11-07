@@ -90,6 +90,14 @@ class FakeOrchestrator:
             return httpx.Response(200, content=body, headers={"content-type": "text/event-stream"})
         if request.url.path == "/api/pipeline/runs/abc123/answer":
             return httpx.Response(200, json={"ok": True})
+        if request.url.path == "/api/demo/reset" and request.method == "POST":
+            if self.busy:
+                return httpx.Response(
+                    409, json={"detail": "파이프라인 실행 중에는 초기화하지 않습니다"}
+                )
+            return httpx.Response(202, json={"state": "running", "steps": []})
+        if request.url.path == "/api/demo/reset":
+            return httpx.Response(200, json={"state": "idle", "steps": []})
         return httpx.Response(404, json={"detail": "없음"})
 
 
@@ -210,3 +218,18 @@ def test_public_https_address_needs_no_separate_host():
     )
     assert r.configured and r.host == "d2rjxujgsi1fjg.cloudfront.net"
     assert not OrchestratorRelay(relay_settings(orchestrator_public_host="")).configured
+
+
+def test_reset_sends_the_click_as_approval_and_passes_the_busy_reason(engine):
+    fake = FakeOrchestrator()
+    app = create_app(relay_settings(), engine, pipeline=relay(fake))
+    with TestClient(app, base_url="http://127.0.0.1:8088") as client:
+        enter(client)
+        assert client.get("/api/v1/pipeline/reset").json()["state"] == "idle"
+        started = client.post("/api/v1/pipeline/reset", json={})
+        assert started.status_code == 202 and started.json()["state"] == "running"
+        assert fake.seen[-1] == ("POST", "/api/demo/reset", b'{"approve":true}')
+        fake.busy = True
+        busy = client.post("/api/v1/pipeline/reset", json={})
+        assert busy.status_code == 409
+        assert "실행 중" in busy.json()["error"]["message"]

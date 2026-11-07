@@ -606,6 +606,98 @@ function Activity({ board }: { board: Board }) {
   );
 }
 
+// Demo reset: domain back to AWS, vulnerable build on GCP production, AI fix PRs closed.
+type ResetStep = { id: string; label: string; state: string; summary: string };
+type ResetStatus = { state: string; steps: ResetStep[] };
+const RESET_STEPS = [
+  "도메인 AWS 복귀",
+  "GCP 운영 취약 버전 재배포",
+  "AI 수정 PR 정리",
+];
+function ResetDialog({
+  onClose,
+  onStarted,
+}: {
+  onClose: () => void;
+  onStarted: (s: ResetStatus) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  async function start() {
+    setBusy(true);
+    setError("");
+    try {
+      onStarted(await api<ResetStatus>("/pipeline/reset", {}));
+    } catch (e) {
+      setError(message(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="pd-modal-back" role="dialog" aria-label="파이프라인 초기화">
+      <section className="pl-reset">
+        <h3>파이프라인 초기화</h3>
+        <ol>
+          {RESET_STEPS.map((s) => (
+            <li key={s}>{s}</li>
+          ))}
+        </ol>
+        <p>시연 전 상태로 · 진행 중인 실행이 있으면 시작 안 함</p>
+        {error && <p className="pl-error">{error}</p>}
+        <div className="pl-reset-actions">
+          <button onClick={onClose} disabled={busy}>
+            취소
+          </button>
+          <button className="primary" onClick={start} disabled={busy}>
+            {busy ? "시작 중…" : "초기화 시작"}
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function ResetCard({
+  status,
+  onClose,
+}: {
+  status: ResetStatus;
+  onClose: () => void;
+}) {
+  const label: Record<string, string> = {
+    pending: "대기",
+    running: "진행 중",
+    pass: "완료",
+    fail: "실패",
+    skipped: "건너뜀",
+  };
+  return (
+    <aside className="pl-reset-card" aria-label="초기화 진행">
+      <header>
+        <strong>초기화 · {label[status.state] ?? status.state}</strong>
+        {status.state !== "running" && (
+          <button aria-label="초기화 결과 닫기" onClick={onClose}>
+            ×
+          </button>
+        )}
+      </header>
+      <ol>
+        {status.steps.map((s) => (
+          <li key={s.id} className={`s-${s.state}`}>
+            <i />
+            <span>
+              <b>{s.label}</b>
+              {s.summary && <small>{s.summary}</small>}
+            </span>
+            <em>{label[s.state] ?? s.state}</em>
+          </li>
+        ))}
+      </ol>
+    </aside>
+  );
+}
+
 // Bottom drawer with the selected step's Jenkins console (build, staging deploy, release).
 const LOG_NODE: Partial<Record<Selection, string>> = {
   build: "build",
@@ -1181,7 +1273,26 @@ export function PipelinePanel({ runId: linked }: { runId?: string | null }) {
   const [starting, setStarting] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [closedFix, setClosedFix] = useState("");
+  const [resetAsk, setResetAsk] = useState(false);
+  const [reset, setReset] = useState<ResetStatus | null>(null);
   const follow = useRef(true);
+  // Show a reset already in progress (e.g. started from another screen) and follow it.
+  useEffect(() => {
+    api<ResetStatus>("/pipeline/reset")
+      .then((s) => s.state === "running" && setReset(s))
+      .catch(() => undefined);
+  }, []);
+  useEffect(() => {
+    if (reset?.state !== "running") return;
+    const t = setInterval(
+      () =>
+        api<ResetStatus>("/pipeline/reset")
+          .then(setReset)
+          .catch(() => undefined),
+      3000,
+    );
+    return () => clearInterval(t);
+  }, [reset?.state]);
 
   async function loadRuns() {
     try {
@@ -1333,10 +1444,28 @@ export function PipelinePanel({ runId: linked }: { runId?: string | null }) {
             진행 단계 따라가기
           </button>
         )}
+        {!live && (
+          <button
+            onClick={() => setResetAsk(true)}
+            disabled={reset?.state === "running"}
+          >
+            {reset?.state === "running" ? "초기화 중…" : "초기화"}
+          </button>
+        )}
         <button className="flow-dark" onClick={() => setStarting((v) => !v)}>
           새 실행
         </button>
       </div>
+      {resetAsk && (
+        <ResetDialog
+          onClose={() => setResetAsk(false)}
+          onStarted={(s) => {
+            setResetAsk(false);
+            setReset(s);
+          }}
+        />
+      )}
+      {reset && <ResetCard status={reset} onClose={() => setReset(null)} />}
       {starting && (
         <div className="flow-popover">
           <StartRun

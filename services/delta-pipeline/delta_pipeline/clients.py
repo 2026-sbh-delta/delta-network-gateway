@@ -131,6 +131,13 @@ class Dast:
                                          headers={**self._headers, "Content-Type": "application/json"})
         return _json(request, timeout=PR_TIMEOUT_SECONDS)
 
+    def cleanup_fix_branches(self, repo: str) -> dict[str, Any]:
+        """시연 초기화: AI 수정 PR(dast/fix-*)을 닫고 브랜치를 지운다. 기본 브랜치는 그대로다."""
+        request = urllib.request.Request(f"{self._url}/api/platform/fix-branches/cleanup",
+                                         json.dumps({"repo": repo}).encode(), method="POST",
+                                         headers={**self._headers, "Content-Type": "application/json"})
+        return _json(request, timeout=PR_TIMEOUT_SECONDS)
+
 
 class Staging:
     """스테이징 도구(조회 토큰). 점검을 끝낸 실행이 자기 점유를 푼다."""

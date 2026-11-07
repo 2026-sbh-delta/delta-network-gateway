@@ -1674,3 +1674,84 @@
 .flow-page.with-activity .flow-float.bottom-right {
   right: 388px;
 }
+
+/* Demo reset: confirm dialog and progress card. */
+.pl-reset {
+  width: min(420px, 100%);
+  padding: 22px 24px;
+  background: #fff;
+  border-radius: 14px;
+  box-shadow: 0 24px 60px #0000003a;
+}
+.pl-reset h3 {
+  margin: 0 0 10px;
+}
+.pl-reset ol {
+  margin: 0 0 10px;
+  padding-left: 20px;
+  line-height: 1.9;
+}
+.pl-reset p {
+  margin: 0 0 14px;
+  color: var(--ink-2);
+  font-size: 13px;
+}
+.pl-reset-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.pl-reset-card {
+  position: absolute;
+  z-index: 7;
+  top: 64px;
+  left: 16px;
+  width: 360px;
+  padding: 12px 14px;
+  background: #fff;
+  border: 1px solid #e4e4e7;
+  border-radius: 12px;
+  box-shadow: 0 12px 32px #00000014;
+}
+.pl-reset-card header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.pl-reset-card header button {
+  border: 0;
+  background: none;
+  font-size: 18px;
+  cursor: pointer;
+}
+.pl-reset-card ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.pl-reset-card li {
+  display: grid;
+  grid-template-columns: 10px 1fr auto;
+  gap: 10px;
+  padding: 7px 0;
+  border-top: 1px solid #f1f1f3;
+  font-size: 13px;
+}
+.pl-reset-card i {
+  width: 8px;
+  height: 8px;
+  margin-top: 6px;
+  border-radius: 50%;
+  background: var(--tone);
+}
+.pl-reset-card span {
+  display: grid;
+}
+.pl-reset-card small {
+  color: var(--ink-2);
+}
+.pl-reset-card em {
+  font-style: normal;
+  color: var(--ink-2);
+}
