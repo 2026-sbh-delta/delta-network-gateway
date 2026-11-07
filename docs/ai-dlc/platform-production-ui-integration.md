@@ -177,3 +177,10 @@
 
 - 최종 대상 Python10개 Ruff check/format, 웹 format:check 및 추가 빌드 도구 Prettier, git diff --check가 통과했다. 기본 배포 CLI의 config 위치를 수동 지정한 초기 lint 시도는 first-party 분류/줄 길이 설정 차이로 실패했으며, CI와 같은 파일별 설정 자동 탐색으로 최종 검증했다.
 - 통합 operate 도구는 기존 factory에서 최초 확장하는 경로를 검증한다. 현재 확장 factory가 이미 적용된 운영의 다음 변경에는 기존 Python bind와 factory 기준을 먼저 검토한다. 정적 CSS 보완은 별도 atomic 도구를 사용한다.
+
+## Git 게시와 원격 CI (2026-11-07 KST)
+
+- 사용자의 커밋/푸시 지시로 `feat/platform-production-ui-pipeline`에 변경을 나누어 서명 커밋하고 푸시했다. 기존 PR #76은 사용자 지시로 병합하지 않고 닫았다.
+- API와 설정 호환성 `9098cba1`, 기존 UI와 파이프라인 통합 `54870794`, 운영 도구와 검증 기록 `59376ed8`이다. 기존 UI 숨김 기반 커밋 `270f5b6a`도 이 브랜치에 포함한다.
+- [Platform checks 42367680075](https://github.com/2026-sbh-delta/delta-network-gateway/actions/runs/42367680075)는 `59376ed8757dac23afa320207f44dd405bde0e80`에서 수동 실행했고 20개 job이 모두 success다. AWS 운영 배포 워크플로가 아닌 검사 워크플로다.
+- 이후 문서 전용 기록 커밋은 검사한 코드에 추가 변경을 넣지 않는다. 현재 원격 SHA와 PR/병합 상태는 Git 이력을 따른다.

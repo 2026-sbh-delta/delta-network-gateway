@@ -1,5 +1,7 @@
 # Delta network gateway
 
+2026-11-07 운영 UI 통합 브랜치 `feat/platform-production-ui-pipeline` 푸시 및 원격 CI 완료: 코드 기준 `59376ed8`의 Platform checks 20개가 통과했고 기존 PR #76은 병합 없이 닫았다. [실행 및 게시 기록](ai-dlc/platform-production-ui-integration.md#git-게시와-원격-ci-2026-11-07-kst)
+
 2026-11-07 20:13 KST 운영 UI 보존 및 PR #75 파이프라인 통합 배포 완료: 기존 UI/마이그레이션을 유지하고 새 메뉴에서 실제 실행20건, 상세와 빌드 로그, 새 실행 폼을1440px/390px에서 확인했다. API image/Env와 Worker/DB, 서비스1개/환경3개를 보존했다. API1회 교체 후 모바일 CSS는 재시작0회로 보완했으며 실제 쓰기 요청0개다. 로컬 검증/SSM 실제 배포 성공과 실패한 main Release를 구분한다. Git 게시와 원격 CI 상태는 실제 이력과 실행 결과를 따른다. [통합 설계와 상태](ai-dlc/platform-production-ui-integration.md)
 
 2026-11-07 19:16:43 KST 마이그레이션 UI 숨김 반영 완료: GuardDuty/Wazuh 카드 전체와 대상별 배포 주소/사설망 안내를 프론트에서 숨겼다. 실제 Chrome 새로고침과 접근성 화면에서 숨김 및 기존 대상 선택/차분 표/파이프라인 표시를 확인했고, 데스크톱/모바일 변경 전후 검사 2개와 빌드/형식 검사를 통과했다. API/Worker/DB 재시작 0회, 기존 자산 7개와 서비스/환경 응답을 보존했다. [범위와 실제 검증](ai-dlc/platform-presentation.md#u3-마이그레이션-안내와-보안-카드-숨김-2026-11-07-kst)
