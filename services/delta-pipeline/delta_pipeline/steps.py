@@ -27,7 +27,8 @@ from delta_pipeline.model import REPO_PREFIX, Board, Options
 from delta_pipeline.diff_client import DiffJob
 
 POLL_SECONDS = 1  # 내부 서비스 조회(SAST·DAST·도메인 확인). 끝난 뒤 최대 1초 안에 다음 단계로 간다
-CUTOVER_GRACE_SECONDS = 120  # TTL 이 지난 뒤에도 blue 가 확인되지 않으면 이 시간 뒤 되돌린다
+CUTOVER_GRACE_SECONDS = 120  # TTL 이 지난 뒤에도 blue 가 확인되지 않으면 이 시간 뒤 되돌린다(되돌리기용)
+CUTOVER_VERIFY_SECONDS = 60  # 전환 뒤 Cloudflare 레코드·blue 응답을 확인하는 최대 시간
 CUTOVER_STREAK = 3  # 연속 성공 횟수(에지 캐시·전파 흔들림 배제)
 JENKINS_POLL_SECONDS = 1
 BUILD_DEADLINE_SECONDS = 1200
@@ -930,38 +931,35 @@ class Steps:
                 "cutover_switched_at": switched_at, "cutover_wait_seconds": wait_seconds}
 
     def cutover_verify(self, state: PipelineState) -> dict[str, Any]:
-        """설정 반영만으로 끝내지 않는다. 공개 리졸버가 blue 를 돌려주고, 서비스 도메인 응답이 blue 에서 오는지
-        연속으로 확인한다. 그 뒤 green 을 TTL 만큼 유지하고, 그동안 레코드가 바뀌지 않았는지 다시 본다.
-        확인하지 못하면 green 으로 되돌린다."""
+        """Cloudflare 기준으로 확인한다: 권한 있는 레코드가 blue(DNS 전용)이고, blue 원본이 서비스 도메인
+        Host 로 연속 정상 응답하면 완료한다. green 은 내리지 않으므로 TTL 동안 기다리지 않는다(이전 응답을
+        캐시한 클라이언트는 TTL 안에 green 으로 계속 정상 접속한다). 확인하지 못하면 green 으로 되돌린다."""
         self._require_release(state)
         cfg, cf = self._cutover()
-        url = f"{cfg.scheme}://{cfg.record}{cfg.verify_path}"
-        keep_until = state["cutover_switched_at"] + state["cutover_wait_seconds"]
-        deadline = keep_until + CUTOVER_GRACE_SECONDS
-        streak, last, answer = 0, (0, ""), None
+        url = cfg.blue_origin + cfg.verify_path
+        deadline = state["cutover_switched_at"] + CUTOVER_VERIFY_SECONDS
+        streak, last = 0, (0, "")
         while self._deps.now() < deadline:
+            record = self._read(lambda: cf.find_record(cfg.zone_id, cfg.record))
+            if hostname(record.get("content")) != cfg.blue or record.get("proxied") is not False:
+                # 다른 도구가 바꿨다. 덮어쓰지 않고 사람이 확인한다.
+                self._board.update("cutover", state="fail", summary="전환 확인 중 DNS 설정이 달라졌다. 사람이 확인해야 한다")
+                raise Stopped("전환 확인 중 DNS 설정이 달라졌다. green 을 유지한 채 사람이 확인해야 한다")
             try:
-                answer = self._deps.resolve(cfg.record)
-                last = self._deps.probe(url) if answer == cfg.blue else (0, "")
+                last = self._deps.probe(url, host=cfg.record)
             except ServiceUnavailable:
                 last = (0, "")
-            streak = streak + 1 if answer == cfg.blue and last[0] == 200 and last[1].startswith(cfg.expect_served_by) else 0
+            streak = streak + 1 if last[0] == 200 and last[1].startswith(cfg.expect_served_by) else 0
             if streak >= CUTOVER_STREAK:
                 break
             self._deps.sleep(POLL_SECONDS)
         else:
-            return self._rollback(state, cf, cfg, f"DNS 응답 {answer or '없음'}, HTTP {last[0]}, {last[1] or '식별값 없음'}")
-        self._board.add_detail("cutover", verified={"url": url, "dns": answer, "served_by": last[1]})
-        remaining = keep_until - self._deps.now()
-        if remaining > 0:
-            # green 을 남은 TTL 동안 유지한다(이전 응답을 캐시한 클라이언트가 아직 green 으로 온다)
-            self._board.update("cutover", summary=f"blue 응답 확인. green 유지 {int(remaining)}초 대기")
-            self._deps.sleep(remaining)
-        final = self._read(lambda: cf.find_record(cfg.zone_id, cfg.record))
-        if hostname(final.get("content")) != cfg.blue or final.get("proxied") is not False:
-            raise Stopped("대기 중 DNS 설정이 달라졌다. green 을 유지한 채 사람이 확인해야 한다")
+            return self._rollback(state, cf, cfg, f"HTTP {last[0]}, {last[1] or '식별값 없음'}")
+        self._board.add_detail("cutover", verified={"url": f"{cfg.scheme}://{cfg.record}{cfg.verify_path}",
+                                                    "dns": cfg.blue, "cloudflare": cfg.blue, "served_by": last[1]})
         self._board.update("cutover", state="pass",
-                           summary=f"{cfg.record} → {cfg.blue}, 응답 {last[1]}. green 은 내리지 않음(TTL {state['cutover_wait_seconds']}초 경과)")
+                           summary=f"{cfg.record} → {cfg.blue}(Cloudflare 반영), 응답 {last[1]}. "
+                                   f"green 은 내리지 않음 · 공개 DNS 는 TTL {state['cutover_wait_seconds']}초 안에 반영")
         return {"gates": {"cutover": "pass"}}
 
     def _rollback(self, state: PipelineState, cf: CloudflareClient, cfg: CutoverConfig, why: str) -> dict[str, Any]:

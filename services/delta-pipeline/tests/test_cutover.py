@@ -1,5 +1,6 @@
-"""서비스 도메인 전환(명세 v1.1 6-3, 11/5 정정): DNS 전용 CNAME(TTL 60)을 green 일 때만 blue 로 바꾸고,
-공개 DNS·실제 응답으로 확인한 뒤 green 을 TTL 만큼 유지한다. 확인하지 못하면 green 으로 되돌린다.
+"""서비스 도메인 전환(명세 v1.1 6-3, 11/8 Cloudflare 기준): DNS 전용 CNAME(TTL 60)을 green 일 때만 blue 로 바꾸고,
+Cloudflare 레코드와 blue 원본의 서비스 도메인 응답으로 확인하면 완료한다. green 은 내리지 않으므로 TTL 을 기다리지 않는다.
+확인하지 못하면 green 으로 되돌린다.
 운영 묶음 verify를 먼저 완료하고, 운영 승인과 도메인 전환 승인을 따로 받는다."""
 
 from __future__ import annotations
@@ -92,23 +93,24 @@ def _execute_cutover(run, *, approve_cutover=True):
     return snapshot
 
 
-def test_switch_waits_for_public_dns_and_blue_responses_then_keeps_green_for_ttl(tmp_path):
+def test_switch_completes_on_cloudflare_and_blue_response_without_ttl_wait(tmp_path):
     cf, clock = FakeCloudflare(), Clock()
     net = FakeInternet(cf, lag=2)
     snapshot = _execute_cutover(_run(tmp_path, cf, net, clock))
     assert snapshot["outcome"] == "verified" and _states(snapshot)["cutover"] == "pass"
     assert cf.writes == ["gcp.adajosou.site"]
-    # 전환 전에 blue 원본을 서비스 도메인 Host 로 먼저 확인했다
+    # 전환 전·후 모두 blue 원본을 서비스 도메인 Host 로 확인했다(공개 리졸버 캐시는 기다리지 않는다)
     assert net.calls[0] == ("http://gcp-origin.example/healthz", "app.adajosou.site")
-    # 서비스 도메인 확인은 https 로 했고, green 은 TTL(60초) 이상 유지했다
-    assert ("https://app.adajosou.site/healthz", None) in net.calls
-    assert clock.slept >= 60
+    assert net.calls.count(("http://gcp-origin.example/healthz", "app.adajosou.site")) >= 4
+    assert clock.slept < 60
+    cutover = next(n for n in snapshot["nodes"] if n["id"] == "cutover")
+    assert cutover["detail"]["verified"]["cloudflare"] == "gcp.adajosou.site"
 
 
-def test_auto_ttl_keeps_green_for_300_seconds(tmp_path):
+def test_auto_ttl_does_not_hold_the_run(tmp_path):
     cf, clock = FakeCloudflare(ttl=1), Clock()
     snapshot = _execute_cutover(_run(tmp_path, cf, FakeInternet(cf), clock))
-    assert snapshot["outcome"] == "verified" and clock.slept >= 300
+    assert snapshot["outcome"] == "verified" and clock.slept < 300
 
 
 def test_failed_precheck_never_touches_dns(tmp_path):
@@ -120,7 +122,13 @@ def test_failed_precheck_never_touches_dns(tmp_path):
 
 def test_blue_unreachable_after_switch_rolls_back_to_green(tmp_path):
     cf = FakeCloudflare()
-    snapshot = _execute_cutover(_run(tmp_path, cf, FakeInternet(cf, blue_ok=False), Clock()))
+
+    class FailsAfterSwitch(FakeInternet):
+        def probe(self, url, host=None, timeout=10):
+            self.calls.append((url, host))
+            return self.origin if self.cf.record["content"] == "aws.adajosou.site" else (502, "")
+
+    snapshot = _execute_cutover(_run(tmp_path, cf, FailsAfterSwitch(cf), Clock()))
     assert snapshot["outcome"] == "stopped"
     assert cf.writes == ["gcp.adajosou.site", "aws.adajosou.site"] and cf.record["content"] == "aws.adajosou.site"
     assert "되돌렸다" in next(n for n in snapshot["nodes"] if n["id"] == "cutover")["summary"]
@@ -139,20 +147,19 @@ def test_already_blue_on_resume_does_not_write_again(tmp_path):
     assert snapshot["outcome"] == "verified" and cf.writes == []
 
 
-def test_record_changed_during_green_hold_stops(tmp_path):
+def test_record_changed_by_someone_else_during_check_stops_without_overwrite(tmp_path):
     cf, clock = FakeCloudflare(), Clock()
 
     class Meddler(FakeInternet):
         def probe(self, url, host=None, timeout=10):
             result = super().probe(url, host, timeout)
-            if not host:
-                self.cf.record["content"] = "someone-else.example.net"  # 대기 중 다른 도구가 바꿈
+            if self.cf.record["content"] == "gcp.adajosou.site":
+                self.cf.record["content"] = "someone-else.example.net"  # 확인 중 다른 도구가 바꿈
             return result
 
-    net = Meddler(cf, lag=0)
-    net.resolve = lambda name: "gcp.adajosou.site"
-    snapshot = _execute_cutover(_run(tmp_path, cf, net, clock))
+    snapshot = _execute_cutover(_run(tmp_path, cf, Meddler(cf, lag=0), clock))
     assert snapshot["outcome"] == "stopped"
+    assert cf.writes == ["gcp.adajosou.site"]  # 다른 도구의 값을 되돌리지 않는다
 
 
 def test_refused_approval_or_missing_config_never_switches(tmp_path):
