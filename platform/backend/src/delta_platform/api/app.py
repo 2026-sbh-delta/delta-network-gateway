@@ -168,8 +168,20 @@ def create_app(settings=None, engine=None, *, dashboard=None):
         return summary
 
     @router.get("/auth/session")
-    def session(summary=Depends(authenticated)):
-        return summary
+    def session(request: Request, response: Response):
+        if not settings.presentation_mode:
+            return authenticated(request)
+        token, summary = auth.presentation_session(request.cookies.get(COOKIE))
+        response.set_cookie(
+            COOKIE,
+            token,
+            httponly=True,
+            secure=not settings.local_mode,
+            samesite="strict",
+            path="/",
+            max_age=settings.session_hours * 3600,
+        )
+        return {**summary, "presentation_mode": True}
 
     @router.post("/auth/logout", status_code=204, dependencies=[Depends(authenticated)])
     def logout(body: EmptyInput, request: Request):

@@ -56,3 +56,11 @@ Trivy는 현재 파이프라인에서 호출되지 않는다. 예전 수동 수�
 2026-11-07 `npm run build`의 수정 전 산출물을 제공한 브라우저에서 온프레미스→AWS 비교 계획 선택이 없어 회귀 테스트가 실패했다. 수정 후 `npm run format:check`, `npm run build`, `PLAYWRIGHT_BUILT_ASSETS=1 npx playwright test --config=playwright.fixture.config.ts workflow-planning.spec.ts deployment.spec.ts`가 통과했다. 브라우저 11개 검사에서 새로고침 후 저장된 차분 표시, 다른 계획 해시의 결과 격리, 화면 조회 중 쓰기 요청 0건을 검증했다.
 
 정식 릴리스와 같은 `docker buildx build --platform linux/arm64 --load -f platform/Dockerfile`로 로컬 이미지를 빌드했다. 이미지의 `/app/web/dist` 파일 3개의 SHA-256이 브라우저 검사에 사용한 산출물과 모두 일치했고, 이미지에서 Diff 조회 모듈을 불러올 수 있었다.
+
+## 최신 main 통합 검증
+
+2026-11-07 `3767fd3`(#73)을 PR #69에 통합했다. 배포 완료 앱의 환경 카드와 완료 상태 전환은 팀 화면을 따르며, 완료 앱의 기존 진행 상세와 정확한 주소 안내는 그 화면에서 빠졌다. 이전 화면에는 대상별 파이프라인, 온프레미스→AWS 비교 계획 선택과 읽기 전용 차분 표, 접힌 기존 검토 계획을 모두 유지했다. 차분 컴포넌트·스타일·결과 바인딩과 파이프라인의 승격 조건은 PR의 기존 구현을 보존했다.
+
+- `npm run format:check`, `npm run build`, `PLAYWRIGHT_BUILT_ASSETS=1 npm exec -- playwright test --config=playwright.fixture.config.ts`가 통과했다. 정식 웹 산출물에서 Chromium 47개 회귀를 실행했다. 팀 환경 카드의 데스크톱·모바일 표시와 완료 시 자동 전환, 이전 화면의 저장 결과·새로고침·잘못된 계획 해시 차단·쓰기 요청 0건을 검증했다.
+- `uv sync --frozen --python 3.12` 환경에서 Ruff 검사와 형식 검사, 격리 PostgreSQL 17을 사용한 `pytest -q -x`가 통과했다. 플랫폼 백엔드 273개가 통과했고 기본 설정에서 실환경 테스트 1개를 제외했다.
+- `AWS_EC2_METADATA_DISABLED=true DIAGNOSTICS_PYTHON=.venv/bin/python bash deploy/orch-diagnostics/check.sh`에서 AI 346개, Diff 107개, 파이프라인 231개, 오케스트레이터 38개가 통과했다. `needs_human` 대기·거절 시 Jenkins 운영 배포와 DNS 쓰기가 0건이며, 현재 결정 ID로 차분을 승인한 뒤에도 배포와 도메인 전환에 각각 승인이 필요한 것을 확인했다. 배포·DNS 의존성은 테스트 대역을 사용했다.

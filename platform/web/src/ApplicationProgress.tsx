@@ -18,7 +18,13 @@ const stages = [
   ["dast", "DAST"],
   ["deploy", "VM·DB 준비 및 배포"],
 ];
-export function ApplicationProgress({ service }: { service: Service }) {
+export function ApplicationProgress({
+  service,
+  onUpdate,
+}: {
+  service: Service;
+  onUpdate: (service: Service) => void;
+}) {
   const [current, setCurrent] = useState(service);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -36,7 +42,9 @@ export function ApplicationProgress({ service }: { service: Service }) {
         );
         if (!stopped) {
           setCurrent(result);
+          onUpdate(result);
           setError("");
+          if (result.application?.status === "succeeded") return;
         }
       } catch (e) {
         if (!stopped) setError(message(e));
@@ -49,18 +57,18 @@ export function ApplicationProgress({ service }: { service: Service }) {
       controller.abort();
       clearTimeout(timer);
     };
-  }, [service.id]);
+  }, [service.id, onUpdate]);
   const app = current.application;
-  if (!app) return null;
+  if (!app || app.status === "succeeded") return null;
   async function resume(approve = false) {
     setBusy(true);
     try {
-      setCurrent(
-        await api<Service>(
-          `/applications/${service.id}/${approve ? "approve-review" : "resume"}`,
-          {},
-        ),
+      const result = await api<Service>(
+        `/applications/${service.id}/${approve ? "approve-review" : "resume"}`,
+        {},
       );
+      setCurrent(result);
+      onUpdate(result);
     } catch (e) {
       setError(message(e));
     } finally {
@@ -150,15 +158,6 @@ export function ApplicationProgress({ service }: { service: Service }) {
         <p>
           FE·BE 및 PostgreSQL 연결 확인 완료. DB 데이터는 앱 삭제 시에도
           보존합니다.
-        </p>
-      )}
-      {app.service_url && (
-        <p>
-          서비스 주소:{" "}
-          <a href={app.service_url} target="_blank" rel="noreferrer">
-            {app.service_url}
-          </a>{" "}
-          · 사설 주소는 연결된 네트워크에서 접근합니다.
         </p>
       )}
     </section>

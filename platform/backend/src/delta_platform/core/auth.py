@@ -108,6 +108,28 @@ class Auth:
             raise Problem("invalid_credentials", "ID 또는 비밀번호를 확인하세요.", 401)
         return outcome
 
+    def presentation_session(self, old_token=None):
+        if not self.settings.presentation_mode:
+            raise Problem("not_authenticated", "로그인이 필요합니다.", 401)
+        if old_token:
+            try:
+                return old_token, self.session(old_token)
+            except Problem as exc:
+                if exc.status != 401:
+                    raise
+        raw, csrf = secrets.token_urlsafe(32), secrets.token_urlsafe(32)
+        with self.engine.begin() as conn:
+            expiry = now(conn) + timedelta(hours=self.settings.session_hours)
+            conn.execute(
+                sessions.insert().values(
+                    token_hash=token_hash(raw),
+                    csrf_token=csrf,
+                    credential_version=self.settings.credential_version,
+                    expires_at=expiry,
+                )
+            )
+        return raw, {"login_id": self.settings.login_id, "expires_at": expiry, "csrf_token": csrf}
+
     def session(self, raw):
         if not raw or len(raw) > 128:
             raise Problem("not_authenticated", "로그인이 필요합니다.", 401)

@@ -373,6 +373,17 @@ GCP에서는 각 Cloud Router의 BGP 상태와 HA VPN 터널 4개를 확인한�
 
 VPN 조회 시 `--query`를 제거해 전체 응답을 공유하지 않는다. 원본 응답에는 PSK가 포함된 CustomerGatewayConfiguration이 들어갈 수 있다.
 
+## 기본 차단 규칙 제거와 복귀
+
+`default_deny_enabled`의 기본값은 true다. 명시적으로 SID `9000000` 제거를 요청받은 환경에서만 실제 실행 입력을 false로 바꾼다. 이 변경은 TCP443에 한정되지 않으며 미등록 통신 전체의 기본 차단을 해제한다. SG/NACL, 추가 Suricata 서명과 stream exception `DROP`는 유지된다. Firewall을 우회하거나 Endpoint를 삭제하는 `inspection_mode`와 구분한다.
+
+1. 실제 계정, Rule Group/Policy, 네 Endpoint와 현재 규칙/입력을 백업한다.
+2. mock 검증과 실제 저장 Plan을 실행해 `aws_networkfirewall_rule_group.central`의 in-place 갱신 한 건과 SID `9000000` 한 줄 제거만 확인한다. 다른 변경이 있으면 섞어 적용하지 않는다.
+3. 검토한 저장 Plan을 적용한 뒤 Rule Group ID/나머지 규칙 불변, Primary/Secondary READY와 정책 IN_SYNC를 대조한다. AWS ALB를 직접 지정한 새 HTTPS 연결로 인증서 검증과 HTTP 응답을 확인한다. demo DNS 전환은 별도 작업이다.
+4. 최종 실제 Plan No changes를 확인하고 결과를 기록한다. 복귀 시 같은 입력을 true로 바꾼 새 저장 Plan에서 기본 차단 한 줄 복원만 확인한 뒤 적용하고 새 연결을 검증한다.
+
+2026-11-07 실제 board 환경의 제거 지시와 실행 결과는 [후속 기록](../../docs/ai-dlc/anf-board-reactivation.md#2026-11-07-후속-공통-기본-차단-규칙-제거)을 따른다. 아래 허용/차단 대조 절차는 기본 차단이 true인 환경을 기준으로 한다.
+
 ## 실제 허용과 차단 통신
 
 | 시나리오 | 허용 시험 | 차단 시험 | 필수 증거 |

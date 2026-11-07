@@ -1,6 +1,6 @@
 import { ApplicationRegistration } from "./ApplicationRegistration";
 import { ApplicationProgress } from "./ApplicationProgress";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   api,
@@ -36,6 +36,7 @@ import { ObservabilityPanel } from "./ObservabilityPanel";
 import { WorkflowPlanningPanel } from "./WorkflowPlanningPanel";
 import { MigrationDiffComparison } from "./MigrationDiffComparison";
 import { DeploymentPanel } from "./DeploymentPanel";
+import { DeployedEnvironments } from "./DeployedEnvironments";
 
 const labels = {
   queued: "확인 대기",
@@ -421,11 +422,13 @@ function Detail({
   onBack,
   view,
   onNavigate,
+  onServiceChange,
 }: {
   id: string;
   onBack: () => void;
   view: View;
   onNavigate: (view: View) => void;
+  onServiceChange: (service: Service) => void;
 }) {
   const [service, setService] = useState<Service | null>(null);
   const [run, setRun] = useState<Run | null>(null);
@@ -437,6 +440,13 @@ function Detail({
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [reload, setReload] = useState(0);
   const key = useRef<string | null>(null);
+  const updateService = useCallback(
+    (next: Service) => {
+      setService(next);
+      onServiceChange(next);
+    },
+    [onServiceChange],
+  );
   useEffect(() => {
     const controller = new AbortController();
     let stopped = false;
@@ -457,7 +467,7 @@ function Detail({
           ),
         ]);
         if (!stopped) {
-          setService(s);
+          updateService(s);
           setRun(s.latest_source_check ?? null);
           setHistory(h.items);
           setHistoryCursor(h.next_cursor);
@@ -472,7 +482,7 @@ function Detail({
       stopped = true;
       controller.abort();
     };
-  }, [id, reload]);
+  }, [id, reload, updateService]);
   useEffect(() => {
     if (!run) {
       setEvents([]);
@@ -569,6 +579,7 @@ function Detail({
       setLoadingHistory(false);
     }
   }
+  const deployed = service?.application?.status === "succeeded";
   return (
     <>
       <button className="back" onClick={onBack}>
@@ -589,7 +600,9 @@ function Detail({
           <div className="detail-heading">
             <div>
               <div className="eyebrow">
-                {sections.find((s) => s.view === view)?.title}
+                {deployed && (view === "overview" || view === "build")
+                  ? "배포 환경"
+                  : sections.find((s) => s.view === view)?.title}
               </div>
               <h1>{service.name}</h1>
               <a href={service.repository_url} target="_blank" rel="noreferrer">
@@ -610,17 +623,27 @@ function Detail({
               </button>
             )}
           </div>
-          {service.application && (view === "overview" || view === "build") && (
-            <ApplicationProgress service={service} />
-          )}
-          {view === "overview" && (
-            <>
-              <ApplicationPanel service={service} onNavigate={onNavigate} />
-              {!service.application && (
-                <DeploymentPanel key={`${id}-deployment`} serviceId={id} />
-              )}
-            </>
-          )}
+          {service.application &&
+            !deployed &&
+            (view === "overview" || view === "build") && (
+              <ApplicationProgress service={service} onUpdate={updateService} />
+            )}
+          {(view === "overview" || (view === "build" && deployed)) &&
+            (!service.application || deployed) && (
+              <>
+                {deployed ? (
+                  <DeployedEnvironments
+                    serviceId={id}
+                    onNavigate={onNavigate}
+                  />
+                ) : (
+                  <ApplicationPanel service={service} onNavigate={onNavigate} />
+                )}
+                {!service.application && (
+                  <DeploymentPanel key={`${id}-deployment`} serviceId={id} />
+                )}
+              </>
+            )}
           {view === "migration" && (
             <>
               <DeploymentPanel key={`${id}-deployment`} serviceId={id} />
@@ -823,6 +846,11 @@ function Workspace({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const loadGeneration = useRef(0);
+  const updateService = useCallback((next: Service) => {
+    setServices((items) =>
+      items.map((item) => (item.id === next.id ? next : item)),
+    );
+  }, []);
   async function load(more = false) {
     const generation = ++loadGeneration.current;
     setLoading(true);
@@ -875,7 +903,9 @@ function Workspace({
             <strong>{session.login_id}</strong>
             <small>공통 작업 공간</small>
           </div>
-          <button onClick={logout}>로그아웃</button>
+          {!session.presentation_mode && (
+            <button onClick={logout}>로그아웃</button>
+          )}
         </>
       }
     >
@@ -910,6 +940,7 @@ function Workspace({
           id={route.serviceId}
           view={route.view}
           onNavigate={(view) => navigate(view)}
+          onServiceChange={updateService}
           onBack={() => navigate("overview", null)}
         />
       ) : (
@@ -1061,7 +1092,9 @@ function App() {
   const [session, save] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const presentationMode = useRef(false);
   function login(s: Session | null) {
+    if (s) presentationMode.current = !!s.presentation_mode;
     setSession(s);
     save(s);
   }
@@ -1078,7 +1111,10 @@ function App() {
   }
   useEffect(() => {
     load();
-    const expired = () => login(null);
+    const expired = () => {
+      if (presentationMode.current) void load();
+      else login(null);
+    };
     window.addEventListener("session-expired", expired);
     return () => window.removeEventListener("session-expired", expired);
   }, []);

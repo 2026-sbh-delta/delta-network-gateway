@@ -7,26 +7,33 @@
   margin: 1.5rem 0;
 }
 .application-progress-line li {
-  border-top: 4px solid #667788;
-  padding: 0.8rem 0.4rem;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-top: 4px solid var(--progress-color, var(--muted));
+  border-radius: 8px;
+  background: #f8faff;
+  padding: 1rem;
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
 }
 .application-progress-line li[data-status="succeeded"] {
-  border-color: #13946c;
+  --progress-color: #176b60;
 }
 .application-progress-line li[data-status="running"] {
-  border-color: #3d81ee;
+  --progress-color: #2f57d4;
 }
 .application-progress-line li[data-status="failed"] {
-  border-color: #d34343;
+  --progress-color: #a13a3a;
 }
-.application-progress-line li[data-status="skipped"] {
-  border-color: #c18b21;
+.application-progress-line li[data-status="skipped"],
+.application-progress-line li[data-status="blocked"],
+.application-progress-line li[data-status="review"] {
+  --progress-color: #805409;
 }
 .application-progress-line span {
-  font-size: 0.85rem;
+  color: var(--progress-color, var(--muted));
+  font-size: var(--text-small);
 }
 @media (max-width: 800px) {
   .application-progress-line {

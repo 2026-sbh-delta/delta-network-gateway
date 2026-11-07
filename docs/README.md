@@ -1,5 +1,9 @@
 # Delta network gateway
 
+2026-11-07 최신 배포 환경 상세 기준 UI 구현/검증: 사용자가 지정한 `Migration verification 85df8a6`의 실제 화면/운영 번들/조회 API를 기준으로 환경 카드와 완료 상태 전환을 복구하고 정확한 주소 안내를 제거했다. 가독성 개선과 최종 빌드/형식 검사, 로컬 fixture 회귀 46개 및 1440px/390px 캡처 확인을 완료했다. 사용자 승인으로 구현 `090c51d3`을 푸시하고 [PR #73](https://github.com/2026-sbh-delta/delta-network-gateway/pull/73)을 main 대상으로 게시했으며 squash 병합 경로를 사용한다. 최종 원격 CI/병합 상태는 PR과 main 이력을 따른다. 운영 번들 전체 원본 복구나 운영 배포/자원 변경은 포함하지 않는다. [검증과 게시 기록](ai-dlc/platform-presentation.md#pr-게시와-main-squash-병합-경로-2026-11-07-kst)
+
+2026-11-07 15:21 KST ANF 기본 차단 제거 완료: 사용자 전체 범위 명시 승인으로 SID `9000000` 한 줄만 제거했다. 나머지6개 규칙과 Firewall/Endpoint/경로/DNS/ALB 설정을 보존했고 AWS ALB 두 IP의 외부 HTTPS200, Primary2/Secondary2 READY/정책 IN_SYNC 및 중앙 최종 실제 Plan No changes/종료0을 확인했다. managed89개 ID/출력22개 유지, Terraform mock76개/Python22개 통과. 443 이외의 미등록 통신도 이 규칙으로 차단하지 않는다. demo DNS는 GCP를 유지한다. Git 게시와 원격 CI 상태는 Git 이력과 실행 결과를 따른다. [승인과 실제 결과](ai-dlc/anf-board-reactivation.md#2026-11-07-후속-공통-기본-차단-규칙-제거)
+
 2026-11-07 운영 플랫폼의 기존 마이그레이션 화면에 ‘환경 차이와 AI 제안’ 표를 연결했다. 현재 미승인 온프레미스→AWS 계획에서 Deployment 2행·Service 2행·관측 범위 1행과 `needs_human` 판정을 실제 브라우저에서 확인했다. 같은 표를 PR #69의 정식 플랫폼 웹 빌드에 연결하고 재빌드 산출물에서 저장된 결과를 확인했다. 고객 앱 배포·DNS 변경은 실행하지 않았다. [빌드 출처·검증·롤백](ai-dlc/platform-workload-diff.md)
 
 2026-11-07 IAM 수집 누락과 앱 이전 Lambda 범위 제외를 수정하고 실제 시연 Diff API·오케스트레이터 연결을 검증했다. RDS·S3 검사와 SCC 미확인은 유지하고 고객 앱 운영 배포·DNS 전환은 실행하지 않는다. [설계·검증·적용 상태](ai-dlc/diff-iam-scope.md)
@@ -8,7 +12,7 @@
 
 2026-11-07 서비스 도메인 설정 보존 수정과 검증 완료. `deploy/platform/deploy.sh`가 기존 SSM 전환 설정을 보존하고 최초 배포에서만 Terraform 출력으로 초기화한다. 배포 진입점 회귀와 기존 SSM 검사22개가 통과했고, 실제 SSM에서 이전 도메인 출력으로 초기화를 시도해 사용자 도메인 설정 v10과 토큰 v4의 보존을 확인했다. PR과 main의 전용 CI가 배포 테스트를 실행한다. Git 게시와 CI 결과는 PR 및 실행 이력을 따른다. [설계와 검증 기록](ai-dlc/cutover-config-preservation.md)
 
-2026-11-07 AWS ANF 재개 완료: `delta-board-vpc`만 인터넷 입출구와 GCP 양방향 검사를 enabled로 전환했다. Primary2/Secondary2 READY/IN_SYNC, ALB 두 IP 및 사설 양방향 HTTP200/NAT HTTPS200/RDS TLS1.3과 미허용8081의 실제 blocked/drop을 확인했다. FLOW/ALERT 원본21건과 플랫폼 중앙 원문이 일치했고 BGP4개 UP/기존 광고 유지 및 두 최종 실제 Plan No changes/종료0을 확인했다. Terraform mock131개/Python38개 통과. DNS/ALB와 기존 자원 ID를 보존했고 임시 probe/규칙/키/터널을 정리했다. 앱은 inactive/disabled를 유지하므로 공개 앱은 기존 HTTP502다. Git 게시와 원격 CI 상태는 Git 이력과 실행 결과를 따른다. [승인과 실제 결과](ai-dlc/anf-board-reactivation.md)를 따르며 별도 GCP 작업의 설정과 문서를 보존한다.
+2026-11-07 AWS ANF 재개 완료: `delta-board-vpc`만 인터넷 입출구와 GCP 양방향 검사를 enabled로 전환했다. Primary2/Secondary2 READY/IN_SYNC, ALB 두 IP 및 사설 양방향 HTTP200/NAT HTTPS200/RDS TLS1.3과 미허용8081의 실제 blocked/drop을 확인했다. FLOW/ALERT 원본21건과 플랫폼 중앙 원문이 일치했고 BGP4개 UP/기존 광고 유지 및 두 최종 실제 Plan No changes/종료0을 확인했다. Terraform mock131개/Python38개 통과. DNS/ALB와 기존 자원 ID를 보존했고 임시 probe/규칙/키/터널을 정리했다. 당시 앱은 inactive/disabled였고 공개 앱은 HTTP502였다. 이후 상태는 위 후속 검증을 따른다. Git 게시와 원격 CI 상태는 Git 이력과 실행 결과를 따른다. [승인과 실제 결과](ai-dlc/anf-board-reactivation.md)를 따르며 별도 GCP 작업의 설정과 문서를 보존한다.
 
 2026-11-07 GCP Cloud NGFW 검사 재개 완료: 사용자 요청으로 `disabled -> bypass -> enabled`를 적용했다. endpoint1/association2 ACTIVE, 두 사설 검사 규칙과 모든 심각도 ALERT, BGP4개 UP 및 기존 ID57개 보존을 확인했다. 양방향 TCP3000 HTTP200과 실제 Threat8건을 포함한 원본12건의 Security/플랫폼 수신까지 대조했고 최종 실제 Plan은 No changes/종료0, 잠금도 없다. Terraform mock14개/Python10개가 통과했다. 공개 앱 L7/IPS 차단과 앱 재시작은 포함하지 않았으며 AWS 모드와 경로는 별도 작업이다. endpoint 비용은 USD1.75/h와 검사량 요금이다. [적용과 실제 검증](ai-dlc/gcp-central-network.md#2026-11-07-operation-gcp-cloud-ngfw-검사-재개)
 
@@ -47,9 +51,9 @@
 
 ## 현재 상태
 
-- AWS ANF(2026-11-07): board의 인터넷은 같은 AZ Secondary Endpoint, GCP는 board 전용 TGW 송신 RT와 중앙 Primary Endpoint를 왕복한다. 두 VPN/네 터널의 BGP/ECMP를 유지하며 VPN 연결 RT에 GCP 정적 대역을 넣지 않는다. 실제 통신/차단/중앙 로그와 두 root No changes를 확인했다. VPC 내부 local 통신과 중지한 앱의 재시작은 범위 밖이다. [운영 결과와 복귀](ai-dlc/anf-board-reactivation.md)를 따른다.
+- AWS ANF(2026-11-07): board의 인터넷은 같은 AZ Secondary Endpoint, GCP는 board 전용 TGW 송신 RT와 중앙 Primary Endpoint를 왕복한다. 두 VPN/네 터널의 BGP/ECMP를 유지하며 VPN 연결 RT에 GCP 정적 대역을 넣지 않는다. 재개 당시 실제 통신/차단/중앙 로그와 두 root No changes를 확인했다. 15:21 KST 후속으로 기본 차단 SID9000000을 제거했으며, 외부 AWS HTTPS200과 중앙 No changes/네 Endpoint READY를 확인했다. [현재 상태와 복귀](ai-dlc/anf-board-reactivation.md#2026-11-07-후속-공통-기본-차단-규칙-제거)를 따른다.
 
-- AWS Compose 중지/EC2 보존(2026-11-05): 사용자 후속 요청으로 게시판 FE/BE2개와 프로젝트 네트워크를 내리고 delta-compose 자동 시작을 해제했다. 앱 컨테이너2개를 내리고 프로젝트 컨테이너/네트워크 잔여0개, delta-compose inactive/disabled를 확인했다. VM running, DB available, 디스크/DB 식별자 동일과 호스트 이미지9개/설정 해시 보존을 확인했다. 공개 API는 HTTP502다. 기존 EC2/RDS/ALB를 유지하며 이번 중지에서 Terraform Plan/Apply나 Git 게시를 실행하지 않았다. [최신 중지 및 재개 절차](ai-dlc/aws-compose-consolidation.md)를 따른다.
+- AWS Compose 중지/EC2 보존 기록(2026-11-05): 당시 게시판 FE/BE2개와 프로젝트 네트워크를 내리고 delta-compose inactive/disabled, VM/DB/이미지/설정 보존과 공개 API HTTP502를 확인했다. 이후 2026-11-07 ANF 후속 검증에서는 기존 AWS 앱의 외부 HTTPS 화면/API HTTP200을 관측했다. 이번 작업은 원격 Compose/systemd 상태를 조회하거나 변경하지 않았으므로 과거 중지 결과를 현재 상태로 재사용하지 않는다. [당시 중지 및 재개 절차](ai-dlc/aws-compose-consolidation.md)를 따른다.
 
 - GCP Compose 중지/VM 보존(2026-11-05): 사용자 후속 요청으로 게시판 FE/BE/Proxy3개와 프로젝트 네트워크를 내리고 delta-compose 자동 시작을 해제했다. 앱 컨테이너3개를 내리고 프로젝트 컨테이너/네트워크 잔여0개, delta-compose inactive/disabled를 확인했다. VM RUNNING, DB RUNNABLE, 디스크/DB 식별자 동일과 호스트 이미지9개/설정 해시 보존을 확인했다. 공개 API는 HTTP503다. 기존 VM/Cloud SQL/PSC/ALB를 유지하며 이번 중지에서 Terraform Plan/Apply나 Git 게시를 실행하지 않았다. [최신 중지 및 재개 절차](ai-dlc/gcp-compose-consolidation.md)를 따른다.
 
@@ -169,11 +173,11 @@
 
 ## 다음 작업
 
-AWS ANF는 [delta-board-vpc 한정 재개](ai-dlc/anf-board-reactivation.md)를 완료해 enabled로 운영한다. [현재 전환/복귀 Runbook](../terraform/network-security/RUNBOOK.md#delta-board-vpc-인터넷과-gcp-검사-재개)으로 네 Endpoint/정책, BGP4개와 실제 광고, 양방향 경로 및 원본/중앙 로그를 점검한다. 다른 VPC 변경과 중지한 앱 재시작은 이번 작업에 포함하지 않았다. Git 게시와 원격 CI 상태는 Git 이력과 실행 결과를 따른다.
+AWS ANF는 [delta-board-vpc 한정 재개](ai-dlc/anf-board-reactivation.md)를 완료해 enabled로 운영한다. 후속 요청으로 공통 기본 차단을 해제했으므로 현재 미등록 통신도 이 규칙으로 차단하지 않는다. 복귀가 필요하면 [기본 차단 복귀 Runbook](../terraform/network-security/RUNBOOK.md#기본-차단-규칙-제거와-복귀)에서 `default_deny_enabled=true`의 새 저장 Plan을 검토한다. 네 Endpoint/정책과 기존 경로/로그 점검은 계속하며 DNS 전환과 코드/문서 Git 게시는 이번 제거 작업과 구분한다.
 
 중앙 GuardDuty 로그 전달의 [U4/U5 구현/적용/실제 수신 검증](ai-dlc/aws-guardduty-logging.md)을 완료했다. 운영 시 [조회와 전달 중지/재개 절차](../terraform/network-security/RUNBOOK.md#guardduty-finding-로그-전달)를 따른다. 현재 실제 플랫폼 그룹은 `/delta-cp/central/*`이지만 플랫폼 Terraform 코드는 이전 이름을 정의하므로 해당 root를 실행하기 전에 별도로 수렴 범위를 검토한다. 대시보드 UI 검증은 미실행이며 게시 상태는 Git 이력과 원격 ref를 따른다.
 
-AWS 앱은 사용자 요청으로 Compose를 내린 상태이며 EC2/RDS/이미지/데이터는 유지한다. 재개가 필요하면 [중지 및 재개 절차](ai-dlc/aws-compose-consolidation.md#2026-11-05-후속-operation-compose만-내리고-ec2-보존)의 `sudo systemctl enable --now delta-compose`를 사용한다. 중지 작업에서는 재개와 추가 Terraform Apply를 실행하지 않았다. Git 게시 상태는 Git 이력을 따른다.
+AWS 앱은 2026-11-07 후속 외부 HTTPS 검증에서 화면과 API가 HTTP200이며 environment=aws를 반환했다. 2026-11-05의 [Compose 중지 및 재개 절차](ai-dlc/aws-compose-consolidation.md#2026-11-05-후속-operation-compose만-내리고-ec2-보존)는 당시 기록이다. 현재 원격 Compose/systemd 상태는 이번 작업에서 조회하지 않았으며 재시작/배포도 수행하지 않았다.
 
 GCP 앱은 사용자 요청으로 Compose를 내린 상태이며 기존 FE VM 한 대와 Cloud SQL/ALB/이미지/설정은 유지한다. 재개가 필요하면 [중지 및 재개 절차](ai-dlc/gcp-compose-consolidation.md#후속-operation-compose만-내리고-vm-보존)의 `sudo systemctl enable --now delta-compose`를 사용한다. 중지 작업에서는 재개와 추가 Terraform Apply를 실행하지 않았다. Git 게시 상태는 Git 이력을 따른다.
 

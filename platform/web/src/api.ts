@@ -1,5 +1,6 @@
 import type { ApplicationBundle } from "./application-model";
 export type Session = {
+  presentation_mode?: boolean;
   login_id: string;
   expires_at: string;
   csrf_token: string;
@@ -229,7 +230,11 @@ export async function api<T>(
     );
   }
   if (!response.ok) {
-    if (response.status === 401 && path !== "/auth/login")
+    if (
+      response.status === 401 &&
+      path !== "/auth/login" &&
+      path !== "/auth/session"
+    )
       window.dispatchEvent(new Event("session-expired"));
     throw new ApiError(
       response.status,

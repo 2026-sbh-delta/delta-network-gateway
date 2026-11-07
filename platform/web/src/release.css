@@ -3,6 +3,9 @@
   gap: 24px;
   margin-bottom: 28px;
 }
+.release-workspace > * {
+  min-width: 0;
+}
 .release-summary {
   display: flex;
   align-items: center;
@@ -18,7 +21,7 @@
 }
 .release-summary p {
   max-width: 660px;
-  color: #63718a;
+  color: var(--muted);
   line-height: 1.65;
   margin-bottom: 0;
 }
@@ -50,10 +53,13 @@
 .release-steps button:last-child {
   border-right: 0;
 }
+.release-steps button > div {
+  min-width: 0;
+}
 .release-steps button > span {
-  color: #6c84b4;
+  color: var(--muted);
   font:
-    600 0.8rem ui-monospace,
+    600 var(--text-small) ui-monospace,
     monospace;
 }
 .release-steps strong,
@@ -62,7 +68,7 @@
 }
 .release-steps small {
   margin-top: 5px;
-  font-size: 0.72rem;
+  font-size: var(--text-small);
   font-weight: 400;
 }
 .release-line {
@@ -80,10 +86,10 @@
   display: inline-flex;
   width: fit-content;
   padding: 5px 9px;
-  font-size: 0.73rem;
+  font-size: var(--text-small);
   border-radius: 6px;
   font-weight: 650;
-  color: #65748b;
+  color: var(--muted);
   background: #edf1f7;
   white-space: normal;
 }
@@ -116,25 +122,26 @@
 }
 .release-role {
   color: #456292;
-  font-size: 0.8rem;
+  font-size: var(--text-small);
   font-weight: 650;
 }
 .release-commit {
   font:
-    0.85rem ui-monospace,
+    var(--text-small) ui-monospace,
     monospace;
   color: #3c4a63;
   overflow-wrap: anywhere;
 }
 .release-commit span {
-  color: #7b879a;
+  color: var(--muted);
 }
 .release-check-row {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   gap: 16px;
   padding: 11px 0;
-  font-size: 0.82rem;
+  font-size: var(--text-small);
   border-bottom: 1px solid #e6ebf3;
 }
 .release-check-row b {
@@ -149,11 +156,11 @@
 .release-workspace summary,
 .release-ai summary {
   color: #546987;
-  font-size: 0.8rem;
+  font-size: var(--text-small);
   cursor: pointer;
 }
 .release-workspace dl {
-  font-size: 0.8rem;
+  font-size: var(--text-small);
 }
 .release-workspace dl > div {
   display: grid;
@@ -162,7 +169,7 @@
   margin: 12px 0;
 }
 .release-workspace dt {
-  color: #718097;
+  color: var(--muted);
 }
 .release-workspace dd {
   margin: 0;
@@ -175,10 +182,10 @@
   margin-top: 18px;
   padding-top: 18px;
   border-top: 1px solid #e6ebf3;
-  font-size: 0.82rem;
+  font-size: var(--text-small);
 }
 .release-database span {
-  color: #65748b;
+  color: var(--muted);
 }
 .release-environments {
   display: grid;
@@ -209,22 +216,22 @@
   border-top: 1px solid #e7ecf3;
 }
 .release-env-instance strong {
-  font-size: 0.85rem;
+  font-size: var(--text-small);
 }
 .release-caption {
-  color: #78859a;
-  font-size: 0.73rem;
+  color: var(--muted);
+  font-size: var(--text-small);
   line-height: 1.6;
 }
 .release-empty {
   padding: 26px 0 12px;
-  color: #69778e;
+  color: var(--muted);
 }
 .release-empty strong {
   color: #50617d;
 }
 .release-empty p {
-  font-size: 0.83rem;
+  font-size: var(--text-small);
   line-height: 1.7;
 }
 .release-notice {
@@ -233,7 +240,7 @@
   border-left: 3px solid #a6b7d4;
   border-radius: 4px;
   color: #596a85;
-  font-size: 0.82rem;
+  font-size: var(--text-small);
   line-height: 1.7;
 }
 .release-target-check {
@@ -241,10 +248,10 @@
   border-top: 1px solid #e5eaf2;
 }
 .release-target-check > strong {
-  font-size: 0.82rem;
+  font-size: var(--text-small);
 }
 .release-target-check p {
-  font-size: 0.78rem;
+  font-size: var(--text-small);
 }
 .release-target-check small {
   display: block;
@@ -258,7 +265,7 @@
   margin-top: 20px;
 }
 .release-remediation span {
-  font-size: 0.8rem;
+  font-size: var(--text-small);
   color: #7a6b59;
 }
 .release-comparison {
@@ -280,7 +287,7 @@
 }
 .release-target-tabs button {
   padding: 9px 14px;
-  font-size: 0.82rem;
+  font-size: var(--text-small);
 }
 .release-target-tabs [aria-pressed="true"] {
   border-color: #5378db;
@@ -298,17 +305,18 @@
   margin: 16px 0;
 }
 .release-compare-route span {
-  color: #6b7a91;
-  font-size: 0.73rem;
+  color: var(--muted);
+  font-size: var(--text-small);
 }
 .release-compare-route strong {
   display: block;
   margin-top: 6px;
-  font-size: 0.87rem;
+  font-size: var(--text-small);
   color: #2f405c;
 }
 .release-compare-route > span:last-child {
   margin-left: auto;
+  overflow-wrap: anywhere;
 }
 .release-table-scroll {
   max-width: 100%;
@@ -321,7 +329,7 @@
   border-collapse: collapse;
   table-layout: fixed;
   min-width: 640px;
-  font-size: 0.82rem;
+  font-size: var(--text-small);
 }
 .release-table th,
 .release-table td {
@@ -334,7 +342,7 @@
 }
 .release-table thead {
   background: #f5f7fb;
-  color: #61728e;
+  color: var(--muted);
 }
 .release-table th:first-child {
   width: 16%;
@@ -344,7 +352,7 @@
 }
 .release-table small {
   display: block;
-  font-size: 0.72rem;
+  font-size: var(--text-small);
   margin-top: 8px;
 }
 .release-table tbody tr:last-child > * {
@@ -358,7 +366,7 @@
   margin-top: 20px;
 }
 .release-ai p {
-  font-size: 0.85rem;
+  font-size: var(--text-small);
   line-height: 1.75;
 }
 .release-ai small {
@@ -371,7 +379,7 @@
   color: #d8e3f5;
   padding: 16px;
   border-radius: 8px;
-  font-size: 0.75rem;
+  font-size: var(--text-small);
   line-height: 1.7;
 }
 .release-diff span {
@@ -412,10 +420,10 @@
     padding: 13px 10px;
   }
   .release-steps strong {
-    font-size: 0.8rem;
+    font-size: var(--text-small);
   }
   .release-steps small {
-    font-size: 0.66rem;
+    font-size: var(--text-small);
   }
   .release-component,
   .release-environment,
@@ -441,7 +449,7 @@
 .release-plan-create > summary,
 .release-plan-details > summary {
   cursor: pointer;
-  font-size: 0.85rem;
+  font-size: var(--text-small);
   color: #4e6487;
   padding: 12px 0;
 }

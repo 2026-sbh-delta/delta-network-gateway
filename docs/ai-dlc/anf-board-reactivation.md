@@ -2,13 +2,15 @@
 
 기준일: 2026-11-07, Asia/Seoul.
 
+2026-11-07 후속 변경 완료: 사용자의 명시적 전체 기본 차단 해제 승인으로 SID `9000000`을 제거했다. 나머지 6개 규칙과 기존 자원을 유지했고 AWS ALB 두 IP의 외부 HTTPS200, Primary2/Secondary2 READY와 정책 IN_SYNC 및 최종 실제 Plan No changes를 확인했다. 아래 재개 당시의 최소 허용/기본 차단 기록은 당시 snapshot이며, 현재 변경 상태는 이 문서 마지막의 후속 기록을 따른다.
+
 ## 승인과 현재 단계
 
 - Ideation: 승인 완료. 사용자의 `ㅇㅇ 지금 통신규칙 라우팅 확인하고 Workload 애들 ANF 들렀다 가야되는 거 알지?` 지시와 `delta-board-vpc만 해당` 제한을 적용한다.
 - 검사 범위: 후속 선택 `인터넷 입출구와 GCP 통신 모두`로 확정했다.
 - Inception: 2026-11-07 사용자 `ㄱㄱ`로 아래 요구사항과 Architecture 승인 완료.
 - Construction: 같은 지시로 U1부터 U4까지의 Design/Implementation Plan, 단계별 Plan/Apply와 한시적 EIC/IAP 통신 검증 승인 완료. 구현, Test, Review와 실제 전환을 완료했다.
-- 현재 실행: 중앙/Workload 모두 enabled다. Primary 2개와 Secondary 2개 READY, 정책 IN_SYNC와 삭제 보호를 확인했다. 인터넷 두 AZ와 GCP 양방향 HTTP200, NAT HTTPS200, RDS TLS1.3, 미허용 8081의 실제 blocked/drop 및 FLOW/ALERT 원본 21건의 중앙 수신 일치를 확인했다. 두 최종 실제 Plan은 No changes/종료0이다.
+- 재개 당시 실행: 중앙/Workload 모두 enabled다. Primary 2개와 Secondary 2개 READY, 정책 IN_SYNC와 삭제 보호를 확인했다. 인터넷 두 AZ와 GCP 양방향 HTTP200, NAT HTTPS200, RDS TLS1.3, 미허용 8081의 실제 blocked/drop 및 FLOW/ALERT 원본 21건의 중앙 수신 일치를 확인했다. 두 최종 실제 Plan은 No changes/종료0이다.
 - Operation: 임시 probe/규칙/키/터널을 정리하고 기존 Compose inactive/disabled를 유지했다. 기존 ALB DNS와 자원 ID를 보존했다. 공개 앱은 중지 상태의 기존 HTTP502로 돌아왔으며 앱 정상화나 CRUD 검증으로 보고하지 않는다. Git 게시와 원격 CI 상태는 Git 이력과 실행 결과를 따른다.
 - 별도 GCP 검사 작업의 현재 상태는 [GCP 운영 기록](gcp-central-network.md#2026-11-07-operation-gcp-cloud-ngfw-검사-재개)을 따른다. 이 AWS 작업에서는 GCP 검사 설정을 변경하지 않았다.
 
@@ -201,7 +203,7 @@ GCP용 중앙 subnet Route와 정적 검사 prefix는 실제 4개 광고를 포�
 
 실제 최종 대조 시각은 2026-11-07 02:22 KST다. 중앙/Workload 모두 enabled이며 두 기존 VPC/TGW 기반과 DNS/ALB를 유지했다. 아래 결과는 실제 API와 요청/서비스 로그를 대조한 결과다. 앱은 재시작하지 않았으며 임시 probe의 HTTP200을 앱 CRUD 성공으로 기록하지 않는다.
 
-현재 허용 계약은 인터넷에서 ALB public 대역으로 TCP80, NAT 사설 /32에서 인터넷으로 TCP443, board와 GCP frontend `10.32.1.20/32`의 TCP3000 양방향이다. 응답은 연결 상태를 공유하며 나머지는 기본 차단한다. HTTP marker는 검사 경유 증명용 비차단 서명이며 HTTPS 본문 복호화는 구성하지 않았다.
+재개 완료 당시의 허용 계약은 인터넷에서 ALB public 대역으로 TCP80, NAT 사설 /32에서 인터넷으로 TCP443, board와 GCP frontend `10.32.1.20/32`의 TCP3000 양방향이었다. 응답은 연결 상태를 공유하며 나머지는 기본 차단했다. 이후 기본 차단 제거는 아래 후속 기록을 따른다. HTTP marker는 검사 경유 증명용 비차단 서명이며 HTTPS 본문 복호화는 구성하지 않았다.
 
 ### 실제 배포 경로
 
@@ -239,3 +241,45 @@ GCP용 중앙 subnet Route와 정적 검사 prefix는 실제 4개 광고를 포�
 Review 완료: 대상 한정 경로, 기본 차단과 최소 허용, BGP 광고/ECMP, 기존 ID/관리/DB 경로, 실제 로그 전달 및 복귀 절차를 대조했다. 부분 전환 실패는 원상 복귀와 실제 통신을 확인하고 원인별 회귀를 추가한 뒤 재시도했다. 물리 터널/AZ 장애 주입, 부하/무손실 전환, TLS 복호화, 앱 재시작/CRUD와 다른 VPC의 통신은 검증하지 않았다. Ruff는 설치돼 있지 않아 실행하지 않았으며 Python 회귀/compile과 Terraform 검증 결과만 기록한다. Git 게시와 원격 CI 상태는 Git 이력과 실행 결과를 따른다.
 
 운영에서는 [중앙 Runbook](../../terraform/network-security/RUNBOOK.md#delta-board-vpc-인터넷과-gcp-검사-재개)과 [인터넷 Runbook](../../terraform/workload/RUNBOOK.md#공유-anf로-인터넷-검사하기)으로 현재 경로/Endpoint와 BGP 광고, 로그 수신을 확인한다. 경로 bypass와 Endpoint 비용 중단을 구분하고 Secondary를 참조하는 인터넷 경로를 복귀하기 전에 Firewall을 제거하지 않는다.
+
+## 2026-11-07 후속: 공통 기본 차단 규칙 제거
+
+### Ideation과 Inception
+
+- 문제와 사용자: AWS 게시판 운영자가 인터넷에서 기존 ALB subnet `10.10.10.0/24`, `10.10.11.0/24`의 HTTPS443으로 접속해야 한다. 인용된 요청은 443 허용이며, 사용자의 직접 후속 지시는 `ANF에서 거부 규칙 빼`다.
+- 변경 지시: 기존 U1의 기본 차단 요구를 변경해 SID `9000000`을 제거한다. 이 범위는 TCP443 외의 미등록 통신에도 적용된다.
+- 승인: 최초 Apply 시도는 자동 승인 검토에서 전체 범위의 승인이 불명확하다는 이유로 실행 전에 거부됐다. TCP443 외의 모든 미등록 통신에도 영향을 준다는 설명과 검토한 한 자원 Plan을 제시한 뒤 사용자가 `SID 9000000 제거와 전체 기본 차단 해제를 승인`을 선택했다. 이 명시적 승인으로 본 후속 단위의 요구사항, 설계와 실제 적용 범위를 확정한다.
+- Scope와 Functional Requirements: 중앙 Rule Group의 SID `9000000`만 제거하고 Terraform 입력으로 해당 선택을 보존한다. 기존 추가 서명과 flow 추적은 유지한다.
+- Non-goals와 Non-Functional Requirements: Firewall/Endpoint/라우팅/SG/NACL/ALB/인증서/DNS/GCP/앱 실행 상태를 바꾸지 않는다. 기존 Rule Group ARN과 ID를 보존한다.
+- Architecture와 Unit of Work: 기존 STRICT_ORDER 경로를 사용한다. U1 후속 단위로 `default_deny_enabled` 입력을 추가하며 기본값은 true, 실제 board 입력은 false로 설정한다. Stateful 기본 drop은 추가하지 않고 stream exception `DROP`는 유지한다.
+- 성공 기준과 Acceptance Criteria: 실제 적용 Plan의 변경은 Rule Group 한 주소의 in-place 갱신뿐이고, 정확히 한 줄/SID만 제거한다. 적용 후 정책 IN_SYNC/Endpoint READY, 외부 HTTPS와 최종 실제 Plan을 확인한다. 실행하지 않은 검증은 성공으로 기록하지 않는다.
+
+### Construction과 Operation
+
+- Design/Implementation Plan: 기존 규칙/정책/Endpoint와 실행 입력을 백업하고, 조건부 기본 차단 생성 및 README 표/회귀 검증을 추가한다. mock 검증과 실제 저장 Plan을 검토한 뒤 사용자 제거 지시 범위의 한 자원만 적용하고 다시 조회한다.
+- 입력: ignored `terraform/network-security/board-inspection.auto.tfvars.json`의 `default_deny_enabled=false`. 기본값을 바꾸지 않으므로 다른 배포는 기존 차단 동작을 유지한다.
+- 복귀: 같은 입력을 true로 바꿔 새 저장 Plan에서 기존 SID `9000000` 한 줄의 복원만 확인한 뒤 적용한다. 기존 연결의 즉시 재평가를 가정하지 않고 새 TCP 연결로 검증한다.
+- Observability: 기존 NFW FLOW/ALERT 및 중앙 구독을 보존한다. 제거 뒤에는 SID `9000000`의 신규 기본 차단 ALERT가 생성되지 않으며, 별도 실제 로그 수신을 검증하지 않은 경우 수신 성공으로 기록하지 않는다.
+- 현재 상태: Construction/Test/Review와 실제 Operation 완료. 실제 Apply는 0 add/1 change/0 destroy이며 외부 HTTPS200과 최종 실제 Plan No changes/종료0을 확인했다. Git 게시와 원격 CI 상태는 Git 이력과 실행 결과를 따른다.
+
+검증 증거는 ignored `.validation/anf-default-deny-removal-20261107/`에 저장한다.
+
+### 실제 검증 기록
+
+최종 확인 시각: 2026-11-07 15:21 KST.
+
+| 날짜 | 실행한 명령/API | 결과 |
+| --- | --- | --- |
+| 2026-11-07 | `aws sso login --profile sbh-delta-security --no-browser`, 같은 Workload 프로필 로그인, `sts get-caller-identity` | 만료된 기존 SSO 세션을 갱신해 중앙 `482840608926`/Workload `616723161368` 확인. 새 계정/권한/자격 증명 생성 없음 |
+| 2026-11-07 | `bash terraform/network-security/scripts/validate.sh` | 최종 Python22개와 Terraform mock76개 통과, 종료0. fmt/init/validate 포함. 초기 Provider 샌드박스 실행 실패와 새 시험의 AZ mock 누락을 구분해 실행 환경/fixture를 보완한 뒤 전체 재실행 |
+| 2026-11-07 | `AWS_PROFILE=sbh-delta-security terraform -chdir=terraform/network-security plan -input=false -no-color -lock-timeout=30s -detailed-exitcode -out=<ignored>/remove-default-deny.tfplan`, `terraform show -json` | 종료2, 변경은 `aws_networkfirewall_rule_group.central` 한 건의 update. SID9000000 한 줄 제거/7->6개 규칙, Rule Group의 다른 필드와 ID/ARN/용량/태그 불변 확인. Plan/구성 digest 저장 |
+| 2026-11-07 | 사용자 전체 범위 명시 승인 후 `AWS_PROFILE=sbh-delta-security terraform -chdir=terraform/network-security apply -input=false -no-color <ignored>/remove-default-deny.tfplan` | 종료0, 0 add/1 change/0 destroy, Rule Group 갱신2초. 적용 직전 Plan/구성 digest와 최신 AWS 규칙을 다시 대조 |
+| 2026-11-07 | `network-firewall describe-rule-group`, `describe-firewall-policy`, `describe-firewall`, `list-vpc-endpoint-associations`, Workload의 `describe-vpc-endpoint-association` 2회 | SID9000000만 부재/나머지6개와 Rule Group ID 보존, Policy/Firewall와 공유 Association 불변. Primary2 READY/최신 Rule Group IN_SYNC와 Secondary2 READY 확인. 중앙 계정의 소비자 ARN 직접 조회는 리소스 정책으로 거부돼 소유자 프로필로 재조회했으며 권한 정책을 변경하지 않음 |
+| 2026-11-07 15:19 KST | `curl --resolve <AWS host>:443:<ALB IP> https://<AWS host>/` 및 `/api/health` | AWS host `awsdemo.delta.mungji.com`/`aws.adajosou.site`, ALB `52.78.18.162`/`3.37.83.103` 조합의 총8개 요청이 HTTP200, curl 종료0/ssl_verify_result0. API는 environment=aws 반환. 적용 전 같은 두 IP의443은 timeout. 인증서 검증 생략 없음 |
+| 2026-11-07 | `dig +short demo.delta.mungji.com` | `gcpdemo.delta.mungji.com -> gcp.adajosou.site -> 136.69.76.82` 유지. DNS/ALB/인증서를 변경하지 않음 |
+| 2026-11-07 | 중앙 root의 새 실제 `terraform plan -detailed-exitcode -out=<ignored>/final.tfplan`, `terraform state pull` 전후 대조 | No changes/종료0, 변경 주소0개. managed89개 ID와 출력22개 불변. `final-summary.json` |
+| 2026-11-07 | `git diff --check`, README 속성 및 추가 금지 문자/ignore/권한 검사 | diff 검사 통과, 입력31개와 outputs.tf의21개 출력 표 누락0. 추가 금지 문자0, 실제 board 입력과 검증 산출물은 Git 제외 |
+
+Review: 실제 적용은 기본 차단 한 줄 제거에 한정되며 현재 정상적인 미등록 트래픽은 이 규칙으로 차단하지 않는다. 검사 경로와 기본 stream exception `DROP`는 유지한다. 이 작업에서 앱을 재시작하지 않았지만 외부 HTTPS의 기존 AWS 앱은 정상 응답했다. 02:22 KST의 앱 중지/502 기록을 현재 상태로 재사용하지 않는다. 원격 Compose/systemd 조회, 사설 양방향 패킷, 새 NFW 로그의 중앙 수신과 기존 TCP 연결 재평가, DNS 전환은 이번 후속에서 검증하지 않았다.
+
+기본 동작의 근거는 [AWS STRICT_ORDER 평가와 기본 Action](https://docs.aws.amazon.com/network-firewall/latest/developerguide/suricata-rule-evaluation-order.html)과 실제 Policy 조회다. 상세 복귀는 [중앙 기본 차단 Runbook](../../terraform/network-security/RUNBOOK.md#기본-차단-규칙-제거와-복귀)을 따른다.
