@@ -72,4 +72,4 @@ AI의 raw tool payload·비밀값을 공개 응답으로 보내서는 안 된다
 - `npm run build`, `npm run format:check` 통과. `playwright.fixture.config.ts` 전체 46개 통과(39.6초)이며 새로운 화면 분기/완료 전환/환경 조회 상태 6개를 포함한다.
 - 1440px/390px의 실제 브라우저 캡처에서 카드/버튼/긴 값의 배치와 가로 넘침 없음을 확인했다. 캡처와 회귀는 API fixture이고 운영 배포 검증과 구분한다.
 - 운영 번들 전체 원본을 복원한 것은 아니다. 이번 이식은 지정한 배포 환경 상세와 완료 상태 전환에 한정한다. 별도 마이그레이션 실행기/팀 파이프라인을 새로 구현하거나 실제 운영 번들을 교체하지 않았다.
-- DB 기반 전체 E2E, 실제 자원 변경, Terraform Plan/Apply, 새 커밋/푸시와 운영 배포는 미실행이다. [최신 기준과 실제 검증](../../docs/ai-dlc/platform-presentation.md#후속-u2-최신-배포-환경-화면을-기준으로-정정-2026-11-07-kst)을 따른다.
+- 로컬에서는 DB 기반 전체 E2E, 실제 자원 변경, Terraform Plan/Apply와 운영 배포를 실행하지 않았다. 사용자 승인으로 [PR #73](https://github.com/2026-sbh-delta/delta-network-gateway/pull/73)을 main 대상으로 게시했으며 squash 병합 경로를 사용한다. 원격 CI/병합 결과는 해당 PR과 main 이력을, [최신 기준과 로컬 검증](../../docs/ai-dlc/platform-presentation.md#후속-u2-최신-배포-환경-화면을-기준으로-정정-2026-11-07-kst)은 AI-DLC 기록을 따른다.

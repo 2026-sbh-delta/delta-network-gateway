@@ -1,5 +1,7 @@
 # Delta network gateway
 
+2026-11-07 최신 배포 환경 상세 기준 UI 구현/검증: 사용자가 지정한 `Migration verification 85df8a6`의 실제 화면/운영 번들/조회 API를 기준으로 환경 카드와 완료 상태 전환을 복구하고 정확한 주소 안내를 제거했다. 가독성 개선과 최종 빌드/형식 검사, 로컬 fixture 회귀 46개 및 1440px/390px 캡처 확인을 완료했다. 사용자 승인으로 구현 `090c51d3`을 푸시하고 [PR #73](https://github.com/2026-sbh-delta/delta-network-gateway/pull/73)을 main 대상으로 게시했으며 squash 병합 경로를 사용한다. 최종 원격 CI/병합 상태는 PR과 main 이력을 따른다. 운영 번들 전체 원본 복구나 운영 배포/자원 변경은 포함하지 않는다. [검증과 게시 기록](ai-dlc/platform-presentation.md#pr-게시와-main-squash-병합-경로-2026-11-07-kst)
+
 2026-11-07 15:21 KST ANF 기본 차단 제거 완료: 사용자 전체 범위 명시 승인으로 SID `9000000` 한 줄만 제거했다. 나머지6개 규칙과 Firewall/Endpoint/경로/DNS/ALB 설정을 보존했고 AWS ALB 두 IP의 외부 HTTPS200, Primary2/Secondary2 READY/정책 IN_SYNC 및 중앙 최종 실제 Plan No changes/종료0을 확인했다. managed89개 ID/출력22개 유지, Terraform mock76개/Python22개 통과. 443 이외의 미등록 통신도 이 규칙으로 차단하지 않는다. demo DNS는 GCP를 유지한다. Git 게시와 원격 CI 상태는 Git 이력과 실행 결과를 따른다. [승인과 실제 결과](ai-dlc/anf-board-reactivation.md#2026-11-07-후속-공통-기본-차단-규칙-제거)
 
 2026-11-07 서비스 도메인 설정 보존 수정과 검증 완료. `deploy/platform/deploy.sh`가 기존 SSM 전환 설정을 보존하고 최초 배포에서만 Terraform 출력으로 초기화한다. 배포 진입점 회귀와 기존 SSM 검사22개가 통과했고, 실제 SSM에서 이전 도메인 출력으로 초기화를 시도해 사용자 도메인 설정 v10과 토큰 v4의 보존을 확인했다. PR과 main의 전용 CI가 배포 테스트를 실행한다. Git 게시와 CI 결과는 PR 및 실행 이력을 따른다. [설계와 검증 기록](ai-dlc/cutover-config-preservation.md)
