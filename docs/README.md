@@ -1,5 +1,7 @@
 # Delta network gateway
 
+2026-11-08 AWS→GCP 차분 결과로 저장한 Plan을 승인 후 별도 러너에서 적용했다. 실제 GCP 사설 VM 1대에서 FE·BE 이미지 digest, 각 헬스 HTTP 200, PostgreSQL 18.6을 확인했고 최종 Plan은 No changes였다. 운영 대상 등록과 Jenkins 연결 절차는 [차분 기반 배포](ai-dlc/aws-gcp-mapped-terraform.md)를 따른다.
+
 2026-11-07 플랫폼 롤백: main을 `3cbf8419` 파일 상태로 복원한 뒤 운영 DB `0013`을 보존하는 호환 수정 PR #79를 `2862e923`으로 병합하고 [Release 42376126370](https://github.com/2026-sbh-delta/delta-network-gateway/actions/runs/42376126370)으로 운영 배포했다. 사전 검사 20개와 HTTPS 준비 상태, Wazuh 무결성 및 인증 검사가 통과했고 DB 백업과 기존 서비스 2개 및 실행 이력 8개를 보존했다. 인증된 로그인과 실제 새 작업 실행은 미검증이다. 이후 main에 별도 PR #80, #81, #82가 병합됐으며 이번 배포는 그 이전 커밋 기준이다. [작업과 검증 상태](ai-dlc/platform-rollback-3cbf8419.md)
 
 2026-11-07 최신 배포 환경 상세 기준 UI 구현/검증: 사용자가 지정한 `Migration verification 85df8a6`의 실제 화면/운영 번들/조회 API를 기준으로 환경 카드와 완료 상태 전환을 복구하고 정확한 주소 안내를 제거했다. 가독성 개선과 최종 빌드/형식 검사, 로컬 fixture 회귀 46개 및 1440px/390px 캡처 확인을 완료했다. 사용자 승인으로 구현 `090c51d3`을 푸시하고 [PR #73](https://github.com/2026-sbh-delta/delta-network-gateway/pull/73)을 main 대상으로 게시했으며 squash 병합 경로를 사용한다. 최종 원격 CI/병합 상태는 PR과 main 이력을 따른다. 운영 번들 전체 원본 복구나 운영 배포/자원 변경은 포함하지 않는다. [검증과 게시 기록](ai-dlc/platform-presentation.md#pr-게시와-main-squash-병합-경로-2026-11-07-kst)

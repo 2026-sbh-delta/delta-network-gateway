@@ -91,3 +91,24 @@ jobs:
           }
         }
       }
+  - script: >
+      pipelineJob('delta-mapped-release') {
+        description('AWS→GCP 차분 매핑으로 Terraform Plan을 만들고 관리자 승인 뒤 같은 Plan과 앱을 적용한다.')
+        parameters {
+          stringParam('RUN_ID', '', '기존 JenkinsClient 작업 키; DEPLOYMENT_ID 별칭')
+          stringParam('DEPLOYMENT_ID', '', '선택: 명시적 운영 배포 멱등 키')
+          stringParam('COMMIT', '', 'full40 commit SHA')
+          stringParam('TARGET_ID', '', '서버 인벤토리에 등록된 단일 production 대상')
+          textParam('IMAGES_JSON', '', 'frontend/backend digest 고정 이미지 JSON')
+          stringParam('BUNDLE_SHA256', '', 'schema2 canonical 묶음 해시')
+          textParam('BUNDLE_JSON', '', '선택: registry_images를 포함한 schema2 빌드 결과. AWS는 필수')
+          textParam('TERRAFORM_MAPPING', '', 'Ed25519 승인에 묶인 AWS → GCP 차분 매핑')
+          stringParam('APPROVAL', '', 'pipeline 발급 Ed25519 claims/signature envelope')
+        }
+        definition {
+          cps {
+            script(new File('/opt/delta/Jenkinsfile.release').text)
+            sandbox(true)
+          }
+        }
+      }

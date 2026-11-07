@@ -25,6 +25,7 @@ from delta_pipeline.delivery import (TARGET_RE, canonical_json, match_runtime, r
                                      sign_approval, validate_bundle, validate_config)
 from delta_pipeline.model import REPO_PREFIX, Board, Options
 from delta_pipeline.diff_client import DiffJob
+from delta_pipeline.terraform_mapping import workload_mapping
 
 POLL_SECONDS = 1  # 내부 서비스 조회(SAST·DAST·도메인 확인). 끝난 뒤 최대 1초 안에 다음 단계로 간다
 CUTOVER_GRACE_SECONDS = 120  # TTL 이 지난 뒤에도 blue 가 확인되지 않으면 이 시간 뒤 되돌린다
@@ -106,6 +107,7 @@ class PipelineState(TypedDict, total=False):
     release_result: dict[str, Any] | None
     mapping_input_hash: str
     mapping_source: dict[str, Any]
+    terraform_mapping: dict[str, Any]
     diff_started: bool
     assisted_origin: dict[str, Any]
     assisted_plan: dict[str, Any]
@@ -382,10 +384,17 @@ class Steps:
         if assessment.verdict == "fix":
             self._board.update("map", state="fail", summary="워크로드 차분에서 수정이 필요한 항목 발견")
             raise Stopped("워크로드 차분에서 수정이 필요한 항목 발견")
+        update = {"mapping_input_hash": job.config.fingerprint, "mapping_source": {"serial": result.source.serial}}
+        config = self._deps.release_config or {}
+        if "terraform_mapping" in config:
+            try:
+                update["terraform_mapping"] = workload_mapping(result, job.config, config)
+            except (KeyError, TypeError, ValueError) as exc:
+                self._board.update("map", state="fail", summary="Terraform에 필요한 매핑을 확인할 수 없음")
+                raise Stopped("Terraform에 필요한 매핑을 확인할 수 없습니다") from exc
         decision = (self._ask("diff", "map", "워크로드 차분", sum(c.state != "green" for c in assessment.checks))
                     if assessment.verdict == "needs_human" else self._pass("diff", "map", "워크로드 차분 통과"))
-        return {**decision, "mapping_input_hash": job.config.fingerprint,
-                "mapping_source": {"serial": result.source.serial}}
+        return {**update, **decision}
 
     def ask_mapping(self, state: PipelineState) -> dict[str, Any]:
         job = self._diff_job()
@@ -754,6 +763,16 @@ class Steps:
             raise Stopped("운영 인벤토리 누락·변경으로 진행할 수 없다") from exc
         return config
 
+    @staticmethod
+    def _mapped_release(state: PipelineState, config: dict[str, Any]) -> dict[str, Any]:
+        if "terraform_mapping" not in config:
+            return {}
+        mapping = state.get("terraform_mapping")
+        if (not mapping or mapping.get("diff_request_sha256") != state.get("mapping_input_hash")
+                or mapping.get("state_serial") != (state.get("mapping_source") or {}).get("serial")):
+            raise Stopped("현재 실행의 Terraform 매핑을 확인할 수 없습니다")
+        return mapping
+
     def ask_release(self, state: PipelineState) -> dict[str, Any]:
         self._require_diff(state)
         bundle = self._production_bundle(state)
@@ -762,6 +781,9 @@ class Steps:
             raise Stopped("운영 Jenkins 또는 Ed25519 서명 키가 없다")
         target = self._deps.options.release_target
         config_hash = evidence_hash(config)
+        mapping = self._mapped_release(state, config)
+        if mapping:
+            self._board.add_detail("release", target_id=target, terraform_mapping=mapping)
         answer = interrupt({"node_id": "release", "prompt": f"운영 배포 승인: {target} · {bundle['commit']} · "
                             f"bundle {bundle['bundle_sha256']} · config {config_hash}",
                             "options": [("approve", "운영 배포 승인"), ("stop", "중단")]})
@@ -771,6 +793,8 @@ class Steps:
         claims = {"deployment_id": self._key(state, "release"), "commit_sha": bundle["commit"],
                   "bundle_sha256": bundle["bundle_sha256"], "target_id": target, "environment": "production",
                   "config_sha256": config_hash, "exp": int(self._deps.now()) + 600, "nonce": uuid4().hex}
+        if mapping:
+            claims["mapping_sha256"] = evidence_hash(mapping)
         try:
             approval = sign_approval(claims, self._deps.release_signing_key)
         except ValueError as exc:
@@ -789,6 +813,9 @@ class Steps:
         expected = {"deployment_id": self._key(state, "release"), "commit_sha": bundle["commit"],
                     "bundle_sha256": bundle["bundle_sha256"], "target_id": config["target_id"],
                     "environment": "production", "config_sha256": evidence_hash(config)}
+        mapping = self._mapped_release(state, config)
+        if mapping:
+            expected["mapping_sha256"] = evidence_hash(mapping)
         if ((state.get("gates") or {}).get("release_approval") != "approved"
                 or any(claims.get(k) != v for k, v in expected.items())
                 or not approval.get("signature") or not claims.get("nonce")):
@@ -808,10 +835,14 @@ class Steps:
                       "APPROVAL": canonical_json(approval),
                       # 클라우드별 사본(registry_images)까지 담은 빌드 결과. AWS 대상은 ECR 사본으로 배포한다
                       "BUNDLE_JSON": canonical_json({**bundle, "schema": 2, "platform": "linux/amd64"})}
+            if mapping:
+                params["TERRAFORM_MAPPING"] = canonical_json(mapping)
             build = jenkins.trigger(params, expected["deployment_id"])
         self._board.add_detail("release", build=build, url=jenkins.console_url(build),
                                deployment_id=expected["deployment_id"], target_id=config["target_id"],
                                bundle_sha256=bundle["bundle_sha256"], config_sha256=expected["config_sha256"])
+        if mapping:
+            self._board.update("release", state="running", summary="Jenkins에서 Terraform Plan 확인·승인")
         return {"release_build": build}
 
     def release_wait(self, state: PipelineState) -> dict[str, Any]:
@@ -827,7 +858,12 @@ class Steps:
         keys = ("state", "target_id", "environment", "commit", "images", "image_digests", "bundle_sha256",
                 "image_digest", "schema", "platform", "image_ref", "database_version_num", "deployment_id", "config_sha256",
                 "environment_id", "resource_binding", "service_url", "telemetry_service_id")
-        return {"release_result": {key: result[key] for key in keys if key in result}}
+        visible = {key: result[key] for key in keys if key in result}
+        proof = result.get("terraform")
+        if isinstance(proof, dict):
+            visible["terraform"] = {key: proof[key] for key in ("mapping_sha256", "plan_sha256")
+                                    if isinstance(proof.get(key), str) and re.fullmatch(r"[0-9a-f]{64}", proof[key])}
+        return {"release_result": visible}
 
     def _verified_release(self, state: PipelineState) -> None:
         bundle = self._production_bundle(state)
@@ -842,6 +878,14 @@ class Steps:
         except ValueError as exc:
             raise Stopped(str(exc)) from exc
         config = self._release_config(state)
+        mapping = self._mapped_release(state, config)
+        if mapping:
+            applied = result.get("terraform")
+            if (not isinstance(applied, dict) or applied.get("mapping_sha256") != evidence_hash(mapping)
+                    or not re.fullmatch(r"[0-9a-f]{64}", str(applied.get("plan_sha256", "")))
+                    or result.get("deployment_id") != self._key(state, "release")
+                    or result.get("config_sha256") != evidence_hash(config)):
+                raise Stopped("승인된 Terraform Plan의 적용 증거가 없습니다")
         if ("deployment_id" in result and result["deployment_id"] != self._key(state, "release")
                 or "config_sha256" in result and result["config_sha256"] != evidence_hash(config)):
             raise Stopped("운영 결과의 배포 ID·설정 해시가 승인과 다르다")

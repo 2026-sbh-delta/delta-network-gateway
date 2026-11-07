@@ -1,3 +1,4 @@
+import json
 import sqlite3
 import threading
 import time
@@ -7,7 +8,7 @@ from io import BytesIO
 import pytest
 from langgraph.checkpoint.sqlite import SqliteSaver
 
-from delta_pipeline.clients import ServiceUnavailable
+from delta_pipeline.clients import ServiceUnavailable, evidence_hash
 from delta_pipeline.diff_client import DiffClient, DiffInput, DiffJob, DiffResult
 from delta_pipeline.graph import build_graph
 from delta_pipeline.model import Options
@@ -52,17 +53,18 @@ class Diff:
         return response(run_id, self.verdict)
 
 
-def make(tmp_path, diff, *, diagnostic=None, dast=None, sast=None, cf=None, config=INPUT, options=None):
+def make(tmp_path, diff, *, diagnostic=None, dast=None, sast=None, cf=None, config=INPUT, options=None,
+         release_config=TEST_RELEASE_CONFIG, release=None):
     clock, cf = Clock(), cf or FakeCloudflare()
     net = FakeInternet(cf)
-    release = RoundJenkins(lambda commit: release_result(bundle(commit)))
+    release = release or RoundJenkins(lambda commit: release_result(bundle(commit)))
     run = Run(options or Options(REPO, COMMIT, cutover=True, release_target=TARGET, diff_request_hash=INPUT.fingerprint),
               sast=sast or FakeSast(), dast=dast or FakeDast(), build_jenkins=RoundJenkins(bundle),
               deploy_jenkins=RoundJenkins(lambda commit: stage_result(bundle(commit))),
               staging=FakeStaging(), image_repo=IMAGE_REPO, store_dir=tmp_path, run_id=RUN_ID,
               sleep=clock.sleep, now=clock.now, cloudflare=cf, cutover=CFG, probe=net.probe, resolve=net.resolve,
               release_jenkins=release, release_signing_key=TEST_RELEASE_SIGNING_KEY,
-              release_config=deepcopy(TEST_RELEASE_CONFIG), diagnostic=diagnostic or Diagnostic(),
+              release_config=deepcopy(release_config), diagnostic=diagnostic or Diagnostic(),
               diff=DiffJob(diff, config, RUN_ID) if diff is not None else None, require_diff_cutover=True)
     return run, release, cf
 
@@ -200,3 +202,62 @@ def test_http_contract_authenticates_and_rejects_a_result_for_another_run(monkey
     returned = response("different-run", "pass")
     with pytest.raises(ServiceUnavailable, match="응답 검증 실패"):
         client.compare(INPUT, RUN_ID)
+
+
+@pytest.mark.parametrize("proof", [True, False])
+def test_mapped_release_signs_same_run_mapping_and_requires_apply_evidence(tmp_path, proof):
+    config = DiffInput.model_validate({
+        **INPUT.model_dump(),
+        "target": {"region": "asia-northeast3", "existing_subnets": [
+            {"name": "app", "cidr": "10.32.2.0/24", "tier": "private"},
+        ]},
+    })
+    target = {**TEST_RELEASE_CONFIG, "region": "asia-northeast3",
+              "database": {"mode": "existing", "profile_id": "prepared"},
+              "terraform_mapping": {"source_compute": "web: t3.micro", "source_subnet": "web-a"}}
+
+    class ReusedDiff:
+        def compare(self, config, run_id):
+            value = response(run_id, "needs_human").model_dump()
+            result = value["assessment"]["mapping"]
+            result["network_mode"] = "reuse"
+            result["rows"] = [
+                {"resource": resource, "source": source, "target": target, "grade": "approximate",
+                 "value_source": "operator", "rule_id": rule}
+                for resource, source, target, rule in [
+                    ("compute", "web: t3.micro", "e2-micro", "MAP-CMP-001"),
+                    ("subnet", "web-a", "app (10.32.2.0/24)", "MAP-NET-001"),
+                ]
+            ]
+            value["assessment"]["checks"] = [
+                {"rule_id": row["rule_id"], "name": row["resource"], "state": "unknown"}
+                for row in result["rows"]
+            ]
+            parsed = DiffResult.model_validate(value)
+            parsed.verify(run_id, config)
+            return parsed
+
+    class MappedRelease(RoundJenkins):
+        def file(self, build, name):
+            value = super().file(build, name)
+            if value and proof:
+                request = self.params[build - 1]
+                value.update(deployment_id=self.keys[build - 1], config_sha256=evidence_hash(target),
+                             terraform={"mapping_sha256": evidence_hash(json.loads(request["TERRAFORM_MAPPING"])),
+                                        "plan_sha256": "b" * 64})
+            return value
+
+    options = Options(REPO, COMMIT, release_target=TARGET, diff_request_hash=config.fingerprint)
+    run, jenkins, _ = make(tmp_path, ReusedDiff(), config=config, options=options,
+                          release_config=target, release=MappedRelease(lambda commit: release_result(bundle(commit))))
+    answers = {"map": "approve", "release": "approve"}
+    if not proof:
+        answers["exception-review"] = "acknowledge"
+    final, _ = run_with_answers(run, answers)
+    sent = jenkins.params[0]
+    mapping = json.loads(sent["TERRAFORM_MAPPING"])
+    assert mapping == {"profile_id": "e2-small", "mapped_profile_id": "e2-micro",
+                       "subnet_name": "app", "subnet_cidr": "10.32.2.0/24",
+                       "state_serial": 21, "diff_request_sha256": config.fingerprint}
+    assert json.loads(sent["APPROVAL"])["claims"]["mapping_sha256"] == evidence_hash(mapping)
+    assert final["outcome"] == ("verified" if proof else "stopped")

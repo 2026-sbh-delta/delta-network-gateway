@@ -49,7 +49,7 @@ def workdir(config, environment_id, module, cloud):
     if directory.resolve().parent.parent != root or directory.is_symlink():
         raise ValueError("Invalid work directory")
     directory.chmod(0o700)
-    for stale in directory.glob("*.tf"):
+    for stale in [*directory.glob("*.tf"), *directory.glob("*.tf.json")]:
         stale.unlink()
     for file in [*source.glob("*.tf"), source / ".terraform.lock.hcl"]:
         shutil.copyfile(file, directory / file.name)

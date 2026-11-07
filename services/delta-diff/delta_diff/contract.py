@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from delta_ai.contract import AssessmentResult, MappingInput
+from delta_ai.contract import AssessmentResult, ExistingSubnet, MappingInput
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 MAX_EXCLUDES = 20
@@ -42,8 +42,12 @@ class DiffTarget(_Model):
     manifests: str | None = Field(default=None, max_length=60_000)
     region: str | None = None
 
+    existing_subnets: tuple[ExistingSubnet, ...] | None = Field(default=None, min_length=1, max_length=20)
+
     @model_validator(mode="after")
     def validate_target(self):
+        if self.existing_subnets is not None and self.provider != "gcp":
+            raise ValueError("기존 서브넷 목록은 GCP 대상에서만 쓴다")
         if self.manifests is not None and self.provider != "onprem":
             raise ValueError("대상 manifests는 onprem에서만 쓴다")
         if self.region is not None and self.provider == "onprem":
