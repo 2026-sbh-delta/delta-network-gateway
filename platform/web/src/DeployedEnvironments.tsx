@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, message } from "./api";
+import { OUTCOME } from "./pipeline-model";
 import type { View } from "./AppShell";
 import { cloudName } from "./application-model";
 import { observabilityApi, type Environment } from "./observability-api";
@@ -75,21 +76,25 @@ export function DeployedEnvironments({
   const [environments, setEnvironments] = useState<Environment[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
-  // A pipeline still running (started from the migration screen) gets a way back from here.
-  const [liveRun, setLiveRun] = useState("");
+  // This project's latest pipeline run (started from its migration screen) and a way back to it.
+  const [recent, setRecent] = useState<{
+    run_id: string;
+    outcome: string | null;
+  } | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
-    api<{ runs: { run_id: string; outcome: string | null }[] }>(
-      "/pipeline/runs",
-      undefined,
-      undefined,
-      controller.signal,
-    )
+    setRecent(null);
+    api<{
+      runs: {
+        run_id: string;
+        outcome: string | null;
+        options: { project_id?: string };
+      }[];
+    }>("/pipeline/runs", undefined, undefined, controller.signal)
       .then((data) => {
-        const run = data.runs[0];
-        if (!controller.signal.aborted && run && !run.outcome)
-          setLiveRun(run.run_id);
+        const run = data.runs.find((r) => r.options?.project_id === serviceId);
+        if (!controller.signal.aborted && run) setRecent(run);
       })
       .catch(() => undefined);
     return () => controller.abort();
@@ -144,13 +149,15 @@ export function DeployedEnvironments({
           </p>
         </div>
         <div className="deployment-actions">
-          {liveRun && (
+          {recent && (
             <button
               onClick={() => {
-                location.hash = `/pipeline/${encodeURIComponent(liveRun)}`;
+                location.hash = `/pipeline/${encodeURIComponent(recent.run_id)}`;
               }}
             >
-              파이프라인 진행 중 →
+              {recent.outcome
+                ? `최근 파이프라인 · ${OUTCOME[recent.outcome]?.label ?? recent.outcome} →`
+                : "파이프라인 진행 중 →"}
             </button>
           )}
           <button onClick={() => onNavigate("migration")}>

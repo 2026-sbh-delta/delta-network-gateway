@@ -34,6 +34,7 @@ class Options:
     assistance: bool = False
     onprem_build_id: str | None = None
     diff_request_hash: str | None = None
+    project_id: str | None = None  # 실행을 시작한 플랫폼 프로젝트(표시용, 실행 동작에는 쓰지 않는다)
 
     def __post_init__(self):
         if type(self.assistance) is not bool:
@@ -54,6 +55,8 @@ class Options:
             self.execution_cloud != "gcp" or not re.fullmatch(r"[0-9a-f]{64}", self.diff_request_hash)
         ):
             raise ValueError("워크로드 차분은 고정된 AWS → GCP 실행 입력이 필요합니다")
+        if self.project_id is not None and not re.fullmatch(r"[0-9a-f-]{36}", self.project_id):
+            raise ValueError("프로젝트 ID 형식이 아닙니다")
 
 
 

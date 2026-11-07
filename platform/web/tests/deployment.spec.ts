@@ -624,6 +624,7 @@ test("GCP 이전은 보안 파이프라인으로 시작하고 온프레미스만
     commit: "c".repeat(40),
     cutover: true,
     release_target: "a-corp-gcp-prod",
+    project_id: "svc-deploy",
   });
   expect(
     (state.createBody as { targets: { cloud: string }[] }).targets.map(

@@ -318,6 +318,13 @@ def create_app(pipelines: Pipelines | None = None, *, case_review_client_factory
             if cutover:raise HTTPException(400,'온프레미스 실행 검사는 DNS 전환과 별도입니다')
         elif assistance or onprem_build_id:
             raise HTTPException(400,'온프레미스 설정은 해당 대상에서만 사용할 수 있습니다')
+        project_id = body.get("project_id") or None
+        if project_id is not None:
+            from uuid import UUID
+            try:
+                project_id = str(UUID(project_id))
+            except (ValueError, TypeError, AttributeError):
+                raise HTTPException(400, "프로젝트 ID 형식이 아닙니다") from None
         release_target = body.get("release_target") or None
         if release_target is not None and release_target not in pipelines_mod.release_targets():
             raise HTTPException(400, "등록되지 않은 운영 배포 대상입니다")
@@ -343,6 +350,7 @@ def create_app(pipelines: Pipelines | None = None, *, case_review_client_factory
             extra={'execution_cloud':execution_cloud,'onprem_build_id':onprem_build_id,'assistance':assistance} if execution_cloud=='onprem' else {}
             if release_target is not None:extra["release_target"]=release_target
             if request_key is not None:extra["request_key"]=request_key
+            if project_id is not None:extra["project_id"]=project_id
             return {"run_id": need_pipelines().start(repo, commit, cutover=cutover, branch=branch,**extra)}
         except RuntimeError as exc:
             raise HTTPException(409, str(exc))

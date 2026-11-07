@@ -188,10 +188,11 @@ class Pipelines:
             run = self._runs.get(run_id)
             return bool(run and self._threads[run_id].is_alive() and run.cancel())
 
-    def start(self, repo: str, commit: str, *, cutover: bool = False, branch: str = "", execution_cloud='gcp', onprem_build_id=None, assistance=False, release_target=None, request_key=None) -> str:
+    def start(self, repo: str, commit: str, *, cutover: bool = False, branch: str = "", execution_cloud='gcp', onprem_build_id=None, assistance=False, release_target=None, request_key=None, project_id=None) -> str:
         with self._lock:
             options = Options(repo, commit, cutover=cutover, branch=branch, execution_cloud=execution_cloud,
-                              onprem_build_id=onprem_build_id, assistance=assistance, release_target=release_target)
+                              onprem_build_id=onprem_build_id, assistance=assistance, release_target=release_target,
+                              project_id=project_id)
             target = release_targets().get(release_target) if release_target else None
             mapped = target is not None and "terraform_mapping" in target
             if mapped and execution_cloud != "gcp":
@@ -209,6 +210,7 @@ class Pipelines:
                 expected = asdict(options)
                 actual = dict(old["options"])
                 actual.setdefault("diff_request_hash", None)
+                actual.setdefault("project_id", None)
                 expected.pop("diagnostics", None)
                 actual.pop("diagnostics", None)
                 if actual != expected:
