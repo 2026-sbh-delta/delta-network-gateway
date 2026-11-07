@@ -2005,3 +2005,25 @@
   white-space: pre-wrap;
   word-break: break-all;
 }
+
+/* Passed steps and approvals: translucent green cover so progress reads at a glance. */
+.lf-node.s-pass,
+.lf-msg.s-pass {
+  background: rgb(220 252 231 / 0.72);
+  border-color: #86efac;
+  backdrop-filter: blur(6px);
+}
+.lf-node.s-pass .lf-input {
+  background: rgb(255 255 255 / 0.7);
+  border-color: #bbf7d0;
+}
+.lf-node.s-pass .lf-output {
+  border-top-color: #bbf7d0;
+}
+.lf-node.s-pass.selected,
+.lf-msg.s-pass.selected {
+  border-color: #16a34a;
+  box-shadow:
+    0 0 0 1px #16a34a,
+    0 8px 24px #16a34a26;
+}
