@@ -320,6 +320,16 @@ class DemoReset:
         self.status = {**self.status, "steps": [{**s, **update} if s["id"] == key else s
                                                   for s in self.status["steps"]]}
 
+    def latest_repo(self) -> str:
+        """정리할 저장소: 가장 최근 실행의 저장소(빌드 기록이 없어도 PR 정리는 한다)."""
+        boards = sorted((self._pipelines.store_dir / BOARD_DIR).glob("*.json"),
+                        key=lambda p: p.stat().st_mtime, reverse=True)
+        for path in boards:
+            repo = (json.loads(path.read_text(encoding="utf-8")).get("options") or {}).get("repo")
+            if repo:
+                return repo
+        raise RuntimeError("정리할 저장소를 찾지 못했습니다")
+
     @staticmethod
     def branch_head(repo: str, branch: str) -> str:
         """공개 저장소 브랜치의 현재 커밋. 시연 앱의 main 은 취약 버전 그대로다(AI 수정은 PR 로만 간다)."""
@@ -432,7 +442,7 @@ class DemoReset:
                                else f"오류({type(exc).__name__})")
                 self._step("fixes", state="running", summary="수정 PR 닫는 중")
                 try:
-                    repo = self._repo or self.vulnerable_bundle()[1]
+                    repo = self._repo or self.latest_repo()
                     zone = os.environ.get("DELTA_INTERNAL_ZONE", "cp.internal")
                     done = Dast(f"http://dast.{zone}:8765", os.environ.get("DAST_PLATFORM_TOKEN", "")) \
                         .cleanup_fix_branches(repo)

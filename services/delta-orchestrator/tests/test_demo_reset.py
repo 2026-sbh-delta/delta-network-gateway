@@ -59,3 +59,12 @@ def test_does_not_start_while_a_pipeline_runs(tmp_path):
     with pytest.raises(RuntimeError, match="파이프라인 실행 중"):
         reset.start()
     assert reset.view()["state"] == "idle"
+
+
+def test_fix_cleanup_repo_does_not_need_a_build_of_the_current_main(tmp_path):
+    (tmp_path / mod.BOARD_DIR).mkdir()
+    board(tmp_path, "old", "a" * 40, "a" * 40, "1", time.time())
+    reset = mod.DemoReset(Idle(tmp_path), mod.DomainRevert())
+    with pytest.raises(RuntimeError):
+        reset.vulnerable_bundle(head=lambda repo, branch: "f" * 40)  # main 이 바뀌어 빌드 기록 없음
+    assert reset.latest_repo() == REPO
