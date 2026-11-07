@@ -493,6 +493,8 @@ def create_app(settings=None, engine=None, *, dashboard=None):
                 503,
             ) from None
 
+    from delta_platform.adapters.workflow_diff import install as install_workload_diff
+    install_workload_diff(protected, workflows, settings)
     router.include_router(protected)
     app.include_router(router)
 

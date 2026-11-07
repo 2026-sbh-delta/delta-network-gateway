@@ -1,0 +1,27 @@
+{
+  "release": "2f765772773c",
+  "files": {
+    "workflow_diff.py": "4ce4d0745e5c7b4ff8dca960cc8758d28c86f43edeff16a49c0a139eaa7e899d",
+    "workload_inventory.py": "a40aa3af1b55c5c32384f0c5de696af897647984c239eba1f96293cd2d2316bd",
+    "platform_diff.py": "c64844aed0864ca5e167102bce46f41426e67cea7de575f245c76f830be55306",
+    "patch.py": "354a354ee5841915606ca1e3b46bf306abf27d4a828244781df6d56152a75282",
+    "platform.Dockerfile": "26f3d041c8914b1c633b63ef7614d998f2e4fcdbda63cdd776d14340544377f0",
+    "orchestrator.Dockerfile": "b227e3174ee8a4161c66b6c0f9bc504995cdc126ac3f36169185f632ed085ba1"
+  },
+  "orchestrator_tag": "616723161368.dkr.ecr.ap-northeast-2.amazonaws.com/delta-cp-orchestrator:workload-diff-2f765772773c",
+  "platform_tag": "616723161368.dkr.ecr.ap-northeast-2.amazonaws.com/delta-platform:workload-diff-2f765772773c",
+  "orchestrator_image": "616723161368.dkr.ecr.ap-northeast-2.amazonaws.com/delta-cp-orchestrator@sha256:d0c03596a60507fb715b902930391ca7af80223f9e867724eed3ae9002071194",
+  "platform_image": "616723161368.dkr.ecr.ap-northeast-2.amazonaws.com/delta-platform@sha256:59f7086b8867ad226ab05af28479bc1e668dc346152a824b1569c0805f47a46d",
+  "platform_snapshot": {
+    "release": "f944aade1735",
+    "image": "616723161368.dkr.ecr.ap-northeast-2.amazonaws.com/delta-platform@sha256:7fdb663c01768f714ad83076e45034b57828273591e07f8d7a6d9508c2ec3624",
+    "captured_at": "2026-11-07T05:29:02.579Z",
+    "files": {
+      "workflow_diff.py": "81e1b4505fff2ff6de1e81b640b70accd94d111b3b9eb409ee24803ba090aa4b",
+      "workload_inventory.py": "5b955f1aa331c90e8de6b21a0e4cdbf82ddc8a4cf1cfa5868028af4ea2241b25",
+      "Dockerfile": "7bb826e8bb804e391485138daffe97bed0ee98785cbdc2f83474c102a2ccc102",
+      "onprem-diff-snapshot.json": "f944aade1735391ad151dd21d16a817ff68a92ce2f1699fe86865d1305e31a41"
+    },
+    "rollout_sha256": "bff3f4bfbbdd8db35aba4d9968d29bf540bb6f64592e8d054926e11008249859"
+  }
+}
