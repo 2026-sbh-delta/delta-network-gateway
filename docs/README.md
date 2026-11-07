@@ -1,5 +1,7 @@
 # Delta network gateway
 
+2026-11-07 AWS ANF 재개 완료: `delta-board-vpc`만 인터넷 입출구와 GCP 양방향 검사를 enabled로 전환했다. Primary2/Secondary2 READY/IN_SYNC, ALB 두 IP 및 사설 양방향 HTTP200/NAT HTTPS200/RDS TLS1.3과 미허용8081의 실제 blocked/drop을 확인했다. FLOW/ALERT 원본21건과 플랫폼 중앙 원문이 일치했고 BGP4개 UP/기존 광고 유지 및 두 최종 실제 Plan No changes/종료0을 확인했다. Terraform mock131개/Python38개 통과. DNS/ALB와 기존 자원 ID를 보존했고 임시 probe/규칙/키/터널을 정리했다. 앱은 inactive/disabled를 유지하므로 공개 앱은 기존 HTTP502다. Git 게시와 원격 CI 상태는 Git 이력과 실행 결과를 따른다. [승인과 실제 결과](ai-dlc/anf-board-reactivation.md)를 따르며 별도 GCP 작업의 설정과 문서를 보존한다.
+
 2026-11-07 GCP Cloud NGFW 검사 재개 완료: 사용자 요청으로 `disabled -> bypass -> enabled`를 적용했다. endpoint1/association2 ACTIVE, 두 사설 검사 규칙과 모든 심각도 ALERT, BGP4개 UP 및 기존 ID57개 보존을 확인했다. 양방향 TCP3000 HTTP200과 실제 Threat8건을 포함한 원본12건의 Security/플랫폼 수신까지 대조했고 최종 실제 Plan은 No changes/종료0, 잠금도 없다. Terraform mock14개/Python10개가 통과했다. 공개 앱 L7/IPS 차단과 앱 재시작은 포함하지 않았으며 AWS 모드와 경로는 별도 작업이다. endpoint 비용은 USD1.75/h와 검사량 요금이다. [적용과 실제 검증](ai-dlc/gcp-central-network.md#2026-11-07-operation-gcp-cloud-ngfw-검사-재개)
 
 2026-11-07 GCP 방화벽 로그의 Security 일원화 완료: 사용자 승인으로 `/delta/security/gcp-firewall`, `/delta/security/gcp-firewall-threat`와 전용 수집24개를 실제 생성했다. 기존 Destination을 통해 플랫폼 `/delta-cp/central/gcp`와 GCP 원본 ID 및 JSON을 유지하고, 실제 규칙 로그를 전환 전19건과 후17건 대조한 뒤 기존 직접 Sink에서 두 종류를 제외했다. 합성2종과 나머지 GCP 및 기존 AWS 회귀도 수신 확인했다. Python34개와 Terraform mock7개 및 Ruff 통과, 양쪽 실제 마지막 Plan No changes/종료0. 기존 플랫폼43개 ID, 과거 로그와 양쪽 검사 disabled를 유지했다. 당시 새 NGFW 위협 발생은 미검증이었으며 재개 후 검증은 위 기록을 따른다. 게시와 원격 CI 상태는 Git 이력을 따른다. [승인과 실제 검증](ai-dlc/gcp-security-log-consolidation.md)
@@ -36,6 +38,8 @@
 2026-11-05: [플랫폼 자동 계측](ai-dlc/platform-auto-instrumentation.md)을 구현하고 온프레미스의 원본 FE·BE 이미지에서 trace·HTTP 지표 수신을 확인했다. 계측 ON/OFF와 Collector 장애 시 앱 응답도 검증했다. 원본 앱 후보는 실행 중이고 중앙 연결 준비 전까지 계측은 OFF다. [FE·BE 실행기](ai-dlc/platform-onprem-release.md)와 자동 계측 코드는 PR #47·#49로 main에 병합했으며 중앙 릴리스는 미실행이다.
 
 ## 현재 상태
+
+- AWS ANF(2026-11-07): board의 인터넷은 같은 AZ Secondary Endpoint, GCP는 board 전용 TGW 송신 RT와 중앙 Primary Endpoint를 왕복한다. 두 VPN/네 터널의 BGP/ECMP를 유지하며 VPN 연결 RT에 GCP 정적 대역을 넣지 않는다. 실제 통신/차단/중앙 로그와 두 root No changes를 확인했다. VPC 내부 local 통신과 중지한 앱의 재시작은 범위 밖이다. [운영 결과와 복귀](ai-dlc/anf-board-reactivation.md)를 따른다.
 
 - AWS Compose 중지/EC2 보존(2026-11-05): 사용자 후속 요청으로 게시판 FE/BE2개와 프로젝트 네트워크를 내리고 delta-compose 자동 시작을 해제했다. 앱 컨테이너2개를 내리고 프로젝트 컨테이너/네트워크 잔여0개, delta-compose inactive/disabled를 확인했다. VM running, DB available, 디스크/DB 식별자 동일과 호스트 이미지9개/설정 해시 보존을 확인했다. 공개 API는 HTTP502다. 기존 EC2/RDS/ALB를 유지하며 이번 중지에서 Terraform Plan/Apply나 Git 게시를 실행하지 않았다. [최신 중지 및 재개 절차](ai-dlc/aws-compose-consolidation.md)를 따른다.
 
@@ -102,7 +106,7 @@
 - 로그/통신: Client `10.10.1.143` → Server `10.20.1.10:8080` HTTP 200 및 같은 flow_id/AZ의 양방향 FLOW 확인. 8081은 timeout과 SID 9000000 blocked/verdict=drop, 마커 SID 2000001은 HTTP 200과 allowed/verdict=alert를 실제 요청 source port와 대조했다. 같은 계정 두 VPC의 ANF 왕복 검증 완료다.
 - 실계정 Plan: 실제 저장 Plan의 계정/변경 목록/보안 속성을 검토한 뒤 적용했다. 배포 후 중앙/Client/Server 세 root의 최종 Plan 모두 No changes, 상세 종료 코드 0이다. Terraform SSO refresh 오류는 유효한 CLI 역할 자격 증명을 메모리에서만 전달해 재검증했다.
 - 기존 기반 Git/푸시: 기존 Client 배포의 원격 체크포인트는 `9033794`다. 후속 변경을 GCP 구현 `7c31c885`, GCP 검증 `fd9abcd1`, AWS Server 구현 `d62eaae8`, Server/중앙 회귀 검증 `86659848`, 배포 기록 `14ed879c`로 분할 커밋했다. 2026-11-01 19:25 KST `git push origin main` 성공과 `git ls-remote --heads origin main`의 `14ed879c37aa29b1b6582299a24a623b6f770ec2` 일치를 확인했다. 당시 작업 트리는 깨끗했으며 이번 문서 갱신은 해당 게시 결과를 기록한다. 실제 tfvars/backend/state/Plan은 제외한다.
-- 전체 Destroy: 미실행. ANF 비용 중단을 위한 부분 제거와 실제 원복 검증을 완료했고 현재 최종 disabled다. 검사 모드에서 같은 계정 두 VPC HTTP 허용/차단/로그는 검증 완료. 다른 Workload 계정 간 통신과 GCP/온프레미스/VPN, 장애 전환/부하/TLS 복호화는 미검증이다.
+- 과거 2026-11-03 검증: 전체 Destroy는 미실행이며 당시 ANF 부분 제거/원복 검증 뒤 disabled로 마쳤다. 당시 같은 계정 두 VPC의 HTTP 허용/차단/로그를 확인했다. 현재 AWS enabled와 GCP 사설 통신의 실제 검증은 맨 위 2026-11-07 재개 기록을 따른다. 물리 장애 전환/부하/TLS 복호화 검증으로 확대하지 않는다.
 - 실행 프로필: `AWS_PROFILE=sbh-delta-security`. 이번 DryRun에서 STS로 중앙 계정 `482840608926`을 재확인했다. 코드에서는 계정 ID를 필수 입력으로 받아 검증한다.
 - AWS Workload: 사용자 `이렇게 만들고, public 노출없이 해` 지시로 Inception과 U1~U3 승인 및 구현/Review 완료. Workload mock Plan 26개 및 state bootstrap 보호 테스트 3개 통과. 별도 S3 state와 VPC `10.10.0.0/16`, `/24` Subnet 4개, 사설 EC2 `10.10.1.143` 및 EIC Endpoint 생성 완료. 초기 배포 때 공인 IP/IPv6, IGW/NAT/인터넷 Route 부재와 EIC 사설 SSH 성공을 확인했다. 후속 CloudFront root가 Client VPC에 IGW와 ALB 전용 Subnet/RT를 추가했으며 공인 주소/인터넷 Route는 추가하지 않았다.
 - AWS Server: 같은 Workload 계정의 별도 root/state에 VPC `10.20.0.0/16`, `/24` Subnet 4개, 사설 EC2 `10.20.1.10`와 EIC Endpoint/TGW Attachment를 생성했다. Server mock 31개/로컬 앱 1개, 중앙 회귀 34개, Client 회귀 26개와 기존 bootstrap 보호 3개 통과. 세 root 최종 Plan No changes와 실제 ANF 통신/로그 검증 완료. 구현/검증/배포 기록을 분할 커밋하고 origin/main 게시를 확인했다.
@@ -157,6 +161,8 @@
 
 ## 다음 작업
 
+AWS ANF는 [delta-board-vpc 한정 재개](ai-dlc/anf-board-reactivation.md)를 완료해 enabled로 운영한다. [현재 전환/복귀 Runbook](../terraform/network-security/RUNBOOK.md#delta-board-vpc-인터넷과-gcp-검사-재개)으로 네 Endpoint/정책, BGP4개와 실제 광고, 양방향 경로 및 원본/중앙 로그를 점검한다. 다른 VPC 변경과 중지한 앱 재시작은 이번 작업에 포함하지 않았다. Git 게시와 원격 CI 상태는 Git 이력과 실행 결과를 따른다.
+
 중앙 GuardDuty 로그 전달의 [U4/U5 구현/적용/실제 수신 검증](ai-dlc/aws-guardduty-logging.md)을 완료했다. 운영 시 [조회와 전달 중지/재개 절차](../terraform/network-security/RUNBOOK.md#guardduty-finding-로그-전달)를 따른다. 현재 실제 플랫폼 그룹은 `/delta-cp/central/*`이지만 플랫폼 Terraform 코드는 이전 이름을 정의하므로 해당 root를 실행하기 전에 별도로 수렴 범위를 검토한다. 대시보드 UI 검증은 미실행이며 게시 상태는 Git 이력과 원격 ref를 따른다.
 
 AWS 앱은 사용자 요청으로 Compose를 내린 상태이며 EC2/RDS/이미지/데이터는 유지한다. 재개가 필요하면 [중지 및 재개 절차](ai-dlc/aws-compose-consolidation.md#2026-11-05-후속-operation-compose만-내리고-ec2-보존)의 `sudo systemctl enable --now delta-compose`를 사용한다. 중지 작업에서는 재개와 추가 Terraform Apply를 실행하지 않았다. Git 게시 상태는 Git 이력을 따른다.
@@ -169,7 +175,7 @@ AWS Sample App 최초 두 EC2의 실제 배포/검증은 [기존 기록](ai-dlc/
 
 GCP `term2-delta`는 2026-11-07 사설 검사를 재개해 enabled로 운영한다. 중단/재개 시 [GCP Runbook](../terraform/network-security-gcp/RUNBOOK.md)의 단계별 저장 Plan과 ACTIVE/실제 통신/Threat 원본 수신을 확인한다. AWS 모드와 경로는 별도 AWS 재개 작업을 따르며 공개 앱 L7 정책 추가, 공통 자동화와 물리 터널/Zone 장애 검증은 이번 완료 범위에 포함하지 않는다.
 
-ANF는 비용 중단 모드로 유지한다. ignored `terraform/network-security/inspection-mode.auto.tfvars`를 보존하며 이번 GCP 작업에서 원복하지 않았다. 기존 [전환 Runbook](../terraform/network-security/RUNBOOK.md#anf-비용-중단과-원복)은 별도 검사 원복 요청이 있을 때 참고한다. 현재 우회 중에는 기존 8081 차단 시험도 HTTP 200으로 응답한다.
+과거 ANF disabled 유지 기록은 2026-11-07 AWS 재개로 대체됐다. ignored `terraform/network-security/inspection-mode.auto.tfvars`는 현재 enabled이며 Endpoint 시간 요금과 검사량 요금이 발생한다. 비용 중단이 필요하면 먼저 인터넷/GCP 경로를 함께 복귀하고 Secondary 참조를 정리하는 현재 Runbook을 따른다. 과거 VPC 두 개만 대상으로 한 원복 명령을 현재 인터넷/VPN 구성에 그대로 적용하지 않는다.
 
 플랫폼의 Jenkins 운영 전환·ECR·ECS 실행/종료와 공개 웹 SAST 검증을 완료했다. PR #20은 사용자가 병합했고 설정 활성화와 GitHub Release도 성공했다. DAST 코드·화면·취소/정리 계약을 구현했다. PR #21/#22를 병합했고 DAST 사설 네트워크와 관측 조회 IAM Apply를 마쳤다. 도구 이미지·런타임 갱신·GitHub Release와 실제 후보0건 처리를 확인했다. 실제 XSS 재현은 별도 후속이다. GCP·온프레미스로 이전할 때에는 각 대상 환경의 실행기를 연결하고 별도로 검사한다. 이후 AI 수정 제안·사람 승인·재빌드/재검증, 고정 digest의 Terraform/VM 배포로 연결한다. 이 후속 전체 흐름은 아직 플랫폼에서 구현·검증되지 않았다.
 
