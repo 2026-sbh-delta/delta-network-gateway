@@ -382,6 +382,25 @@ def create_app(pipelines: Pipelines | None = None, *, case_review_client_factory
             raise HTTPException(409, str(exc))
         return domain_revert.status
 
+    # 시연 초기화: 도메인 AWS 복귀 → GCP 운영 취약 버전 재배포 → AI 수정 PR 정리. 사람이 화면에서 승인한다.
+    demo_reset = pipelines_mod.DemoReset(pipelines, domain_revert) if pipelines is not None else None
+
+    @app.get("/api/demo/reset")
+    def demo_reset_view():
+        return demo_reset.view() if demo_reset else {"state": "unavailable"}
+
+    @app.post("/api/demo/reset", status_code=202)
+    async def demo_reset_start(request: Request):
+        if (await json_body(request)).get("approve") is not True:
+            raise HTTPException(400, "사람 승인(approve: true)이 필요합니다")
+        if demo_reset is None:
+            raise HTTPException(503, "파이프라인이 설정되지 않았습니다")
+        try:
+            demo_reset.start()
+        except RuntimeError as exc:
+            raise HTTPException(409, str(exc))
+        return demo_reset.view()
+
     @app.get("/api/pipeline/runs")
     async def list_runs():
         p = need_pipelines()

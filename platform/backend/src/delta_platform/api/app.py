@@ -554,6 +554,15 @@ def create_app(settings=None, engine=None, *, dashboard=None, pipeline=None):
     def pipeline_answer(run_id: str, body: PipelineAnswerInput):
         return pipeline.answer(run_id, body.value, body.decision_id, body.case_id)
 
+    # Demo reset: domain back to AWS, vulnerable build on GCP production, AI fix PRs closed.
+    @protected.get("/pipeline/reset")
+    def pipeline_reset_view():
+        return pipeline.reset_view()
+
+    @protected.post("/pipeline/reset", status_code=202)
+    def pipeline_reset():
+        return pipeline.reset()
+
     from delta_platform.adapters.workflow_diff import install as install_workload_diff
 
     install_workload_diff(protected, workflows, settings)

@@ -285,3 +285,23 @@ def install(app, registry):
     @app.post("/api/platform/runs/{run_id}/cancel")
     async def cancel(run_id: str):
         return await registry.stop(run_id)
+
+    @app.post("/api/platform/fix-branches/cleanup")
+    async def cleanup_fixes(request: Request):
+        """시연 초기화: 등록된 대상 저장소의 AI 수정 PR·브랜치만 정리한다."""
+        from . import projects
+        from .fixer import cleanup_fix_branches
+
+        try:
+            remote = (json.loads(await request.body() or b"{}")).get("repo")
+        except (ValueError, AttributeError):
+            remote = None
+        known = {t.repo.remote for t in registry.catalog.targets.values() if t.repo and t.repo.remote}
+        known |= {p.get("repo_url") for p in projects.list_projects() if p.get("repo_url")}
+        if not isinstance(remote, str) or remote.rstrip("/").removesuffix(".git") not in {
+                r.rstrip("/").removesuffix(".git") for r in known}:
+            raise HTTPException(400, "등록된 대상 저장소가 아닙니다.")
+        try:
+            return await asyncio.to_thread(cleanup_fix_branches, remote)
+        except (RuntimeError, OSError) as exc:
+            raise HTTPException(502, f"수정 PR 정리에 실패했습니다: {type(exc).__name__}") from None

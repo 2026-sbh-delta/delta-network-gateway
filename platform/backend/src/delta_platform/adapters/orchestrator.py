@@ -134,6 +134,13 @@ class OrchestratorRelay:
             body["case_id"] = case_id
         return self.request("POST", f"/api/pipeline/runs/{run_id}/answer", body).json()
 
+    def reset_view(self):
+        return self.request("GET", "/api/demo/reset").json()
+
+    def reset(self):
+        """The click in the dashboard is the human approval the orchestrator asks for."""
+        return self.request("POST", "/api/demo/reset", {"approve": True}).json()
+
     # DAST live view (verdicts, evidence screenshots), its frames/actions stream and the fix proposal.
     def _run_path(self, run_id, suffix):
         if not RUN_ID.match(run_id):

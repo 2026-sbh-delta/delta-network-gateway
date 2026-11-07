@@ -265,3 +265,40 @@ def create_pr(fix: dict, repo: RepoDefinition, workdir: Path, run_id: str, base:
         data = json.load(response)
     return {"status": "created", "url": data.get("html_url"), "number": data.get("number"),
             "branch": branch, "commit": pushed[:7], "commit_sha": pushed, "title": title}
+
+
+FIX_BRANCH = "dast/fix-"
+
+
+def _github_api(method: str, path: str, token: str, body: dict | None = None):
+    request = urllib.request.Request(
+        f"https://api.github.com{path}", method=method,
+        data=json.dumps(body).encode() if body is not None else None,
+        headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json",
+                 "X-GitHub-Api-Version": "2022-11-28"})
+    with urllib.request.urlopen(request, timeout=30) as response:
+        raw = response.read()
+    return json.loads(raw) if raw else None
+
+
+def cleanup_fix_branches(remote: str) -> dict:
+    """시연 초기화: AI 수정 PR(dast/fix-*)을 닫고 그 브랜치를 지운다. 기본 브랜치·다른 브랜치는 건드리지 않는다."""
+    token = os.environ.get("GITHUB_TOKEN")
+    if not token:
+        raise RuntimeError("GITHUB_TOKEN이 설정되지 않았습니다.")
+    owner, name = _github(remote)
+    closed = 0
+    pulls = _github_api("GET", f"/repos/{owner}/{name}/pulls?state=open&per_page=100", token) or []
+    for pull in pulls:
+        head = pull.get("head") or {}
+        if (head.get("ref") or "").startswith(FIX_BRANCH) and (head.get("repo") or {}).get("full_name") == f"{owner}/{name}":
+            _github_api("PATCH", f"/repos/{owner}/{name}/pulls/{int(pull['number'])}", token, {"state": "closed"})
+            closed += 1
+    deleted = 0
+    refs = _github_api("GET", f"/repos/{owner}/{name}/git/matching-refs/heads/{FIX_BRANCH}", token) or []
+    for ref in refs:
+        branch = ref.get("ref", "").removeprefix("refs/heads/")
+        if branch.startswith(FIX_BRANCH) and REF_PATTERN.fullmatch(branch):
+            _github_api("DELETE", f"/repos/{owner}/{name}/git/refs/heads/{branch}", token)
+            deleted += 1
+    return {"closed_prs": closed, "deleted_branches": deleted}

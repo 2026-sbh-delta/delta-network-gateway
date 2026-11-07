@@ -288,3 +288,140 @@ class DomainRevert:
 
             self._thread = threading.Thread(target=work, daemon=True)
             self._thread.start()
+
+
+class DemoReset:
+    """시연 초기화. 화면에서 사람이 승인하면 시작하고, 파이프라인이 돌고 있으면 시작하지 않는다.
+
+    1) 서비스 도메인을 AWS 로 되돌린다  2) GCP 운영에 취약 버전(수정 전 main 빌드)을 다시 배포한다
+    3) AI 수정 PR·브랜치(dast/fix-*)를 정리한다. main 은 처음부터 취약 버전이라 건드리지 않는다.
+    단계가 실패해도 다음 단계는 계속하고, 결과는 단계별로 화면에 남긴다(메모리에만 둔다).
+    """
+
+    STEPS = (("domain", "도메인 AWS 복귀"), ("release", "GCP 운영 취약 버전 재배포"), ("fixes", "AI 수정 PR 정리"))
+    RELEASE_DEADLINE_SECONDS = 1800
+
+    def __init__(self, pipelines: Pipelines, revert: DomainRevert) -> None:
+        self._pipelines, self._revert = pipelines, revert
+        self._lock = threading.Lock()
+        self._thread: threading.Thread | None = None
+        self.status: dict[str, Any] = {"state": "idle", "steps": self._fresh()}
+
+    def _fresh(self) -> list[dict[str, Any]]:
+        return [{"id": key, "label": label, "state": "pending", "summary": ""} for key, label in self.STEPS]
+
+    def running(self) -> bool:
+        return self._thread is not None and self._thread.is_alive()
+
+    def view(self) -> dict[str, Any]:
+        return self.status
+
+    def _step(self, key: str, **update: Any) -> None:
+        self.status = {**self.status, "steps": [{**s, **update} if s["id"] == key else s
+                                                  for s in self.status["steps"]]}
+
+    def vulnerable_bundle(self) -> tuple[dict[str, Any], str]:
+        """가장 최근에 수정 없이 main 그대로 빌드된 묶음(빌드 노드의 커밋이 요청 커밋과 같은 실행)."""
+        from delta_pipeline.delivery import validate_bundle
+
+        boards = sorted((self._pipelines.store_dir / BOARD_DIR).glob("*.json"),
+                        key=lambda p: p.stat().st_mtime, reverse=True)
+        for path in boards:
+            saved = json.loads(path.read_text(encoding="utf-8"))
+            options = saved.get("options") or {}
+            if options.get("execution_cloud", "gcp") != "gcp":
+                continue
+            build = next((n for n in saved.get("nodes", ()) if n.get("id") == "build"), {})
+            bundle = (build.get("detail") or {}).get("bundle")
+            if build.get("state") != "pass" or not bundle or bundle.get("commit") != options.get("commit"):
+                continue
+            try:
+                return validate_bundle(bundle, options["commit"]), options["repo"]
+            except (ValueError, KeyError):
+                continue
+        raise RuntimeError("수정 전 main 빌드 기록이 없습니다")
+
+    def _redeploy(self) -> str:
+        from delta_pipeline.clients import evidence_hash
+        from delta_pipeline.delivery import canonical_json, sign_approval, validate_config
+
+        bundle, repo = self.vulnerable_bundle()
+        self._repo = repo
+        target_id, config = next(((k, v) for k, v in release_targets().items() if v.get("cloud") == "gcp"),
+                                 (None, None))
+        if target_id is None:
+            raise RuntimeError("GCP 운영 대상이 없습니다")
+        config = validate_config(target_id, config)
+        key = release_signing_key()
+        deployment_id = f"reset-{uuid.uuid4().hex[:24]}"
+        claims = {"deployment_id": deployment_id, "commit_sha": bundle["commit"],
+                  "bundle_sha256": bundle["bundle_sha256"], "target_id": target_id, "environment": "production",
+                  "config_sha256": evidence_hash(config), "exp": int(time.time()) + 600, "nonce": uuid.uuid4().hex}
+        approval = sign_approval(claims, key)
+        images = (bundle.get("registry_images") or {}).get("gcp") or bundle["images"]
+        zone = os.environ.get("DELTA_INTERNAL_ZONE", "cp.internal")
+        jenkins = Jenkins(f"http://jenkins.{zone}:8080", "platform", os.environ.get("JENKINS_PLATFORM_PASSWORD", ""),
+                          job="delta-release")
+        build = jenkins.trigger({"TARGET_ID": target_id, "COMMIT": bundle["commit"],
+                                 "BUNDLE_SHA256": bundle["bundle_sha256"], "IMAGES_JSON": canonical_json(images),
+                                 "APPROVAL": canonical_json(approval),
+                                 "BUNDLE_JSON": canonical_json({**bundle, "schema": 2, "platform": "linux/amd64"})},
+                                deployment_id)
+        self._step("release", summary=f"{target_id} · {bundle['commit'][:7]} 배포 중 (Jenkins #{build})")
+        deadline = time.time() + self.RELEASE_DEADLINE_SECONDS
+        while time.time() < deadline:
+            status = jenkins.status(build)
+            if status != "IN_PROGRESS":
+                result = jenkins.file(build, "result.json") or {}
+                if status != "SUCCESS" or result.get("state") != "verified":
+                    raise RuntimeError(f"Jenkins #{build} {status} {result.get('code') or ''}".strip())
+                return f"{target_id} · {bundle['commit'][:7]} 취약 버전 검증 완료"
+            time.sleep(10)
+        raise RuntimeError(f"Jenkins #{build} 가 제한 시간 안에 끝나지 않았습니다")
+
+    def start(self) -> None:
+        with self._lock:
+            if self.running():
+                raise RuntimeError("초기화가 이미 진행 중입니다")
+            if self._pipelines.running():
+                raise RuntimeError("파이프라인 실행 중에는 초기화하지 않습니다")
+            self.status = {"state": "running", "started_at": time.time(), "steps": self._fresh()}
+            self._repo = ""
+
+            def work() -> None:
+                failed = False
+                self._step("domain", state="running", summary="AWS 입구 확인 중")
+                found = self._revert.configured()
+                if found is None:
+                    self._step("domain", state="skipped", summary="도메인 전환 설정 없음")
+                else:
+                    cfg, cf = found
+                    try:
+                        result = domain.revert(cfg, cf, probe=probe, resolve=resolve_cname, now=time.time,
+                                               sleep=time.sleep, report=lambda u: self._step("domain", summary=u.get("summary", "")))
+                    except Exception as exc:  # noqa: BLE001 화면에 남긴다
+                        result = {"state": "fail", "summary": f"오류({type(exc).__name__})"}
+                    failed |= result["state"] != "pass"
+                    self._step("domain", state=result["state"], summary=result["summary"])
+                self._step("release", state="running", summary="수정 전 빌드 찾는 중")
+                try:
+                    self._step("release", state="pass", summary=self._redeploy())
+                except Exception as exc:  # noqa: BLE001
+                    failed = True
+                    self._step("release", state="fail", summary=str(exc)[:200] if isinstance(exc, RuntimeError)
+                               else f"오류({type(exc).__name__})")
+                self._step("fixes", state="running", summary="수정 PR 닫는 중")
+                try:
+                    repo = self._repo or self.vulnerable_bundle()[1]
+                    zone = os.environ.get("DELTA_INTERNAL_ZONE", "cp.internal")
+                    done = Dast(f"http://dast.{zone}:8765", os.environ.get("DAST_PLATFORM_TOKEN", "")) \
+                        .cleanup_fix_branches(repo)
+                    self._step("fixes", state="pass",
+                               summary=f"PR {done.get('closed_prs', 0)}개 닫음 · 브랜치 {done.get('deleted_branches', 0)}개 삭제")
+                except Exception as exc:  # noqa: BLE001
+                    failed = True
+                    self._step("fixes", state="fail", summary=f"오류({type(exc).__name__})")
+                self.status = {**self.status, "state": "fail" if failed else "pass", "ended_at": time.time()}
+
+            self._thread = threading.Thread(target=work, daemon=True)
+            self._thread.start()
