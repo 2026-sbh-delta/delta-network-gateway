@@ -1070,9 +1070,10 @@ function StartRun({
   );
 }
 
-export function PipelinePanel() {
+// `#/pipeline/<run_id>` opens that run; other screens link here right after starting one.
+export function PipelinePanel({ runId: linked }: { runId?: string | null }) {
   const [runs, setRuns] = useState<RunSummary[]>([]);
-  const [runId, setRunId] = useState<string | null>(null);
+  const [runId, setRunId] = useState<string | null>(linked ?? null);
   const [board, setBoard] = useState<Board | null>(null);
   const [picked, setPicked] = useState<Selection | null>(null);
   const [panel, setPanel] = useState(false);
@@ -1106,6 +1107,9 @@ export function PipelinePanel() {
     const t = setInterval(loadRuns, 15000);
     return () => clearInterval(t);
   }, []);
+  useEffect(() => {
+    if (linked) setRunId(linked);
+  }, [linked]);
   useEffect(() => {
     if (!runId) return;
     setBoard(null);
