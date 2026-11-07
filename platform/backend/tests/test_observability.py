@@ -311,6 +311,78 @@ def test_promql_delta_histogram_and_identity_are_bound():
     assert not any("rate(" in q for q in queries)
 
 
+@pytest.mark.parametrize(
+    ("expression", "warnings", "status", "accepted"),
+    [
+        (
+            'sum(histogram_count(sum_over_time({"http.server.request.duration",x="y"}[900s])))',
+            [],
+            "success",
+            True,
+        ),
+        (
+            'sum(histogram_count(sum_over_time({"http.server.request.duration",x="y"}[900s])))',
+            ["PromQL warning: conflicting counter resets during histogram aggregation"],
+            "success",
+            True,
+        ),
+        (
+            'sum(histogram_count(sum_over_time({"http.server.request.duration",x="y"}[900s])))',
+            ["partial result"],
+            "success",
+            False,
+        ),
+        (
+            'sum(histogram_count(sum_over_time({"http.server.request.duration",x="y"}[900s])))',
+            [
+                "PromQL warning: conflicting counter resets during histogram aggregation",
+                "partial result",
+            ],
+            "success",
+            False,
+        ),
+        (
+            'sum_over_time({"other.metric",x="y"}[900s])',
+            ["PromQL warning: conflicting counter resets during histogram aggregation"],
+            "success",
+            False,
+        ),
+        (
+            'rate(sum_over_time({"http.server.request.duration",x="y"}[900s])[5m:])',
+            ["PromQL warning: conflicting counter resets during histogram aggregation"],
+            "success",
+            False,
+        ),
+        (
+            'sum(histogram_count(sum_over_time({"http.server.request.duration",x="y"}[900s])))',
+            ["PromQL warning: conflicting counter resets during histogram aggregation"],
+            "error",
+            False,
+        ),
+    ],
+)
+def test_only_delta_histogram_reset_warning_preserves_query_results(
+    expression, warnings, status, accepted
+):
+    from botocore.credentials import Credentials
+
+    samples = [{"metric": {}, "value": [NOW.timestamp(), "12"]}]
+    reader = CloudWatchTelemetry(
+        "ap-northeast-2",
+        session=SimpleNamespace(get_credentials=lambda: Credentials("test", "test")),
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(
+                200, json={"status": status, "warnings": warnings, "data": {"result": samples}}
+            )
+        ),
+    )
+    if accepted:
+        assert reader.query(expression, end=NOW) == samples
+    else:
+        with pytest.raises(ValueError, match="Incomplete telemetry query"):
+            reader.query(expression, end=NOW)
+
+
 def test_logs_are_bounded_and_secret_fields_are_not_returned():
     events = [
         {

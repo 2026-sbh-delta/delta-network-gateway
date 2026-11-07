@@ -437,3 +437,14 @@ Operation:
 - 읽기 전용 SSM 진단 `0fe164f5-42f4-4af5-a22e-9b4580da6333`에서 AWS의 requests, error_rate, p95_ms, app_up, db_up이 모두 ok였고 CloudWatch 직접 쿼리도 200이었다. 앞선 API 확인에서는 AWS requests에 error가 관찰되어 지속적인 정상 수집으로 단정하지 않는다. GCP와 온프렘 서버는 사용자가 현재 중지했다고 확인했으며 재시작하지 않았다. 활성화는 저장된 배포 상태이며 서버의 실시간 가동 상태가 아니다.
 - 운영 binding에 추가로 저장된 `migration_id`, `migration_role`, `release`를 알려진 메타데이터로 처리한다. 미지원 endpoint와 잘못된 인스턴스 ID 검증을 유지하고 환경 목록에 해당 메타데이터를 노출하지 않는다.
 - `platform/backend/.venv/bin/python .validation/csp-environment-repair-20261108/run-tests.py -q`: 293 passed, 1 deselected. 변경 파일의 Ruff 검사와 형식 검사, `git diff --check` 통과. 격리 DB 소켓 접근은 샌드박스에서 거부되어 승인된 실행으로 재검증했다.
+
+### 운영 소스 비교와 저장소 일치 확인 (2026-11-08 KST)
+
+- 사용자가 운영 소스 `environments.py`, `observability.py`, `app.py` 3개의 지정 `.validation` 경로 복사를 명시 승인했다. 읽기 전용 SSM `2a9b2efa-126c-4c2f-abf2-27cd9914ba0c`로 비교했다. 운영에는 중앙 CSP 로그, Wazuh 연결, 호스트 메모리/디스크 보강 및 GCP 인증 전달이 추가되어 있어 일반 전체 이미지 교체는 해당 동작을 제거할 수 있다. 이 기능들은 이번 수정 범위로 새 구현하거나 삭제하지 않았다.
+- 환경 모듈 전체와 `CloudWatchTelemetry.query`의 AST를 비교했다. 집합 리터럴 순서와 주석/형식을 제외한 로직이 같음을 확인했고 ignored `semantic-comparison.json`에 두 결과를 기록했다. 추가 메타데이터는 커밋 `2ee02e4d`로 게시했다. 운영에 이미 적용된 DELTA 히스토그램 경고 처리도 저장소에 반영하여 다음 빌드의 요청 수 지표 오류 재발을 줄인다.
+- 허용하는 경고는 `http.server.request.duration`의 `sum_over_time` 조회에 대한 `conflicting counter resets during histogram aggregation` 한 종류다. partial/mixed warnings, rate/increase/delta 계열 조회, 다른 지표와 upstream error는 계속 거부한다. 정상 경고의 결과 보존 및 나머지 거부를 7개 회귀로 검증했다.
+- `platform/backend/.venv/bin/python .validation/csp-environment-repair-20261108/run-tests.py -q`: **300 passed, 1 deselected (13.97s)**. 변경 파일 Ruff 검사와 형식 검사, `git diff --check` 통과. 검증에 사용한 요청은 테스트 공급자이며 클라우드 데이터 수집 자체의 검증과 구분한다.
+- 현재 이미지에서 이번 수정 로직이 이미 동일하게 실행되므로 불필요한 재배포/재시작은 생략했다. SSM `17e8d356-fa19-46fd-9ae4-90f88bb19fa2` 시점 API는 로컬 `delta-platform-dashboard:2290d7e8fed9d3ba`, 이미지 ID `sha256:7d192a8e84ff28b5ece5639c68e216a7fd79dee1bf412e6c3038d74599fb1aa1`이며 worker는 선행 릴리스 ECR 이미지를 유지한다. 이는 새 저장소 HEAD의 전체 이미지가 배포됐다는 의미가 아니다.
+- 후속 전체 릴리스 전에는 별도 운영 추가 기능을 정식 소스와 통합해야 한다. 이번 작업은 저장된 상태/데이터/IAM/Terraform/고객 VM을 바꾸지 않았다. GCP와 온프렘은 사용자 지시대로 중지 상태를 보존한다.
+- 최종 `platform/backend/.venv/bin/python .validation/csp-environment-repair-20261108/verify-release.py` 실행에서 errors=[]: readiness/HTML/세션/환경/파이프라인과 세 관측 API 모두 200, 계정/프로젝트/상태 점/로고 유지, 기존 서비스 2개와 대상 환경 3개 보존을 확인했다. AWS 5개 지표와 인프라/trace는 ok, 로그는 no_data다. GCP와 온프렘의 응답 데이터는 VM 전원 상태 검증으로 해석하지 않는다.
+- 게시 직전 PR #100을 main에 fast-forward로 보존했다. 이후 같은 격리 DB 명령을 재실행해 300 passed, 1 deselected (15.94s)를 확인했다. 원격 CI와 Git 게시 결과는 실행 이력을 따른다.

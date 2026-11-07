@@ -100,7 +100,18 @@ class CloudWatchTelemetry:
                     if len(raw) > 1_000_000:
                         raise ValueError("Telemetry response too large")
         result = json.loads(raw)
-        if result.get("status") != "success" or result.get("warnings"):
+        warnings = result.get("warnings") or []
+        # DELTA histograms do not use cumulative-counter reset hints. Keep
+        # rejecting partial results and warnings on rate/increase queries.
+        delta_reset_only = (
+            'sum_over_time({"http.server.request.duration",' in expression
+            and not re.search(r"\b(rate|irate|increase|delta|idelta)\(", expression)
+            and all(
+                warning == "PromQL warning: conflicting counter resets during histogram aggregation"
+                for warning in warnings
+            )
+        )
+        if result.get("status") != "success" or (warnings and not delta_reset_only):
             raise ValueError("Incomplete telemetry query")
         return result["data"]["result"]
 
