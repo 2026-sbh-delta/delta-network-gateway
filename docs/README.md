@@ -4,6 +4,8 @@
 
 2026-11-07 워크로드 차분 병렬 연결을 실제 시연 오케스트레이터에 배포했다. 기존 웹 검사·수정 재검증과 병렬로 Diff를 호출하고, 판정 보류는 사람 확인을 거친 뒤 운영 배포와 도메인 전환으로 넘어간다. 실패는 기존 delta-ai 진단으로 보낸다. 실제 연결 검증은 사람 승인 뒤 `unresolved`로 종료했고 스테이징 점유 해제를 확인했다. DAST 미실행을 보안 통과로 보지 않는다. 운영 배포는 대기하며 기존 컨테이너와 상태 사본을 복구용으로 보존했다. [설정·검증·승인 범위](ai-dlc/parallel-workload-diff.md)
 
+2026-11-07 서비스 도메인 설정 보존 수정과 검증 완료. `deploy/platform/deploy.sh`가 기존 SSM 전환 설정을 보존하고 최초 배포에서만 Terraform 출력으로 초기화한다. 배포 진입점 회귀와 기존 SSM 검사22개가 통과했고, 실제 SSM에서 이전 도메인 출력으로 초기화를 시도해 사용자 도메인 설정 v10과 토큰 v4의 보존을 확인했다. PR과 main의 전용 CI가 배포 테스트를 실행한다. Git 게시와 CI 결과는 PR 및 실행 이력을 따른다. [설계와 검증 기록](ai-dlc/cutover-config-preservation.md)
+
 2026-11-07 AWS ANF 재개 완료: `delta-board-vpc`만 인터넷 입출구와 GCP 양방향 검사를 enabled로 전환했다. Primary2/Secondary2 READY/IN_SYNC, ALB 두 IP 및 사설 양방향 HTTP200/NAT HTTPS200/RDS TLS1.3과 미허용8081의 실제 blocked/drop을 확인했다. FLOW/ALERT 원본21건과 플랫폼 중앙 원문이 일치했고 BGP4개 UP/기존 광고 유지 및 두 최종 실제 Plan No changes/종료0을 확인했다. Terraform mock131개/Python38개 통과. DNS/ALB와 기존 자원 ID를 보존했고 임시 probe/규칙/키/터널을 정리했다. 앱은 inactive/disabled를 유지하므로 공개 앱은 기존 HTTP502다. Git 게시와 원격 CI 상태는 Git 이력과 실행 결과를 따른다. [승인과 실제 결과](ai-dlc/anf-board-reactivation.md)를 따르며 별도 GCP 작업의 설정과 문서를 보존한다.
 
 2026-11-07 GCP Cloud NGFW 검사 재개 완료: 사용자 요청으로 `disabled -> bypass -> enabled`를 적용했다. endpoint1/association2 ACTIVE, 두 사설 검사 규칙과 모든 심각도 ALERT, BGP4개 UP 및 기존 ID57개 보존을 확인했다. 양방향 TCP3000 HTTP200과 실제 Threat8건을 포함한 원본12건의 Security/플랫폼 수신까지 대조했고 최종 실제 Plan은 No changes/종료0, 잠금도 없다. Terraform mock14개/Python10개가 통과했다. 공개 앱 L7/IPS 차단과 앱 재시작은 포함하지 않았으며 AWS 모드와 경로는 별도 작업이다. endpoint 비용은 USD1.75/h와 검사량 요금이다. [적용과 실제 검증](ai-dlc/gcp-central-network.md#2026-11-07-operation-gcp-cloud-ngfw-검사-재개)

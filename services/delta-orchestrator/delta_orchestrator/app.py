@@ -395,6 +395,20 @@ def create_app(pipelines: Pipelines | None = None, *, case_review_client_factory
             raise HTTPException(404, "없는 실행입니다")
         return run
 
+    @app.get("/api/pipeline/runs/{run_id}/onprem-evidence")
+    async def onprem_evidence(run_id: str):
+        board = need_pipelines().get(run_id)
+        if board is None:
+            raise HTTPException(404, "없는 실행입니다")
+        from .onprem_receipt import receipt
+        from delta_pipeline.onprem_ssm import WorkerRpc
+        try:
+            return await asyncio.to_thread(receipt, board, WorkerRpc())
+        except (ValueError, KeyError, TypeError):
+            raise HTTPException(409, "온프레미스 실행과 이미지 검증 근거가 일치하지 않습니다") from None
+        except Exception:
+            raise HTTPException(503, "온프레미스 실행 결과를 조회하지 못했습니다") from None
+
     @app.post("/api/pipeline/runs/{run_id}/answer")
     async def answer(run_id: str, request: Request):
         body = await json_body(request)
