@@ -79,7 +79,7 @@ def create_app(
 
     @app.exception_handler(RequestValidationError)
     async def validation_error(request: Request, exc: RequestValidationError):
-        if request.url.path.startswith("/v1/case-reviews") or request.url.path in ("/v1/diagnoses", "/v1/recovery-proposals", "/v1/incident-cases"):
+        if request.url.path.startswith("/v1/case-reviews") or request.url.path in ("/v1/diagnoses", "/v1/recovery-proposals", "/v1/incident-cases", "/v1/migration-mapping"):
             return JSONResponse(
                 status_code=422, content={"detail": "진단 요청 형식이 잘못됐다"}
             )
@@ -127,6 +127,12 @@ def create_app(
     @app.get("/healthz")
     async def healthz() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.post("/v1/migration-mapping", dependencies=[Depends(require_token)])
+    async def migration_mapping(req: AssessmentRequest) -> AssessmentResult:
+        if req.kind != "migration_mapping" or req.execution_context is not None:
+            raise HTTPException(status_code=422, detail="이 경로는 구성 매핑 요청만 받습니다")
+        return await assess(req, llm=None, store=store)
 
     @app.post("/v1/assessments", dependencies=[Depends(require_token)])
     async def create_assessment(

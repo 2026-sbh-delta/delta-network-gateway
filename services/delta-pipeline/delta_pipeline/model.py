@@ -32,8 +32,21 @@ class Options:
     recovery_limit: int = 2
     assistance: bool = False
     onprem_build_id: str | None = None
+    mapping_request: dict[str, Any] | None = None
+    mapping_only: bool = False
 
     def __post_init__(self):
+        if type(self.mapping_only) is not bool:
+            raise ValueError("mapping_only는 true 또는 false여야 합니다")
+        if self.mapping_only and (
+            self.mapping_request is None or self.cutover or self.release_target is not None
+            or self.execution_cloud != "gcp" or self.assistance or self.recovery
+        ):
+            raise ValueError("가격 비교 전용 실행에는 매핑 JSON만 선택하세요")
+        if self.mapping_request is not None:
+            from delta_pipeline.mapping import normalize_mapping_request
+            object.__setattr__(self, "mapping_request", normalize_mapping_request(
+                self.mapping_request, repo=self.repo, commit=self.commit))
         if type(self.assistance) is not bool:
             raise ValueError("assistance는 bool이어야 합니다")
         if self.assistance:
@@ -66,10 +79,11 @@ class Node:
     history: list[dict[str, Any]] = field(default_factory=list)  # 이전 회차의 상태·요약·세부
 
 
-def initial_nodes(cutover: bool = False, release: bool = False, diagnostics: bool = False, recovery: bool = False) -> list[Node]:
+def initial_nodes(cutover: bool = False, release: bool = False, diagnostics: bool = False, recovery: bool = False, mapping: bool = False) -> list[Node]:
     """웹 갈래(명세 v1.1 6-2)의 최소 연결 노드. 판정은 그래프 분기(코드)가 한다."""
     return [
         Node("prepare", "입력 확인", "오케스트레이터"),
+        *([Node("map", "차분 매핑 · 가격 비교", "delta-ai · 참고용")] if mapping else []),
         Node("build", "빌드", "Jenkins · 빌드 에이전트"),
         Node("sast", "SAST", "delta-sast"),
         Node("stage", "스테이징 배포", "Jenkins · 스테이징 도구"),
@@ -94,13 +108,13 @@ class Board:
     def __init__(self, path: Path, options: Options, run_id: str) -> None:
         self._path, self._options, self._run_id = path, options, run_id
         self._lock = threading.Lock()
-        self._nodes = {node.id: node for node in initial_nodes(options.cutover, options.release_target is not None, options.diagnostics, options.recovery)}
+        self._nodes = {node.id: node for node in initial_nodes(options.cutover, options.release_target is not None, options.diagnostics, options.recovery, options.mapping_request is not None)}
         self._outcome: str | None = None
         self._started_at = time.time()
         if path.is_file():
             saved = json.loads(path.read_text(encoding="utf-8"))
             self._nodes = {item["id"]: Node(**item) for item in saved["nodes"]}
-            for node in initial_nodes(options.cutover, options.release_target is not None, options.diagnostics, options.recovery):
+            for node in initial_nodes(options.cutover, options.release_target is not None, options.diagnostics, options.recovery, options.mapping_request is not None):
                 self._nodes.setdefault(node.id, node)
             self._outcome, self._started_at = saved["outcome"], saved["started_at"]
         else:

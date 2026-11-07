@@ -285,8 +285,13 @@ def create_app(pipelines: Pipelines | None = None, *, case_review_client_factory
         return pipelines
 
     async def json_body(request: Request) -> dict:
+        raw = bytearray()
+        async for chunk in request.stream():
+            raw.extend(chunk)
+            if len(raw) > 64_000:
+                raise HTTPException(413, "요청 JSON은 64KB 이하여야 합니다")
         try:
-            body = json.loads((await request.body())[:4096] or b"{}")
+            body = json.loads(raw or b"{}")
         except ValueError:
             raise HTTPException(400, "JSON 본문이 필요합니다")
         if not isinstance(body, dict):
@@ -341,9 +346,17 @@ def create_app(pipelines: Pipelines | None = None, *, case_review_client_factory
             raise HTTPException(400, "서비스 도메인 전환 설정(대상 레코드·운영 진입점)이 아직 없습니다")
         try:
             extra={'execution_cloud':execution_cloud,'onprem_build_id':onprem_build_id,'assistance':assistance} if execution_cloud=='onprem' else {}
+            if body.get("mapping_request") is not None:
+                extra["mapping_request"] = body["mapping_request"]
+            if "mapping_only" in body:
+                extra["mapping_only"] = body["mapping_only"]
             if release_target is not None:extra["release_target"]=release_target
             if request_key is not None:extra["request_key"]=request_key
             return {"run_id": need_pipelines().start(repo, commit, cutover=cutover, branch=branch,**extra)}
+        except pipelines_mod.ServiceUnavailable as exc:
+            raise HTTPException(503, str(exc)) from None
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from None
         except RuntimeError as exc:
             raise HTTPException(409, str(exc))
 

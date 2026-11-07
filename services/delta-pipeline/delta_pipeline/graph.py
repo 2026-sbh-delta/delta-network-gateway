@@ -12,6 +12,7 @@ from typing import Any
 from langgraph.graph import END, START, StateGraph
 
 from delta_pipeline.steps import Deps, PipelineState, Steps, branch, guarded
+from delta_pipeline.mapping import MappingFlow
 from delta_pipeline.exception_flow import ExceptionFlow, HUMAN_GATES, prepare_exception
 from delta_pipeline.recovery import RecoveryFlow, capture
 from delta_pipeline.assistance import Assistance
@@ -87,6 +88,24 @@ def step_routes(cutover: bool, release: bool = False) -> dict[str, tuple[Any, tu
 
 def build_graph(deps: Deps, checkpointer: Any) -> Any:
     steps = Steps(deps)
+    if deps.options.mapping_only:
+        def finish_mapping(state: PipelineState) -> dict[str, Any]:
+            if state.get("halt"):
+                return steps.halted(state)
+            deps.board.finish("verified", "클라우드 가격 비교 완료", passed=True)
+            return {}
+
+        graph = StateGraph(PipelineState)
+        graph.add_node("prepare", guarded(steps.prepare))
+        graph.add_node("map_resources", guarded(MappingFlow(deps).assess))
+        graph.add_node("finish_mapping", finish_mapping)
+        graph.add_edge(START, "prepare")
+        graph.add_conditional_edges("prepare", lambda state: "finish_mapping" if state.get("halt") else "map_resources",
+                                    ["finish_mapping", "map_resources"])
+        graph.add_edge("map_resources", "finish_mapping")
+        graph.add_edge("finish_mapping", END)
+        return graph.compile(checkpointer=checkpointer)
+
     bodies = {"prepare": steps.prepare, "join": lambda _: {}, "ask_sast": steps.ask_gate,
               "stage_start": steps.stage_start, "stage_wait": steps.stage_wait, "dast_start": steps.dast_start,
               "dast_wait": steps.dast_wait, "ask_dast": steps.ask_gate, "fix_apply": steps.fix_apply,
@@ -99,6 +118,10 @@ def build_graph(deps: Deps, checkpointer: Any) -> Any:
         bodies |= {"ask_cutover": steps.ask_cutover, "cutover_check": steps.cutover_check,
                    "cutover_switch": steps.cutover_switch, "cutover_verify": steps.cutover_verify}
     routes = step_routes(deps.options.cutover, release)
+    if deps.options.mapping_request is not None:
+        bodies["map_resources"] = MappingFlow(deps).assess
+        routes["prepare"] = (after_step("map_resources"), ("map_resources", HALTED))
+        routes["map_resources"] = (route_prepare, (*BRANCHES, HALTED))
     if deps.options.execution_cloud == 'onprem':
         bodies.pop('stage_start'); bodies.pop('stage_wait'); bodies.pop('dast_start'); bodies.pop('dast_wait')
         for node in ('stage_start','stage_wait','dast_start','dast_wait'): routes.pop(node)

@@ -51,21 +51,33 @@ def release_signing_key() -> bytes | None:
     return base64.b64decode(raw) if raw else None
 
 
+def mapping_client() -> DiagnosticClient:
+    """Server-controlled HTTPS connection; browser input never selects an upstream."""
+    url = os.environ.get("DELTA_MAPPING_URL") or os.environ.get("DELTA_DIAGNOSTIC_URL")
+    token = os.environ.get("DELTA_MAPPING_TOKEN") or os.environ.get("DELTA_DIAGNOSTIC_TOKEN")
+    ca = os.environ.get("DELTA_MAPPING_CA_BASE64") or os.environ.get("DELTA_DIAGNOSTIC_CA_BASE64")
+    try:
+        return DiagnosticClient(url or "", token or "", ca)
+    except Exception:
+        raise ServiceUnavailable("매핑 서비스의 HTTPS URL·토큰·인증서를 확인하세요") from None
+
+
 def platform_run(options: Options, store_dir: Path, run_id: str | None) -> Run:
     zone = os.environ.get("DELTA_INTERNAL_ZONE", "cp.internal")
     token = os.environ.get("CLOUDFLARE_API_TOKEN")
     jenkins = f"http://jenkins.{zone}:8080"
     password = os.environ.get("JENKINS_PLATFORM_PASSWORD", "")
+    mapping_assess = mapping_client().assess if options.mapping_request is not None else None
     diagnostic = None
     evidence = None
-    if os.environ.get("DELTA_DIAGNOSTIC_URL") or os.environ.get("DELTA_DIAGNOSTICS_REQUIRED") == "1":
+    if not options.mapping_only and (os.environ.get("DELTA_DIAGNOSTIC_URL") or os.environ.get("DELTA_DIAGNOSTICS_REQUIRED") == "1"):
         try:
             diagnostic = DiagnosticClient(os.environ["DELTA_DIAGNOSTIC_URL"],
                 os.environ["DELTA_DIAGNOSTIC_TOKEN"], os.environ.get("DELTA_DIAGNOSTIC_CA_BASE64"))
             options = replace(options, diagnostics=True)
         except Exception:
             raise ServiceUnavailable("진단 서비스 연결 설정을 확인하세요") from None
-    if os.environ.get("DELTA_LOG_EVIDENCE_ENABLED") == "1":
+    if not options.mapping_only and os.environ.get("DELTA_LOG_EVIDENCE_ENABLED") == "1":
         from delta_pipeline.cloudwatch_evidence import CloudWatchEvidence
         evidence = CloudWatchEvidence(store_dir / "log-evidence")
     if options.execution_cloud == 'onprem':
@@ -81,7 +93,7 @@ def platform_run(options: Options, store_dir: Path, run_id: str | None) -> Run:
             sast=RemoteSast(rpc,artifact.build_id),
             dast=Dast(f'http://dast.{zone}:8765',os.environ.get('DAST_PLATFORM_TOKEN','')),
             staging=Staging(f'http://jenkins.{zone}:8091',os.environ.get('DELTA_STAGING_TOKEN','')),
-            image_repo=artifact.image.rsplit('@',1)[0],diagnostic=diagnostic,evidence=evidence,
+            image_repo=artifact.image.rsplit('@',1)[0],diagnostic=diagnostic,evidence=evidence,mapping_assess=mapping_assess,
             onprem=RemoteOnprem(rpc,artifact.build_id,graph_id=run_id,state_dir=store_dir))
     return Run(options,
                sast=Sast(f"http://sast.{zone}:8790", os.environ.get("DELTA_SAST_TOKEN", "")),
@@ -92,7 +104,7 @@ def platform_run(options: Options, store_dir: Path, run_id: str | None) -> Run:
                # 조회 토큰: 점검을 끝낸 뒤 자기 스테이징 점유를 푸는 데만 쓴다(배포·초기화는 못 한다)
                staging=Staging(f"http://jenkins.{zone}:8091", os.environ.get("DELTA_STAGING_TOKEN", "")),
                image_repo=os.environ.get("DELTA_IMAGE_REPO", IMAGE_REPO), store_dir=store_dir, run_id=run_id,
-               diagnostic=diagnostic, evidence=evidence,
+               diagnostic=diagnostic, evidence=evidence, mapping_assess=mapping_assess,
                cloudflare=Cloudflare(token) if token else None, cutover=cutover_config() if options.cutover else None,
                # 운영 배포(환경별 VM 생성)는 사람 승인 서명 뒤 Jenkins delta-release 가 한다
                release_jenkins=Jenkins(jenkins, "platform", password, job="delta-release") if options.release_target else None,
@@ -101,7 +113,7 @@ def platform_run(options: Options, store_dir: Path, run_id: str | None) -> Run:
                ecr_image_repo=os.environ.get("DELTA_ECR_IMAGE_REPO", ""),
                # 멈춘 실행의 원인 진단(연재님 delta-ai). 판정은 바꾸지 않는다
                diagnose=DeltaAi(f"http://ai.{zone}:8090", os.environ["DELTA_AI_TOKEN"]).assess
-               if os.environ.get("DELTA_AI_TOKEN") else None)
+               if os.environ.get("DELTA_AI_TOKEN") and not options.mapping_only else None)
 
 
 class Pipelines:
@@ -125,14 +137,17 @@ class Pipelines:
     def running(self) -> bool:
         return self._thread is not None and self._thread.is_alive()
 
-    def start(self, repo: str, commit: str, *, cutover: bool = False, branch: str = "", execution_cloud='gcp', onprem_build_id=None, assistance=False, release_target=None, request_key=None) -> str:
+    def start(self, repo: str, commit: str, *, cutover: bool = False, branch: str = "", execution_cloud='gcp', onprem_build_id=None, assistance=False, release_target=None, request_key=None, mapping_request=None, mapping_only=False) -> str:
         with self._lock:
             options = Options(repo, commit, cutover=cutover, branch=branch, execution_cloud=execution_cloud,
-                              onprem_build_id=onprem_build_id, assistance=assistance, release_target=release_target)
+                              onprem_build_id=onprem_build_id, assistance=assistance, release_target=release_target, mapping_request=mapping_request,
+                              mapping_only=mapping_only)
             run_id = hashlib.sha256(("platform:" + request_key).encode()).hexdigest() if request_key else None
             if run_id and (old := self.get(run_id)):
                 expected = asdict(options)
                 actual = dict(old["options"])
+                actual.setdefault("mapping_request", None)
+                actual.setdefault("mapping_only", False)
                 expected.pop("diagnostics", None)
                 actual.pop("diagnostics", None)
                 if actual != expected:

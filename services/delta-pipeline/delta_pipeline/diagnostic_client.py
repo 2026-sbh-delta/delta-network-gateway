@@ -47,6 +47,9 @@ class DiagnosticClient:
             urllib.request.HTTPSHandler(context=context),
         )
 
+    def assess(self, body: dict[str, Any]) -> dict[str, Any]:
+        return self._post("/v1/migration-mapping", body)
+
     def diagnose(self, body: dict[str, Any]) -> dict[str, Any]:
         return self._post("/v1/diagnoses", body)
 

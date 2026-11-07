@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Delta 파이프라인</title>
   <link rel="stylesheet" href="/static/app.css">
+  <script src="/static/mapping.js" defer></script>
   <script src="/static/app.js" defer></script>
   <script src="/static/cases.js" defer></script>
 </head>
@@ -36,6 +37,8 @@
     <label>커밋 <select id="run-commit" aria-label="커밋" required disabled><option value="">저장소 확인 후 선택</option></select></label>
     <label id="run-release-label" hidden>운영 배포 <select id="run-release" aria-label="운영 배포 대상"><option value="">스테이징까지만</option></select></label>
     <label id="run-cutover-label" hidden class="toggle"><input type="checkbox" id="run-cutover"> 검증 뒤 서비스 도메인 전환</label>
+    <label class="mapping-upload">가격 비교 (선택)<input type="file" id="run-mapping" accept=".json,application/json" aria-describedby="mapping-input-help"><small id="mapping-input-help">Terraform 추출 요청 JSON · 최대 60KB · 원본 state 제외</small></label>
+    <label class="toggle"><input type="checkbox" id="run-mapping-only"> 가격 비교만 실행</label>
     <button class="btn primary" type="submit" id="run-submit" disabled>실행</button>
     <span id="run-msg" class="hint"></span>
   </form>
