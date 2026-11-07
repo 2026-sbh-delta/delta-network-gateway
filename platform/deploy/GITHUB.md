@@ -2,6 +2,8 @@
 
 인프라는 **GitHub Actions → OIDC 임시 인증 → Terraform → AWS**, 앱은 **테스트 → ARM64 이미지 → ECR → SSM → 사설 VM**으로 배포한다. 터미널의 AWS 키를 GitHub에 저장하지 않는다.
 
+2026-11-07 현재 운영은 [기존 UI 보존과 PR #75 통합 릴리스](../../docs/ai-dlc/platform-production-ui-integration.md)다. main의 Release42363991423은 설정 병합에서 실패했고 이후 SSM 보존 배포로 반영했다. 현재 운영을 main 전체 이미지와 같은 버전으로 표시하지 않는다. 소스의 게시 상태는 Git 이력을 따른다. 운영 UI를 유지하는 빌드/적용/복구는 연결된 통합 기록을 따른다.
+
 2026-11-03 PR #8 병합 후 실제 GitHub OIDC Plan·Release와 배포 후 기능 검증을 완료했다. 현재 저장소의 `PLATFORM_CI_ENABLED`는 사용자가 `true`로 설정했다. [실행·검증 기록](../../docs/ai-dlc/platform-oidc.md)을 따른다.
 
 ## 최초 설정에 필요한 변수

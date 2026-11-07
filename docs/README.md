@@ -1,5 +1,7 @@
 # Delta network gateway
 
+2026-11-07 20:13 KST 운영 UI 보존 및 PR #75 파이프라인 통합 배포 완료: 기존 UI/마이그레이션을 유지하고 새 메뉴에서 실제 실행20건, 상세와 빌드 로그, 새 실행 폼을1440px/390px에서 확인했다. API image/Env와 Worker/DB, 서비스1개/환경3개를 보존했다. API1회 교체 후 모바일 CSS는 재시작0회로 보완했으며 실제 쓰기 요청0개다. 로컬 검증/SSM 실제 배포 성공과 실패한 main Release를 구분한다. Git 게시와 원격 CI 상태는 실제 이력과 실행 결과를 따른다. [통합 설계와 상태](ai-dlc/platform-production-ui-integration.md)
+
 2026-11-07 19:16:43 KST 마이그레이션 UI 숨김 반영 완료: GuardDuty/Wazuh 카드 전체와 대상별 배포 주소/사설망 안내를 프론트에서 숨겼다. 실제 Chrome 새로고침과 접근성 화면에서 숨김 및 기존 대상 선택/차분 표/파이프라인 표시를 확인했고, 데스크톱/모바일 변경 전후 검사 2개와 빌드/형식 검사를 통과했다. API/Worker/DB 재시작 0회, 기존 자산 7개와 서비스/환경 응답을 보존했다. [범위와 실제 검증](ai-dlc/platform-presentation.md#u3-마이그레이션-안내와-보안-카드-숨김-2026-11-07-kst)
 
 2026-11-07 17:38 KST platform 프론트 UI 배포 완료: main `3767fd32`의 UI 변경만 기존 운영 번들에 반영했다. 주소 안내 제거/글자 크기/대비/반응형을 적용하고 운영 HTTPS readiness, 변경 파일 3개 해시, 기존 자산 6개와 서비스/환경 보존을 확인했다. API 이미지/환경 변수/기존 Wazuh 연결을 유지한 API 컨테이너 1회 재생성만 수행했고 Worker/DB는 재시작하지 않았다. main CI 20개 및 운영 번들 기반 로컬 4개 검사를 통과했다. Chrome 연결 장애로 배포 후 화면 캡처는 완료하지 못했다. [실제 배포와 복구 절차](ai-dlc/platform-presentation.md#operation-ui-배포-승인과-운영-기능-보존-2026-11-07-kst)

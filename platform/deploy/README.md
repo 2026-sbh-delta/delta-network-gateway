@@ -4,6 +4,8 @@
 
 [인프라 구성·입출력](terraform/README.md) · [현재 배포·검증 기록](../../docs/ai-dlc/platform-aws.md)
 
+2026-11-07 현재 운영은 기존 UI에 PR #75 파이프라인을 통합한 별도 보존 릴리스다. 기존 API 이미지와 환경 설정을 유지하며 새 웹 디렉터리와 Python 모듈3개를 readonly로 연결했다. 실제 단계, 이미지/자산 식별, 재현 빌드와 rollback은 [운영 UI 통합 기록](../../docs/ai-dlc/platform-production-ui-integration.md)을 먼저 확인한다. 아래 기본 전체 이미지 Release와 이번 API 확장 배포를 구분한다.
+
 팀의 정상 변경 경로는 [GitHub Actions 배포](GITHUB.md)다. 아래 로컬 명령은 최초 기반 준비·복구용으로 남긴다. 현재 최초 AWS 배포와 PR #7 병합은 완료됐고 CI도 통과했다. Environment 없이 main 전용 OIDC 역할 생성을 완료했다. 새 워크플로도 PR #8에서 main에 반영했고 GitHub OIDC Plan·Release 및 배포 후 기능 검증까지 완료했다. 사용자가 입력할 변수는 [GitHub 안내](GITHUB.md), 실제 IAM 적용·GitHub 배포 상태는 [OIDC 기록](../../docs/ai-dlc/platform-oidc.md)을 따른다.
 
 ## 배포 순서

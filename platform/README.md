@@ -2,6 +2,8 @@
 
 개발자용 플랫폼의 웹·API·Worker를 관리한다. 현재 운영 경로는 **고정 로그인 → 공개 GitHub 등록 → 소스 확인 → Jenkins 이미지 빌드 → 대상 환경 실행 검사·SAST/DAST → 결과·로그 조회**다. [Jenkins AWS 운영 기록](../docs/ai-dlc/platform-jenkins-aws.md)에서 배포와 실제 기능 검증 상태를 확인한다. 빌드 성공은 실행 검사나 배포 성공을 뜻하지 않는다.
 
+2026-11-07 기존 운영 UI에 PR #75의 파이프라인 메뉴를 통합했다. 실제 실행 기록20건, 상세와 빌드 로그, 새 실행 폼의 조회를 데스크톱/모바일에서 확인했다. 기존 API 이미지/환경과 Worker/DB를 유지한 배포이며 [현재 통합 버전과 복구 절차](../docs/ai-dlc/platform-production-ui-integration.md)를 따른다. 같은 운영 기준의 로컬 미리보기는 `web/`에서 `npm run dev:production`이다.
+
 - [구현 범위·검증 기록](../docs/ai-dlc/platform-u1.md)
 - [OTel 대시보드·앱/DB 이전 진행](../docs/ai-dlc/platform-continuity.md) · [관측 연결](observability/README.md) · [세션 유지 예제](examples/session-app/README.md) · [이전 설명 HTML](docs/migration.ko.html)
 - [전체 방향과 후속 단위](../docs/ai-dlc/platform.md) · [한국어 구성 설명](docs/overview.ko.html)
