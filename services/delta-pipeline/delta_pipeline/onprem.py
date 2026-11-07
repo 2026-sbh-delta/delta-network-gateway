@@ -408,6 +408,26 @@ def wait(steps, state):
         coverage=value.get('coverage'),dast_check=value.get('dast_check'),
         sast_evidence_sha256=value.get('sast_evidence_sha256'),dast_evidence_sha256=value.get('dast_evidence_sha256'),
         runtime_evidence_sha256=value.get('runtime_evidence_sha256'),deployment_approved=False)
+    # Match the CSP pipeline's normal zero-candidate rule. A generic not_run,
+    # scanner error, unverified scope or a previous finding still needs review.
+    # This passes the workflow gate, never claims a DAST scan or deployment approval.
+    if (
+        value.get("dast_check") == "not_run"
+        and value.get("dast_reason") == "no_supported_xss_candidates"
+        and type(state.get("dast_targets")) is int
+        and state["dast_targets"] == 0
+        and (state.get("gates") or {}).get("sast") == "pass"
+        and not state.get("first_dast_run_id")
+        and eligible == 0
+        and findings == []
+        and not value["findings_truncated"]
+        and not value.get("runtime_evidence_gap")
+        and re.fullmatch(r"[a-f0-9]{64}", str(value.get("runtime_evidence_sha256", "")))
+    ):
+        deps.board.add_detail("dast", skip_reason="no_supported_xss_candidates")
+        deps.board.update("dast", state="skipped",
+            summary="SAST·DAST가 대상 0건을 확인해 실행 생략 · 취약점 없음의 증명은 아님")
+        return {"gates": {"dast": "pass"}, "pending_gate": None, "dast_run_id": run_id}
     if value.get("dast_check") != "completed":
         return steps._ask("dast", "dast", "온프레미스 DAST 미실행·검사 범위 확인", 0)
     if (
