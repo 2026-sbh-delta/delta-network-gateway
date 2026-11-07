@@ -102,10 +102,16 @@ if gcp_cfg="$(terraform -chdir="$gcp_tf" output -json credential_configs 2>/dev/
   fi
 fi
 
-# 서비스 도메인 전환 설정(비밀값 아님): service-domain 이 적용돼 있으면 올린다. Cloudflare 토큰은 사람이 SSM 에 넣는다.
+# 서비스 도메인 전환 설정은 SSM의 운영 설정을 보존하고, 없을 때만 Terraform 출력으로 초기화한다.
+# 동시 배포가 먼저 만든 값도 보존한다. Cloudflare 토큰은 사람이 SSM에 넣는다.
 if cutover_cfg="$(terraform -chdir="$repo/terraform/service-domain" output -raw cutover_config 2>/dev/null)" && [ "${cutover_cfg#\{}" != "$cutover_cfg" ]; then
-  aws ssm put-parameter --region "$region" --name "${prefix}orchestrator/cutover_config" --type String \
-    --value "$cutover_cfg" --overwrite >/dev/null
+  if ! cutover_error="$(aws ssm put-parameter --region "$region" --name "${prefix}orchestrator/cutover_config" --type String \
+    --value "$cutover_cfg" --no-overwrite 2>&1 >/dev/null)"; then
+    case "$cutover_error" in
+      *"(ParameterAlreadyExists)"*) echo "  기존 서비스 도메인 전환 설정 보존" ;;
+      *) printf '%s\n' "$cutover_error" >&2; exit 1 ;;
+    esac
+  fi
 fi
 
 # 빌드 대상: <서비스> → 플랫폼 아키텍처, 빌드 경로, Dockerfile
