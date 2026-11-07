@@ -68,3 +68,29 @@ def test_fix_cleanup_repo_does_not_need_a_build_of_the_current_main(tmp_path):
     with pytest.raises(RuntimeError):
         reset.vulnerable_bundle(head=lambda repo, branch: "f" * 40)  # main 이 바뀌어 빌드 기록 없음
     assert reset.latest_repo() == REPO
+
+
+class BuildJenkins:
+    def __init__(self, result):
+        self.result, self.params = result, None
+
+    def trigger(self, params, key):
+        self.params = params
+        return 7
+
+    def status(self, build):
+        return "SUCCESS"
+
+    def file(self, build, name):
+        return self.result
+
+
+def test_without_an_unfixed_record_reset_builds_main_itself(tmp_path, monkeypatch):
+    (tmp_path / mod.BOARD_DIR).mkdir()
+    board(tmp_path, "fixed", "a" * 40, "c" * 40, "2", time.time())  # 수정 재빌드만 남은 실행
+    reset = mod.DemoReset(Idle(tmp_path), mod.DomainRevert())
+    monkeypatch.setattr(mod.DemoReset, "branch_head", staticmethod(lambda repo, branch: "a" * 40))
+    jenkins = BuildJenkins(bundle("a" * 40, "9"))
+    found, repo = reset.build_main(jenkins)
+    assert found["commit"] == "a" * 40 and repo == REPO
+    assert jenkins.params["REPO"] == REPO and jenkins.params["COMMIT"] == "a" * 40

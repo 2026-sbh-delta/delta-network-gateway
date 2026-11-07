@@ -371,11 +371,40 @@ class DemoReset:
                 continue
         raise RuntimeError("main 현재 커밋을 수정 없이 빌드한 기록이 없습니다. 파이프라인을 한 번 돌려 빌드를 남기세요")
 
+    def build_main(self, jenkins: Any = None) -> tuple[dict[str, Any], str]:
+        """main 현재 커밋(취약 버전 그대로)을 파이프라인과 같은 delta-build 로 빌드해 묶음을 얻는다."""
+        from delta_pipeline.delivery import validate_bundle
+
+        repo = self.latest_repo()
+        commit = self.branch_head(repo, "main")
+        if jenkins is None:
+            zone = os.environ.get("DELTA_INTERNAL_ZONE", "cp.internal")
+            jenkins = Jenkins(f"http://jenkins.{zone}:8080", "platform",
+                              os.environ.get("JENKINS_PLATFORM_PASSWORD", ""), job="delta-build")
+        build = jenkins.trigger({"REPO": repo, "COMMIT": commit,
+                                 "IMAGE_REPO": os.environ.get("DELTA_IMAGE_REPO", IMAGE_REPO)},
+                                f"reset-build-{uuid.uuid4().hex[:20]}")
+        self._step("release", summary=f"main {commit[:7]} 빌드 중 (Jenkins delta-build #{build})")
+        deadline = time.time() + self.RELEASE_DEADLINE_SECONDS
+        while time.time() < deadline:
+            status = jenkins.status(build)
+            if status != "IN_PROGRESS":
+                result = jenkins.file(build, "result.json") or {}
+                if status != "SUCCESS":
+                    raise RuntimeError(f"main 빌드 실패 (#{build} {status})")
+                return validate_bundle(result, commit), repo
+            time.sleep(5)
+        raise RuntimeError(f"main 빌드 #{build} 가 제한 시간 안에 끝나지 않았습니다")
+
     def _redeploy(self) -> str:
         from delta_pipeline.clients import evidence_hash
         from delta_pipeline.delivery import canonical_json, sign_approval, validate_config
 
-        bundle, repo = self.vulnerable_bundle()
+        try:
+            bundle, repo = self.vulnerable_bundle()
+        except RuntimeError:
+            # A run that went through the AI fix keeps only the fixed rebuild, so build main here.
+            bundle, repo = self.build_main()
         self._repo = repo
         target_id, config = next(((k, v) for k, v in release_targets().items() if v.get("cloud") == "gcp"),
                                  (None, None))
