@@ -5,6 +5,42 @@ import { cloudName } from "./application-model";
 import { observabilityApi, type Environment } from "./observability-api";
 import "./deployed-environments.css";
 
+const cloudLabel = { ...cloudName, onprem: "On-Premise" };
+const cloudOrder = { aws: 0, gcp: 1, onprem: 2 };
+
+/*!
+ * Font Awesome Free 6.7.2 by @fontawesome - https://fontawesome.com
+ * Icons: CC BY 4.0 - https://fontawesome.com/license/free
+ * Copyright 2024 Fonticons, Inc. Original solid SVG path data, unmodified.
+ */
+const actionIconPaths = {
+  "right-left":
+    "M32 96l320 0 0-64c0-12.9 7.8-24.6 19.8-29.6s25.7-2.2 34.9 6.9l96 96c6 6 9.4 14.1 9.4 22.6s-3.4 16.6-9.4 22.6l-96 96c-9.2 9.2-22.9 11.9-34.9 6.9s-19.8-16.6-19.8-29.6l0-64L32 160c-17.7 0-32-14.3-32-32s14.3-32 32-32zM480 352c17.7 0 32 14.3 32 32s-14.3 32-32 32l-320 0 0 64c0 12.9-7.8 24.6-19.8 29.6s-25.7 2.2-34.9-6.9l-96-96c-6-6-9.4-14.1-9.4-22.6s3.4-16.6 9.4-22.6l96-96c9.2-9.2 22.9-11.9 34.9-6.9s19.8 16.6 19.8 29.6l0 64 320 0z",
+  "chart-line":
+    "M64 64c0-17.7-14.3-32-32-32S0 46.3 0 64L0 400c0 44.2 35.8 80 80 80l400 0c17.7 0 32-14.3 32-32s-14.3-32-32-32L80 416c-8.8 0-16-7.2-16-16L64 64zm406.6 86.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0L320 210.7l-57.4-57.4c-12.5-12.5-32.8-12.5-45.3 0l-112 112c-12.5 12.5-12.5 32.8 0 45.3s32.8 12.5 45.3 0L240 221.3l57.4 57.4c12.5 12.5 32.8 12.5 45.3 0l128-128z",
+};
+
+function DeploymentActionIcon({
+  name,
+}: {
+  name: keyof typeof actionIconPaths;
+}) {
+  return (
+    <svg
+      className="deployment-action-icon"
+      data-icon={name}
+      width="16"
+      height="16"
+      viewBox="0 0 512 512"
+      fill="currentColor"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path d={actionIconPaths[name]} />
+    </svg>
+  );
+}
+
 export function DeployedEnvironments({
   serviceId,
   onNavigate,
@@ -69,6 +105,10 @@ export function DeployedEnvironments({
     };
   }, [serviceId]);
 
+  const orderedEnvironments = [...environments].sort(
+    (left, right) => cloudOrder[left.cloud] - cloudOrder[right.cloud],
+  );
+
   return (
     <section className="panel deployed-environments" aria-label="배포 환경">
       <div className="panel-top">
@@ -90,10 +130,12 @@ export function DeployedEnvironments({
             </button>
           )}
           <button onClick={() => onNavigate("migration")}>
-            마이그레이션 보기
+            <DeploymentActionIcon name="right-left" />
+            이관 진행
           </button>
           <button className="primary" onClick={() => onNavigate("monitoring")}>
-            대시보드 열기
+            <DeploymentActionIcon name="chart-line" />
+            모니터링
           </button>
         </div>
       </div>
@@ -109,14 +151,24 @@ export function DeployedEnvironments({
       )}
 
       <div className="deployment-environment-cards">
-        {environments.map((environment) => (
+        {orderedEnvironments.map((environment) => (
           <article
             key={environment.id}
             className={`deployment-environment-card cloud-${environment.cloud}`}
-            aria-label={`${cloudName[environment.cloud]} 배포 환경`}
+            aria-label={`${cloudLabel[environment.cloud]} 배포 환경`}
           >
             <div className="release-line">
-              <h3>{cloudName[environment.cloud]}</h3>
+              <h3 className="deployment-cloud-brand">
+                <img
+                  className="deployment-cloud-logo"
+                  src={`/cloud-logos/${environment.cloud}.svg`}
+                  width="40"
+                  height="40"
+                  alt=""
+                  aria-hidden="true"
+                />
+                {cloudLabel[environment.cloud]}
+              </h3>
               <span className="release-state">
                 {environment.runtime_status === "removed"
                   ? "앱 삭제됨"

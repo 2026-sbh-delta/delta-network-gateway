@@ -154,6 +154,24 @@ for (const width of [1440, 390]) {
     await page.goto(`/#/overview/${service.id}`);
     const panel = page.getByRole("region", { name: "배포 환경", exact: true });
     await expect(panel.getByRole("article")).toHaveCount(3);
+    await expect(panel.getByRole("heading", { level: 3 })).toHaveText([
+      "AWS",
+      "GCP",
+      "On-Premise",
+    ]);
+    for (const card of await panel.getByRole("article").all()) {
+      await expect(card.locator("img")).toBeVisible();
+      await expect
+        .poll(() =>
+          card
+            .locator("img")
+            .evaluate(
+              (image: HTMLImageElement) =>
+                image.complete && image.naturalWidth > 0,
+            ),
+        )
+        .toBe(true);
+    }
     await expect(panel.getByText("012345678901")).toBeVisible();
     await expect(panel.getByText("fixture-project")).toBeVisible();
     await expect(panel.getByText("team-onprem")).toBeVisible();
@@ -180,11 +198,11 @@ for (const width of [1440, 390]) {
       animations: "disabled",
     });
 
-    await panel.getByRole("button", { name: "마이그레이션 보기" }).click();
+    await panel.getByRole("button", { name: "이관 진행", exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`#/migration/${service.id}$`));
     await page.goBack();
     await expect(panel.getByRole("article")).toHaveCount(3);
-    await panel.getByRole("button", { name: "대시보드 열기" }).click();
+    await panel.getByRole("button", { name: "모니터링", exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`#/monitoring/${service.id}$`));
     expect(io.mutations).toBe(0);
   });
@@ -227,10 +245,10 @@ test("환경 미연결을 표시하면서 기존 이동 버튼은 유지한다",
   await expect(panel.getByText("연결된 배포 환경이 없습니다.")).toBeVisible();
   await expect(panel.getByRole("article")).toHaveCount(0);
   await expect(
-    panel.getByRole("button", { name: "마이그레이션 보기" }),
+    panel.getByRole("button", { name: "이관 진행", exact: true }),
   ).toBeEnabled();
   await expect(
-    panel.getByRole("button", { name: "대시보드 열기" }),
+    panel.getByRole("button", { name: "모니터링", exact: true }),
   ).toBeEnabled();
 });
 
