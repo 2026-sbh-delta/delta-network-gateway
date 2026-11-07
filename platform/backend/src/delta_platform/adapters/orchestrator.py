@@ -134,6 +134,10 @@ class OrchestratorRelay:
             body["case_id"] = case_id
         return self.request("POST", f"/api/pipeline/runs/{run_id}/answer", body).json()
 
+    def domain(self):
+        """Where the service domain points now (record, AWS/GCP entries, current target)."""
+        return self.request("GET", "/api/domain").json()
+
     def reset_view(self):
         return self.request("GET", "/api/demo/reset").json()
 
