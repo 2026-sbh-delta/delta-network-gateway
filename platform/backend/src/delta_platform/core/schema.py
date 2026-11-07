@@ -157,7 +157,7 @@ runs = sa.Table(
     timestamp("finished_at"),
     sa.UniqueConstraint("service_id", "kind", "request_key", name="run_request_unique"),
     sa.CheckConstraint(
-        "kind IN ('source_preflight', 'image_build', 'sandbox_check', 'security_check', 'dast_check', 'runtime_remove', 'service_deploy', 'service_remove')",
+        "kind IN ('source_preflight', 'image_build', 'sandbox_check', 'security_check', 'dast_check', 'runtime_remove', 'service_deploy', 'service_remove', 'data_migrate')",
         name="run_kind",
     ),
     sa.CheckConstraint("attempt >= 0", name="run_attempt"),
