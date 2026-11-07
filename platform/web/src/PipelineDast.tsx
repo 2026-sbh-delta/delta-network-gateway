@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api, message } from "./api";
-import type { Board } from "./pipeline-model";
+import { choices, type Board } from "./pipeline-model";
 
 // ── Before/after code (unified patch → side-by-side) ─────────────────────────
 type Row = {
@@ -508,7 +508,7 @@ export function FixModal({
         </div>
         <footer>
           {error && <span className="pl-error">{error}</span>}
-          {decision.options.map((o) => (
+          {choices(decision).map((o) => (
             <button
               key={o.value}
               className={o.value === "fix" ? "pd-primary" : ""}

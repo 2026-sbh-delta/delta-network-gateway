@@ -261,3 +261,11 @@ export function duration(from: number | null, to: number | null): string {
     ? `${m}분 ${s % 60}초`
     : `${Math.floor(m / 60)}시간 ${m % 60}분`;
 }
+
+// With an AI fix on offer, "continue" only ends the run as unresolved (release and cutover are
+// skipped), so the screen offers fix or stop and the run always goes through the full chain.
+export function choices(decision: Decision): Decision["options"] {
+  return decision.options.some((o) => o.value === "fix")
+    ? decision.options.filter((o) => o.value !== "approve")
+    : decision.options;
+}
