@@ -11,11 +11,46 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  checks:
+  # The same commit already ran the full checks on its push to main. Reuse that result (waiting
+  # for it if it is still running) instead of repeating ~6 minutes of tests; otherwise run them here.
+  verified:
     if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    permissions:
+      actions: read
+    outputs:
+      passed: ${{ steps.find.outputs.passed }}
+    steps:
+      - id: find
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          for _ in $(seq 1 40); do
+            runs=$(gh api "repos/$REPO/actions/workflows/platform-check.yml/runs?head_sha=$SHA&event=push&branch=main&per_page=20" \
+              --jq '[.workflow_runs[] | {status, conclusion}]')
+            if jq -e 'any(.[]; .conclusion == "success")' <<<"$runs" >/dev/null; then
+              echo "passed=true" >> "$GITHUB_OUTPUT"
+              echo "Platform checks already passed for $SHA"
+              exit 0
+            fi
+            jq -e 'any(.[]; .status != "completed")' <<<"$runs" >/dev/null || break
+            sleep 30
+          done
+          echo "passed=false" >> "$GITHUB_OUTPUT"
+          echo "No passed Platform checks run for $SHA; running checks"
+  checks:
+    needs: verified
+    if: github.ref == 'refs/heads/main' && needs.verified.outputs.passed != 'true'
     uses: ./.github/workflows/platform-check.yml
   deploy:
-    needs: checks
+    needs: [verified, checks]
+    if: >-
+      always() && needs.verified.result == 'success' &&
+      (needs.checks.result == 'success' ||
+      (needs.checks.result == 'skipped' && needs.verified.outputs.passed == 'true'))
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     permissions:
