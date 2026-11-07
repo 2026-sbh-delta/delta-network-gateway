@@ -427,3 +427,5 @@ Operation:
 - 배포 전 공개 HTTPS의 readiness/화면/발표 세션은 모두 200이고 기존 서비스 2개와 대상 환경 3개를 확인했다. 파이프라인의 최근 10개 실행은 모두 종료 결과가 있었다. 읽기 전용 결과는 ignored `.validation/csp-environment-repair-20261108/production-pre.json`에 기록했다.
 - 선행 Platform release `42389268762`가 별도 main 커밋 `6fb0fa4e`로 진행 중이었다. 기존 릴리스를 취소하지 않고 완료를 확인한 뒤 이번 커밋의 Platform checks와 Release를 진행한다.
 - PR #96까지 반영한 뒤 `npm run build`, `npm run format:check`, 변경 Python Ruff 검사/형식 검사와 `git diff --check`를 재실행해 통과했다. 격리 PostgreSQL의 관측/온프레미스/배포/앱 관련 회귀는 45 passed (2.01s), 최종 빌드의 배포 환경 카드 회귀는 10 passed (16.0s)였다. 원격 CI/Release의 실제 결과는 각 실행 결과를 따른다.
+- 수정 커밋 `f7951e9cee319f634f85abed03095cc23e1c374b`를 main에 푸시했고 GitHub의 서명 검증 결과는 valid였다. 이어 PR #97을 fast-forward로 반영했으며 PR #97은 오케스트레이터 두 파일을 변경한다. 게시 직후 [Platform checks 42389992966](https://github.com/2026-sbh-delta/delta-network-gateway/actions/runs/42389992966)은 진행 중이었다.
+- 선행 릴리스 `42389268762`는 성공했으며, 이어서 선행 릴리스 `42389771314`가 실행됐다. 두 번째 릴리스를 보존하고 종료를 확인한 뒤 이번 운영 반영을 시작한다.
