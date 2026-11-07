@@ -15,7 +15,7 @@ from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from delta_ai.contract import AssessmentResult
+from delta_ai.contract import AssessmentResult, ExistingSubnet
 from delta_pipeline.clients import ServiceUnavailable, evidence_hash
 
 MAX_REQUEST_BYTES = 64_000
@@ -48,6 +48,7 @@ class Target(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     provider: Literal["gcp"] = "gcp"
     region: str | None = Field(default=None, max_length=40)
+    existing_subnets: tuple[ExistingSubnet, ...] | None = Field(default=None, min_length=1, max_length=20)
 
 
 class DiffInput(BaseModel):
@@ -58,7 +59,11 @@ class DiffInput(BaseModel):
 
     @property
     def fingerprint(self) -> str:
-        return evidence_hash(self.model_dump(mode="json"))
+        payload = self.model_dump(mode="json")
+        if self.target.existing_subnets is None:
+            # Preserve the fingerprint of existing requests and checkpoints.
+            del payload["target"]["existing_subnets"]
+        return evidence_hash(payload)
 
     @classmethod
     def from_file(cls, path: str) -> DiffInput:
@@ -90,6 +95,7 @@ class DiffResult(BaseModel):
                 or assessment.kind != "migration_mapping"
                 or (self.source.bucket, self.source.key) != (config.source.state.bucket, config.source.state.key)
                 or not mapping or not mapping.rows or not assessment.checks
+                or (config.target.existing_subnets and mapping.network_mode != "reuse")
                 or (config.target.region and mapping.region != config.target.region)):
             raise ValueError("Diff result does not match the request")
         rules = {c.rule_id for c in assessment.checks}

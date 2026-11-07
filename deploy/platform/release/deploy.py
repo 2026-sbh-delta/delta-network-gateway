@@ -154,16 +154,73 @@ def vm_params(data, selected):
     return params
 
 
+def vm_workdir(data, selected, config):
+    params = vm_params(data, selected)
+    directory = state_backend.workdir(config, data["environment_id"], "vm", data["target"]["cloud"])
+    variables = directory / "deployment.auto.tfvars.json"
+    variables.write_text(json.dumps(params))
+    variables.chmod(0o600)
+    environment = state_backend.env(config)
+    run(state_backend.init_command(config, data["environment_id"], "vm"), cwd=directory, env=environment)
+    return params, directory, environment
+
+
+def mapped_plan(data, selected, config, *, planning):
+    import mapped_terraform as mapped
+
+    artifact = Path(os.environ["DELTA_MAPPED_DIR"])
+    plan_file = artifact / "deployment.tfplan"
+    rendered = mapped.render(data, vm_params(data, selected))
+    binding = mapped.binding(data, config, rendered)
+    mapping_sha256 = mapped.digest(data["terraform_mapping"])
+    if planning:
+        artifact.mkdir(mode=0o700)
+    else:
+        saved = json.loads((artifact / "binding.json").read_text())
+        if (saved != {"binding": binding, "plan_sha256": mapped.plan_digest(plan_file)}
+                or saved["plan_sha256"] != os.environ["DELTA_APPROVED_PLAN_SHA256"]):
+            raise DeployError("provision_vm", "terraform_plan_mismatch")
+
+    params, directory, environment = vm_workdir(data, selected, config)
+    for name, value in rendered.items():
+        (directory / name).write_text(json.dumps(value))
+    if planning:
+        run(["terraform", "plan", "-input=false", "-out", str(plan_file)], cwd=directory, env=environment)
+        plan = json.loads(run(["terraform", "show", "-json", str(plan_file)], cwd=directory, env=environment))
+        changes = mapped.validate_plan(plan)
+        plan_sha256 = mapped.plan_digest(plan_file)
+        (artifact / "binding.json").write_text(json.dumps({"binding": binding, "plan_sha256": plan_sha256}))
+        return {
+            "state": "planned",
+            "environment_id": data["environment_id"],
+            "gcp_project": params["project_id"],
+            "zone": params["zone"],
+            "image": params["image"],
+            "service_account": params["service_account"],
+            "mapping": data["terraform_mapping"],
+            "changes": changes,
+            "mapping_sha256": mapping_sha256,
+            "plan_sha256": plan_sha256,
+        }
+    run(["terraform", "apply", "-input=false", str(plan_file)], cwd=directory, env=environment, timeout=1200)
+    data["terraform_plan_proof"] = {"mapping_sha256": mapping_sha256, "plan_sha256": saved["plan_sha256"]}
+    return vm_output(directory, environment)
+
+
+def vm_output(directory, environment):
+    return {
+        key: value["value"]
+        for key, value in json.loads(
+            run(["terraform", "output", "-json"], cwd=directory, env=environment)
+        ).items()
+    }
+
+
 def provision(data, selected, config):
-    cloud = data["target"]["cloud"]
     with step("provision_vm", "terraform_failed"):
-        params = vm_params(data, selected)
-        directory = state_backend.workdir(config, data["environment_id"], "vm", cloud)
-        variables = directory / "deployment.auto.tfvars.json"
-        variables.write_text(json.dumps(params))
-        variables.chmod(0o600)
-        environment = state_backend.env(config)
-        run(state_backend.init_command(config, data["environment_id"], "vm"), cwd=directory, env=environment)
+        if "terraform_mapping" in data:
+            return mapped_plan(data, selected, config, planning=False)
+        _, directory, environment = vm_workdir(data, selected, config)
         run(["terraform", "plan", "-input=false", "-out=deployment.tfplan"], cwd=directory, env=environment)
         plan = json.loads(
             run(["terraform", "show", "-json", "deployment.tfplan"], cwd=directory, env=environment)
@@ -176,12 +233,7 @@ def provision(data, selected, config):
                 # 기존 VM 수정·교체·삭제는 이 흐름에서 거부한다(새 환경 ID로 새 VM을 만든다).
                 raise DeployError("provision_vm", "plan_not_create_only")
         run(["terraform", "apply", "-input=false", "deployment.tfplan"], cwd=directory, env=environment, timeout=1200)
-        return {
-            key: value["value"]
-            for key, value in json.loads(
-                run(["terraform", "output", "-json"], cwd=directory, env=environment)
-            ).items()
-        }
+        return vm_output(directory, environment)
 
 
 def logging_config(data, selected):
@@ -794,6 +846,7 @@ def deploy(data, selected, config):
         environment, url, observation = vm(data, selected, config)
     return {
         "state": "verified",
+        **({"terraform": data["terraform_plan_proof"]} if "terraform_mapping" in data else {}),
         "schema_version": 1,
         "run_id": data["run_id"],
         "plan_hash": data["plan_hash"],
@@ -846,7 +899,17 @@ def main():
             with step("request", "request_invalid"):
                 data, selected = request(encoded, config)
             identity = {"run_id": data["run_id"], "environment_id": data["environment_id"]}
-            result = deploy(data, selected, config)
+            phase = os.environ.get("DELTA_MAPPED_PHASE")
+            if "terraform_mapping" in data:
+                if phase == "plan":
+                    with step("provision_vm", "terraform_plan_failed"):
+                        result = mapped_plan(data, selected, config, planning=True)
+                elif phase == "apply" and os.environ.get("DELTA_APPROVED_PLAN_SHA256"):
+                    result = deploy(data, selected, config)
+                else:
+                    raise DeployError("provision_vm", "terraform_approval_required")
+            else:
+                result = deploy(data, selected, config)
     except DeployError as error:
         result = {"state": "failed", "stage": error.stage, "code": error.code, **identity}
     except Exception as error:  # noqa: BLE001 - redact provider/command bodies at the process boundary.
@@ -855,7 +918,7 @@ def main():
         code = "database_unreachable" if isinstance(error, DeploymentPreflightError) else "unexpected"
         result = {"state": "failed", "stage": current["stage"], "code": code, **identity}
     Path("result.json").write_text(json.dumps(result))
-    return 0 if result["state"] in ("verified", "removed") else 1
+    return 0 if result["state"] in ("verified", "removed", "planned") else 1
 
 
 if __name__ == "__main__":

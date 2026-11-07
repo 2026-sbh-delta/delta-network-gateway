@@ -209,3 +209,25 @@ def test_app_refuses_to_start_without_token(tmp_path):
             store=RuleStore(tmp_path / "r.json"),
             token="",
         )
+
+
+def test_diff_maps_to_registered_existing_gcp_subnet(tmp_path):
+    from copy import deepcopy
+
+    state = deepcopy(STATE)
+    state["resources"].append({
+        "mode": "managed", "type": "aws_route_table_association", "name": "private",
+        "instances": [{"attributes": {"subnet_id": "subnet-1", "route_table_id": "rtb-1"}}],
+    })
+    response = _client(tmp_path, FakeReader(state)).post(
+        "/v1/diffs",
+        json=_body(target={"region": "asia-northeast3", "existing_subnets": [
+            {"name": "app", "cidr": "10.32.2.0/24", "tier": "private"},
+        ]}),
+        headers=HEADERS,
+    )
+    assert response.status_code == 200
+    mapping = response.json()["assessment"]["mapping"]
+    assert mapping["network_mode"] == "reuse"
+    row = next(row for row in mapping["rows"] if row["resource"] == "subnet")
+    assert (row["source"], row["target"], row["grade"]) == ("web-a", "app (10.32.2.0/24)", "approximate")

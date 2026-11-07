@@ -1,5 +1,5 @@
 // 파이프라인 그래프 화면. 실행 기록(/api/pipeline/runs)을 그대로 그리고, 승인 대기면 오른쪽 패널에서 답한다.
-// 아직 없는 단계(수정 루프·인프라 갈래·운영 반영)는 점선 "추후" 노드로 함께 보여 전체 흐름을 한눈에 본다.
+// 미연결 단계는 점선 "추후" 노드로 표시한다.
 (() => {
   const NS = "http://www.w3.org/2000/svg";
   const $ = (s) => document.querySelector(s);
@@ -15,7 +15,7 @@
     { label: "진단·보고서", code: "관측 → 원인 후보 → 사람 확인", x: -40, y: 680, w: 1000, h: 190 },
     { label: "웹 갈래", code: "build ∥ sast → stage → dast", x: -40, y: -200, w: 1520, h: 560 },
     { label: "인프라 갈래", code: "워크로드 차분", x: -40, y: 410, w: 1820, h: 200 },
-    { label: "운영 반영", code: "운영 배포 → 도메인 전환", x: 1530, y: 40, w: 1110, h: 300 },
+    { label: "운영 반영", code: "인프라·앱 배포 → 도메인 전환", x: 1530, y: 40, w: 1110, h: 300 },
   ];
   const T = (id, label, x, y, o = {}) => ({ id, label, x, y, w: 210, h: 98, kind: "task", ...o });
   const NODES = [
@@ -29,7 +29,7 @@
     // 조치 루프(1-B): DAST 재현 → 사람이 '수정 적용' → 수정안 PR → 그 커밋으로 빌드부터 2차(재검증)
     T("fix", "AI 수정 · PR", 690, -150, { icon: "spark", ai: true, tool: "delta-dast 수정 에이전트", desc: "DAST 가 재현하자마자 SAST 코드 경로와 재현 증거로 수정안을 만들어 둡니다. 사람이 DAST 승인 단계에서 '수정 적용'을 고르면 수정 브랜치·PR 을 올리고, 그 커밋으로 빌드부터 다시 돌아 같은 항목을 재검증합니다(1회)." }),
     // 운영 반영
-    T("release", "운영 배포 · 검증", 1580, 116, { icon: "cloud", tool: "Jenkins delta-release · 환경별 VM", desc: "사람이 승인하면(서명 토큰) 검증한 같은 FE·BE digest 로 운영 VM 을 새로 만들고 DB 를 준비해 Compose 로 띄운 뒤, 실제 실행 이미지·헬스·PostgreSQL 18 을 확인합니다." }),
+    T("release", "운영 배포 · 검증", 1580, 116, { icon: "cloud", tool: "Jenkins · 환경별 VM", desc: "차분 기반 대상은 Jenkins에서 Terraform Plan을 검토하고 승인합니다. 승인된 Plan을 적용하고 검증한 FE·BE 이미지로 앱을 배포한 뒤 헬스체크와 PostgreSQL 연결을 확인합니다." }),
     T("cutover", "서비스 도메인 전환", 1850, 116, { icon: "shift", tool: "Cloudflare DNS 전용 CNAME", desc: "사람 승인 뒤 CNAME 을 AWS → GCP 로 바꾸고, 공개 DNS·실제 응답으로 확인한 뒤 TTL 만큼 AWS 를 유지합니다. 실패하면 되돌립니다." }),
     { id: "end", label: "이전 완료", x: 2130, y: 140, w: 120, h: 50, kind: "pill", icon: "flag" },
     // 추후: 인프라 갈래
@@ -39,9 +39,6 @@
     T("exception-review", "실패 보고서 확인", 690, 730, { icon: "pause", mock: true, tool: "사람 확인", desc: "실패한 작업을 재실행하지 않고 보고서를 확인한 뒤 종료합니다." }),
     T("read_aws", "AWS 구성 읽기", 150, 470, { icon: "doc", mock: true, tool: "S3 Terraform 코드·state", desc: "A 기업 AWS Terraform 코드와 state 를 조회 역할로 읽습니다. (3단계)" }),
     T("map", "워크로드 차분", 420, 470, { icon: "spark", ai: true, mock: true, tool: "delta-diff · delta-ai", desc: "웹 검사와 동시에 AWS 워크로드 구성을 GCP와 비교합니다. 판단이 보류된 항목은 운영 배포와 도메인 전환 전에 확인합니다. 중앙 네트워크와 L7 검사 정책은 매핑 범위에서 제외합니다." }),
-    T("gen_plan", "GCP 구성 · plan", 690, 470, { icon: "doc", mock: true, tool: "Terraform plan", desc: "매핑으로 GCP 구성을 만들고 plan 을 저장합니다. (3단계)" }),
-    T("infra_approve", "인프라 승인", 960, 470, { icon: "pause", mock: true, tool: "interrupt()", desc: "매핑 표와 plan, 공백 항목을 승인합니다. (3단계)" }),
-    T("apply", "GCP 적용", 1230, 470, { icon: "layers", mock: true, tool: "Terraform apply", desc: "plan 을 적용하고 다시 plan 해 변경이 없는지 확인합니다. (3단계)" }),
     T("db_dump", "DB 덤프 이관", 1500, 470, { icon: "db", mock: true, tool: "pg_dump → GCP", desc: "AWS DB 를 덤프해 GCP DB 로 옮기고 행 수·스키마가 같은지 확인합니다. (3단계)" }),
   ];
   const byId = Object.fromEntries(NODES.map((n) => [n.id, n]));
@@ -53,8 +50,7 @@
     ["dast", "exception-analysis", { from: "bottom", to: "top", label: "진단" }],
     ["exception-analysis", "exception-report"], ["exception-report", "exception-review"],
     ["prepare", "map", { from: "bottom", to: "top" }], ["map", "release", { from: "top", to: "bottom", label: "차분 확인" }],
-    ["start", "read_aws", { from: "bottom", to: "left", mock: true }], ["read_aws", "map", { mock: true }], ["map", "gen_plan", { mock: true }],
-    ["gen_plan", "infra_approve", { mock: true }], ["infra_approve", "apply", { mock: true }], ["apply", "db_dump", { mock: true }],
+    ["start", "read_aws", { from: "bottom", to: "left", mock: true }], ["read_aws", "map", { mock: true }],
     ["db_dump", "release", { from: "top", to: "bottom", mock: true }],
   ];
   const ICONS = {
@@ -296,7 +292,19 @@
         ${d.patch ? `<h3>패치</h3><pre class="console diff">${esc(d.patch)}</pre>` : ""}`;
     }
     if (id === "cutover") return `<dl class="kv"><dt>이전 대상</dt><dd class="mono">${esc(d.previous || "—")}</dd><dt>TTL</dt><dd>${esc(d.ttl ?? "—")}</dd><dt>확인</dt><dd class="mono">${esc(JSON.stringify(d.verified || "—"))}</dd></dl>`;
-    if (id === "release") return `<dl class="kv"><dt>대상</dt><dd class="mono">${esc(d.target_id || "—")}</dd><dt>Jenkins</dt><dd>${d.url ? `<a href="${esc(d.url)}" target="_blank" rel="noopener noreferrer">delta-release #${esc(d.build)}</a>` : "—"}</dd><dt>묶음</dt><dd class="mono">${esc((d.bundle_sha256 || "—").slice(0, 16))}</dd></dl>`;
+    if (id === "release") {
+      const mapping = d.terraform_mapping;
+      const job = mapping ? "delta-mapped-release" : "delta-release";
+      const buildUrl = publicUrls.jenkins && d.build
+        ? `${publicUrls.jenkins.replace(/\/$/, "")}/job/${job}/${d.build}/` : d.url;
+      const buildLink = buildUrl ? `<a href="${esc(buildUrl)}" target="_blank" rel="noopener noreferrer">${job} #${esc(d.build)}</a>` : "—";
+      const applied = d.verified_result?.terraform?.plan_sha256;
+      return `<dl class="kv"><dt>대상</dt><dd>${esc(d.target_id || "—")}</dd><dt>Jenkins</dt><dd>${buildLink}</dd>
+        <dt>묶음</dt><dd class="mono">${esc((d.bundle_sha256 || "—").slice(0, 16))}</dd>
+        ${mapping ? `<dt>VM 사양</dt><dd>${esc(mapping.profile_id)} (차분 ${esc(mapping.mapped_profile_id)})</dd>
+        <dt>대상 서브넷</dt><dd>${esc(mapping.subnet_name)} · ${esc(mapping.subnet_cidr)}</dd>
+        <dt>Terraform</dt><dd>${applied ? `적용 확인 <code>${esc(applied)}</code>` : "Jenkins 빌드에서 Plan을 검토하고 승인하세요."}</dd>` : ""}</dl>`;
+    }
     if (id === "result" && d.diagnosis) {
       // 멈춘 실행의 원인 진단(delta-ai). 판정은 파이프라인이 하고 이건 설명이다. 사람이 확인한다.
       const g = d.diagnosis;

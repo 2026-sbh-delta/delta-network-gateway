@@ -33,3 +33,8 @@ jobs:
         run: bash -n deploy/platform/deploy.sh
       - name: Test deployment and SSM result handling
         run: uv run --no-project --python 3.12 --with pytest==9.2.0 python -m pytest -q deploy/platform/tests
+      - name: Test Jenkins approval and Terraform release boundaries
+        run: |
+          uv run --no-project --python 3.12 --with pytest==9.2.0 \
+            --with-requirements deploy/platform/release/requirements.txt \
+            python -m pytest -q deploy/platform/jenkins/tests deploy/platform/release/tests

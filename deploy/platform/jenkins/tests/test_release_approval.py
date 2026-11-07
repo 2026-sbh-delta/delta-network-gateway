@@ -140,3 +140,17 @@ def test_nonce_reservation_is_atomic_under_concurrent_different_ids(release_modu
     assert sorted(outcomes) == ["rejected", "reserved"], outcomes
     rows = sqlite_rows(db)
     assert "nonce-a" in repr(rows)
+
+
+def test_signed_terraform_mapping_cannot_be_dropped_or_changed(release_module, release_request, signer, tmp_path):
+    public, sign = signer
+    mapping = {"profile_id": "e2-small", "subnet_name": "app"}
+    request = {**release_request, "terraform_mapping": mapping}
+    token = sign(request, mapping_sha256=canonical_hash(mapping))
+    db = tmp_path / "release.sqlite3"
+    with pytest.raises(ValueError):
+        reserve(release_module, release_request, token, public, db)
+    with pytest.raises(ValueError):
+        changed = {**request, "terraform_mapping": {**mapping, "subnet_name": "another-app"}}
+        reserve(release_module, changed, token, public, db)
+    assert reserve(release_module, request, token, public, db)["state"] == "reserved"
