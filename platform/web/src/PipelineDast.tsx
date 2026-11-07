@@ -163,6 +163,7 @@ export function FixProposal({ board }: { board: Board }) {
 }
 
 // ── DAST live screen (frames, stage, AI actions, verdicts, evidence) ─────────
+const LIVE = "live";
 type DastResult = {
   finding_id: string;
   status: string;
@@ -318,7 +319,8 @@ export function DastLive({ board }: { board: Board }) {
       </div>
       <button
         className="pd-screen"
-        onClick={() => screen && setZoom(screen)}
+        // The enlarged main screen keeps following the live frames; evidence shots stay still.
+        onClick={() => screen && setZoom(LIVE)}
         disabled={!screen}
       >
         {screen ? (
@@ -365,7 +367,13 @@ export function DastLive({ board }: { board: Board }) {
           aria-label="화면 크게 보기"
           onClick={() => setZoom("")}
         >
-          <img src={zoom} alt="DAST 화면 크게 보기" />
+          {zoom === LIVE && live && (
+            <span className="pd-zoom-live">
+              <span className="pd-badge live">● LIVE</span>
+              {now && running && <span>{now}</span>}
+            </span>
+          )}
+          <img src={zoom === LIVE ? screen : zoom} alt="DAST 화면 크게 보기" />
         </div>
       )}
     </section>

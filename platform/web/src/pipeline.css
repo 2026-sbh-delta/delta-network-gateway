@@ -1755,3 +1755,17 @@
   font-style: normal;
   color: var(--ink-2);
 }
+.pd-zoom-live {
+  position: fixed;
+  top: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: #000000aa;
+  color: #fff;
+  font-size: 13px;
+}
