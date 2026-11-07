@@ -92,17 +92,16 @@ def database_catalog(settings):
         ) from None
 
 
+# Registration only stands up the current production (the migration source). Security checks
+# (SAST → staging DAST → AI fix → re-check) belong to the migration pipeline, so they are not
+# repeated here. The sandbox run stays: deployment plans require its runtime evidence.
 STEPS = [
     ("source_frontend", "프론트엔드 소스 확인"),
     ("source_backend", "백엔드 소스 확인"),
     ("build_frontend", "Jenkins 프론트엔드 빌드"),
     ("build_backend", "Jenkins 백엔드 빌드"),
-    ("security_frontend", "프론트엔드 SAST"),
-    ("security_backend", "백엔드 SAST"),
     ("sandbox_frontend", "프론트엔드 샌드박스"),
     ("sandbox_backend", "백엔드 샌드박스"),
-    ("dast_frontend", "프론트엔드 DAST"),
-    ("dast_backend", "백엔드 DAST"),
     ("deploy", "VM·DB 준비 → 앱 배포 → 연결 확인"),
 ]
 

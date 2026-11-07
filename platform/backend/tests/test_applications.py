@@ -153,7 +153,9 @@ def test_automatic_sequence_survives_restart_pins_sha_and_deploys_one_pair(engin
             seen.append(claim)
     state = store.service(app["id"])["application"]
     assert state["status"] == "succeeded", state
-    assert len(seen) == len(STEPS) == 11
+    assert len(seen) == len(STEPS) == 7
+    # Registration stands up the current production only; SAST/DAST run in the migration pipeline.
+    assert not {c["kind"] for c in seen} & {"security_check", "dast_check"}
     assert seen[1]["input_snapshot"]["source_ref"] == SHA
     deployment = seen[-1]["input_snapshot"]
     assert len(deployment["components"]) == 2
@@ -163,22 +165,15 @@ def test_automatic_sequence_survives_restart_pins_sha_and_deploys_one_pair(engin
         assert conn.scalar(sa.select(sa.func.count()).select_from(environments)) == 1
 
 
-def test_skipped_dast_requires_explicit_review(engine, targets):
+def test_registration_skips_security_scanners_and_needs_no_review(engine, targets):
     apps, store = ApplicationStore(engine, config()), Store(engine)
     app, _ = apps.register(body(), "review", "team")
     for _ in range(40):
         apps.tick()
-        finish_next(store, skipped=True)
-    state = store.service(app["id"])["application"]
-    assert state["status"] == "review"
-    assert any(s["status"] == "skipped" for s in state["steps"])
-    with pytest.raises(Problem, match="검토"):
-        apps.resume(app["id"])
-    apps.resume(app["id"], approve=True)
-    for _ in range(5):
-        apps.tick()
         finish_next(store)
-    assert store.service(app["id"])["application"]["status"] == "succeeded"
+    state = store.service(app["id"])["application"]
+    assert state["status"] == "succeeded", state
+    assert not any(s["key"].startswith(("security_", "dast_")) for s in state["steps"])
 
 
 def test_failed_run_never_deploys(engine, targets):
