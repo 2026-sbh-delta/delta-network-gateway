@@ -18,7 +18,6 @@ from sqlalchemy.exc import SQLAlchemyError
 from delta_platform.adapters.builds import BuildError, build_runner, build_target
 from delta_platform.adapters.dast import dast_target
 from delta_platform.adapters.observability import DashboardReader
-from delta_platform.adapters.orchestrator import OrchestratorRelay
 from delta_platform.adapters.sandbox import sandbox_target
 from delta_platform.adapters.security import security_target
 from delta_platform.config import Settings
@@ -36,8 +35,6 @@ from delta_platform.core.inputs import (
     EmptyInput,
     ImageCheckInput,
     LoginInput,
-    PipelineAnswerInput,
-    PipelineStartInput,
     RemoveRuntimeInput,
     SandboxCheckInput,
     ServiceInput,
@@ -51,7 +48,7 @@ logger = logging.getLogger("delta_platform")
 Limit = Annotated[int, Query(ge=1, le=100)]
 
 
-def create_app(settings=None, engine=None, *, dashboard=None, pipeline=None):
+def create_app(settings=None, engine=None, *, dashboard=None):
     settings = settings or Settings()
     owned_engine = engine is None
     engine = engine or engine_for(settings)
@@ -61,7 +58,6 @@ def create_app(settings=None, engine=None, *, dashboard=None, pipeline=None):
     deployments = DeploymentStore(engine, settings)
     migrations = MigrationTrackingStore(engine)
     dashboard = dashboard or DashboardReader(settings.observability_region)
-    pipeline = pipeline or OrchestratorRelay(settings)
 
     @asynccontextmanager
     async def lifespan(app):
@@ -508,31 +504,6 @@ def create_app(settings=None, engine=None, *, dashboard=None, pipeline=None):
                 "빌드 로그를 가져오지 못했습니다. 잠시 후 다시 조회하세요.",
                 503,
             ) from None
-
-    @protected.get("/pipeline/runs")
-    def pipeline_runs():
-        return pipeline.runs()
-
-    @protected.get("/pipeline/options")
-    def pipeline_options(branch: Annotated[str | None, Query(max_length=100)] = None):
-        return pipeline.options(settings.pipeline_repository, branch)
-
-    @protected.post("/pipeline/runs", status_code=202)
-    def pipeline_start(body: PipelineStartInput, request: Request):
-        key = request_key(request.headers.get("idempotency-key"))
-        return pipeline.start({"repo": settings.pipeline_repository, **body.model_dump()}, key=key)
-
-    @protected.get("/pipeline/runs/{run_id}")
-    def pipeline_run(run_id: str):
-        return pipeline.run(run_id)
-
-    @protected.get("/pipeline/runs/{run_id}/log/{node_id}")
-    def pipeline_log(run_id: str, node_id: str):
-        return pipeline.log(run_id, node_id)
-
-    @protected.post("/pipeline/runs/{run_id}/answer")
-    def pipeline_answer(run_id: str, body: PipelineAnswerInput):
-        return pipeline.answer(run_id, body.value, body.decision_id, body.case_id)
 
     from delta_platform.adapters.workflow_diff import install as install_workload_diff
 

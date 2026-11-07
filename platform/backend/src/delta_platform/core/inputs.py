@@ -37,19 +37,6 @@ class EmptyInput(StrictInput):
     pass
 
 
-class PipelineStartInput(StrictInput):
-    branch: str = Field(min_length=1, max_length=100, pattern=r"^[A-Za-z0-9._/-]+$")
-    commit: str = Field(pattern=r"^[0-9a-f]{40}$")
-    cutover: bool = False
-    release_target: str | None = Field(default=None, max_length=64)
-
-
-class PipelineAnswerInput(StrictInput):
-    value: str = Field(min_length=1, max_length=40, pattern=r"^[a-z_]+$")
-    decision_id: str | None = Field(default=None, max_length=128)
-    case_id: str | None = Field(default=None, max_length=128)
-
-
 class DeleteServiceInput(StrictInput):
     confirmation_name: str = Field(min_length=1, max_length=80)
 

@@ -98,13 +98,3 @@ variable "release_state_bucket" {
   type        = string
   default     = "sbh-delta-workload-tf-616723161368"
 }
-
-variable "dashboard_allowed_cidrs" {
-  description = "로그인 없는 대시보드 시험 화면에 들어올 수 있는 공인 IPv4 대역. 비우면 아무도 못 들어온다. 행사장 NAT 가 같은 대역 안에서 주소를 바꿔 쓰므로 /24 로 둔다."
-  type        = list(string)
-  default     = ["203.160.86.0/24"]
-  validation {
-    condition     = alltrue([for c in var.dashboard_allowed_cidrs : can(cidrhost(c, 0)) && !strcontains(c, ":")])
-    error_message = "IPv4 CIDR 만 넣는다(예: 203.0.113.0/24)."
-  }
-}
