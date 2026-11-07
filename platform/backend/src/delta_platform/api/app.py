@@ -554,6 +554,10 @@ def create_app(settings=None, engine=None, *, dashboard=None, pipeline=None):
     def pipeline_answer(run_id: str, body: PipelineAnswerInput):
         return pipeline.answer(run_id, body.value, body.decision_id, body.case_id)
 
+    @protected.get("/pipeline/domain")
+    def pipeline_domain():
+        return pipeline.domain()
+
     # Demo reset: domain back to AWS, vulnerable build on GCP production, AI fix PRs closed.
     @protected.get("/pipeline/reset")
     def pipeline_reset_view():

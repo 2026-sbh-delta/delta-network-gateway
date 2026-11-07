@@ -25,6 +25,11 @@ import {
   FixModal,
   FixProposal,
 } from "./PipelineDast";
+import {
+  BuildEvidence,
+  CutoverEvidence,
+  ReleaseEvidence,
+} from "./PipelineEvidence";
 import "./pipeline.css";
 
 type Selection = StageId | GateId;
@@ -183,6 +188,8 @@ const WIRES: [string, string][] = [
   ["release", "cutover-gate"],
   ["cutover-gate", "cutover"],
 ];
+// Only ports with a wire are drawn: the chain's first input and last output have none.
+const WIRED = new Set(WIRES.flatMap(([a, b]) => [`${a}:out`, `${b}:in`]));
 const OUTPUT: Record<StageId, string> = {
   build: "이미지 · 검사 결과",
   verify: "검증 결과",
@@ -284,7 +291,7 @@ function FlowNode({
       <div className={`lf-fields${stage.id === "diff" ? " row" : ""}`}>
         {rows.map((s, i) => (
           <div key={s.id} className={`lf-field s-${s.state}`}>
-            {i === 0 && (
+            {i === 0 && WIRED.has(`${stage.id}:in`) && (
               <span
                 className={`lf-port in${reached(stage.state) ? " on" : ""}`}
                 data-port={`${stage.id}:in`}
@@ -312,10 +319,12 @@ function FlowNode({
       {stage.diagnosed && <p className="lf-foot">진단 있음</p>}
       <div className="lf-output">
         <span>{OUTPUT[stage.id]}</span>
-        <span
-          className={`lf-port out${done(stage.state) ? " on" : ""}`}
-          data-port={`${stage.id}:out`}
-        />
+        {WIRED.has(`${stage.id}:out`) && (
+          <span
+            className={`lf-port out${done(stage.state) ? " on" : ""}`}
+            data-port={`${stage.id}:out`}
+          />
+        )}
       </div>
     </div>
   );
@@ -1095,6 +1104,9 @@ function Detail({
             </li>
           ))}
       </ul>
+      {stage.id === "build" && <BuildEvidence board={board} />}
+      {stage.id === "release" && <ReleaseEvidence board={board} />}
+      {stage.id === "cutover" && <CutoverEvidence board={board} />}
       {stage.id === "verify" && <VulnStory board={board} />}
       {stage.id === "diff" && map && <MappingTable node={map} />}
       {stage.steps.some((s) => s.state === "mock") && (
