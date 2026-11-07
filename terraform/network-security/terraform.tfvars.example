@@ -19,6 +19,7 @@ spoke_attachments  = {}
 vpn_networks       = {}
 vpn_peers          = {}
 allowed_flows      = {}
+default_deny_enabled = true # False removes SID 9000000 for all unmatched traffic.
 
 # A NEW detector must first be prepared suspended with all optional features disabled.
 # Review its API state, then use the default true for the separate activation plan.

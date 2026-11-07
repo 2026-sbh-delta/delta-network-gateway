@@ -1070,3 +1070,37 @@ run "internal_alb_two_port_demo" {
     error_message = "Allow only the 8080 control, keep the observation alert and final deny, and inspect both VPC CIDRs."
   }
 }
+
+run "disable_default_deny_keeps_inspection_and_explicit_rules" {
+  command = plan
+  variables {
+    default_deny_enabled = false
+    allowed_flows = {
+      board_http = {
+        source_cidrs      = ["0.0.0.0/0"]
+        destination_cidrs = ["10.10.10.0/24", "10.10.11.0/24"]
+        protocol          = "tcp"
+        destination_ports = [80]
+        sid               = 1000100
+      }
+    }
+    suricata_rules = {
+      explicit_deny = {
+        sid  = 2000100
+        rule = "drop tcp any any -> any 23 (msg:\"Explicit test restriction\"; sid:2000100; rev:1;)"
+      }
+      marker = {
+        sid  = 2000101
+        rule = "alert http any any -> any 80 (msg:\"HTTP test marker\"; flow:established,to_server; http.uri; content:\"/delta-test-marker\"; sid:2000101; rev:1;)"
+      }
+    }
+  }
+  assert {
+    condition     = !strcontains(one(one(aws_networkfirewall_rule_group.central.rule_group).rules_source).rules_string, "sid:9000000;") && strcontains(local.rules_string, var.suricata_rules.explicit_deny.rule) && strcontains(local.rules_string, var.suricata_rules.marker.rule) && strcontains(local.rules_string, "sid:1000100;") && !can(regex("(?m)^pass ", local.rules_string))
+    error_message = "Remove only the default-deny rule, preserving explicit drop/alert signatures and flow tracking without a terminating pass rule."
+  }
+  assert {
+    condition     = output.inspection_mode == "enabled" && length(aws_networkfirewall_firewall.central) == 1 && length(aws_networkfirewall_logging_configuration.central) == 1 && aws_networkfirewall_firewall.central[0].delete_protection && one(one(aws_networkfirewall_firewall_policy.central.firewall_policy).stateful_engine_options).stream_exception_policy == "DROP" && one(one(aws_networkfirewall_firewall_policy.central.firewall_policy).stateful_engine_options).rule_order == "STRICT_ORDER"
+    error_message = "Disabling default deny must retain the firewall, logging, delete protection, strict ordering and stream exception policy."
+  }
+}

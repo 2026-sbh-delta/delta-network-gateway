@@ -64,6 +64,7 @@ RAM 조직 공유 활성화는 조직 관리 계정에서 수행하며 `AWSServi
 | `vpn_networks` | `map(object)` | `{}` | 중복 없이 정의하는 논리적 원격 네트워크 |
 | `vpn_peers` | `map(object)` | `{}` | 입력된 AWS Customer Gateway/VPN 연결 |
 | `allowed_flows` | `map(object)` | `{}` | 명시적 TCP/UDP/ICMP 허용 목록 |
+| `default_deny_enabled` | `bool` | `true` | 마지막 기본 차단 SID `9000000` 포함 여부. false면 미등록 통신을 이 규칙으로 차단하지 않음 |
 | `suricata_rules` | `map(object)` | `{}` | 허용 추적보다 먼저 평가할 선택적 추가 규칙 |
 | `stateful_rule_capacity` | `number` | `1000` | Rule Group capacity, 변경 시 교체에 주의 |
 | `inspection_mode` | `string` | `enabled` | `enabled`: 검사, `bypass`: ANF를 유지한 직접 경로, `disabled`: 직접 경로와 엔드포인트 제거. 직접 모드의 VPN은 Spoke RT에 BGP 전파 |
@@ -298,8 +299,9 @@ GCP에서 Account B Backend로 가는 실제 요청/응답의 단계별 설명�
 
 - Stateless 일반/Fragment 기본 Action은 `aws:forward_to_sfe`다. Stateful Policy와 Rule Group 모두 `STRICT_ORDER`, stream exception은 `DROP`이다.
 - 추가 Suricata 규칙을 먼저 평가한 뒤 허용 목록에 맞는 시작 방향의 패킷을 `alert`와 `flowbits:set,delta_allowed`로 표시한다. `flowbits:noalert`로 허용 표시 자체의 ALERT는 억제한다. 같은 연결의 응답은 같은 flowbit를 사용한다.
-- 마지막 SID `9000000`은 해당 bit가 없는 트래픽을 명시적으로 drop하고 차단 ALERT를 남긴다. 허용 목록이 비어 있으면 전체 허용 규칙 없이 이 차단 규칙만 남는다.
-- 이 방식의 허용 표시는 종료형 pass가 아니다. 패킷은 이후에도 추가 시그니처 평가 대상이 된다. Policy에 `aws:drop_strict`를 추가하면 허용 표시된 패킷도 차단되므로 기본 전체 drop을 중복 설정하지 않는다. 마지막 차단 규칙을 제거하거나 비활성화해서도 안 된다.
+- 기본값 `default_deny_enabled=true`에서는 마지막 SID `9000000`이 해당 bit가 없는 트래픽을 명시적으로 drop하고 차단 ALERT를 남긴다. 허용 목록이 비어 있으면 전체 허용 규칙 없이 이 차단 규칙만 남는다.
+- `default_deny_enabled=false`는 SID `9000000`만 제거한다. 현재 Policy에는 Stateful 기본 drop이 없어 미등록 통신도 이 규칙으로 차단하지 않는다. 기존 추가 서명, stream exception `DROP`, 검사 경로, Endpoint와 로그 설정은 유지한다. SG/NACL의 별도 제한은 계속 적용된다. 이 값은 TCP443뿐 아니라 모든 미등록 통신에 영향을 준다.
+- 이 방식의 허용 표시는 종료형 pass가 아니다. 패킷은 이후에도 추가 시그니처 평가 대상이 된다. Policy에 `aws:drop_strict`를 추가하면 허용 표시된 패킷도 차단되므로 기본 전체 drop을 중복 설정하지 않는다. 기본 차단 제거는 명시적으로 승인된 입력으로 관리하고, 복귀할 때는 `default_deny_enabled=true`의 저장 Plan을 검토해 적용한다.
 - TCP 연결 성립과 응답, UDP 응답, ICMP echo 요청/응답은 배포 후 실제 패킷으로 검증한다. ALB Health Check도 별도 TCP 허용 입력이 필요하다. ICMP 오류/PMTUD 등 추가 type을 필요로 하면 별도로 설계하고 검증한다.
 - HOME_NET은 Inspection, 등록된 ALB/Backend/Client VPC, GCP/온프레미스 CIDR의 합집합이다. Rule Group의 EXTERNAL_NET을 전체 IPv4로 명시해 HOME_NET 간 통신이 음수 조건으로 빠지지 않게 한다.
 - SID 범위를 분리하고 중복을 거부한다. 추가 규칙은 한 줄의 drop/alert/reject만 받으며 pass, flowbit 변경과 STRICT_ORDER의 priority keyword는 거부한다. 추가 규칙 내부와 허용 목록 내부는 각각 맵 키의 사전순으로 평가하므로 순서가 필요하면 키에 순서 접두사를 붙인다. reject는 TCP에만 사용한다. 기본 제공 IPS 서명 집합은 없고 포트 허용/차단을 완전한 IPS라고 부르지 않는다.

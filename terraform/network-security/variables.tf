@@ -189,6 +189,13 @@ variable "vpn_peers" {
   }
 }
 
+variable "default_deny_enabled" {
+  description = "Include the final default-deny rule SID 9000000. False leaves unmatched traffic unblocked by this rule; explicit signatures still apply."
+  type        = bool
+  default     = true
+  nullable    = false
+}
+
 variable "allowed_flows" {
   description = "Explicit initiated flows. TCP/UDP require ports. ICMP requires a request type and optional code. SID is stable and caller-managed."
   type = map(object({
@@ -245,7 +252,7 @@ variable "suricata_rules" {
 }
 
 variable "stateful_rule_capacity" {
-  description = "Immutable rule-group capacity. Reserves room for flow rules, custom signatures and the final deny rule."
+  description = "Immutable rule-group capacity. Reserves room for flow rules, custom signatures and the optional final deny rule."
   type        = number
   default     = 1000
   validation {

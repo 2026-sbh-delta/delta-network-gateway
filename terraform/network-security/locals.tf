@@ -86,7 +86,7 @@ locals {
   rules_string = join("\n", concat(
     [for key in sort(keys(var.suricata_rules)) : var.suricata_rules[key].rule],
     local.flow_rules,
-    ["drop ip any any -> any any (msg:\"Delta default deny\"; flowbits:isnotset,delta_allowed; sid:${local.deny_sid}; rev:1;)"]
+    var.default_deny_enabled ? ["drop ip any any -> any any (msg:\"Delta default deny\"; flowbits:isnotset,delta_allowed; sid:${local.deny_sid}; rev:1;)"] : []
   ))
 }
 

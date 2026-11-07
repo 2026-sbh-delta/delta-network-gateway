@@ -37,7 +37,8 @@ resource "aws_networkfirewall_firewall_policy" "central" {
     stateless_fragment_default_actions = ["aws:forward_to_sfe"]
 
     # No built-in drop: it would also drop flows marked by nonterminating alert
-    # rules. The last explicit flowbits:isnotset rule supplies default deny.
+    # rules. When enabled, the last explicit flowbits:isnotset rule supplies
+    # default deny. Disabling that rule leaves unmatched traffic unblocked.
     stateful_engine_options {
       rule_order              = "STRICT_ORDER"
       stream_exception_policy = "DROP"
