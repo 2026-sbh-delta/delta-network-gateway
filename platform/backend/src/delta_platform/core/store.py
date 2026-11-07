@@ -472,10 +472,22 @@ class Store:
                 conn.execute(
                     sa.select(runs)
                     .where(
+                        runs.c.kind.in_(
+                            (
+                                "source_preflight",
+                                "image_build",
+                                "sandbox_check",
+                                "security_check",
+                                "dast_check",
+                                "runtime_remove",
+                                "service_deploy",
+                                "service_remove",
+                            )
+                        ),
                         sa.or_(
                             sa.and_(runs.c.status == "queued", runs.c.available_at <= instant),
                             sa.and_(runs.c.status == "running", runs.c.lease_expires_at <= instant),
-                        )
+                        ),
                     )
                     .order_by(runs.c.available_at, runs.c.created_at)
                     .limit(1)

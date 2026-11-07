@@ -10,6 +10,26 @@ spec.loader.exec_module(module)
 
 
 class OnpremRuntimeMergeTest(unittest.TestCase):
+    def test_deployment_accepts_known_optional_keys_without_accepting_unknown_keys(
+        self,
+    ):
+        base = {"app_env": {}}
+        extra = {
+            key: "configured"
+            for key in module.DEPLOYMENT_KEYS | module.DEPLOYMENT_OPTIONAL_KEYS
+        }
+        merged = module.merge_component(
+            base, extra, module.DEPLOYMENT_KEYS, module.DEPLOYMENT_OPTIONAL_KEYS
+        )
+        self.assertEqual(merged["app_env"], extra)
+        with self.assertRaises(ValueError):
+            module.merge_component(
+                base,
+                {**extra, "UNEXPECTED": "value"},
+                module.DEPLOYMENT_KEYS,
+                module.DEPLOYMENT_OPTIONAL_KEYS,
+            )
+
     def test_deployment_sibling_is_bounded_and_preserves_other_components(self):
         base = {
             "app_env": {

@@ -59,6 +59,14 @@ def test_concurrent_enqueue_and_claim(store, data):
     assert sum(c is not None for c in claims) == 1
 
 
+def test_worker_leaves_migration_runs_for_a_compatible_worker(store, engine, data):
+    run = queue(store, data)
+    with engine.begin() as conn:
+        conn.execute(runs.update().where(runs.c.id == run["id"]).values(kind="data_migrate"))
+    assert store.claim() is None
+    assert store.run(run["id"])["status"] == "queued"
+
+
 def test_expired_owner_cannot_write_or_heartbeat(store, engine, data):
     run = queue(store, data)
     old = store.claim()
